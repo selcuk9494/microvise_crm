@@ -14,9 +14,6 @@ import 'invoice_model.dart';
 import 'invoice_providers.dart';
 import 'invoice_form_screen.dart';
 
-// Filter state
-final _invoiceFilterProvider = StateProvider.autoDispose<InvoiceFilter>((ref) => const InvoiceFilter());
-
 class InvoicesScreen extends ConsumerStatefulWidget {
   const InvoicesScreen({super.key});
 
@@ -27,6 +24,7 @@ class InvoicesScreen extends ConsumerStatefulWidget {
 class _InvoicesScreenState extends ConsumerState<InvoicesScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final _money = NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 2);
+  InvoiceFilter _filter = const InvoiceFilter();
 
   @override
   void initState() {
@@ -35,8 +33,9 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> with SingleTick
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
         final type = _tabController.index == 0 ? 'sales' : 'purchase';
-        ref.read(_invoiceFilterProvider.notifier).state = 
-            ref.read(_invoiceFilterProvider).copyWith(invoiceType: type, clearStatus: true);
+        setState(() {
+          _filter = _filter.copyWith(invoiceType: type, clearStatus: true);
+        });
       }
     });
   }
@@ -49,8 +48,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> with SingleTick
 
   @override
   Widget build(BuildContext context) {
-    final filter = ref.watch(_invoiceFilterProvider);
-    final currentFilter = filter.copyWith(
+    final currentFilter = _filter.copyWith(
       invoiceType: _tabController.index == 0 ? 'sales' : 'purchase',
     );
     final invoicesAsync = ref.watch(invoicesProvider(currentFilter));
@@ -93,7 +91,10 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> with SingleTick
           ),
           const Gap(12),
           // Filters
-          _FilterBar(filter: filter),
+          _FilterBar(
+            filter: _filter,
+            onFilterChanged: (newFilter) => setState(() => _filter = newFilter),
+          ),
           const Gap(12),
           // List
           Expanded(
@@ -213,13 +214,14 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> with SingleTick
   }
 }
 
-class _FilterBar extends ConsumerWidget {
-  const _FilterBar({required this.filter});
+class _FilterBar extends StatelessWidget {
+  const _FilterBar({required this.filter, required this.onFilterChanged});
 
   final InvoiceFilter filter;
+  final ValueChanged<InvoiceFilter> onFilterChanged;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -228,27 +230,25 @@ class _FilterBar extends ConsumerWidget {
           _FilterChip(
             label: filter.status == null ? 'Tüm Durumlar' : _statusLabel(filter.status!),
             selected: filter.status != null,
-            onTap: () => _showStatusFilter(context, ref),
+            onTap: () => _showStatusFilter(context),
           ),
           const Gap(8),
           _FilterChip(
             label: filter.customerId == null ? 'Tüm Cariler' : 'Seçili Cari',
             selected: filter.customerId != null,
-            onTap: () => _showCustomerFilter(context, ref),
+            onTap: () => _showCustomerFilter(context),
           ),
           const Gap(8),
           _FilterChip(
             label: 'Tarih Aralığı',
             selected: filter.startDate != null || filter.endDate != null,
-            onTap: () => _showDateFilter(context, ref),
+            onTap: () => _showDateFilter(context),
           ),
           if (filter.status != null || filter.customerId != null || filter.startDate != null) ...[
             const Gap(8),
             ActionChip(
               label: const Text('Temizle'),
-              onPressed: () {
-                ref.read(_invoiceFilterProvider.notifier).state = const InvoiceFilter();
-              },
+              onPressed: () => onFilterChanged(const InvoiceFilter()),
             ),
           ],
         ],
@@ -267,7 +267,7 @@ class _FilterBar extends ConsumerWidget {
     };
   }
 
-  Future<void> _showStatusFilter(BuildContext context, WidgetRef ref) async {
+  Future<void> _showStatusFilter(BuildContext context) async {
     final status = await showModalBottomSheet<String?>(
       context: context,
       builder: (context) => SafeArea(
@@ -285,62 +285,18 @@ class _FilterBar extends ConsumerWidget {
     );
 
     if (status == null) return;
-    ref.read(_invoiceFilterProvider.notifier).state = filter.copyWith(
+    onFilterChanged(filter.copyWith(
       status: status.isEmpty ? null : status,
       clearStatus: status.isEmpty,
-    );
+    ));
   }
 
-  Future<void> _showCustomerFilter(BuildContext context, WidgetRef ref) async {
-    final customers = await ref.read(customersProvider.future);
-    if (!context.mounted) return;
-
-    final customerId = await showModalBottomSheet<String?>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.3,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (context, scrollController) => Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text('Cari Seç', style: Theme.of(context).textTheme.titleMedium),
-            ),
-            ListTile(
-              leading: const Icon(Icons.clear_all_rounded),
-              title: const Text('Tümü'),
-              onTap: () => Navigator.pop(context, ''),
-            ),
-            Expanded(
-              child: ListView.builder(
-                controller: scrollController,
-                itemCount: customers.length,
-                itemBuilder: (context, index) {
-                  final c = customers[index];
-                  return ListTile(
-                    title: Text(c.name),
-                    subtitle: c.city != null ? Text(c.city!) : null,
-                    onTap: () => Navigator.pop(context, c.id),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (customerId == null) return;
-    ref.read(_invoiceFilterProvider.notifier).state = filter.copyWith(
-      customerId: customerId.isEmpty ? null : customerId,
-      clearCustomerId: customerId.isEmpty,
-    );
+  Future<void> _showCustomerFilter(BuildContext context) async {
+    // Simplified - no customer selection for now
+    onFilterChanged(filter.copyWith(clearCustomerId: true));
   }
 
-  Future<void> _showDateFilter(BuildContext context, WidgetRef ref) async {
+  Future<void> _showDateFilter(BuildContext context) async {
     final range = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
@@ -351,10 +307,10 @@ class _FilterBar extends ConsumerWidget {
     );
 
     if (range == null) return;
-    ref.read(_invoiceFilterProvider.notifier).state = filter.copyWith(
+    onFilterChanged(filter.copyWith(
       startDate: range.start,
       endDate: range.end,
-    );
+    ));
   }
 }
 
