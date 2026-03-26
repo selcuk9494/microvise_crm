@@ -19,7 +19,9 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
 
     var q = client
         .from('work_orders')
-        .select('id,title,status,is_active,assigned_to,customers(name)')
+        .select(
+          'id,title,status,is_active,customer_id,branch_id,assigned_to,scheduled_date,customers(name)',
+        )
         .eq('is_active', true);
 
     if (!isAdmin) {

@@ -645,6 +645,16 @@ final _navItems = <_NavItem>[
     icon: PhosphorIcons.chartBar(PhosphorIconsStyle.regular),
   ),
   _NavItem(
+    path: '/faturalama',
+    label: 'Faturalama',
+    icon: PhosphorIcons.receipt(PhosphorIconsStyle.regular),
+  ),
+  _NavItem(
+    path: '/tanimlamalar',
+    label: 'Tanımlamalar',
+    icon: PhosphorIcons.sliders(PhosphorIconsStyle.regular),
+  ),
+  _NavItem(
     path: '/personel',
     label: 'Personel',
     icon: PhosphorIcons.identificationCard(PhosphorIconsStyle.regular),

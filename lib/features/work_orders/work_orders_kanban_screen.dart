@@ -11,6 +11,7 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import 'work_order_model.dart';
+import 'work_order_close_sheet.dart';
 import 'work_orders_providers.dart';
 
 class WorkOrdersKanbanScreen extends ConsumerStatefulWidget {
@@ -74,22 +75,34 @@ class _WorkOrdersKanbanScreenState extends ConsumerState<WorkOrdersKanbanScreen>
               WorkOrder(
                 id: '1',
                 title: 'Hat yenileme / ACME Teknoloji',
+                customerId: 'c1',
                 customerName: 'ACME Teknoloji',
                 status: 'open',
+                branchId: null,
+                assignedTo: null,
+                scheduledDate: null,
                 isActive: true,
               ),
               WorkOrder(
                 id: '2',
                 title: 'Servis kapanış / Orion Endüstri',
+                customerId: 'c2',
                 customerName: 'Orion Endüstri',
                 status: 'in_progress',
+                branchId: null,
+                assignedTo: null,
+                scheduledDate: null,
                 isActive: true,
               ),
               WorkOrder(
                 id: '3',
                 title: 'Lisans uzatma / Nova Yazılım',
+                customerId: 'c3',
                 customerName: 'Nova Yazılım',
                 status: 'done',
+                branchId: null,
+                assignedTo: null,
+                scheduledDate: null,
                 isActive: true,
               ),
             ],
@@ -280,15 +293,27 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            w.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  decoration:
-                      w.isActive ? TextDecoration.none : TextDecoration.lineThrough,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  w.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        decoration: w.isActive
+                            ? TextDecoration.none
+                            : TextDecoration.lineThrough,
+                      ),
                 ),
+              ),
+              const Gap(8),
+              if (w.status == 'done')
+                const Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 18)
+              else
+                const Icon(Icons.open_in_new_rounded, size: 18, color: Color(0xFF64748B)),
+            ],
           ),
           const Gap(6),
           Text(
@@ -309,7 +334,17 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
         data: w,
         feedback: SizedBox(width: 340, child: Material(child: card)),
         childWhenDragging: Opacity(opacity: 0.55, child: card),
-        child: card,
+        child: Consumer(
+          builder: (context, ref, _) => InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () async {
+              if (w.status == 'done') return;
+              await showWorkOrderCloseSheet(context, ref, order: w);
+              ref.read(workOrdersBoardProvider.notifier).refresh();
+            },
+            child: card,
+          ),
+        ),
       ),
     );
   }

@@ -540,7 +540,8 @@ class _LicensesTab extends ConsumerWidget {
                 return ListView.separated(
                   itemCount: gmp3.length,
                   separatorBuilder: (_, __) => const Gap(10),
-                  itemBuilder: (context, index) => _LicenseItem(license: gmp3[index]),
+                  itemBuilder: (context, index) =>
+                      _LicenseItem(customerId: customerId, license: gmp3[index]),
                 );
               },
               loading: () => const _ListSkeleton(),
@@ -856,6 +857,25 @@ class _LineItemState extends ConsumerState<_LineItem> {
                       },
                       child: const Text('Devir Et'),
                     ),
+                    MenuItemButton(
+                      onPressed: () async {
+                        if (_busy) return;
+                        setState(() => _busy = true);
+                        try {
+                          await _extendLineAndQueueInvoice(
+                            context,
+                            ref,
+                            lineId: line.id,
+                            customerId: widget.customerId,
+                            currentEndsAt: line.endsAt,
+                          );
+                          ref.invalidate(customerLinesProvider(widget.customerId));
+                        } finally {
+                          if (mounted) setState(() => _busy = false);
+                        }
+                      },
+                      child: const Text('Uzat + Fatura Listesi'),
+                    ),
                   ],
                 ),
               ],
@@ -867,15 +887,25 @@ class _LineItemState extends ConsumerState<_LineItem> {
   }
 }
 
-class _LicenseItem extends StatelessWidget {
-  const _LicenseItem({required this.license});
+class _LicenseItem extends ConsumerStatefulWidget {
+  const _LicenseItem({required this.customerId, required this.license});
 
+  final String customerId;
   final CustomerLicense license;
 
   @override
+  ConsumerState<_LicenseItem> createState() => _LicenseItemState();
+}
+
+class _LicenseItemState extends ConsumerState<_LicenseItem> {
+  bool _busy = false;
+
+  @override
   Widget build(BuildContext context) {
+    final license = widget.license;
     final now = DateTime.now();
     final endsAt = license.endsAt;
+    final isAdmin = ref.watch(isAdminProvider);
     final tone = !license.isActive
         ? AppBadgeTone.neutral
         : endsAt == null
@@ -937,7 +967,41 @@ class _LicenseItem extends StatelessWidget {
             ),
           ),
           const Gap(10),
-          AppBadge(label: label, tone: tone),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              AppBadge(label: label, tone: tone),
+              if (isAdmin) ...[
+                const Gap(8),
+                OutlinedButton(
+                  onPressed: _busy
+                      ? null
+                      : () async {
+                          setState(() => _busy = true);
+                          try {
+                            await _extendGmp3AndQueueInvoice(
+                              context,
+                              ref,
+                              licenseId: license.id,
+                              customerId: widget.customerId,
+                              currentEndsAt: license.endsAt,
+                              name: license.name,
+                            );
+                          } finally {
+                            if (mounted) setState(() => _busy = false);
+                          }
+                        },
+                  child: _busy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Uzat + Fatura'),
+                ),
+              ],
+            ],
+          ),
         ],
       ),
     );
@@ -1601,6 +1665,121 @@ Future<void> _showTransferLineDialog(
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Hat devredildi.')),
     );
+  }
+}
+
+Future<void> _extendLineAndQueueInvoice(
+  BuildContext context,
+  WidgetRef ref, {
+  required String lineId,
+  required String customerId,
+  required DateTime? currentEndsAt,
+}) async {
+  final client = ref.read(supabaseClientProvider);
+  if (client == null) return;
+
+  final now = DateTime.now();
+  final baseYear =
+      (currentEndsAt != null && currentEndsAt.isAfter(now)) ? currentEndsAt.year : now.year;
+  final newEnd = DateTime(baseYear + 1, 12, 31);
+  final newEndStr = newEnd.toIso8601String().substring(0, 10);
+
+  try {
+    await client.from('lines').update({
+      'ends_at': newEndStr,
+      'expires_at': newEndStr,
+    }).eq('id', lineId);
+
+    try {
+      await client.from('invoice_items').insert({
+        'customer_id': customerId,
+        'item_type': 'line_renewal',
+        'source_table': 'lines',
+        'source_id': lineId,
+        'description': 'Hat uzatma (yeni bitiş: $newEndStr)',
+        'status': 'pending',
+        'created_by': client.auth.currentUser?.id,
+      });
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hat uzatıldı; fatura listesi için migration 0003 gerekli.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hat uzatıldı ve fatura listesine eklendi.')),
+      );
+    }
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hat uzatılamadı.')),
+      );
+    }
+  }
+}
+
+Future<void> _extendGmp3AndQueueInvoice(
+  BuildContext context,
+  WidgetRef ref, {
+  required String licenseId,
+  required String customerId,
+  required DateTime? currentEndsAt,
+  required String name,
+}) async {
+  final client = ref.read(supabaseClientProvider);
+  if (client == null) return;
+
+  final now = DateTime.now();
+  final baseYear =
+      (currentEndsAt != null && currentEndsAt.isAfter(now)) ? currentEndsAt.year : now.year;
+  final newEnd = DateTime(baseYear + 1, 12, 31);
+  final newEndStr = newEnd.toIso8601String().substring(0, 10);
+
+  try {
+    await client.from('licenses').update({
+      'ends_at': newEndStr,
+      'expires_at': newEndStr,
+    }).eq('id', licenseId);
+
+    try {
+      await client.from('invoice_items').insert({
+        'customer_id': customerId,
+        'item_type': 'gmp3_renewal',
+        'source_table': 'licenses',
+        'source_id': licenseId,
+        'description': 'GMP3 uzatma ($name) (yeni bitiş: $newEndStr)',
+        'status': 'pending',
+        'created_by': client.auth.currentUser?.id,
+      });
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('GMP3 uzatıldı; fatura listesi için migration 0003 gerekli.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('GMP3 uzatıldı ve fatura listesine eklendi.')),
+      );
+    }
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('GMP3 uzatılamadı.')),
+      );
+    }
   }
 }
 

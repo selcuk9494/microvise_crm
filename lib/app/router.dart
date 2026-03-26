@@ -8,9 +8,12 @@ import '../features/auth/login_screen.dart';
 import '../features/customers/customer_detail_screen.dart';
 import '../features/customers/customers_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
+import '../features/billing/billing_screen.dart';
+import '../features/definitions/definitions_screen.dart';
 import '../features/personnel/personnel_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/service/service_screen.dart';
+import '../features/service/service_detail_screen.dart';
 import '../features/setup/setup_required_screen.dart';
 import '../features/shell/app_shell.dart';
 import '../features/work_orders/work_orders_kanban_screen.dart';
@@ -72,6 +75,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           pageBuilder: (context, state) => const NoTransitionPage(
             child: ServiceScreen(),
           ),
+          routes: [
+            GoRoute(
+              path: ':id',
+              builder: (context, state) => ServiceDetailScreen(
+                serviceId: state.pathParameters['id']!,
+              ),
+            ),
+          ],
         ),
         GoRoute(
           path: '/raporlar',
@@ -83,6 +94,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           path: '/personel',
           pageBuilder: (context, state) => const NoTransitionPage(
             child: PersonnelScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/faturalama',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: BillingScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/tanimlamalar',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: DefinitionsScreen(),
           ),
         ),
       ],
