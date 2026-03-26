@@ -693,6 +693,7 @@ class _PaymentRowState extends State<_PaymentRow> {
               DropdownMenuItem(value: 'TRY', child: Text('TRY')),
               DropdownMenuItem(value: 'USD', child: Text('USD')),
               DropdownMenuItem(value: 'EUR', child: Text('EUR')),
+              DropdownMenuItem(value: 'GBP', child: Text('GBP (STG)')),
             ],
             onChanged: (v) => setState(() => widget.draft.currency = v ?? 'TRY'),
             decoration: const InputDecoration(labelText: 'Para Birimi'),

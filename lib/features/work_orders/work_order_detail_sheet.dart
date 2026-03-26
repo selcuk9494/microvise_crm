@@ -1,0 +1,990 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gap/gap.dart';
+import 'package:intl/intl.dart';
+import 'package:signature/signature.dart';
+
+import '../../app/theme/app_theme.dart';
+import '../../core/supabase/supabase_providers.dart';
+import '../../core/ui/app_badge.dart';
+import '../../core/ui/app_card.dart';
+import '../customers/customer_detail_screen.dart';
+import 'work_order_model.dart';
+import 'work_orders_providers.dart';
+import 'currency_service.dart';
+
+Future<void> showWorkOrderDetailSheet(
+  BuildContext context,
+  WidgetRef ref, {
+  required WorkOrder order,
+}) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => _WorkOrderDetailSheet(order: order),
+  );
+}
+
+class _WorkOrderDetailSheet extends ConsumerStatefulWidget {
+  const _WorkOrderDetailSheet({required this.order});
+
+  final WorkOrder order;
+
+  @override
+  ConsumerState<_WorkOrderDetailSheet> createState() =>
+      _WorkOrderDetailSheetState();
+}
+
+class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
+  final _notesController = TextEditingController();
+  final _latController = TextEditingController();
+  final _lngController = TextEditingController();
+  final _addressController = TextEditingController();
+
+  final SignatureController _signatureController = SignatureController(
+    penStrokeWidth: 2.5,
+    penColor: const Color(0xFF0F172A),
+  );
+
+  bool _saving = false;
+  bool _addLine = false;
+  bool _addGmp3 = false;
+  bool _isClosing = false;
+
+  final _lineNumberController = TextEditingController();
+  final _lineSimController = TextEditingController();
+
+  final _gmp3NameController = TextEditingController(text: 'GMP3 Lisansı');
+
+  String? _selectedBranchId;
+  final List<_PaymentDraft> _payments = [];
+
+  Map<String, double> _exchangeRates = {};
+  bool _loadingRates = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExchangeRates();
+  }
+
+  Future<void> _loadExchangeRates() async {
+    setState(() => _loadingRates = true);
+    try {
+      _exchangeRates = await CurrencyService.getExchangeRates();
+    } catch (_) {
+      _exchangeRates = {
+        'USD': 34.50,
+        'EUR': 37.20,
+        'GBP': 43.80,
+      };
+    }
+    if (mounted) setState(() => _loadingRates = false);
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    _latController.dispose();
+    _lngController.dispose();
+    _addressController.dispose();
+    _signatureController.dispose();
+    _lineNumberController.dispose();
+    _lineSimController.dispose();
+    _gmp3NameController.dispose();
+    for (final p in _payments) {
+      p.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _updateStatus(String newStatus) async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    setState(() => _saving = true);
+    try {
+      await client.from('work_orders').update({
+        'status': newStatus,
+      }).eq('id', widget.order.id);
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İş emri durumu güncellendi.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Durum güncellenemedi.')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _closeWorkOrder(CustomerDetail customer) async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    setState(() => _saving = true);
+    try {
+      final now = DateTime.now();
+
+      final branchId = _selectedBranchId ?? widget.order.branchId;
+      if (branchId != null) {
+        final lat = double.tryParse(_latController.text.trim());
+        final lng = double.tryParse(_lngController.text.trim());
+        final address = _addressController.text.trim();
+
+        if (lat != null || lng != null || address.isNotEmpty) {
+          await client.from('branches').update({
+            if (lat != null) 'location_lat': lat,
+            if (lng != null) 'location_lng': lng,
+            if (address.isNotEmpty) 'address': address,
+          }).eq('id', branchId);
+        }
+      }
+
+      if (_addLine) {
+        final number = _lineNumberController.text.trim();
+        if (number.isEmpty) {
+          throw Exception('Hat numarası gerekli.');
+        }
+
+        final start = DateTime(now.year, now.month, now.day);
+        final end = DateTime(now.year, 12, 31);
+        await client.from('lines').insert({
+          'customer_id': customer.id,
+          'branch_id': branchId,
+          'number': number,
+          'sim_number': _lineSimController.text.trim().isEmpty
+              ? null
+              : _lineSimController.text.trim(),
+          'starts_at': start.toIso8601String().substring(0, 10),
+          'ends_at': end.toIso8601String().substring(0, 10),
+          'expires_at': end.toIso8601String().substring(0, 10),
+          'is_active': true,
+        });
+      }
+
+      if (_addGmp3) {
+        final name = _gmp3NameController.text.trim();
+        if (name.isEmpty) throw Exception('GMP3 adı gerekli.');
+        final start = DateTime(now.year, now.month, now.day);
+        final end = DateTime(now.year, 12, 31);
+        await client.from('licenses').insert({
+          'customer_id': customer.id,
+          'name': name,
+          'license_type': 'gmp3',
+          'starts_at': start.toIso8601String().substring(0, 10),
+          'ends_at': end.toIso8601String().substring(0, 10),
+          'expires_at': end.toIso8601String().substring(0, 10),
+          'is_active': true,
+        });
+      }
+
+      final paymentRows = <Map<String, dynamic>>[];
+      for (final p in _payments) {
+        final amount = p.amount;
+        if (amount == null) continue;
+        paymentRows.add({
+          'customer_id': customer.id,
+          'work_order_id': widget.order.id,
+          'amount': amount,
+          'currency': p.currency,
+          'exchange_rate': p.currency == 'TRY' ? 1.0 : _exchangeRates[p.currency],
+          'paid_at': now.toIso8601String(),
+          'created_by': client.auth.currentUser?.id,
+          'is_active': true,
+        });
+      }
+      if (paymentRows.isNotEmpty) {
+        await client.from('payments').insert(paymentRows);
+      }
+
+      Uint8List? signatureBytes = await _signatureController.toPngBytes();
+      String? signatureDataUrl;
+      if (signatureBytes != null && signatureBytes.isNotEmpty) {
+        signatureDataUrl =
+            'data:image/png;base64,${base64Encode(signatureBytes)}';
+      }
+
+      await client.from('work_orders').update({
+        'status': 'done',
+        'branch_id': branchId,
+        'closed_at': now.toIso8601String(),
+        'closed_by': client.auth.currentUser?.id,
+        'close_notes': _notesController.text.trim().isEmpty
+            ? null
+            : _notesController.text.trim(),
+      }).eq('id', widget.order.id);
+
+      if (customer.email != null &&
+          customer.email!.trim().isNotEmpty &&
+          signatureDataUrl != null) {
+        try {
+          await client.functions.invoke(
+            'send_work_order_closed_email',
+            body: {
+              'to': customer.email,
+              'customerName': customer.name,
+              'workOrderTitle': widget.order.title,
+              'signatureDataUrl': signatureDataUrl,
+            },
+          );
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text('İmza kaydedildi; e-posta gönderilemedi.')),
+            );
+          }
+        }
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('İş emri kapatıldı.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Hata: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final customerAsync =
+        ref.watch(customerDetailProvider(widget.order.customerId));
+    final branchesAsync =
+        ref.watch(customerBranchesProvider(widget.order.customerId));
+    final isDone = widget.order.status == 'done';
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.92,
+      ),
+      decoration: const BoxDecoration(
+        color: AppTheme.background,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 14,
+            bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+          ),
+          child: customerAsync.when(
+            data: (customer) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E8F0),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const Gap(14),
+                _buildHeader(context, customer),
+                const Gap(14),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      _buildInfoCard(context, customer),
+                      const Gap(12),
+                      if (!isDone && !_isClosing) ...[
+                        _buildStatusActions(context),
+                        const Gap(12),
+                      ],
+                      if (_isClosing || isDone) ...[
+                        _buildPaymentsCard(context),
+                        const Gap(12),
+                        if (!isDone) ...[
+                          _buildSignatureCard(context, customer),
+                          const Gap(12),
+                          _buildBranchLocationCard(context, branchesAsync),
+                          const Gap(12),
+                          _buildAdditionalSalesCard(context),
+                          const Gap(12),
+                          _buildNotesCard(context),
+                          const Gap(12),
+                        ],
+                      ],
+                    ],
+                  ),
+                ),
+                if (!isDone) _buildActionButtons(context, customer),
+              ],
+            ),
+            loading: () => const Padding(
+              padding: EdgeInsets.all(18),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (_, __) => Padding(
+              padding: const EdgeInsets.all(18),
+              child: AppCard(
+                child: Text(
+                  'Müşteri bilgisi yüklenemedi.',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: const Color(0xFF64748B)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, CustomerDetail customer) {
+    final (statusLabel, statusTone) = switch (widget.order.status) {
+      'open' => ('Açık', AppBadgeTone.warning),
+      'in_progress' => ('Devam Ediyor', AppBadgeTone.primary),
+      'done' => ('Kapalı', AppBadgeTone.success),
+      _ => ('Bilinmiyor', AppBadgeTone.neutral),
+    };
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.order.title,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const Gap(4),
+              Text(
+                customer.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: const Color(0xFF64748B)),
+              ),
+            ],
+          ),
+        ),
+        AppBadge(label: statusLabel, tone: statusTone),
+      ],
+    );
+  }
+
+  Widget _buildInfoCard(BuildContext context, CustomerDetail customer) {
+    final dateText = widget.order.scheduledDate != null
+        ? DateFormat('d MMMM y', 'tr_TR').format(widget.order.scheduledDate!)
+        : 'Tarih belirlenmedi';
+
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('İş Emri Detayları',
+              style: Theme.of(context).textTheme.titleSmall),
+          const Gap(12),
+          _InfoRow(icon: Icons.business_rounded, label: 'Müşteri', value: customer.name),
+          const Gap(8),
+          _InfoRow(icon: Icons.calendar_today_rounded, label: 'Planlanan Tarih', value: dateText),
+          if (customer.email?.isNotEmpty ?? false) ...[
+            const Gap(8),
+            _InfoRow(icon: Icons.email_rounded, label: 'E-posta', value: customer.email!),
+          ],
+          if (customer.phone1?.isNotEmpty ?? false) ...[
+            const Gap(8),
+            _InfoRow(icon: Icons.phone_rounded, label: 'Telefon', value: customer.phone1!),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusActions(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Durum Değiştir', style: Theme.of(context).textTheme.titleSmall),
+          const Gap(12),
+          Row(
+            children: [
+              if (widget.order.status == 'open')
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _saving ? null : () => _updateStatus('in_progress'),
+                    icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                    label: const Text('Başla'),
+                  ),
+                ),
+              if (widget.order.status == 'in_progress') ...[
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _saving ? null : () => _updateStatus('open'),
+                    icon: const Icon(Icons.undo_rounded, size: 18),
+                    label: const Text('Açığa Al'),
+                  ),
+                ),
+              ],
+              const Gap(12),
+              Expanded(
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.success,
+                  ),
+                  onPressed: _saving
+                      ? null
+                      : () => setState(() => _isClosing = true),
+                  icon: const Icon(Icons.check_circle_rounded, size: 18),
+                  label: const Text('Kapat'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentsCard(BuildContext context) {
+    final isDone = widget.order.status == 'done';
+    final money =
+        NumberFormat.currency(locale: 'tr_TR', symbol: '', decimalDigits: 2);
+
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child:
+                    Text('Ödemeler', style: Theme.of(context).textTheme.titleSmall),
+              ),
+              if (!isDone)
+                OutlinedButton.icon(
+                  onPressed: _saving
+                      ? null
+                      : () => setState(() => _payments.add(_PaymentDraft())),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Ödeme Ekle'),
+                ),
+            ],
+          ),
+          if (_loadingRates) ...[
+            const Gap(10),
+            Row(
+              children: [
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const Gap(8),
+                Text(
+                  'Kurlar yükleniyor...',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: const Color(0xFF64748B)),
+                ),
+              ],
+            ),
+          ] else if (_exchangeRates.isNotEmpty) ...[
+            const Gap(8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.currency_exchange_rounded,
+                      size: 16, color: AppTheme.success),
+                  const Gap(8),
+                  Expanded(
+                    child: Text(
+                      'USD: ${money.format(_exchangeRates['USD'] ?? 0)} TL | EUR: ${money.format(_exchangeRates['EUR'] ?? 0)} TL | GBP: ${money.format(_exchangeRates['GBP'] ?? 0)} TL',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFF166534),
+                            fontWeight: FontWeight.w500,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const Gap(10),
+          if (_payments.isEmpty && !isDone)
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline_rounded,
+                      size: 18, color: const Color(0xFF64748B)),
+                  const Gap(10),
+                  Expanded(
+                    child: Text(
+                      'Ödeme eklemek için butona tıklayın.',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: const Color(0xFF64748B)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          for (int i = 0; i < _payments.length; i++) ...[
+            _PaymentRow(
+              draft: _payments[i],
+              canRemove: !isDone,
+              onRemove: isDone || _saving
+                  ? null
+                  : () => setState(() {
+                        _payments[i].dispose();
+                        _payments.removeAt(i);
+                      }),
+              money: money,
+              exchangeRates: _exchangeRates,
+            ),
+            if (i != _payments.length - 1) const Gap(10),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSignatureCard(BuildContext context, CustomerDetail customer) {
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Müşteri İmzası', style: Theme.of(context).textTheme.titleSmall),
+          const Gap(10),
+          Container(
+            height: 180,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppTheme.border),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Signature(
+                controller: _signatureController,
+                backgroundColor: Colors.white,
+              ),
+            ),
+          ),
+          const Gap(10),
+          Row(
+            children: [
+              OutlinedButton(
+                onPressed: _saving ? null : () => _signatureController.clear(),
+                child: const Text('Temizle'),
+              ),
+              const Gap(12),
+              Expanded(
+                child: Text(
+                  customer.email?.trim().isNotEmpty ?? false
+                      ? 'İmza ile birlikte e-posta gönderilecek.'
+                      : 'E-posta adresi yoksa gönderim yapılmaz.',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: const Color(0xFF64748B)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBranchLocationCard(
+      BuildContext context, AsyncValue<List<CustomerBranch>> branchesAsync) {
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Şube & Konum', style: Theme.of(context).textTheme.titleSmall),
+          const Gap(10),
+          branchesAsync.when(
+            data: (branches) => DropdownButtonFormField<String?>(
+              value: _selectedBranchId ?? widget.order.branchId,
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Şube seç'),
+                ),
+                ...branches.map(
+                  (b) => DropdownMenuItem<String?>(
+                    value: b.id,
+                    child: Text(b.name),
+                  ),
+                ),
+              ],
+              onChanged:
+                  _saving ? null : (v) => setState(() => _selectedBranchId = v),
+              decoration: const InputDecoration(labelText: 'Şube'),
+            ),
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+          ),
+          const Gap(12),
+          TextField(
+            controller: _addressController,
+            minLines: 2,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Adres (güncelle)',
+              hintText: 'Cadde, sokak, no, ilçe...',
+            ),
+          ),
+          const Gap(12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _latController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Konum Lat',
+                    hintText: '41.0',
+                  ),
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: TextField(
+                  controller: _lngController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Konum Lng',
+                    hintText: '29.0',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdditionalSalesCard(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Ek Satış (opsiyonel)',
+              style: Theme.of(context).textTheme.titleSmall),
+          const Gap(10),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: _addLine,
+            onChanged: _saving ? null : (v) => setState(() => _addLine = v),
+            title: const Text('Hat Satışı Ekle'),
+            subtitle: const Text('Başlangıç: bugün - Bitiş: yıl sonu'),
+          ),
+          if (_addLine) ...[
+            const Gap(10),
+            TextField(
+              controller: _lineNumberController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Hat Numarası',
+                hintText: '90555...',
+              ),
+            ),
+            const Gap(10),
+            TextField(
+              controller: _lineSimController,
+              decoration: const InputDecoration(
+                labelText: 'SIM Numarası',
+                hintText: '89...',
+              ),
+            ),
+          ],
+          const Divider(height: 24),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: _addGmp3,
+            onChanged: _saving ? null : (v) => setState(() => _addGmp3 = v),
+            title: const Text('GMP3 Lisansı Sat'),
+            subtitle: const Text('Başlangıç: bugün - Bitiş: yıl sonu'),
+          ),
+          if (_addGmp3) ...[
+            const Gap(10),
+            TextField(
+              controller: _gmp3NameController,
+              decoration: const InputDecoration(
+                labelText: 'Lisans Adı',
+                hintText: 'GMP3 Lisansı',
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNotesCard(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Not', style: Theme.of(context).textTheme.titleSmall),
+          const Gap(10),
+          TextField(
+            controller: _notesController,
+            minLines: 2,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'Kapanış Notu',
+              hintText: 'İsteğe bağlı',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButtons(BuildContext context, CustomerDetail customer) {
+    if (_isClosing) {
+      return Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed:
+                  _saving ? null : () => setState(() => _isClosing = false),
+              child: const Text('Vazgeç'),
+            ),
+          ),
+          const Gap(12),
+          Expanded(
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.success,
+              ),
+              onPressed: _saving ? null : () => _closeWorkOrder(customer),
+              child: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('İş Emrini Kapat'),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return OutlinedButton(
+      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+      child: const Text('Kapat'),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: const Color(0xFF64748B)),
+        const Gap(10),
+        Text(
+          '$label:',
+          style: Theme.of(context)
+              .textTheme
+              .bodySmall
+              ?.copyWith(color: const Color(0xFF64748B)),
+        ),
+        const Gap(8),
+        Expanded(
+          child: Text(
+            value,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PaymentDraft {
+  _PaymentDraft();
+
+  final amountController = TextEditingController();
+  String currency = 'TRY';
+
+  double? get amount {
+    final raw = amountController.text.trim().replaceAll(',', '.');
+    return double.tryParse(raw);
+  }
+
+  void dispose() {
+    amountController.dispose();
+  }
+}
+
+class _PaymentRow extends StatefulWidget {
+  const _PaymentRow({
+    required this.draft,
+    required this.canRemove,
+    required this.onRemove,
+    required this.money,
+    required this.exchangeRates,
+  });
+
+  final _PaymentDraft draft;
+  final bool canRemove;
+  final VoidCallback? onRemove;
+  final NumberFormat money;
+  final Map<String, double> exchangeRates;
+
+  @override
+  State<_PaymentRow> createState() => _PaymentRowState();
+}
+
+class _PaymentRowState extends State<_PaymentRow> {
+  @override
+  Widget build(BuildContext context) {
+    final amount = widget.draft.amount;
+    final currency = widget.draft.currency;
+    final rate = widget.exchangeRates[currency];
+    final tryAmount = amount != null && rate != null && currency != 'TRY'
+        ? amount * rate
+        : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: TextField(
+                controller: widget.draft.amountController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Tutar',
+                  hintText: '0.00',
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const Gap(10),
+            Expanded(
+              flex: 2,
+              child: DropdownButtonFormField<String>(
+                value: widget.draft.currency,
+                items: const [
+                  DropdownMenuItem(value: 'TRY', child: Text('TRY')),
+                  DropdownMenuItem(value: 'USD', child: Text('USD')),
+                  DropdownMenuItem(value: 'EUR', child: Text('EUR')),
+                  DropdownMenuItem(value: 'GBP', child: Text('GBP (STG)')),
+                ],
+                onChanged: (v) =>
+                    setState(() => widget.draft.currency = v ?? 'TRY'),
+                decoration: const InputDecoration(labelText: 'Para Birimi'),
+              ),
+            ),
+            const Gap(10),
+            if (widget.canRemove)
+              IconButton(
+                tooltip: 'Sil',
+                onPressed: widget.onRemove,
+                icon: const Icon(Icons.delete_outline_rounded),
+              ),
+          ],
+        ),
+        if (tryAmount != null) ...[
+          const Gap(6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.swap_horiz_rounded,
+                    size: 14, color: const Color(0xFF64748B)),
+                const Gap(6),
+                Text(
+                  '${widget.money.format(tryAmount)} TL',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF475569),
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
