@@ -1,0 +1,8 @@
+{
+  "name": "microvise_crm_web",
+  "private": true,
+  "scripts": {
+    "vercel-build": "bash ./scripts/vercel_build.sh"
+  }
+}
+
