@@ -665,6 +665,11 @@ final _navItems = <_NavItem>[
     icon: PhosphorIcons.chartBar(PhosphorIconsStyle.regular),
   ),
   _NavItem(
+    path: '/hat-lisans',
+    label: 'Hat & Lisans',
+    icon: PhosphorIcons.simCard(PhosphorIconsStyle.regular),
+  ),
+  _NavItem(
     path: '/tanimlamalar',
     label: 'Tanımlamalar',
     icon: PhosphorIcons.sliders(PhosphorIconsStyle.regular),

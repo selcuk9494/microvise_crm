@@ -15,6 +15,7 @@ Flutter + Supabase tabanlı kapsamlı CRM ve ERP sistemi.
 - Ödeme/Tahsilat Takibi
 - Stok Yönetimi
 - Raporlama
+- Hat/Lisans Takibi
 
 ## Uygulanan Özellikler
 
@@ -42,12 +43,23 @@ Flutter + Supabase tabanlı kapsamlı CRM ve ERP sistemi.
 - [x] Stok düzeltme
 - [x] Kritik stok uyarıları
 
+### Sprint 3 - Aralık 2025
+- [x] Hat & Lisans takip ekranı (subscriptions_screen.dart)
+- [x] Hat/Lisans süre dolum uyarıları
+- [x] Router ve sidebar'a Hat/Lisans entegrasyonu
+- [x] İş Emri Tipleri tanımlamaları (definitions_screen.dart)
+- [x] KDV Oranları tanımlamaları
+- [x] Renk seçimli iş emri tipi ekleme
+- [x] Toplu müşteri Excel import özelliği
+- [x] Excel dosya parse ve preview
+
 ### Veritabanı Migration'ları
 - 0001_init.sql - Temel tablolar
 - 0002_crm_extensions.sql - CRM genişletmeleri
 - 0003_billing_invoice_queue.sql - Faturalama kuyruğu
 - 0004_payment_exchange_rate.sql - Ödeme kur kolonu
 - 0005_erp_full_system.sql - Tam ERP sistemi
+- 0006_definitions_tables.sql - İş emri tipleri, KDV oranları
 
 ## Backlog (P0/P1/P2)
 
@@ -61,6 +73,7 @@ Flutter + Supabase tabanlı kapsamlı CRM ve ERP sistemi.
 - [ ] Servis parça ekleme
 - [ ] Gelişmiş raporlar
 - [ ] Dashboard istatistikleri
+- [ ] Work Orders liste debug (status string eşleşmesi kontrol edilecek)
 
 ### P2 - Sonra
 - [ ] Çek/Senet takibi
@@ -72,8 +85,12 @@ Flutter + Supabase tabanlı kapsamlı CRM ve ERP sistemi.
 - Kur API: Frankfurter (ücretsiz)
 - E-posta: Supabase Edge Functions
 - PDF: Henüz entegre edilmedi
+- Excel Import: file_picker + excel paketi
+
+## Bilinen Sorunlar
+- Work Orders listesi boş görünme sorunu: Sayaçlar doğru değer gösteriyor ama liste boş. Status string eşleşmesi veya RLS politikası kontrol edilmeli. Debug print'ler tarayıcı konsolunda görünecek.
 
 ## Sonraki Görevler
-1. Migration'ları Supabase'de çalıştır
+1. Vercel'e deploy et ve Work Orders sorununu debug et
 2. PDF/Excel export ekle
 3. Resend API entegrasyonu

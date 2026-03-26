@@ -20,6 +20,7 @@ import '../features/shell/app_shell.dart';
 import '../features/work_orders/work_orders_list_screen.dart';
 import '../features/stock/stock_screen.dart';
 import '../features/stock/products_screen.dart';
+import '../features/subscriptions/subscriptions_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final client = ref.watch(supabaseClientProvider);
@@ -127,6 +128,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           path: '/tanimlamalar',
           pageBuilder: (context, state) => const NoTransitionPage(
             child: DefinitionsScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/hat-lisans',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: SubscriptionsScreen(),
           ),
         ),
       ],
