@@ -53,8 +53,47 @@ final customersProvider = FutureProvider<List<Customer>>((ref) async {
   }
 
   final rows = await q.order('name');
-  return (rows as List)
-      .map((e) => Customer.fromJson(e as Map<String, dynamic>))
+  final customerRows = (rows as List)
+      .map((e) => e as Map<String, dynamic>)
+      .toList(growable: false);
+
+  if (customerRows.isEmpty) return const [];
+
+  final ids = customerRows.map((e) => e['id'].toString()).toList(growable: false);
+
+  final lineRows = await client
+      .from('lines')
+      .select('customer_id')
+      .eq('is_active', true)
+      .inFilter('customer_id', ids);
+
+  final gmp3Rows = await client
+      .from('licenses')
+      .select('customer_id')
+      .eq('is_active', true)
+      .eq('license_type', 'gmp3')
+      .inFilter('customer_id', ids);
+
+  final lineCounts = <String, int>{};
+  for (final row in (lineRows as List)) {
+    final id = row['customer_id']?.toString();
+    if (id == null) continue;
+    lineCounts.update(id, (v) => v + 1, ifAbsent: () => 1);
+  }
+
+  final gmp3Counts = <String, int>{};
+  for (final row in (gmp3Rows as List)) {
+    final id = row['customer_id']?.toString();
+    if (id == null) continue;
+    gmp3Counts.update(id, (v) => v + 1, ifAbsent: () => 1);
+  }
+
+  return customerRows
+      .map((e) => Customer.fromJson({
+            ...e,
+            'active_line_count': lineCounts[e['id']?.toString()] ?? 0,
+            'active_gmp3_count': gmp3Counts[e['id']?.toString()] ?? 0,
+          }))
       .toList(growable: false);
 });
 

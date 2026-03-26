@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import 'work_order_model.dart';
 
@@ -13,12 +14,21 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
   Future<List<WorkOrder>> build() async {
     final client = ref.watch(supabaseClientProvider);
     if (client == null) return const [];
+    final profile = await ref.watch(currentUserProfileProvider.future);
+    final isAdmin = profile?.role == 'admin';
 
-    final rows = await client
+    var q = client
         .from('work_orders')
-        .select('id,title,status,is_active,customers(name)')
-        .eq('is_active', true)
-        .order('created_at', ascending: false);
+        .select('id,title,status,is_active,assigned_to,customers(name)')
+        .eq('is_active', true);
+
+    if (!isAdmin) {
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return const [];
+      q = q.eq('assigned_to', userId);
+    }
+
+    final rows = await q.order('created_at', ascending: false);
 
     return (rows as List).map((e) {
       final map = e as Map<String, dynamic>;

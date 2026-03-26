@@ -194,6 +194,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                           name: c.name,
                           city: c.city,
                           active: c.isActive,
+                          activeLineCount: c.activeLineCount,
+                          activeGmp3Count: c.activeGmp3Count,
                           onTap: () => context.go('/musteriler/${c.id}'),
                         );
                       },
@@ -219,6 +221,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         name: 'Microvise Teknoloji A.Ş.',
                         city: 'İstanbul',
                         active: true,
+                        activeLineCount: 2,
+                        activeGmp3Count: 1,
                       ),
                     ),
                   ],
@@ -275,11 +279,11 @@ class _HeaderRow extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: 110,
+            width: 280,
             child: Align(
               alignment: Alignment.centerRight,
               child: Text(
-                'Durum',
+                'Durum / Ürünler',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       fontWeight: FontWeight.w600,
                       color: const Color(0xFF475569),
@@ -298,12 +302,16 @@ class _CustomerRow extends StatefulWidget {
     required this.name,
     required this.city,
     required this.active,
+    required this.activeLineCount,
+    required this.activeGmp3Count,
     this.onTap,
   });
 
   final String name;
   final String? city;
   final bool active;
+  final int activeLineCount;
+  final int activeGmp3Count;
   final VoidCallback? onTap;
 
   @override
@@ -353,14 +361,33 @@ class _CustomerRowState extends State<_CustomerRow> {
                   ),
                 ),
                 SizedBox(
-                  width: 110,
+                  width: 280,
                   child: Align(
                     alignment: Alignment.centerRight,
-                    child: AppBadge(
-                      label: widget.active ? 'Aktif' : 'Pasif',
-                      tone: widget.active
-                          ? AppBadgeTone.success
-                          : AppBadgeTone.neutral,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (widget.activeLineCount > 0) ...[
+                          AppBadge(
+                            label: 'Hat ${widget.activeLineCount}',
+                            tone: AppBadgeTone.primary,
+                          ),
+                          const Gap(8),
+                        ],
+                        if (widget.activeGmp3Count > 0) ...[
+                          AppBadge(
+                            label: 'GMP3 ${widget.activeGmp3Count}',
+                            tone: AppBadgeTone.neutral,
+                          ),
+                          const Gap(8),
+                        ],
+                        AppBadge(
+                          label: widget.active ? 'Aktif' : 'Pasif',
+                          tone: widget.active
+                              ? AppBadgeTone.success
+                              : AppBadgeTone.neutral,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -423,12 +450,36 @@ class _CreateCustomerDialogState extends ConsumerState<_CreateCustomerDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _cityController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _vknController = TextEditingController();
+  final _notesController = TextEditingController();
+
+  final _phone1TitleController = TextEditingController(text: 'Muhasebe');
+  final _phone1Controller = TextEditingController();
+  final _phone2TitleController = TextEditingController(text: 'Yetkili');
+  final _phone2Controller = TextEditingController();
+  final _phone3TitleController = TextEditingController(text: 'Servis');
+  final _phone3Controller = TextEditingController();
+
+  final List<_BranchDraft> _branches = [_BranchDraft()];
   bool _saving = false;
 
   @override
   void dispose() {
     _nameController.dispose();
     _cityController.dispose();
+    _emailController.dispose();
+    _vknController.dispose();
+    _notesController.dispose();
+    _phone1TitleController.dispose();
+    _phone1Controller.dispose();
+    _phone2TitleController.dispose();
+    _phone2Controller.dispose();
+    _phone3TitleController.dispose();
+    _phone3Controller.dispose();
+    for (final b in _branches) {
+      b.dispose();
+    }
     super.dispose();
   }
 
@@ -443,13 +494,41 @@ class _CreateCustomerDialogState extends ConsumerState<_CreateCustomerDialog> {
     try {
       final name = _nameController.text.trim();
       final city = _cityController.text.trim();
+      final email = _emailController.text.trim();
+      final vkn = _vknController.text.trim();
+      final notes = _notesController.text.trim();
 
-      await client.from('customers').insert({
+      final phone1 = _phone1Controller.text.trim();
+      final phone2 = _phone2Controller.text.trim();
+      final phone3 = _phone3Controller.text.trim();
+
+      final inserted = await client.from('customers').insert({
         'name': name,
         'city': city.isEmpty ? null : city,
+        'email': email.isEmpty ? null : email,
+        'vkn': vkn.isEmpty ? null : vkn,
+        'notes': notes.isEmpty ? null : notes,
+        'phone_1': phone1.isEmpty ? null : phone1,
+        'phone_1_title': phone1.isEmpty ? null : _phone1TitleController.text.trim(),
+        'phone_2': phone2.isEmpty ? null : phone2,
+        'phone_2_title': phone2.isEmpty ? null : _phone2TitleController.text.trim(),
+        'phone_3': phone3.isEmpty ? null : phone3,
+        'phone_3_title': phone3.isEmpty ? null : _phone3TitleController.text.trim(),
         'is_active': true,
         'created_by': client.auth.currentUser?.id,
-      });
+      }).select('id').single();
+
+      final customerId = inserted['id'].toString();
+
+      final branchRows = <Map<String, dynamic>>[];
+      for (final b in _branches) {
+        final row = b.toInsertRow(customerId);
+        if (row != null) branchRows.add(row);
+      }
+
+      if (branchRows.isNotEmpty) {
+        await client.from('branches').insert(branchRows);
+      }
 
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -510,11 +589,128 @@ class _CreateCustomerDialogState extends ConsumerState<_CreateCustomerDialog> {
                   },
                 ),
                 const Gap(12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _cityController,
+                        decoration: const InputDecoration(
+                          labelText: 'Şehir',
+                          hintText: 'Örn: İstanbul',
+                        ),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _vknController,
+                        decoration: const InputDecoration(
+                          labelText: 'VKN',
+                          hintText: 'Vergi Kimlik No',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const Gap(12),
                 TextFormField(
-                  controller: _cityController,
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
-                    labelText: 'Şehir',
-                    hintText: 'Örn: İstanbul',
+                    labelText: 'E-posta',
+                    hintText: 'ornek@firma.com',
+                  ),
+                ),
+                const Gap(12),
+                _PhoneRow(
+                  titleController: _phone1TitleController,
+                  phoneController: _phone1Controller,
+                  label: 'Telefon 1',
+                ),
+                const Gap(12),
+                _PhoneRow(
+                  titleController: _phone2TitleController,
+                  phoneController: _phone2Controller,
+                  label: 'Telefon 2',
+                ),
+                const Gap(12),
+                _PhoneRow(
+                  titleController: _phone3TitleController,
+                  phoneController: _phone3Controller,
+                  label: 'Telefon 3',
+                ),
+                const Gap(12),
+                TextFormField(
+                  controller: _notesController,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Not',
+                    hintText: 'İsteğe bağlı',
+                  ),
+                ),
+                const Gap(16),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Şubeler',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            const Gap(2),
+                            Text(
+                              'Şube adı, adres ve konum bilgileri ekleyin.',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(color: const Color(0xFF64748B)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _saving
+                            ? null
+                            : () => setState(() => _branches.add(_BranchDraft())),
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: const Text('Şube Ekle'),
+                      ),
+                    ],
+                  ),
+                ),
+                const Gap(12),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _branches.length,
+                    separatorBuilder: (_, __) => const Gap(12),
+                    itemBuilder: (context, index) {
+                      final b = _branches[index];
+                      return _BranchCard(
+                        draft: b,
+                        index: index,
+                        canRemove: _branches.length > 1,
+                        onRemove: _saving
+                            ? null
+                            : () => setState(() {
+                                  b.dispose();
+                                  _branches.removeAt(index);
+                                }),
+                      );
+                    },
                   ),
                 ),
                 const Gap(18),
@@ -549,6 +745,216 @@ class _CreateCustomerDialogState extends ConsumerState<_CreateCustomerDialog> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PhoneRow extends StatelessWidget {
+  const _PhoneRow({
+    required this.titleController,
+    required this.phoneController,
+    required this.label,
+  });
+
+  final TextEditingController titleController;
+  final TextEditingController phoneController;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          flex: 2,
+          child: TextFormField(
+            controller: titleController,
+            decoration: InputDecoration(
+              labelText: '$label Görev',
+              hintText: 'Örn: Yetkili',
+            ),
+          ),
+        ),
+        const Gap(12),
+        Expanded(
+          flex: 3,
+          child: TextFormField(
+            controller: phoneController,
+            keyboardType: TextInputType.phone,
+            decoration: InputDecoration(
+              labelText: label,
+              hintText: '0 5xx xxx xx xx',
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BranchDraft {
+  final nameController = TextEditingController(text: 'Merkez');
+  final cityController = TextEditingController();
+  final addressController = TextEditingController();
+  final phoneController = TextEditingController();
+  final latController = TextEditingController();
+  final lngController = TextEditingController();
+
+  void dispose() {
+    nameController.dispose();
+    cityController.dispose();
+    addressController.dispose();
+    phoneController.dispose();
+    latController.dispose();
+    lngController.dispose();
+  }
+
+  Map<String, dynamic>? toInsertRow(String customerId) {
+    final name = nameController.text.trim();
+    final city = cityController.text.trim();
+    final address = addressController.text.trim();
+    final phone = phoneController.text.trim();
+    final lat = double.tryParse(latController.text.trim());
+    final lng = double.tryParse(lngController.text.trim());
+
+    if (name.isEmpty && city.isEmpty && address.isEmpty && phone.isEmpty) {
+      return null;
+    }
+
+    return {
+      'customer_id': customerId,
+      'name': name.isEmpty ? 'Şube' : name,
+      'city': city.isEmpty ? null : city,
+      'address': address.isEmpty ? null : address,
+      'phone': phone.isEmpty ? null : phone,
+      'location_lat': lat,
+      'location_lng': lng,
+      'is_active': true,
+    };
+  }
+}
+
+class _BranchCard extends StatelessWidget {
+  const _BranchCard({
+    required this.draft,
+    required this.index,
+    required this.canRemove,
+    required this.onRemove,
+  });
+
+  final _BranchDraft draft;
+  final int index;
+  final bool canRemove;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Şube ${index + 1}',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+              if (canRemove)
+                IconButton(
+                  tooltip: 'Sil',
+                  onPressed: onRemove,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+            ],
+          ),
+          const Gap(10),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: draft.nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Şube İsmi',
+                    hintText: 'Örn: Merkez',
+                  ),
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: TextFormField(
+                  controller: draft.cityController,
+                  decoration: const InputDecoration(
+                    labelText: 'Şube Şehir',
+                    hintText: 'Örn: İstanbul',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const Gap(12),
+          TextFormField(
+            controller: draft.addressController,
+            minLines: 2,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Adres',
+              hintText: 'Cadde, sokak, no, ilçe...',
+            ),
+          ),
+          const Gap(12),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: draft.phoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Şube Telefon',
+                    hintText: '0 2xx xxx xx xx',
+                  ),
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: TextFormField(
+                  controller: draft.latController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Konum Lat',
+                    hintText: '41.0',
+                  ),
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: TextFormField(
+                  controller: draft.lngController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Konum Lng',
+                    hintText: '29.0',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

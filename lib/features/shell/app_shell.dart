@@ -644,4 +644,9 @@ final _navItems = <_NavItem>[
     label: 'Raporlar',
     icon: PhosphorIcons.chartBar(PhosphorIconsStyle.regular),
   ),
+  _NavItem(
+    path: '/personel',
+    label: 'Personel',
+    icon: PhosphorIcons.identificationCard(PhosphorIconsStyle.regular),
+  ),
 ];

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
@@ -347,6 +348,13 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
 
   List<_CustomerOption> _customers = const [];
   String? _selectedCustomerId;
+  List<_BranchOption> _branches = const [];
+  String? _selectedBranchId;
+  DateTime? _scheduledDate;
+
+  bool _usersLoaded = false;
+  List<_UserOption> _users = const [];
+  String? _assignedTo;
 
   @override
   void initState() {
@@ -378,6 +386,55 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
     }
   }
 
+  Future<void> _loadBranches(String customerId) async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      final rows = await client
+          .from('branches')
+          .select('id,name,is_active')
+          .eq('customer_id', customerId)
+          .eq('is_active', true)
+          .order('name')
+          .limit(100);
+
+      final items = (rows as List)
+          .map((e) => _BranchOption.fromJson(e as Map<String, dynamic>))
+          .toList(growable: false);
+
+      if (!mounted) return;
+      setState(() => _branches = items);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _branches = const []);
+    }
+  }
+
+  Future<void> _loadUsers() async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      final rows = await client
+          .from('users')
+          .select('id,full_name,role')
+          .order('full_name')
+          .limit(200);
+
+      final items = (rows as List)
+          .map((e) => _UserOption.fromJson(e as Map<String, dynamic>))
+          .where((u) => u.role != 'admin')
+          .toList(growable: false);
+
+      if (!mounted) return;
+      setState(() => _users = items);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _users = const []);
+    }
+  }
+
   @override
   void dispose() {
     _customerController.dispose();
@@ -401,15 +458,32 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
     final client = ref.read(supabaseClientProvider);
     if (client == null) return;
 
+    final profile = await ref.read(currentUserProfileProvider.future);
+    if (!mounted) return;
+    final isAdmin = profile?.role == 'admin';
+
+    final assignedTo = isAdmin ? _assignedTo : client.auth.currentUser?.id;
+    if (assignedTo == null || assignedTo.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Personel ataması gerekli.')),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
       await client.from('work_orders').insert({
         'customer_id': customerId,
+        'branch_id': _selectedBranchId,
         'title': _titleController.text.trim(),
         'description': _descController.text.trim().isEmpty
             ? null
             : _descController.text.trim(),
         'status': 'open',
+        'assigned_to': assignedTo,
+        'scheduled_date': _scheduledDate == null
+            ? null
+            : _scheduledDate!.toIso8601String().substring(0, 10),
         'is_active': true,
         'created_by': client.auth.currentUser?.id,
       });
@@ -432,6 +506,12 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
   @override
   Widget build(BuildContext context) {
     final loadingCustomers = _customers.isEmpty;
+    final isAdmin = ref.watch(isAdminProvider);
+
+    if (isAdmin && !_usersLoaded) {
+      _usersLoaded = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadUsers());
+    }
 
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
@@ -503,6 +583,11 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
                     onSelected: (o) {
                       _selectedCustomerId = o.id;
                       _customerController.text = o.name;
+                      _selectedBranchId = null;
+                      _branches = const [];
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _loadBranches(o.id);
+                      });
                     },
                     fieldViewBuilder: (context, controller, focusNode, _) {
                       controller.text = _customerController.text;
@@ -526,6 +611,86 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
                       );
                     },
                   ),
+                const Gap(12),
+                if (_branches.isNotEmpty) ...[
+                  DropdownButtonFormField<String?>(
+                    value: _selectedBranchId,
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('Şube seç (opsiyonel)'),
+                      ),
+                      ..._branches.map(
+                        (b) => DropdownMenuItem<String?>(
+                          value: b.id,
+                          child: Text(b.name),
+                        ),
+                      ),
+                    ],
+                    onChanged: _saving ? null : (v) => setState(() => _selectedBranchId = v),
+                    decoration: const InputDecoration(labelText: 'Şube'),
+                  ),
+                  const Gap(12),
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: _saving
+                            ? null
+                            : () async {
+                                final initial = _scheduledDate ?? DateTime.now();
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: initial,
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(DateTime.now().year + 5),
+                                );
+                                if (picked == null) return;
+                                setState(() => _scheduledDate = picked);
+                              },
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Planlanan Tarih',
+                          ),
+                          child: Text(
+                            _scheduledDate == null
+                                ? 'Seçilmedi'
+                                : '${_scheduledDate!.day}.${_scheduledDate!.month}.${_scheduledDate!.year}',
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (isAdmin) ...[
+                      const Gap(12),
+                      Expanded(
+                        child: DropdownButtonFormField<String?>(
+                          value: _assignedTo,
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('Personel seç'),
+                            ),
+                            ..._users.map(
+                              (u) => DropdownMenuItem<String?>(
+                                value: u.id,
+                                child: Text(u.fullName ?? 'Personel'),
+                              ),
+                            ),
+                          ],
+                          onChanged: _saving ? null : (v) => setState(() => _assignedTo = v),
+                          decoration: const InputDecoration(labelText: 'Atanan Personel'),
+                          validator: (v) {
+                            if (!isAdmin) return null;
+                            if ((v ?? '').isEmpty) return 'Personel gerekli.';
+                            return null;
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
                 const Gap(12),
                 TextFormField(
                   controller: _titleController,
@@ -595,6 +760,36 @@ class _CustomerOption {
     return _CustomerOption(
       id: json['id'].toString(),
       name: (json['name'] ?? '').toString(),
+    );
+  }
+}
+
+class _BranchOption {
+  const _BranchOption({required this.id, required this.name});
+
+  final String id;
+  final String name;
+
+  factory _BranchOption.fromJson(Map<String, dynamic> json) {
+    return _BranchOption(
+      id: json['id'].toString(),
+      name: (json['name'] ?? '').toString(),
+    );
+  }
+}
+
+class _UserOption {
+  const _UserOption({required this.id, required this.fullName, required this.role});
+
+  final String id;
+  final String? fullName;
+  final String? role;
+
+  factory _UserOption.fromJson(Map<String, dynamic> json) {
+    return _UserOption(
+      id: json['id'].toString(),
+      fullName: json['full_name']?.toString(),
+      role: json['role']?.toString(),
     );
   }
 }

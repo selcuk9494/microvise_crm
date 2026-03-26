@@ -26,6 +26,17 @@ class _AppCardState extends State<AppCard> {
     final child = Padding(padding: widget.padding, child: widget.child);
     final clickable = widget.onTap != null;
 
+    final content = clickable
+        ? Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              borderRadius: const BorderRadius.all(Radius.circular(16)),
+              onTap: widget.onTap,
+              child: child,
+            ),
+          )
+        : child;
+
     return MouseRegion(
       cursor: clickable ? SystemMouseCursors.click : MouseCursor.defer,
       onEnter: (_) => setState(() => _hovered = true),
@@ -33,7 +44,7 @@ class _AppCardState extends State<AppCard> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         curve: Curves.easeOut,
-        transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
+        transform: Matrix4.translationValues(0, clickable && _hovered ? -2 : 0, 0),
         decoration: BoxDecoration(
           color: Theme.of(context).cardTheme.color ?? AppTheme.surface,
           borderRadius: const BorderRadius.all(Radius.circular(16)),
@@ -46,14 +57,7 @@ class _AppCardState extends State<AppCard> {
             ),
           ],
         ),
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            borderRadius: const BorderRadius.all(Radius.circular(16)),
-            onTap: widget.onTap,
-            child: child,
-          ),
-        ),
+        child: content,
       ),
     );
   }
