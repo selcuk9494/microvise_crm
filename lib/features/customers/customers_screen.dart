@@ -5,16 +5,41 @@ import 'package:go_router/go_router.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import 'customers_providers.dart';
 
-class CustomersScreen extends ConsumerWidget {
+class CustomersScreen extends ConsumerStatefulWidget {
   const CustomersScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CustomersScreen> createState() => _CustomersScreenState();
+}
+
+class _CustomersScreenState extends ConsumerState<CustomersScreen> {
+  bool _handledCreateQuery = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_handledCreateQuery) return;
+    final uri = GoRouterState.of(context).uri;
+    final create = uri.queryParameters['yeni'] == '1';
+    if (!create) return;
+
+    _handledCreateQuery = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      context.go('/musteriler');
+      await _showCreateCustomerDialog(context, ref);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final filters = ref.watch(customerFiltersProvider);
     final customersAsync = ref.watch(customersProvider);
     final citiesAsync = ref.watch(customerCitiesProvider);
@@ -24,7 +49,7 @@ class CustomersScreen extends ConsumerWidget {
       subtitle: 'Firma kartları ve hızlı filtreleme.',
       actions: [
         FilledButton.icon(
-          onPressed: () {},
+          onPressed: () => _showCreateCustomerDialog(context, ref),
           icon: const Icon(Icons.add_rounded, size: 18),
           label: const Text('Yeni Müşteri'),
         ),
@@ -362,6 +387,168 @@ class _DropdownSkeleton extends StatelessWidget {
         ],
         onChanged: (_) {},
         decoration: const InputDecoration(labelText: 'Şehir'),
+      ),
+    );
+  }
+}
+
+Future<void> _showCreateCustomerDialog(BuildContext context, WidgetRef ref) async {
+  final client = ref.read(supabaseClientProvider);
+  if (client == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Supabase bağlantısı bulunamadı.')),
+    );
+    return;
+  }
+
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => const _CreateCustomerDialog(),
+  );
+
+  ref.invalidate(customersProvider);
+  ref.invalidate(customerCitiesProvider);
+}
+
+class _CreateCustomerDialog extends ConsumerStatefulWidget {
+  const _CreateCustomerDialog();
+
+  @override
+  ConsumerState<_CreateCustomerDialog> createState() =>
+      _CreateCustomerDialogState();
+}
+
+class _CreateCustomerDialogState extends ConsumerState<_CreateCustomerDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _cityController = TextEditingController();
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _cityController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final ok = _formKey.currentState?.validate() ?? false;
+    if (!ok) return;
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    setState(() => _saving = true);
+    try {
+      final name = _nameController.text.trim();
+      final city = _cityController.text.trim();
+
+      await client.from('customers').insert({
+        'name': name,
+        'city': city.isEmpty ? null : city,
+        'is_active': true,
+        'created_by': client.auth.currentUser?.id,
+      });
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Müşteri oluşturuldu.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Müşteri oluşturulamadı.')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: AppCard(
+          padding: const EdgeInsets.all(20),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Yeni Müşteri',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Kapat',
+                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                TextFormField(
+                  controller: _nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Firma Adı',
+                    hintText: 'Örn: Microvise Teknoloji A.Ş.',
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().length < 2) return 'Firma adı gerekli.';
+                    return null;
+                  },
+                ),
+                const Gap(12),
+                TextFormField(
+                  controller: _cityController,
+                  decoration: const InputDecoration(
+                    labelText: 'Şehir',
+                    hintText: 'Örn: İstanbul',
+                  ),
+                ),
+                const Gap(18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed:
+                            _saving ? null : () => Navigator.of(context).pop(),
+                        child: const Text('Vazgeç'),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _saving ? null : _save,
+                        child: _saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Kaydet'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

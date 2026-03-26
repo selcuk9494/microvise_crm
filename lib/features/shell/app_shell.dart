@@ -499,17 +499,26 @@ Future<void> _showQuickCreateSheet(BuildContext context) async {
           _SheetItem(
             title: 'Yeni Müşteri',
             icon: PhosphorIcons.userPlus(PhosphorIconsStyle.regular),
-            onTap: () => Navigator.of(context).pop(),
+            onTap: () {
+              Navigator.of(context).pop();
+              context.go('/musteriler?yeni=1');
+            },
           ),
           _SheetItem(
             title: 'Yeni İş Emri',
             icon: PhosphorIcons.clipboardText(PhosphorIconsStyle.regular),
-            onTap: () => Navigator.of(context).pop(),
+            onTap: () {
+              Navigator.of(context).pop();
+              context.go('/is-emirleri?yeni=1');
+            },
           ),
           _SheetItem(
             title: 'Yeni Servis Kaydı',
             icon: PhosphorIcons.wrench(PhosphorIconsStyle.regular),
-            onTap: () => Navigator.of(context).pop(),
+            onTap: () {
+              Navigator.of(context).pop();
+              context.go('/servis?yeni=1');
+            },
           ),
           const Gap(6),
         ],
