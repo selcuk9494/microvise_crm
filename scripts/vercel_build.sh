@@ -13,6 +13,12 @@ fi
 
 export PATH="$PWD/$FLUTTER_DIR/bin:$PATH"
 
+export GIT_CONFIG_GLOBAL="$PWD/.vercel_gitconfig"
+if command -v git >/dev/null 2>&1; then
+  git config --global --add safe.directory "$PWD"
+  git config --global --add safe.directory "$PWD/$FLUTTER_DIR"
+fi
+
 flutter --version
 flutter pub get
 BUILD_DEFINES=()
