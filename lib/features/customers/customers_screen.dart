@@ -1,22 +1,39 @@
-// 🔥 IMPORTLAR (DÜZELTİLDİ)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
-import 'package:go_router/go_router.dart';
-import 'package:skeletonizer/skeletonizer.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart' as excel;
 
-import '../../app/theme/app_theme.dart';
 import '../../core/supabase/supabase_providers.dart';
-import '../../core/ui/app_badge.dart';
-import '../../core/ui/app_card.dart';
-import '../../core/ui/app_page_layout.dart';
-import 'customers_providers.dart';
 import 'web_download_helper.dart' if (dart.library.io) 'io_download_helper.dart';
 
+class CustomersScreen extends ConsumerWidget {
+  const CustomersScreen({super.key});
 
-// 🔥 IMPORT MODEL
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Müşteriler'),
+        actions: [
+          IconButton(
+            onPressed: () => _exportCustomersToExcel(context, ref),
+            icon: const Icon(Icons.download),
+          ),
+          IconButton(
+            onPressed: () => _importExcel(context, ref),
+            icon: const Icon(Icons.upload),
+          ),
+        ],
+      ),
+      body: const Center(
+        child: Text('Müşteri listesi burada olacak'),
+      ),
+    );
+  }
+}
+
+// ================= IMPORT MODEL =================
 class _ImportCustomer {
   final String name;
   final String city;
@@ -37,14 +54,13 @@ class _ImportCustomer {
   });
 }
 
-
-// 🔥 EXCEL EXPORT (TAM DÜZGÜN)
+// ================= EXPORT =================
 Future<void> _exportCustomersToExcel(BuildContext context, WidgetRef ref) async {
   final client = ref.read(supabaseClientProvider);
 
   if (client == null) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Supabase bağlantısı bulunamadı.')),
+      const SnackBar(content: Text('Supabase bağlantısı yok')),
     );
     return;
   }
@@ -56,67 +72,83 @@ Future<void> _exportCustomersToExcel(BuildContext context, WidgetRef ref) async 
   );
 
   try {
-    final rows = await client
-        .from('customers')
-        .select('name,city,email,vkn,phone_1,phone_2,phone_3,notes,is_active')
-        .order('name');
-
+    final rows = await client.from('customers').select();
     final customers = rows as List;
 
-    final excelFile = excel.Excel.createExcel();
-    final sheet = excelFile['Müşteriler'];
+    final file = excel.Excel.createExcel();
+    final sheet = file['Müşteriler'];
 
-    // HEADER
     sheet.appendRow([
-      excel.TextCellValue('Firma Adı'),
+      excel.TextCellValue('Firma'),
       excel.TextCellValue('Şehir'),
-      excel.TextCellValue('E-posta'),
-      excel.TextCellValue('VKN'),
-      excel.TextCellValue('Telefon 1'),
-      excel.TextCellValue('Telefon 2'),
-      excel.TextCellValue('Telefon 3'),
-      excel.TextCellValue('Not'),
-      excel.TextCellValue('Durum'),
+      excel.TextCellValue('Email'),
+      excel.TextCellValue('Telefon'),
     ]);
 
-    // DATA
-    for (final row in customers) {
+    for (final c in customers) {
       sheet.appendRow([
-        excel.TextCellValue(row['name']?.toString() ?? ''),
-        excel.TextCellValue(row['city']?.toString() ?? ''),
-        excel.TextCellValue(row['email']?.toString() ?? ''),
-        excel.TextCellValue(row['vkn']?.toString() ?? ''),
-        excel.TextCellValue(row['phone_1']?.toString() ?? ''),
-        excel.TextCellValue(row['phone_2']?.toString() ?? ''),
-        excel.TextCellValue(row['phone_3']?.toString() ?? ''),
-        excel.TextCellValue(row['notes']?.toString() ?? ''),
-        excel.TextCellValue(row['is_active'] == true ? 'Aktif' : 'Pasif'),
+        excel.TextCellValue(c['name'] ?? ''),
+        excel.TextCellValue(c['city'] ?? ''),
+        excel.TextCellValue(c['email'] ?? ''),
+        excel.TextCellValue(c['phone_1'] ?? ''),
       ]);
     }
 
-    excelFile.delete('Sheet1');
+    file.delete('Sheet1');
 
-    final bytes = excelFile.encode();
-    if (bytes == null) throw Exception('Excel oluşturulamadı');
+    final bytes = file.encode();
+    if (bytes == null) throw Exception('Excel hata');
 
-    final now = DateTime.now();
-    final filename =
-        'musteriler_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}.xlsx';
-
-    downloadExcelFile(bytes, filename);
+    downloadExcelFile(bytes, 'musteriler.xlsx');
 
     if (!context.mounted) return;
-    Navigator.of(context).pop();
+    Navigator.pop(context);
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${customers.length} müşteri dışa aktarıldı.')),
+      SnackBar(content: Text('${customers.length} kayıt indirildi')),
     );
   } catch (e) {
     if (!context.mounted) return;
-    Navigator.of(context).pop();
+    Navigator.pop(context);
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Excel oluşturulurken hata: $e')),
+      SnackBar(content: Text('Hata: $e')),
     );
   }
+}
+
+// ================= IMPORT =================
+Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
+  final client = ref.read(supabaseClientProvider);
+  if (client == null) return;
+
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: ['xlsx'],
+    withData: true,
+  );
+
+  if (result == null) return;
+
+  final bytes = result.files.first.bytes!;
+  final excelFile = excel.Excel.decodeBytes(bytes);
+  final sheet = excelFile.tables.values.first;
+
+  for (int i = 1; i < sheet.rows.length; i++) {
+    final row = sheet.rows[i];
+
+    await client.from('customers').insert({
+      'name': row[0]?.value?.toString(),
+      'city': row[1]?.value?.toString(),
+      'email': row[2]?.value?.toString(),
+      'phone_1': row[3]?.value?.toString(),
+      'is_active': true,
+    });
+  }
+
+  if (!context.mounted) return;
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Import tamamlandı')),
+  );
 }
