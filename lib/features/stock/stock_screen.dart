@@ -158,7 +158,8 @@ class _StockScreenState extends ConsumerState<StockScreen> {
   }
 
   Future<void> _showAdjustmentDialog(BuildContext context) async {
-    final stocks = ref.read(stockLevelsProvider).valueOrNull ?? [];
+    final stocksAsync = ref.read(stockLevelsProvider);
+    final stocks = stocksAsync.value ?? [];
     if (stocks.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Stok takipli ürün bulunmuyor')),

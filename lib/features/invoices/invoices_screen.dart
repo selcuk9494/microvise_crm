@@ -15,7 +15,7 @@ import 'invoice_providers.dart';
 import 'invoice_form_screen.dart';
 
 // Filter state
-final _invoiceFilterProvider = StateProvider<InvoiceFilter>((ref) => const InvoiceFilter());
+final _invoiceFilterProvider = StateProvider.autoDispose<InvoiceFilter>((ref) => const InvoiceFilter());
 
 class InvoicesScreen extends ConsumerStatefulWidget {
   const InvoicesScreen({super.key});
@@ -694,7 +694,8 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         // TODO: Edit
         break;
       case 'payment':
-        final invoice = ref.read(invoiceDetailProvider(widget.invoiceId)).valueOrNull;
+        final invoiceAsync = ref.read(invoiceDetailProvider(widget.invoiceId));
+        final invoice = invoiceAsync.value;
         if (invoice != null) _addPayment(context, invoice);
         break;
       case 'cancel':
