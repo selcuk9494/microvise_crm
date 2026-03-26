@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -177,26 +178,32 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
           const Gap(16),
           Expanded(
             child: boardAsync.when(
-              data: (items) => TabBarView(
-                controller: _tabController,
-                children: [
-                  _WorkOrderList(
-                    items: items.where((e) => e.status == 'open').toList(),
-                    emptyText: 'Açık iş emri bulunmuyor.',
-                    onTap: (order) => _openWorkOrderDetail(order),
-                  ),
-                  _WorkOrderList(
-                    items: items.where((e) => e.status == 'in_progress').toList(),
-                    emptyText: 'Devam eden iş emri bulunmuyor.',
-                    onTap: (order) => _openWorkOrderDetail(order),
-                  ),
-                  _WorkOrderList(
-                    items: items.where((e) => e.status == 'done').toList(),
-                    emptyText: 'Kapatılmış iş emri bulunmuyor.',
-                    onTap: (order) => _openWorkOrderDetail(order),
-                  ),
-                ],
-              ),
+              data: (items) {
+                debugPrint('WorkOrders loaded: ${items.length} items');
+                for (final item in items) {
+                  debugPrint('  - ${item.title}: status=${item.status}');
+                }
+                return TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _WorkOrderList(
+                      items: items.where((e) => e.status == 'open').toList(),
+                      emptyText: 'Açık iş emri bulunmuyor.',
+                      onTap: (order) => _openWorkOrderDetail(order),
+                    ),
+                    _WorkOrderList(
+                      items: items.where((e) => e.status == 'in_progress').toList(),
+                      emptyText: 'Devam eden iş emri bulunmuyor.',
+                      onTap: (order) => _openWorkOrderDetail(order),
+                    ),
+                    _WorkOrderList(
+                      items: items.where((e) => e.status == 'done').toList(),
+                      emptyText: 'Kapatılmış iş emri bulunmuyor.',
+                      onTap: (order) => _openWorkOrderDetail(order),
+                    ),
+                  ],
+                );
+              },
               loading: () => Skeletonizer(
                 enabled: true,
                 child: _WorkOrderList(
@@ -297,7 +304,7 @@ class _WorkOrderList extends StatelessWidget {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
       itemCount: items.length,
       separatorBuilder: (_, __) => const Gap(10),
       itemBuilder: (context, index) {
