@@ -52,6 +52,10 @@ Flutter + Supabase tabanlı kapsamlı CRM ve ERP sistemi.
 - [x] Renk seçimli iş emri tipi ekleme
 - [x] Toplu müşteri Excel import özelliği
 - [x] Excel dosya parse ve preview
+- [x] Dashboard geliştirilmiş istatistikler (8 metrik kartı)
+- [x] İş emri durumu pie chart grafiği
+- [x] Gelir değişim yüzdesi gösterimi
+- [x] Müşteri Excel export özelliği
 
 ### Veritabanı Migration'ları
 - 0001_init.sql - Temel tablolar
@@ -66,13 +70,11 @@ Flutter + Supabase tabanlı kapsamlı CRM ve ERP sistemi.
 ### P0 - Kritik
 - [ ] PDF ekstre/fatura çıktısı
 - [ ] E-posta gönderimi (Resend API gerekli)
-- [ ] Excel export
 
 ### P1 - Önemli
 - [ ] Servis modülü garanti takibi
 - [ ] Servis parça ekleme
 - [ ] Gelişmiş raporlar
-- [ ] Dashboard istatistikleri
 - [ ] Work Orders liste debug (status string eşleşmesi kontrol edilecek)
 
 ### P2 - Sonra

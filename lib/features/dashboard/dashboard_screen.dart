@@ -73,26 +73,59 @@ class DashboardScreen extends ConsumerWidget {
                   if (twoCols)
                     Expanded(
                       flex: 2,
-                      child: AppCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Son Aktiviteler',
-                              style: Theme.of(context).textTheme.titleMedium,
+                      child: Column(
+                        children: [
+                          AppCard(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'İş Emri Durumu',
+                                  style: Theme.of(context).textTheme.titleMedium,
+                                ),
+                                const Gap(6),
+                                Text(
+                                  'Açık, devam eden ve tamamlanan işler.',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(color: const Color(0xFF64748B)),
+                                ),
+                                const Gap(16),
+                                SizedBox(
+                                  height: 160,
+                                  child: metricsAsync.when(
+                                    data: (m) => _WorkOrderPieChart(metrics: m),
+                                    loading: () => const _ChartSkeleton(),
+                                    error: (_, __) => const _ChartError(),
+                                  ),
+                                ),
+                              ],
                             ),
-                            const Gap(6),
-                            Text(
-                              'İş emirleri ve servis kayıtlarından akış.',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(color: const Color(0xFF64748B)),
+                          ),
+                          const Gap(16),
+                          AppCard(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Son Aktiviteler',
+                                  style: Theme.of(context).textTheme.titleMedium,
+                                ),
+                                const Gap(6),
+                                Text(
+                                  'İş emirleri ve servis kayıtları.',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(color: const Color(0xFF64748B)),
+                                ),
+                                const Gap(14),
+                                const _ActivityTimeline(),
+                              ],
                             ),
-                            const Gap(14),
-                            const _ActivityTimeline(),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                 ],
@@ -113,16 +146,21 @@ class _MetricsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final revenueChange = metrics.revenueChangePercent;
+    final revenueChangeText = revenueChange >= 0 
+        ? '+${revenueChange.toStringAsFixed(0)}%' 
+        : '${revenueChange.toStringAsFixed(0)}%';
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final columns = width >= 1200
-            ? 5
+            ? 6
             : width >= 980
                 ? 4
                 : width >= 720
-                    ? 2
-                    : 1;
+                    ? 3
+                    : 2;
         final spacing = 12.0;
         final itemWidth = (width - (columns - 1) * spacing) / columns;
 
@@ -136,6 +174,13 @@ class _MetricsGrid extends StatelessWidget {
             title: 'Açık İş Emirleri',
             value: metrics.openWorkOrders.toString(),
             icon: Icons.assignment_rounded,
+            tone: metrics.openWorkOrders > 0 ? _MetricTone.warning : _MetricTone.neutral,
+          ),
+          _MetricTile(
+            title: 'Devam Eden',
+            value: metrics.inProgressWorkOrders.toString(),
+            icon: Icons.timelapse_rounded,
+            tone: _MetricTone.primary,
           ),
           _MetricTile(
             title: 'Bugünkü İşler',
@@ -146,13 +191,27 @@ class _MetricsGrid extends StatelessWidget {
             title: 'Süresi Dolanlar',
             value: metrics.expiringSoon.toString(),
             icon: Icons.warning_rounded,
-            tone: _MetricTone.warning,
+            tone: metrics.expiringSoon > 0 ? _MetricTone.warning : _MetricTone.neutral,
           ),
           _MetricTile(
-            title: 'Gelir (Ay)',
+            title: 'Gelir (Bu Ay)',
             value: money.format(metrics.revenue),
             icon: Icons.payments_rounded,
-            tone: _MetricTone.primary,
+            tone: _MetricTone.success,
+            subtitle: revenueChangeText,
+            subtitleColor: revenueChange >= 0 ? AppTheme.success : AppTheme.error,
+          ),
+          _MetricTile(
+            title: 'Açık Faturalar',
+            value: metrics.openInvoices.toString(),
+            icon: Icons.receipt_long_rounded,
+            subtitle: money.format(metrics.totalInvoiceAmount),
+          ),
+          _MetricTile(
+            title: 'Düşük Stok',
+            value: metrics.lowStockProducts.toString(),
+            icon: Icons.inventory_2_rounded,
+            tone: metrics.lowStockProducts > 0 ? _MetricTone.warning : _MetricTone.success,
           ),
         ];
 
@@ -181,12 +240,16 @@ class _MetricTile extends StatelessWidget {
     required this.value,
     required this.icon,
     this.tone = _MetricTone.neutral,
+    this.subtitle,
+    this.subtitleColor,
   });
 
   final String title;
   final String value;
   final IconData icon;
   final _MetricTone tone;
+  final String? subtitle;
+  final Color? subtitleColor;
 
   @override
   Widget build(BuildContext context) {
@@ -224,12 +287,27 @@ class _MetricTile extends StatelessWidget {
           ],
         ),
         const Gap(10),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontSize: 22,
-                letterSpacing: -0.2,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              value,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontSize: 22,
+                    letterSpacing: -0.2,
+                  ),
+            ),
+            if (subtitle != null) ...[
+              const Gap(8),
+              Text(
+                subtitle!,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: subtitleColor ?? const Color(0xFF64748B),
+                      fontWeight: FontWeight.w600,
+                    ),
               ),
+            ],
+          ],
         ),
       ],
     );
@@ -237,6 +315,106 @@ class _MetricTile extends StatelessWidget {
 }
 
 enum _MetricTone { primary, warning, success, neutral }
+
+class _WorkOrderPieChart extends StatelessWidget {
+  const _WorkOrderPieChart({required this.metrics});
+
+  final DashboardMetrics metrics;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = metrics.openWorkOrders + metrics.inProgressWorkOrders + metrics.completedWorkOrders;
+    
+    if (total == 0) {
+      return Center(
+        child: Text(
+          'İş emri kaydı yok.',
+          style: Theme.of(context)
+              .textTheme
+              .bodyMedium
+              ?.copyWith(color: const Color(0xFF64748B)),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: PieChart(
+            PieChartData(
+              sectionsSpace: 2,
+              centerSpaceRadius: 30,
+              sections: [
+                PieChartSectionData(
+                  value: metrics.openWorkOrders.toDouble(),
+                  color: AppTheme.warning,
+                  radius: 35,
+                  title: '',
+                ),
+                PieChartSectionData(
+                  value: metrics.inProgressWorkOrders.toDouble(),
+                  color: AppTheme.primary,
+                  radius: 35,
+                  title: '',
+                ),
+                PieChartSectionData(
+                  value: metrics.completedWorkOrders.toDouble(),
+                  color: AppTheme.success,
+                  radius: 35,
+                  title: '',
+                ),
+              ],
+            ),
+          ),
+        ),
+        const Gap(16),
+        Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _LegendItem(color: AppTheme.warning, label: 'Açık', value: metrics.openWorkOrders),
+            const Gap(8),
+            _LegendItem(color: AppTheme.primary, label: 'Devam', value: metrics.inProgressWorkOrders),
+            const Gap(8),
+            _LegendItem(color: AppTheme.success, label: 'Tamamlanan', value: metrics.completedWorkOrders),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  const _LegendItem({required this.color, required this.label, required this.value});
+
+  final Color color;
+  final String label;
+  final int value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const Gap(8),
+        Text(
+          '$label: $value',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+        ),
+      ],
+    );
+  }
+}
 
 class _RevenueChart extends StatelessWidget {
   const _RevenueChart({required this.points});

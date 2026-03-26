@@ -12,6 +12,7 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import 'customers_providers.dart';
+import 'web_download_helper.dart' if (dart.library.io) 'io_download_helper.dart';
 
 class CustomersScreen extends ConsumerStatefulWidget {
   const CustomersScreen({super.key});
@@ -50,6 +51,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       title: 'Müşteriler',
       subtitle: 'Firma kartları ve hızlı filtreleme.',
       actions: [
+        OutlinedButton.icon(
+          onPressed: () => _exportCustomersToExcel(context, ref),
+          icon: const Icon(Icons.download_rounded, size: 18),
+          label: const Text('Excel Dışa Aktar'),
+        ),
+        const Gap(10),
         OutlinedButton.icon(
           onPressed: () => _showExcelImportDialog(context, ref),
           icon: const Icon(Icons.upload_file_rounded, size: 18),
@@ -1371,6 +1378,92 @@ class _ImportCustomer {
     required this.vkn,
     required this.phone1,
     required this.phone2,
+
+
+Future<void> _exportCustomersToExcel(BuildContext context, WidgetRef ref) async {
+  final client = ref.read(supabaseClientProvider);
+  if (client == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Supabase bağlantısı bulunamadı.')),
+    );
+    return;
+  }
+
+  // Show loading
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => const Center(child: CircularProgressIndicator()),
+  );
+
+  try {
+    // Fetch all customers
+    final rows = await client
+        .from('customers')
+        .select('name,city,email,vkn,phone_1,phone_2,phone_3,notes,is_active')
+        .order('name');
+
+    final customers = rows as List;
+
+    // Create Excel
+    final excel = Excel.createExcel();
+    final sheet = excel['Müşteriler'];
+
+    // Headers
+    sheet.appendRow([
+      TextCellValue('Firma Adı'),
+      TextCellValue('Şehir'),
+      TextCellValue('E-posta'),
+      TextCellValue('VKN'),
+      TextCellValue('Telefon 1'),
+      TextCellValue('Telefon 2'),
+      TextCellValue('Telefon 3'),
+      TextCellValue('Not'),
+      TextCellValue('Durum'),
+    ]);
+
+    // Data rows
+    for (final row in customers) {
+      sheet.appendRow([
+        TextCellValue(row['name']?.toString() ?? ''),
+        TextCellValue(row['city']?.toString() ?? ''),
+        TextCellValue(row['email']?.toString() ?? ''),
+        TextCellValue(row['vkn']?.toString() ?? ''),
+        TextCellValue(row['phone_1']?.toString() ?? ''),
+        TextCellValue(row['phone_2']?.toString() ?? ''),
+        TextCellValue(row['phone_3']?.toString() ?? ''),
+        TextCellValue(row['notes']?.toString() ?? ''),
+        TextCellValue(row['is_active'] == true ? 'Aktif' : 'Pasif'),
+      ]);
+    }
+
+    // Remove default sheet
+    excel.delete('Sheet1');
+
+    // Encode to bytes
+    final bytes = excel.encode();
+    if (bytes == null) throw Exception('Excel oluşturulamadı');
+
+    // Download
+    final now = DateTime.now();
+    final filename = 'musteriler_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}.xlsx';
+    downloadExcelFile(bytes, filename);
+
+    if (!context.mounted) return;
+    Navigator.of(context).pop(); // Close loading
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${customers.length} müşteri dışa aktarıldı.')),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    Navigator.of(context).pop(); // Close loading
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Excel oluşturulurken hata: $e')),
+    );
+  }
+}
     required this.notes,
   });
 }
