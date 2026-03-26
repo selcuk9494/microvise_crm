@@ -640,14 +640,29 @@ final _navItems = <_NavItem>[
     icon: PhosphorIcons.wrench(PhosphorIconsStyle.regular),
   ),
   _NavItem(
+    path: '/faturalar',
+    label: 'Faturalar',
+    icon: PhosphorIcons.receipt(PhosphorIconsStyle.regular),
+  ),
+  _NavItem(
+    path: '/cari-hesaplar',
+    label: 'Cari Hesaplar',
+    icon: PhosphorIcons.wallet(PhosphorIconsStyle.regular),
+  ),
+  _NavItem(
+    path: '/urunler',
+    label: 'Ürün/Hizmet',
+    icon: PhosphorIcons.package(PhosphorIconsStyle.regular),
+  ),
+  _NavItem(
+    path: '/stok',
+    label: 'Stok',
+    icon: PhosphorIcons.cube(PhosphorIconsStyle.regular),
+  ),
+  _NavItem(
     path: '/raporlar',
     label: 'Raporlar',
     icon: PhosphorIcons.chartBar(PhosphorIconsStyle.regular),
-  ),
-  _NavItem(
-    path: '/faturalama',
-    label: 'Faturalama',
-    icon: PhosphorIcons.receipt(PhosphorIconsStyle.regular),
   ),
   _NavItem(
     path: '/tanimlamalar',
