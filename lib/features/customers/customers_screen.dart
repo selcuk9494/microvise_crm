@@ -76,6 +76,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         ),
         const Gap(10),
         OutlinedButton.icon(
+          onPressed: () => _downloadCustomerImportTemplate(context),
+          icon: const Icon(Icons.file_download_outlined, size: 18),
+          label: const Text('Şablon İndir'),
+        ),
+        const Gap(10),
+        OutlinedButton.icon(
           onPressed: () => _exportCustomersToExcel(context, ref),
           icon: const Icon(Icons.download_rounded, size: 18),
           label: const Text('Dışa Aktar'),
@@ -615,6 +621,60 @@ Future<void> _showCustomerForm(
 Future<void> _refreshCustomerData(WidgetRef ref) async {
   ref.invalidate(customersProvider);
   ref.invalidate(customerCitiesProvider);
+}
+
+Future<void> _downloadCustomerImportTemplate(BuildContext context) async {
+  try {
+    final file = excel.Excel.createExcel();
+    final sheet = file['Müşteri Şablonu'];
+
+    sheet.appendRow([
+      excel.TextCellValue('Firma Adı'),
+      excel.TextCellValue('Şehir'),
+      excel.TextCellValue('E-posta'),
+      excel.TextCellValue('VKN / TCKN'),
+      excel.TextCellValue('Telefon 1 Başlığı'),
+      excel.TextCellValue('Telefon 1'),
+      excel.TextCellValue('Telefon 2 Başlığı'),
+      excel.TextCellValue('Telefon 2'),
+      excel.TextCellValue('Telefon 3 Başlığı'),
+      excel.TextCellValue('Telefon 3'),
+      excel.TextCellValue('Aktif Müşteri'),
+      excel.TextCellValue('Notlar'),
+    ]);
+
+    sheet.appendRow([
+      excel.TextCellValue('Microvise Teknoloji'),
+      excel.TextCellValue('Istanbul'),
+      excel.TextCellValue('info@microvise.com'),
+      excel.TextCellValue('1234567890'),
+      excel.TextCellValue('Yetkili'),
+      excel.TextCellValue('05551234567'),
+      excel.TextCellValue('Muhasebe'),
+      excel.TextCellValue('02121234567'),
+      excel.TextCellValue('Destek'),
+      excel.TextCellValue('08501234567'),
+      excel.TextCellValue('Evet'),
+      excel.TextCellValue('Ornek musteri kaydi'),
+    ]);
+
+    file.delete('Sheet1');
+
+    final bytes = file.encode();
+    if (bytes == null) throw Exception('Excel hata');
+
+    downloadExcelFile(bytes, 'musteri_import_sablonu.xlsx');
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Müşteri import şablonu indirildi.')),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Şablon indirilemedi: $e')));
+  }
 }
 
 Future<void> _toggleCustomerActive(
