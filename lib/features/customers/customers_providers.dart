@@ -55,17 +55,24 @@ class CustomerPageData {
     required this.items,
     required this.page,
     required this.hasNextPage,
+    required this.totalCount,
   });
 
   final List<Customer> items;
   final int page;
   final bool hasNextPage;
+  final int totalCount;
 }
 
 final customersProvider = FutureProvider<CustomerPageData>((ref) async {
   final client = ref.watch(supabaseClientProvider);
   if (client == null) {
-    return const CustomerPageData(items: [], page: 1, hasNextPage: false);
+    return const CustomerPageData(
+      items: [],
+      page: 1,
+      hasNextPage: false,
+      totalCount: 0,
+    );
   }
 
   final filters = ref.watch(customerFiltersProvider);
@@ -80,14 +87,19 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
       .select(
         'id,name,city,email,vkn,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,notes,is_active',
       );
+  var totalQuery = client.from('customers').select('id');
 
   if (city != null && city.isNotEmpty) {
     q = q.eq('city', city);
+    totalQuery = totalQuery.eq('city', city);
   }
   if (search.isNotEmpty) {
     q = q.ilike('name', '%$search%');
+    totalQuery = totalQuery.ilike('name', '%$search%');
   }
 
+  final totalRows = await totalQuery;
+  final totalCount = (totalRows as List).length;
   final rows = await q.order('name').range(start, end);
   final customerRows = (rows as List)
       .map((e) => e as Map<String, dynamic>)
@@ -99,7 +111,12 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
       : customerRows;
 
   if (currentPageRows.isEmpty) {
-    return CustomerPageData(items: const [], page: page, hasNextPage: false);
+    return CustomerPageData(
+      items: const [],
+      page: page,
+      hasNextPage: false,
+      totalCount: totalCount,
+    );
   }
 
   final ids = currentPageRows
@@ -136,6 +153,7 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
   return CustomerPageData(
     page: page,
     hasNextPage: hasNextPage,
+    totalCount: totalCount,
     items: currentPageRows
         .map(
           (e) => Customer.fromJson({

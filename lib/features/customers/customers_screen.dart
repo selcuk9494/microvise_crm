@@ -259,7 +259,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          'Sayfa $currentPage • ${customers.length} müşteri gösteriliyor',
+                          'Toplam ${pageData.totalCount} müşteri • Sayfa $currentPage • ${customers.length} kayıt gösteriliyor',
                           style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(color: const Color(0xFF64748B)),
                         ),
