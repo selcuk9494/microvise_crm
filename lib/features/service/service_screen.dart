@@ -344,48 +344,70 @@ class _ServiceSummary extends StatelessWidget {
         .length;
     final done = items.where((item) => item.status == 'done').length;
 
-    final cardWidth = isMobile ? (width - 44) / 2 : null;
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        SizedBox(
-          width: cardWidth,
-          child: _ServiceStat(
-            label: 'Toplam',
-            value: items.length.toString(),
-            icon: Icons.build_circle_outlined,
-            color: AppTheme.primary,
-          ),
-        ),
-        SizedBox(
-          width: cardWidth,
-          child: _ServiceStat(
-            label: 'Açık',
-            value: open.toString(),
-            icon: Icons.radio_button_unchecked_rounded,
-            color: AppTheme.warning,
-          ),
-        ),
-        SizedBox(
-          width: cardWidth,
-          child: _ServiceStat(
-            label: 'Devam',
-            value: inProgress.toString(),
-            icon: Icons.timelapse_rounded,
-            color: AppTheme.primary,
-          ),
-        ),
-        SizedBox(
-          width: cardWidth,
-          child: _ServiceStat(
-            label: 'Tamam',
-            value: done.toString(),
-            icon: Icons.check_circle_outline_rounded,
-            color: AppTheme.success,
-          ),
-        ),
-      ],
+    final stats = [
+      (
+        'Toplam',
+        items.length.toString(),
+        Icons.build_circle_outlined,
+        AppTheme.primary,
+      ),
+      (
+        'Açık',
+        open.toString(),
+        Icons.radio_button_unchecked_rounded,
+        AppTheme.warning,
+      ),
+      (
+        'Devam',
+        inProgress.toString(),
+        Icons.timelapse_rounded,
+        AppTheme.primary,
+      ),
+      (
+        'Tamam',
+        done.toString(),
+        Icons.check_circle_outline_rounded,
+        AppTheme.success,
+      ),
+    ];
+
+    return AppCard(
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 10 : 14,
+        vertical: isMobile ? 10 : 12,
+      ),
+      child: isMobile
+          ? Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: stats
+                  .map(
+                    (stat) => _ServiceStat(
+                      label: stat.$1,
+                      value: stat.$2,
+                      icon: stat.$3,
+                      color: stat.$4,
+                      compact: true,
+                    ),
+                  )
+                  .toList(growable: false),
+            )
+          : Row(
+              children: [
+                for (int i = 0; i < stats.length; i++) ...[
+                  Expanded(
+                    child: _ServiceStat(
+                      label: stats[i].$1,
+                      value: stats[i].$2,
+                      icon: stats[i].$3,
+                      color: stats[i].$4,
+                      compact: true,
+                    ),
+                  ),
+                  if (i != stats.length - 1) const Gap(10),
+                ],
+              ],
+            ),
     );
   }
 }
@@ -396,28 +418,41 @@ class _ServiceStat extends StatelessWidget {
     required this.value,
     required this.icon,
     required this.color,
+    this.compact = false,
   });
 
   final String label;
   final String value;
   final IconData icon;
   final Color color;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
+    final content = Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 10 : 16,
+        vertical: compact ? 8 : 12,
+      ),
+      decoration: BoxDecoration(
+        color: compact ? const Color(0xFFF8FAFC) : Colors.transparent,
+        borderRadius: BorderRadius.circular(compact ? 14 : 18),
+        border: Border.all(
+          color: compact ? AppTheme.border : Colors.transparent,
+        ),
+      ),
       child: Row(
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: compact ? 34 : 42,
+            height: compact ? 34 : 42,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(compact ? 10 : 12),
             ),
-            child: Icon(icon, color: color, size: 20),
+            child: Icon(icon, color: color, size: compact ? 18 : 20),
           ),
-          const Gap(12),
+          Gap(compact ? 10 : 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -428,11 +463,12 @@ class _ServiceStat extends StatelessWidget {
                     color: const Color(0xFF64748B),
                   ),
                 ),
-                const Gap(4),
+                Gap(compact ? 2 : 4),
                 Text(
                   value,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
+                    fontSize: compact ? 16 : null,
                   ),
                 ),
               ],
@@ -441,6 +477,9 @@ class _ServiceStat extends StatelessWidget {
         ],
       ),
     );
+
+    if (compact) return content;
+    return AppCard(child: content);
   }
 }
 
