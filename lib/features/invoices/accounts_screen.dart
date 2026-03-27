@@ -634,6 +634,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
 
     final client = ref.read(supabaseClientProvider);
     if (client == null) return;
+    final messenger = ScaffoldMessenger.of(context);
 
     try {
       await client.from('transactions').insert({
@@ -646,15 +647,13 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
         'created_by': client.auth.currentUser?.id,
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('İşlem kaydedildi')));
-        ref.invalidate(transactionsProvider(TransactionFilter(customerId: widget.customerId)));
-        ref.invalidate(accountBalancesProvider);
-      }
+      if (!mounted) return;
+      messenger.showSnackBar(const SnackBar(content: Text('İşlem kaydedildi')));
+      ref.invalidate(transactionsProvider(TransactionFilter(customerId: widget.customerId)));
+      ref.invalidate(accountBalancesProvider);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hata: $e')));
-      }
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Hata: $e')));
     }
   }
 

@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/supabase/supabase_providers.dart';
-import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../invoices/invoice_model.dart';

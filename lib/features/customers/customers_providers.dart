@@ -5,8 +5,8 @@ import 'customer_model.dart';
 
 final customerFiltersProvider =
     NotifierProvider<CustomerFiltersNotifier, CustomerFilters>(
-  CustomerFiltersNotifier.new,
-);
+      CustomerFiltersNotifier.new,
+    );
 
 class CustomerFiltersNotifier extends Notifier<CustomerFilters> {
   @override
@@ -28,10 +28,7 @@ class CustomerFilters {
   final String? city;
 
   CustomerFilters copyWith({String? search, String? city}) {
-    return CustomerFilters(
-      search: search ?? this.search,
-      city: city,
-    );
+    return CustomerFilters(search: search ?? this.search, city: city);
   }
 }
 
@@ -43,7 +40,11 @@ final customersProvider = FutureProvider<List<Customer>>((ref) async {
   final search = filters.search.trim();
   final city = filters.city;
 
-  var q = client.from('customers').select('id,name,city,is_active');
+  var q = client
+      .from('customers')
+      .select(
+        'id,name,city,email,vkn,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,notes,is_active',
+      );
 
   if (city != null && city.isNotEmpty) {
     q = q.eq('city', city);
@@ -59,7 +60,9 @@ final customersProvider = FutureProvider<List<Customer>>((ref) async {
 
   if (customerRows.isEmpty) return const [];
 
-  final ids = customerRows.map((e) => e['id'].toString()).toList(growable: false);
+  final ids = customerRows
+      .map((e) => e['id'].toString())
+      .toList(growable: false);
 
   final lineRows = await client
       .from('lines')
@@ -89,11 +92,13 @@ final customersProvider = FutureProvider<List<Customer>>((ref) async {
   }
 
   return customerRows
-      .map((e) => Customer.fromJson({
-            ...e,
-            'active_line_count': lineCounts[e['id']?.toString()] ?? 0,
-            'active_gmp3_count': gmp3Counts[e['id']?.toString()] ?? 0,
-          }))
+      .map(
+        (e) => Customer.fromJson({
+          ...e,
+          'active_line_count': lineCounts[e['id']?.toString()] ?? 0,
+          'active_gmp3_count': gmp3Counts[e['id']?.toString()] ?? 0,
+        }),
+      )
       .toList(growable: false);
 });
 

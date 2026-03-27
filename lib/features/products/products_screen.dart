@@ -738,7 +738,6 @@ Future<void> _extendLineAndQueueInvoice(
 
   final amountController = TextEditingController();
   String currency = 'TRY';
-  bool saving = false;
 
   final confirm = await showDialog<bool>(
     context: context,
@@ -765,7 +764,7 @@ Future<void> _extendLineAndQueueInvoice(
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: saving ? null : () => Navigator.of(context).pop(false),
+                      onPressed: () => Navigator.of(context).pop(false),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -795,7 +794,7 @@ Future<void> _extendLineAndQueueInvoice(
                     DropdownMenuItem(value: 'USD', child: Text('USD')),
                     DropdownMenuItem(value: 'EUR', child: Text('EUR')),
                   ],
-                  onChanged: saving ? null : (v) => setState(() => currency = v ?? 'TRY'),
+                  onChanged: (v) => setState(() => currency = v ?? 'TRY'),
                   decoration: const InputDecoration(labelText: 'Para Birimi'),
                 ),
                 const Gap(18),
@@ -803,14 +802,14 @@ Future<void> _extendLineAndQueueInvoice(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: saving ? null : () => Navigator.of(context).pop(false),
+                        onPressed: () => Navigator.of(context).pop(false),
                         child: const Text('Vazgeç'),
                       ),
                     ),
                     const Gap(12),
                     Expanded(
                       child: FilledButton(
-                        onPressed: saving ? null : () => Navigator.of(context).pop(true),
+                        onPressed: () => Navigator.of(context).pop(true),
                         child: const Text('Uzat'),
                       ),
                     ),

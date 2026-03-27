@@ -13,7 +13,6 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../customers/customer_detail_screen.dart';
 import 'work_order_model.dart';
-import 'work_orders_providers.dart';
 import 'currency_service.dart';
 
 Future<void> showWorkOrderDetailSheet(

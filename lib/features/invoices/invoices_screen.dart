@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
@@ -9,7 +8,6 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
-import '../customers/customers_providers.dart';
 import 'invoice_model.dart';
 import 'invoice_providers.dart';
 import 'invoice_form_screen.dart';
@@ -194,8 +192,8 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> with SingleTick
       ),
     );
 
-    if (type == null || !mounted) return;
-    
+    if (type == null || !context.mounted) return;
+
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => InvoiceFormScreen(invoiceType: type),
@@ -210,6 +208,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> with SingleTick
         builder: (context) => InvoiceDetailScreen(invoiceId: invoice.id),
       ),
     );
+    if (!mounted) return;
     ref.invalidate(invoicesProvider);
   }
 }
@@ -719,6 +718,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
 
     final client = ref.read(supabaseClientProvider);
     if (client == null) return;
+    final messenger = ScaffoldMessenger.of(context);
 
     try {
       await client.from('transactions').insert({
@@ -732,18 +732,16 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         'created_by': client.auth.currentUser?.id,
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ödeme kaydedildi')),
-        );
-        ref.invalidate(invoiceDetailProvider(widget.invoiceId));
-      }
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Ödeme kaydedildi')),
+      );
+      ref.invalidate(invoiceDetailProvider(widget.invoiceId));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Hata: $e')),
-        );
-      }
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Hata: $e')),
+      );
     }
   }
 

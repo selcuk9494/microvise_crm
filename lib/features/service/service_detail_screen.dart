@@ -12,8 +12,10 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 
-final serviceDetailProvider =
-    FutureProvider.family<ServiceDetail, String>((ref, serviceId) async {
+final serviceDetailProvider = FutureProvider.family<ServiceDetail, String>((
+  ref,
+  serviceId,
+) async {
   final client = ref.watch(supabaseClientProvider);
   if (client == null) throw Exception('Supabase yapılandırılmamış.');
 
@@ -35,7 +37,8 @@ class ServiceDetailScreen extends ConsumerStatefulWidget {
   final String serviceId;
 
   @override
-  ConsumerState<ServiceDetailScreen> createState() => _ServiceDetailScreenState();
+  ConsumerState<ServiceDetailScreen> createState() =>
+      _ServiceDetailScreenState();
 }
 
 class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
@@ -74,24 +77,24 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         ],
         body: _Body(
           detail: detail,
-          onChanged: () => ref.invalidate(serviceDetailProvider(widget.serviceId)),
+          onChanged: () =>
+              ref.invalidate(serviceDetailProvider(widget.serviceId)),
         ),
       ),
       loading: () => const AppPageLayout(
         title: 'Servis',
         body: Center(child: CircularProgressIndicator()),
       ),
-      error: (_, __) => AppPageLayout(
+      error: (error, stackTrace) => AppPageLayout(
         title: 'Servis',
         body: AppCard(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Text(
               'Servis kaydı yüklenemedi.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: const Color(0xFF64748B)),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
             ),
           ),
         ),
@@ -99,7 +102,10 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     );
   }
 
-  Future<void> _showCloseDialog(BuildContext context, ServiceDetail detail) async {
+  Future<void> _showCloseDialog(
+    BuildContext context,
+    ServiceDetail detail,
+  ) async {
     final client = ref.read(supabaseClientProvider);
     if (client == null) return;
 
@@ -133,7 +139,9 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                         ),
                         IconButton(
                           tooltip: 'Kapat',
-                          onPressed: _closing ? null : () => Navigator.of(context).pop(),
+                          onPressed: _closing
+                              ? null
+                              : () => Navigator.of(context).pop(),
                           icon: const Icon(Icons.close_rounded),
                         ),
                       ],
@@ -165,9 +173,7 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                         Expanded(
                           child: Text(
                             'Müşteri imzası ve ödeme bilgileri.',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
+                            style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: const Color(0xFF64748B)),
                           ),
                         ),
@@ -176,18 +182,30 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                     const Gap(12),
                     ValueListenableBuilder(
                       valueListenable: currencyController,
-                      builder: (context, currency, _) => DropdownButtonFormField<String>(
-                        value: currency,
-                        items: const [
-                          DropdownMenuItem(value: 'TRY', child: Text('TRY')),
-                          DropdownMenuItem(value: 'USD', child: Text('USD')),
-                          DropdownMenuItem(value: 'EUR', child: Text('EUR')),
-                        ],
-                        onChanged: _closing
-                            ? null
-                            : (v) => currencyController.value = v ?? 'TRY',
-                        decoration: const InputDecoration(labelText: 'Para Birimi'),
-                      ),
+                      builder: (context, currency, child) =>
+                          DropdownButtonFormField<String>(
+                            initialValue: currency,
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'TRY',
+                                child: Text('TRY'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'USD',
+                                child: Text('USD'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'EUR',
+                                child: Text('EUR'),
+                              ),
+                            ],
+                            onChanged: _closing
+                                ? null
+                                : (v) => currencyController.value = v ?? 'TRY',
+                            decoration: const InputDecoration(
+                              labelText: 'Para Birimi',
+                            ),
+                          ),
                     ),
                     const Gap(12),
                     Row(
@@ -201,7 +219,9 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                         OutlinedButton.icon(
                           onPressed: _closing
                               ? null
-                              : () => setState(() => payments.add(_PaymentDraft())),
+                              : () => setState(
+                                  () => payments.add(_PaymentDraft()),
+                                ),
                           icon: const Icon(Icons.add_rounded, size: 18),
                           label: const Text('Ekle'),
                         ),
@@ -214,7 +234,10 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                           Expanded(
                             child: TextField(
                               controller: payments[i].amountController,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: const InputDecoration(
                                 labelText: 'Tutar',
                                 hintText: '0.00',
@@ -228,9 +251,9 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                               onPressed: _closing
                                   ? null
                                   : () => setState(() {
-                                        payments[i].dispose();
-                                        payments.removeAt(i);
-                                      }),
+                                      payments[i].dispose();
+                                      payments.removeAt(i);
+                                    }),
                               icon: const Icon(Icons.delete_outline_rounded),
                             ),
                         ],
@@ -252,7 +275,9 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: _closing ? null : () => Navigator.of(context).pop(),
+                            onPressed: _closing
+                                ? null
+                                : () => Navigator.of(context).pop(),
                             child: const Text('Vazgeç'),
                           ),
                         ),
@@ -271,17 +296,25 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                                           : 'data:image/png;base64,${base64Encode(sig)}';
 
                                       final total = detail.totalAmount ?? 0;
-                                      await client.from('service_records').update({
-                                        'status': 'done',
-                                        'notes': notesController.text.trim().isEmpty
-                                            ? null
-                                            : notesController.text.trim(),
-                                        'currency': currencyController.value,
-                                        'total_amount': total,
-                                        'signature_url': sigUrl,
-                                      }).eq('id', detail.id);
+                                      await client
+                                          .from('service_records')
+                                          .update({
+                                            'status': 'done',
+                                            'notes':
+                                                notesController.text
+                                                    .trim()
+                                                    .isEmpty
+                                                ? null
+                                                : notesController.text.trim(),
+                                            'currency':
+                                                currencyController.value,
+                                            'total_amount': total,
+                                            'signature_url': sigUrl,
+                                          })
+                                          .eq('id', detail.id);
 
-                                      final paymentRows = <Map<String, dynamic>>[];
+                                      final paymentRows =
+                                          <Map<String, dynamic>>[];
                                       for (final p in payments) {
                                         final amount = p.amount;
                                         if (amount == null) continue;
@@ -291,12 +324,15 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                                           'amount': amount,
                                           'currency': currencyController.value,
                                           'paid_at': now.toIso8601String(),
-                                          'created_by': client.auth.currentUser?.id,
+                                          'created_by':
+                                              client.auth.currentUser?.id,
                                           'is_active': true,
                                         });
                                       }
                                       if (paymentRows.isNotEmpty) {
-                                        await client.from('payments').insert(paymentRows);
+                                        await client
+                                            .from('payments')
+                                            .insert(paymentRows);
                                       }
 
                                       final email = detail.customerEmail;
@@ -308,7 +344,8 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                                             'send_work_order_closed_email',
                                             body: {
                                               'to': email,
-                                              'customerName': detail.customerName ?? '',
+                                              'customerName':
+                                                  detail.customerName ?? '',
                                               'workOrderTitle': detail.title,
                                               'signatureDataUrl': sigUrl,
                                             },
@@ -318,18 +355,30 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
 
                                       if (!context.mounted) return;
                                       Navigator.of(context).pop();
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Servis kapatıldı.')),
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Servis kapatıldı.'),
+                                        ),
                                       );
                                     } on AuthException catch (e) {
                                       if (!context.mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Hata: ${e.message}')),
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Hata: ${e.message}'),
+                                        ),
                                       );
                                     } catch (_) {
                                       if (!context.mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Servis kapatılamadı.')),
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Servis kapatılamadı.'),
+                                        ),
                                       );
                                     } finally {
                                       setState(() => _closing = false);
@@ -407,23 +456,26 @@ class _BodyState extends ConsumerState<_Body> {
 
     setState(() => _saving = true);
     try {
-      await client.from('service_records').update({
-        'steps': _steps,
-        'parts': _parts.map((e) => e.toJson()).toList(),
-        'labor': _labor.map((e) => e.toJson()).toList(),
-        'total_amount': _total,
-      }).eq('id', widget.detail.id);
+      await client
+          .from('service_records')
+          .update({
+            'steps': _steps,
+            'parts': _parts.map((e) => e.toJson()).toList(),
+            'labor': _labor.map((e) => e.toJson()).toList(),
+            'total_amount': _total,
+          })
+          .eq('id', widget.detail.id);
 
       widget.onChanged();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kaydedildi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Kaydedildi.')));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kaydedilemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Kaydedilemedi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -435,13 +487,13 @@ class _BodyState extends ConsumerState<_Body> {
     final tone = widget.detail.status == 'done'
         ? AppBadgeTone.success
         : widget.detail.status == 'in_progress'
-            ? AppBadgeTone.primary
-            : AppBadgeTone.warning;
+        ? AppBadgeTone.primary
+        : AppBadgeTone.warning;
     final label = widget.detail.status == 'done'
         ? 'Tamam'
         : widget.detail.status == 'in_progress'
-            ? 'Devam'
-            : 'Açık';
+        ? 'Devam'
+        : 'Açık';
 
     return Column(
       children: [
@@ -463,10 +515,9 @@ class _BodyState extends ConsumerState<_Body> {
               const Gap(6),
               Text(
                 date,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: const Color(0xFF64748B)),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
               ),
             ],
           ),
@@ -479,7 +530,10 @@ class _BodyState extends ConsumerState<_Body> {
               Row(
                 children: [
                   Expanded(
-                    child: Text('Adımlar', style: Theme.of(context).textTheme.titleSmall),
+                    child: Text(
+                      'Adımlar',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                   ),
                   OutlinedButton.icon(
                     onPressed: _saving
@@ -501,12 +555,15 @@ class _BodyState extends ConsumerState<_Body> {
                       decoration: BoxDecoration(
                         color: AppTheme.primary.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
+                        border: Border.all(
+                          color: AppTheme.primary.withValues(alpha: 0.18),
+                        ),
                       ),
                       child: Center(
                         child: Text(
                           '${i + 1}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
                                 fontWeight: FontWeight.w700,
                                 color: AppTheme.primary,
                               ),
@@ -526,7 +583,9 @@ class _BodyState extends ConsumerState<_Body> {
                     const Gap(10),
                     IconButton(
                       tooltip: 'Sil',
-                      onPressed: _saving ? null : () => setState(() => _steps.removeAt(i)),
+                      onPressed: _saving
+                          ? null
+                          : () => setState(() => _steps.removeAt(i)),
                       icon: const Icon(Icons.delete_outline_rounded),
                     ),
                   ],
@@ -557,25 +616,29 @@ class _BodyState extends ConsumerState<_Body> {
         _CostCard(
           title: 'Parçalar',
           items: _parts,
-          onAdd: _saving ? null : () => setState(() => _parts.add(_LineItemDraft.empty())),
+          onAdd: _saving
+              ? null
+              : () => setState(() => _parts.add(_LineItemDraft.empty())),
           onRemove: _saving
               ? null
               : (i) => setState(() {
-                    _parts[i].dispose();
-                    _parts.removeAt(i);
-                  }),
+                  _parts[i].dispose();
+                  _parts.removeAt(i);
+                }),
         ),
         const Gap(12),
         _CostCard(
           title: 'İşçilik',
           items: _labor,
-          onAdd: _saving ? null : () => setState(() => _labor.add(_LineItemDraft.empty())),
+          onAdd: _saving
+              ? null
+              : () => setState(() => _labor.add(_LineItemDraft.empty())),
           onRemove: _saving
               ? null
               : (i) => setState(() {
-                    _labor[i].dispose();
-                    _labor.removeAt(i);
-                  }),
+                  _labor[i].dispose();
+                  _labor.removeAt(i);
+                }),
         ),
         const Gap(12),
         AppCard(
@@ -588,11 +651,14 @@ class _BodyState extends ConsumerState<_Body> {
                 ),
               ),
               Text(
-                NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 2)
-                    .format(_total),
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                NumberFormat.currency(
+                  locale: 'tr_TR',
+                  symbol: '₺',
+                  decimalDigits: 2,
+                ).format(_total),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
               ),
             ],
           ),
@@ -624,7 +690,10 @@ class _CostCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(title, style: Theme.of(context).textTheme.titleSmall),
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
               ),
               OutlinedButton.icon(
                 onPressed: onAdd,
@@ -637,10 +706,9 @@ class _CostCard extends StatelessWidget {
           if (items.isEmpty)
             Text(
               'Kayıt yok.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: const Color(0xFF64748B)),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
             )
           else
             for (int i = 0; i < items.length; i++) ...[
@@ -715,23 +783,30 @@ class _LineItemDraft {
   final TextEditingController unitPriceController;
 
   factory _LineItemDraft.empty() => _LineItemDraft(
-        nameController: TextEditingController(),
-        qtyController: TextEditingController(text: '1'),
-        unitPriceController: TextEditingController(text: '0'),
-      );
+    nameController: TextEditingController(),
+    qtyController: TextEditingController(text: '1'),
+    unitPriceController: TextEditingController(text: '0'),
+  );
 
   factory _LineItemDraft.from(Map<String, dynamic> json) {
     return _LineItemDraft(
-      nameController: TextEditingController(text: json['name']?.toString() ?? ''),
-      qtyController: TextEditingController(text: json['qty']?.toString() ?? '1'),
-      unitPriceController:
-          TextEditingController(text: json['unit_price']?.toString() ?? '0'),
+      nameController: TextEditingController(
+        text: json['name']?.toString() ?? '',
+      ),
+      qtyController: TextEditingController(
+        text: json['qty']?.toString() ?? '1',
+      ),
+      unitPriceController: TextEditingController(
+        text: json['unit_price']?.toString() ?? '0',
+      ),
     );
   }
 
-  double get qty => double.tryParse(qtyController.text.trim().replaceAll(',', '.')) ?? 0;
+  double get qty =>
+      double.tryParse(qtyController.text.trim().replaceAll(',', '.')) ?? 0;
   double get unitPrice =>
-      double.tryParse(unitPriceController.text.trim().replaceAll(',', '.')) ?? 0;
+      double.tryParse(unitPriceController.text.trim().replaceAll(',', '.')) ??
+      0;
   double get total => qty * unitPrice;
 
   Map<String, dynamic> toJson() {
@@ -805,7 +880,8 @@ class ServiceDetail {
       id: json['id'].toString(),
       title: (json['title'] ?? '').toString(),
       status: (json['status'] ?? 'open').toString(),
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+      createdAt:
+          DateTime.tryParse(json['created_at']?.toString() ?? '') ??
           DateTime.now(),
       notes: json['notes']?.toString(),
       currency: json['currency']?.toString(),
