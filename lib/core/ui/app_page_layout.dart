@@ -88,11 +88,17 @@ class AppPageLayout extends StatelessWidget {
                           ),
                         ),
                         if (actions != null)
-                          Wrap(
-                            spacing: 10,
-                            runSpacing: 10,
-                            alignment: WrapAlignment.end,
-                            children: actions!,
+                          Flexible(
+                            child: Align(
+                              alignment: Alignment.topRight,
+                              child: Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                alignment: WrapAlignment.end,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: actions!,
+                              ),
+                            ),
                           ),
                       ],
                     ),

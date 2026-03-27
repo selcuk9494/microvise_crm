@@ -148,29 +148,53 @@ class AppTheme {
           backgroundColor: primaryDark,
           foregroundColor: Colors.white,
           elevation: 0,
+          iconColor: Colors.white,
+          iconSize: 18,
+          iconAlignment: IconAlignment.start,
+          minimumSize: const Size(0, 52),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           textStyle: textTheme.labelLarge,
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: base.colorScheme.onSurface,
+          iconColor: text,
+          iconSize: 18,
+          iconAlignment: IconAlignment.start,
           side: const BorderSide(color: border),
+          minimumSize: const Size(0, 52),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
           backgroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           textStyle: textTheme.labelLarge,
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: primary,
+          iconColor: primary,
+          iconSize: 18,
+          iconAlignment: IconAlignment.start,
+          minimumSize: const Size(0, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           textStyle: textTheme.labelLarge,
+        ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          foregroundColor: text,
+          iconSize: 22,
+          minimumSize: const Size(44, 44),
+          padding: const EdgeInsets.all(10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
         ),
       ),
       snackBarTheme: SnackBarThemeData(
@@ -182,9 +206,11 @@ class AppTheme {
       tabBarTheme: TabBarThemeData(
         labelColor: primaryDark,
         unselectedLabelColor: textMuted,
+        dividerHeight: 1,
+        indicatorSize: TabBarIndicatorSize.tab,
         indicator: BoxDecoration(
           color: primarySoft,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: primary.withValues(alpha: 0.18)),
         ),
         dividerColor: border,
@@ -192,6 +218,9 @@ class AppTheme {
         unselectedLabelStyle: textTheme.labelLarge?.copyWith(
           fontWeight: FontWeight.w600,
         ),
+        splashFactory: NoSplash.splashFactory,
+        overlayColor: WidgetStateProperty.all(Colors.transparent),
+        labelPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: surface,
