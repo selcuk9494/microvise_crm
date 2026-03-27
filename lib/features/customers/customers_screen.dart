@@ -95,39 +95,45 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   Row(
                     children: [
                       Text(
-                        'Filtreler ve Veri İşlemleri',
+                        'Filtreler',
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
                       const Spacer(),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          OutlinedButton.icon(
-                            onPressed: () =>
-                                _downloadCustomerImportTemplate(context),
-                            icon: const Icon(
-                              Icons.file_download_outlined,
-                              size: 18,
-                            ),
-                            label: const Text('Şablon İndir'),
+                      PopupMenuButton<_CustomerDataAction>(
+                        tooltip: 'Veri işlemleri',
+                        onSelected: (action) {
+                          switch (action) {
+                            case _CustomerDataAction.template:
+                              _downloadCustomerImportTemplate(context);
+                            case _CustomerDataAction.export:
+                              _exportCustomersToExcel(context, ref);
+                            case _CustomerDataAction.import:
+                              _importExcel(context, ref);
+                          }
+                        },
+                        itemBuilder: (context) => const [
+                          PopupMenuItem(
+                            value: _CustomerDataAction.template,
+                            child: Text('Şablon İndir'),
                           ),
-                          OutlinedButton.icon(
-                            onPressed: () =>
-                                _exportCustomersToExcel(context, ref),
-                            icon: const Icon(Icons.download_rounded, size: 18),
-                            label: const Text('Dışa Aktar'),
+                          PopupMenuItem(
+                            value: _CustomerDataAction.export,
+                            child: Text('Dışa Aktar'),
                           ),
-                          OutlinedButton.icon(
-                            onPressed: () => _importExcel(context, ref),
-                            icon: const Icon(Icons.upload_rounded, size: 18),
-                            label: const Text('İçe Aktar'),
+                          PopupMenuItem(
+                            value: _CustomerDataAction.import,
+                            child: Text('İçe Aktar'),
                           ),
                         ],
+                        child: OutlinedButton.icon(
+                          onPressed: null,
+                          icon: const Icon(Icons.more_horiz_rounded, size: 18),
+                          label: const Text('Veri'),
+                        ),
                       ),
                     ],
                   ),
-                  const Gap(16),
+                  const Gap(12),
                 ],
                 Wrap(
                   spacing: 12,
@@ -312,13 +318,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
               return Column(
                 children: [
                   _SummaryRow(customers: customers),
-                  const Gap(12),
+                  const Gap(10),
                   AppCard(
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         final isCompact = constraints.maxWidth < 980;
                         final summaryText =
-                            'Toplam ${pageData.totalCount} musteri • Sayfa $currentPage / $totalPages • ${customers.length} kayit gosteriliyor';
+                            'Toplam ${pageData.totalCount} müşteri • Sayfa $currentPage / $totalPages • ${customers.length} kayıt gösteriliyor';
                         final pageButtons = Wrap(
                           spacing: 6,
                           runSpacing: 6,
@@ -371,9 +377,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 style: Theme.of(context).textTheme.bodyMedium
                                     ?.copyWith(color: const Color(0xFF64748B)),
                               ),
-                              const Gap(12),
+                              const Gap(10),
                               pageButtons,
-                              const Gap(8),
+                              const Gap(6),
                               TextButton.icon(
                                 onPressed: () => _showCustomerForm(
                                   context,
@@ -403,7 +409,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   pageButtons,
-                                  const Gap(8),
+                                  const Gap(6),
                                   TextButton.icon(
                                     onPressed: () => _showCustomerForm(
                                       context,
@@ -424,21 +430,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       },
                     ),
                   ),
-                  const Gap(12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Her sayfada $customerPageSize kayıt gösterilir.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                  ),
+                  const Gap(8),
                   ListView.separated(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: customers.length,
-                    separatorBuilder: (context, index) => const Gap(12),
+                    separatorBuilder: (context, index) => const Gap(10),
                     itemBuilder: (context, index) {
                       final customer = customers[index];
                       return _CustomerCard(
@@ -483,6 +480,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   }
 }
 
+enum _CustomerDataAction { template, export, import }
+
 class _SummaryRow extends StatelessWidget {
   const _SummaryRow({required this.customers});
 
@@ -490,8 +489,6 @@ class _SummaryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final isMobile = screenWidth < 720;
     final active = customers.where((customer) => customer.isActive).length;
     final passive = customers.length - active;
     final totalLines = customers.fold<int>(
@@ -499,54 +496,38 @@ class _SummaryRow extends StatelessWidget {
       (sum, customer) => sum + customer.activeLineCount,
     );
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cardWidth = isMobile
-            ? (constraints.maxWidth - 12) / 2
-            : (constraints.maxWidth - 36) / 4;
-        return Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            SizedBox(
-              width: cardWidth,
-              child: _SummaryStat(
-                label: 'Toplam',
-                value: customers.length.toString(),
-                icon: Icons.groups_2_rounded,
-                tone: AppBadgeTone.primary,
-              ),
-            ),
-            SizedBox(
-              width: cardWidth,
-              child: _SummaryStat(
-                label: 'Aktif',
-                value: active.toString(),
-                icon: Icons.check_circle_outline_rounded,
-                tone: AppBadgeTone.success,
-              ),
-            ),
-            SizedBox(
-              width: cardWidth,
-              child: _SummaryStat(
-                label: 'Pasif',
-                value: passive.toString(),
-                icon: Icons.pause_circle_outline_rounded,
-                tone: AppBadgeTone.neutral,
-              ),
-            ),
-            SizedBox(
-              width: cardWidth,
-              child: _SummaryStat(
-                label: 'Aktif Hat',
-                value: totalLines.toString(),
-                icon: Icons.sim_card_outlined,
-                tone: AppBadgeTone.warning,
-              ),
-            ),
-          ],
-        );
-      },
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          _SummaryStat(
+            label: 'Toplam',
+            value: customers.length.toString(),
+            icon: Icons.groups_2_rounded,
+            tone: AppBadgeTone.primary,
+          ),
+          _SummaryStat(
+            label: 'Aktif',
+            value: active.toString(),
+            icon: Icons.check_circle_outline_rounded,
+            tone: AppBadgeTone.success,
+          ),
+          _SummaryStat(
+            label: 'Pasif',
+            value: passive.toString(),
+            icon: Icons.pause_circle_outline_rounded,
+            tone: AppBadgeTone.neutral,
+          ),
+          _SummaryStat(
+            label: 'Aktif Hat',
+            value: totalLines.toString(),
+            icon: Icons.sim_card_outlined,
+            tone: AppBadgeTone.warning,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -574,38 +555,43 @@ class _SummaryStat extends StatelessWidget {
       AppBadgeTone.neutral => const Color(0xFF64748B),
     };
 
-    return AppCard(
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: 34,
+            height: 34,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: color, size: 20),
+            child: Icon(icon, color: color, size: 18),
           ),
-          const Gap(12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-                const Gap(4),
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
+          const Gap(10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+              ),
+              Text(
+                value,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ],
           ),
         ],
       ),
@@ -621,132 +607,178 @@ class _CustomerCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
     return AppCard(
       onTap: () => context.go('/musteriler/${customer.id}'),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(Icons.business_rounded, color: AppTheme.primary),
-          ),
-          const Gap(14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.business_rounded,
+                  color: AppTheme.primary,
+                  size: 22,
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        customer.name,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            customer.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                        const Gap(8),
+                        AppBadge(
+                          label: customer.isActive ? 'Aktif' : 'Pasif',
+                          tone: customer.isActive
+                              ? AppBadgeTone.success
+                              : AppBadgeTone.neutral,
+                        ),
+                      ],
                     ),
-                    AppBadge(
-                      label: customer.isActive ? 'Aktif' : 'Pasif',
-                      tone: customer.isActive
-                          ? AppBadgeTone.success
-                          : AppBadgeTone.neutral,
+                    const Gap(6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        if ((customer.city ?? '').trim().isNotEmpty)
+                          _MetaChip(
+                            icon: Icons.location_on_outlined,
+                            label: customer.city!,
+                          ),
+                        _MetaChip(
+                          icon: Icons.sim_card_outlined,
+                          label: '${customer.activeLineCount} aktif hat',
+                        ),
+                        _MetaChip(
+                          icon: Icons.verified_outlined,
+                          label: '${customer.activeGmp3Count} GMP3',
+                        ),
+                        if ((customer.phone1 ?? '').trim().isNotEmpty)
+                          _MetaChip(
+                            icon: Icons.phone_outlined,
+                            label: customer.phone1!,
+                          ),
+                        if (!isMobile &&
+                            (customer.email ?? '').trim().isNotEmpty)
+                          _MetaChip(
+                            icon: Icons.alternate_email_rounded,
+                            label: customer.email!,
+                          ),
+                        if (!isMobile && (customer.vkn ?? '').trim().isNotEmpty)
+                          _MetaChip(
+                            icon: Icons.badge_outlined,
+                            label: 'VKN: ${customer.vkn}',
+                          ),
+                      ],
                     ),
                   ],
                 ),
-                const Gap(8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    if ((customer.city ?? '').trim().isNotEmpty)
-                      _MetaChip(
-                        icon: Icons.location_on_outlined,
-                        label: customer.city!,
-                      ),
-                    _MetaChip(
-                      icon: Icons.sim_card_outlined,
-                      label: '${customer.activeLineCount} aktif hat',
+              ),
+              PopupMenuButton<_CustomerAction>(
+                tooltip: 'Müşteri işlemleri',
+                onSelected: (action) async {
+                  switch (action) {
+                    case _CustomerAction.edit:
+                      final updated = await showEditCustomerDialog(
+                        context,
+                        initialData: CustomerFormData(
+                          id: customer.id,
+                          name: customer.name,
+                          city: customer.city,
+                          email: customer.email,
+                          vkn: customer.vkn,
+                          phone1Title: customer.phone1Title,
+                          phone1: customer.phone1,
+                          phone2Title: customer.phone2Title,
+                          phone2: customer.phone2,
+                          phone3Title: customer.phone3Title,
+                          phone3: customer.phone3,
+                          notes: customer.notes,
+                          isActive: customer.isActive,
+                        ),
+                      );
+                      if (updated) {
+                        await onChanged();
+                      }
+                    case _CustomerAction.toggleActive:
+                      await _toggleCustomerActive(
+                        context,
+                        ref,
+                        customer: customer,
+                      );
+                      await onChanged();
+                    case _CustomerAction.open:
+                      if (context.mounted) {
+                        context.go('/musteriler/${customer.id}');
+                      }
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: _CustomerAction.open,
+                    child: Text('Detaya Git'),
+                  ),
+                  const PopupMenuItem(
+                    value: _CustomerAction.edit,
+                    child: Text('Düzenle'),
+                  ),
+                  PopupMenuItem(
+                    value: _CustomerAction.toggleActive,
+                    child: Text(
+                      customer.isActive ? 'Pasife Al' : 'Aktifleştir',
                     ),
-                    _MetaChip(
-                      icon: Icons.verified_outlined,
-                      label: '${customer.activeGmp3Count} GMP3',
-                    ),
-                    if ((customer.phone1 ?? '').trim().isNotEmpty)
-                      _MetaChip(
-                        icon: Icons.phone_outlined,
-                        label: customer.phone1!,
-                      ),
-                    if ((customer.email ?? '').trim().isNotEmpty)
-                      _MetaChip(
-                        icon: Icons.alternate_email_rounded,
-                        label: customer.email!,
-                      ),
-                    if ((customer.vkn ?? '').trim().isNotEmpty)
-                      _MetaChip(
-                        icon: Icons.badge_outlined,
-                        label: 'VKN: ${customer.vkn}',
-                      ),
-                  ],
+                  ),
+                ],
+                child: const Padding(
+                  padding: EdgeInsets.only(left: 4),
+                  child: Icon(
+                    Icons.more_vert_rounded,
+                    color: Color(0xFF94A3B8),
+                  ),
                 ),
-              ],
-            ),
-          ),
-          PopupMenuButton<_CustomerAction>(
-            tooltip: 'Müşteri işlemleri',
-            onSelected: (action) async {
-              switch (action) {
-                case _CustomerAction.edit:
-                  final updated = await showEditCustomerDialog(
-                    context,
-                    initialData: CustomerFormData(
-                      id: customer.id,
-                      name: customer.name,
-                      city: customer.city,
-                      email: customer.email,
-                      vkn: customer.vkn,
-                      phone1Title: customer.phone1Title,
-                      phone1: customer.phone1,
-                      phone2Title: customer.phone2Title,
-                      phone2: customer.phone2,
-                      phone3Title: customer.phone3Title,
-                      phone3: customer.phone3,
-                      notes: customer.notes,
-                      isActive: customer.isActive,
-                    ),
-                  );
-                  if (updated) {
-                    await onChanged();
-                  }
-                case _CustomerAction.toggleActive:
-                  await _toggleCustomerActive(context, ref, customer: customer);
-                  await onChanged();
-                case _CustomerAction.open:
-                  if (context.mounted) {
-                    context.go('/musteriler/${customer.id}');
-                  }
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: _CustomerAction.open,
-                child: Text('Detaya Git'),
-              ),
-              const PopupMenuItem(
-                value: _CustomerAction.edit,
-                child: Text('Düzenle'),
-              ),
-              PopupMenuItem(
-                value: _CustomerAction.toggleActive,
-                child: Text(customer.isActive ? 'Pasife Al' : 'Aktifleştir'),
               ),
             ],
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 6),
-              child: Icon(Icons.more_vert_rounded, color: Color(0xFF94A3B8)),
-            ),
           ),
+          if (isMobile &&
+              (((customer.email ?? '').trim().isNotEmpty) ||
+                  ((customer.vkn ?? '').trim().isNotEmpty))) ...[
+            const Gap(8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                if ((customer.email ?? '').trim().isNotEmpty)
+                  _MetaChip(
+                    icon: Icons.alternate_email_rounded,
+                    label: customer.email!,
+                  ),
+                if ((customer.vkn ?? '').trim().isNotEmpty)
+                  _MetaChip(
+                    icon: Icons.badge_outlined,
+                    label: 'VKN: ${customer.vkn}',
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -764,7 +796,7 @@ class _MetaChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(999),
@@ -774,7 +806,7 @@ class _MetaChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 16, color: const Color(0xFF64748B)),
-          const Gap(6),
+          const Gap(5),
           Text(
             label,
             style: Theme.of(
