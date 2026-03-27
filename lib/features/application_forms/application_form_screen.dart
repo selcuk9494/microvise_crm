@@ -26,7 +26,7 @@ final applicationFormCustomersProvider = FutureProvider<List<_CustomerOption>>((
   while (true) {
     final rows = await client
         .from('customers')
-        .select('id,name,vkn,city,is_active')
+        .select('id,name,vkn,tckn_ms,city,is_active')
         .range(from, from + pageSize - 1);
     final batch = (rows as List)
         .map((row) => _CustomerOption.fromJson(row as Map<String, dynamic>))
@@ -69,7 +69,7 @@ final applicationFormsProvider = FutureProvider<List<ApplicationFormRecord>>((
   final rows = await client
       .from('application_forms')
       .select(
-        'id,application_date,customer_id,customer_name,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,created_at',
+        'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,created_at',
       )
       .order('created_at', ascending: false)
       .limit(500);
@@ -483,6 +483,7 @@ class _ApplicationFormDialogState
   late final TextEditingController _customerController;
   late final TextEditingController _workAddressController;
   late final TextEditingController _fileRegistryController;
+  late final TextEditingController _customerTcknMsController;
   late final TextEditingController _directorController;
   late final TextEditingController _accountingOfficeController;
   late final TextEditingController _stockRegistryNumberController;
@@ -510,6 +511,9 @@ class _ApplicationFormDialogState
     );
     _fileRegistryController = TextEditingController(
       text: initial?.fileRegistryNumber ?? '',
+    );
+    _customerTcknMsController = TextEditingController(
+      text: initial?.customerTcknMs ?? '',
     );
     _directorController = TextEditingController(text: initial?.director ?? '');
     _accountingOfficeController = TextEditingController(
@@ -599,6 +603,7 @@ class _ApplicationFormDialogState
     _customerController.dispose();
     _workAddressController.dispose();
     _fileRegistryController.dispose();
+    _customerTcknMsController.dispose();
     _directorController.dispose();
     _accountingOfficeController.dispose();
     _stockRegistryNumberController.dispose();
@@ -635,6 +640,7 @@ class _ApplicationFormDialogState
       if (_fileRegistryController.text.trim().isEmpty) {
         _fileRegistryController.text = created.vkn ?? '';
       }
+      _customerTcknMsController.text = created.tcknMs ?? '';
       final city = ref
           .read(cityDefinitionsProvider)
           .asData
@@ -660,6 +666,7 @@ class _ApplicationFormDialogState
       _selectedCustomerId = selected.id;
       _customerController.text = selected.name;
       _fileRegistryController.text = selected.vkn ?? '';
+      _customerTcknMsController.text = selected.tcknMs ?? '';
       final city = ref
           .read(cityDefinitionsProvider)
           .asData
@@ -712,6 +719,9 @@ class _ApplicationFormDialogState
         'application_date': DateFormat('yyyy-MM-dd').format(_applicationDate),
         'customer_id': customer?.id,
         'customer_name': _customerController.text.trim(),
+        'customer_tckn_ms': _customerTcknMsController.text.trim().isEmpty
+            ? null
+            : _customerTcknMsController.text.trim(),
         'work_address': _workAddressController.text.trim(),
         'tax_office_city_id': city?.id.isEmpty ?? true ? null : city?.id,
         'tax_office_city_name': city?.name,
@@ -755,7 +765,7 @@ class _ApplicationFormDialogState
                         .eq('id', widget.initialRecord!.id)
                   : client.from('application_forms').insert(payload))
               .select(
-                'id,application_date,customer_id,customer_name,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,created_at',
+                'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,created_at',
               )
               .single();
 
@@ -915,6 +925,12 @@ class _ApplicationFormDialogState
                           label: 'Dosya Sicil No',
                           child: _ApplicationTextField(
                             controller: _fileRegistryController,
+                          ),
+                        ),
+                        _FormRow(
+                          label: 'TCKN-MŞ',
+                          child: _ApplicationTextField(
+                            controller: _customerTcknMsController,
                           ),
                         ),
                         _FormRow(
@@ -1758,7 +1774,7 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
         .where((item) {
           if (query.isEmpty) return true;
           final haystack = _sortKey(
-            '${item.name} ${item.vkn ?? ''} ${item.city ?? ''}',
+            '${item.name} ${item.vkn ?? ''} ${item.tcknMs ?? ''} ${item.city ?? ''}',
           );
           return haystack.contains(query);
         })
@@ -1819,6 +1835,8 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
                               [
                                 if (item.vkn?.trim().isNotEmpty ?? false)
                                   item.vkn!,
+                                if (item.tcknMs?.trim().isNotEmpty ?? false)
+                                  item.tcknMs!,
                                 if (item.city?.trim().isNotEmpty ?? false)
                                   item.city!,
                                 item.isActive ? 'Aktif' : 'Pasif',
@@ -1866,6 +1884,7 @@ class _CustomerOption {
     required this.id,
     required this.name,
     required this.vkn,
+    required this.tcknMs,
     required this.city,
     required this.isActive,
   });
@@ -1873,6 +1892,7 @@ class _CustomerOption {
   final String id;
   final String name;
   final String? vkn;
+  final String? tcknMs;
   final String? city;
   final bool isActive;
 
@@ -1881,6 +1901,7 @@ class _CustomerOption {
       id: json['id'].toString(),
       name: json['name']?.toString() ?? '',
       vkn: json['vkn']?.toString(),
+      tcknMs: json['tckn_ms']?.toString(),
       city: json['city']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
     );

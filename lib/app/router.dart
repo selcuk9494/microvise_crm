@@ -12,6 +12,9 @@ import '../features/dashboard/dashboard_screen.dart';
 import '../features/billing/billing_screen.dart';
 import '../features/products/products_screen.dart';
 import '../features/definitions/definitions_screen.dart';
+import '../features/forms/forms_screen.dart';
+import '../features/forms/scrap_form_screen.dart';
+import '../features/forms/transfer_form_screen.dart';
 import '../features/personnel/personnel_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/service/service_screen.dart';
@@ -58,9 +61,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ],
         ),
         GoRoute(
-          path: '/basvuru-formu',
+          path: '/formlar',
           pageBuilder: (context, state) =>
-              const NoTransitionPage(child: ApplicationFormScreen()),
+              const NoTransitionPage(child: FormsScreen()),
+          routes: [
+            GoRoute(
+              path: 'basvuru',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: ApplicationFormScreen()),
+            ),
+            GoRoute(
+              path: 'hurda',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: ScrapFormScreen()),
+            ),
+            GoRoute(
+              path: 'devir',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: TransferFormScreen()),
+            ),
+          ],
         ),
         GoRoute(
           path: '/is-emirleri',

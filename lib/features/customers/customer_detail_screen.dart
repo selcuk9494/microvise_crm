@@ -22,7 +22,7 @@ final customerDetailProvider = FutureProvider.family<CustomerDetail, String>((
   final row = await client
       .from('customers')
       .select(
-        'id,name,city,email,vkn,notes,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,is_active,created_at',
+        'id,name,city,email,vkn,tckn_ms,notes,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,is_active,created_at',
       )
       .eq('id', customerId)
       .maybeSingle();
@@ -143,6 +143,7 @@ class CustomerDetailScreen extends ConsumerWidget {
                 city: 'İstanbul',
                 email: 'ornek@firma.com',
                 vkn: '1234567890',
+                tcknMs: 'MS-1001',
                 notes: 'Notlar burada görünür.',
                 phone1: '0 555 555 55 55',
                 phone1Title: 'Yetkili',
@@ -299,14 +300,15 @@ class _Content extends ConsumerWidget {
   }
 }
 
-class _GeneralTab extends StatelessWidget {
+class _GeneralTab extends ConsumerWidget {
   const _GeneralTab({required this.detail});
 
   final CustomerDetail detail;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final date = DateFormat('d MMMM y', 'tr_TR').format(detail.createdAt);
+    final locationsAsync = ref.watch(customerLocationsProvider(detail.id));
 
     return Padding(
       padding: const EdgeInsets.all(18),
@@ -326,6 +328,8 @@ class _GeneralTab extends StatelessWidget {
           const Gap(10),
           _InfoRow(label: 'VKN', value: detail.vkn ?? '—'),
           const Gap(10),
+          _InfoRow(label: 'TCKN-MŞ', value: detail.tcknMs ?? '—'),
+          const Gap(10),
           _InfoRow(
             label: detail.phone1Title ?? 'Telefon 1',
             value: detail.phone1 ?? '—',
@@ -342,6 +346,85 @@ class _GeneralTab extends StatelessWidget {
           ),
           const Gap(10),
           _InfoRow(label: 'Kayıt Tarihi', value: date),
+          const Gap(16),
+          Text('Konumlar', style: Theme.of(context).textTheme.titleSmall),
+          const Gap(10),
+          locationsAsync.when(
+            data: (locations) {
+              if (locations.isEmpty) {
+                return Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: Text(
+                    'Henüz müşteri konumu eklenmemiş.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                );
+              }
+
+              return Column(
+                children: [
+                  for (final location in locations) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppTheme.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            location.title,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          if (location.description?.trim().isNotEmpty ?? false)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                location.description!,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: const Color(0xFF475569)),
+                              ),
+                            ),
+                          if (location.address?.trim().isNotEmpty ?? false)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                location.address!,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                          if (location.locationLat != null ||
+                              location.locationLng != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                'Konum: ${location.locationLat?.toStringAsFixed(5) ?? '-'}, ${location.locationLng?.toStringAsFixed(5) ?? '-'}',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: const Color(0xFF64748B)),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const Gap(10),
+                  ],
+                ],
+              );
+            },
+            loading: () => const LinearProgressIndicator(minHeight: 2),
+            error: (error, stackTrace) => const SizedBox.shrink(),
+          ),
           if (detail.notes?.trim().isNotEmpty ?? false) ...[
             const Gap(16),
             Container(
@@ -2319,6 +2402,7 @@ Future<void> _showEditCustomerDialog(
       city: detail.city,
       email: detail.email,
       vkn: detail.vkn,
+      tcknMs: detail.tcknMs,
       phone1Title: detail.phone1Title,
       phone1: detail.phone1,
       phone2Title: detail.phone2Title,
@@ -2332,6 +2416,7 @@ Future<void> _showEditCustomerDialog(
 
   if (updated != true) return;
   ref.invalidate(customerDetailProvider(detail.id));
+  ref.invalidate(customerLocationsProvider(detail.id));
   ref.invalidate(customersProvider);
   ref.invalidate(customerCitiesProvider);
 }
@@ -2343,6 +2428,7 @@ class CustomerDetail {
     required this.city,
     required this.email,
     required this.vkn,
+    required this.tcknMs,
     required this.notes,
     required this.phone1,
     required this.phone1Title,
@@ -2359,6 +2445,7 @@ class CustomerDetail {
   final String? city;
   final String? email;
   final String? vkn;
+  final String? tcknMs;
   final String? notes;
   final String? phone1;
   final String? phone1Title;
@@ -2376,6 +2463,7 @@ class CustomerDetail {
       city: json['city']?.toString(),
       email: json['email']?.toString(),
       vkn: json['vkn']?.toString(),
+      tcknMs: json['tckn_ms']?.toString(),
       notes: json['notes']?.toString(),
       phone1: json['phone_1']?.toString(),
       phone1Title: json['phone_1_title']?.toString(),

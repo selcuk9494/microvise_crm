@@ -4,6 +4,8 @@ import 'package:gap/gap.dart';
 
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_card.dart';
+import 'customer_model.dart';
+import 'customers_providers.dart';
 
 class CustomerFormData {
   const CustomerFormData({
@@ -12,6 +14,7 @@ class CustomerFormData {
     this.city,
     this.email,
     this.vkn,
+    this.tcknMs,
     this.phone1Title,
     this.phone1,
     this.phone2Title,
@@ -20,6 +23,7 @@ class CustomerFormData {
     this.phone3,
     this.notes,
     required this.isActive,
+    this.locations = const [],
   });
 
   final String? id;
@@ -27,6 +31,7 @@ class CustomerFormData {
   final String? city;
   final String? email;
   final String? vkn;
+  final String? tcknMs;
   final String? phone1Title;
   final String? phone1;
   final String? phone2Title;
@@ -35,6 +40,7 @@ class CustomerFormData {
   final String? phone3;
   final String? notes;
   final bool isActive;
+  final List<CustomerLocation> locations;
 }
 
 Future<String?> showCreateCustomerDialog(BuildContext context) async {
@@ -75,6 +81,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   late final TextEditingController _cityController;
   late final TextEditingController _emailController;
   late final TextEditingController _vknController;
+  late final TextEditingController _tcknMsController;
   late final TextEditingController _phone1TitleController;
   late final TextEditingController _phone1Controller;
   late final TextEditingController _phone2TitleController;
@@ -83,7 +90,9 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   late final TextEditingController _phone3Controller;
   late final TextEditingController _notesController;
   late bool _isActive;
+  List<_CustomerLocationDraft> _locationDrafts = [];
   bool _saving = false;
+  bool _loadingLocations = false;
 
   @override
   void initState() {
@@ -93,6 +102,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     _cityController = TextEditingController(text: initial?.city ?? '');
     _emailController = TextEditingController(text: initial?.email ?? '');
     _vknController = TextEditingController(text: initial?.vkn ?? '');
+    _tcknMsController = TextEditingController(text: initial?.tcknMs ?? '');
     _phone1TitleController = TextEditingController(
       text: initial?.phone1Title ?? 'Yetkili',
     );
@@ -107,6 +117,15 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     _phone3Controller = TextEditingController(text: initial?.phone3 ?? '');
     _notesController = TextEditingController(text: initial?.notes ?? '');
     _isActive = initial?.isActive ?? true;
+    _locationDrafts = (initial?.locations ?? const [])
+        .map(_CustomerLocationDraft.fromLocation)
+        .toList(growable: true);
+    if (_locationDrafts.isEmpty) {
+      _locationDrafts = [_CustomerLocationDraft()];
+    }
+    if (widget.isEdit && (initial?.id?.isNotEmpty ?? false)) {
+      _loadLocations();
+    }
   }
 
   @override
@@ -115,6 +134,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     _cityController.dispose();
     _emailController.dispose();
     _vknController.dispose();
+    _tcknMsController.dispose();
     _phone1TitleController.dispose();
     _phone1Controller.dispose();
     _phone2TitleController.dispose();
@@ -122,7 +142,50 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     _phone3TitleController.dispose();
     _phone3Controller.dispose();
     _notesController.dispose();
+    for (final draft in _locationDrafts) {
+      draft.dispose();
+    }
     super.dispose();
+  }
+
+  Future<void> _loadLocations() async {
+    final customerId = widget.initialData?.id;
+    if (customerId == null || customerId.isEmpty) return;
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    setState(() => _loadingLocations = true);
+    try {
+      final rows = await client
+          .from('customer_locations')
+          .select(
+            'id,customer_id,title,description,address,location_lat,location_lng,is_active,created_at',
+          )
+          .eq('customer_id', customerId)
+          .eq('is_active', true)
+          .order('created_at', ascending: false);
+
+      final nextDrafts = (rows as List)
+          .map(
+            (row) => _CustomerLocationDraft.fromLocation(
+              CustomerLocation.fromJson(row as Map<String, dynamic>),
+            ),
+          )
+          .toList(growable: true);
+      if (!mounted) return;
+      setState(() {
+        for (final draft in _locationDrafts) {
+          draft.dispose();
+        }
+        _locationDrafts = nextDrafts.isEmpty
+            ? [_CustomerLocationDraft()]
+            : nextDrafts;
+      });
+    } catch (_) {
+      if (!mounted) return;
+    } finally {
+      if (mounted) setState(() => _loadingLocations = false);
+    }
   }
 
   @override
@@ -235,9 +298,21 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                           controller: _vknController,
                           textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
-                            labelText: 'VKN / TCKN',
+                            labelText: 'VKN',
                             hintText: 'Vergi numarası',
                             prefixIcon: Icon(Icons.badge_outlined),
+                          ),
+                        ),
+                      ),
+                      const Gap(12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _tcknMsController,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: 'TCKN-MŞ',
+                            hintText: 'Müşteri sicil / TCKN alanı',
+                            prefixIcon: Icon(Icons.perm_identity_rounded),
                           ),
                         ),
                       ),
@@ -352,6 +427,56 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                       prefixIcon: Icon(Icons.notes_rounded),
                     ),
                   ),
+                  const Gap(16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Konumlar',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: _saving
+                            ? null
+                            : () => setState(
+                                () => _locationDrafts.add(
+                                  _CustomerLocationDraft(),
+                                ),
+                              ),
+                        icon: const Icon(Icons.add_location_alt_rounded),
+                        label: const Text('Konum Ekle'),
+                      ),
+                    ],
+                  ),
+                  const Gap(8),
+                  if (_loadingLocations)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                  ..._locationDrafts.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final draft = entry.value;
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        bottom: index == _locationDrafts.length - 1 ? 0 : 12,
+                      ),
+                      child: _CustomerLocationCard(
+                        draft: draft,
+                        canRemove: _locationDrafts.length > 1,
+                        onRemove: _saving
+                            ? null
+                            : () => setState(() {
+                                draft.dispose();
+                                _locationDrafts.removeAt(index);
+                                if (_locationDrafts.isEmpty) {
+                                  _locationDrafts = [_CustomerLocationDraft()];
+                                }
+                              }),
+                      ),
+                    );
+                  }),
                   const Gap(20),
                   Row(
                     children: [
@@ -366,7 +491,9 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                       const Gap(12),
                       Expanded(
                         child: FilledButton.icon(
-                          onPressed: _saving ? null : _submit,
+                          onPressed: (_saving || _loadingLocations)
+                              ? null
+                              : _submit,
                           icon: _saving
                               ? const SizedBox(
                                   width: 16,
@@ -416,6 +543,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       'city': _nullIfEmpty(_cityController.text),
       'email': _nullIfEmpty(_emailController.text),
       'vkn': _nullIfEmpty(_vknController.text),
+      'tckn_ms': _nullIfEmpty(_tcknMsController.text),
       'phone_1_title': _nullIfEmpty(_phone1TitleController.text),
       'phone_1': _nullIfEmpty(_phone1Controller.text),
       'phone_2_title': _nullIfEmpty(_phone2TitleController.text),
@@ -427,12 +555,56 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     };
 
     try {
+      final locationPayloads = _locationDrafts
+          .map((draft) {
+            final title = _nullIfEmpty(draft.titleController.text);
+            final description = _nullIfEmpty(draft.descriptionController.text);
+            final address = _nullIfEmpty(draft.addressController.text);
+            return {
+              'id': draft.id,
+              'title': title ?? address ?? description ?? 'Konum',
+              'description': description,
+              'address': address,
+              'location_lat': double.tryParse(draft.latController.text.trim()),
+              'location_lng': double.tryParse(draft.lngController.text.trim()),
+              'is_active': true,
+            };
+          })
+          .where(
+            (row) =>
+                (row['title'] as String?) != null ||
+                (row['description'] as String?) != null ||
+                (row['address'] as String?) != null ||
+                row['location_lat'] != null ||
+                row['location_lng'] != null,
+          )
+          .toList(growable: false);
+
       if (widget.isEdit) {
         await client
             .from('customers')
             .update(payload)
             .eq('id', widget.initialData!.id!);
+        try {
+          await client
+              .from('customer_locations')
+              .delete()
+              .eq('customer_id', widget.initialData!.id!);
+          if (locationPayloads.isNotEmpty) {
+            await client.from('customer_locations').insert([
+              for (final row in locationPayloads)
+                {
+                  ...row,
+                  'id': row['id'],
+                  'customer_id': widget.initialData!.id!,
+                  'created_by': client.auth.currentUser?.id,
+                },
+            ]);
+          }
+        } catch (_) {}
+        ref.invalidate(customerLocationsProvider(widget.initialData!.id!));
         if (!mounted) return;
+        ref.invalidate(customersProvider);
         messenger.showSnackBar(
           const SnackBar(content: Text('Müşteri güncellendi.')),
         );
@@ -446,11 +618,28 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
           .select('id')
           .single();
 
+      final customerId = inserted['id'].toString();
+      try {
+        if (locationPayloads.isNotEmpty) {
+          await client.from('customer_locations').insert([
+            for (final row in locationPayloads)
+              {
+                ...row,
+                'id': row['id'],
+                'customer_id': customerId,
+                'created_by': client.auth.currentUser?.id,
+              },
+          ]);
+        }
+      } catch (_) {}
+
       if (!mounted) return;
+      ref.invalidate(customersProvider);
+      ref.invalidate(customerLocationsProvider(customerId));
       messenger.showSnackBar(
         const SnackBar(content: Text('Müşteri kaydı oluşturuldu.')),
       );
-      Navigator.of(context).pop(inserted['id'].toString());
+      Navigator.of(context).pop(customerId);
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(
@@ -469,5 +658,152 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   String? _nullIfEmpty(String value) {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+}
+
+class _CustomerLocationDraft {
+  _CustomerLocationDraft({
+    this.id,
+    String? title,
+    String? description,
+    String? address,
+    String? lat,
+    String? lng,
+  }) : titleController = TextEditingController(text: title ?? ''),
+       descriptionController = TextEditingController(text: description ?? ''),
+       addressController = TextEditingController(text: address ?? ''),
+       latController = TextEditingController(text: lat ?? ''),
+       lngController = TextEditingController(text: lng ?? '');
+
+  factory _CustomerLocationDraft.fromLocation(CustomerLocation location) {
+    return _CustomerLocationDraft(
+      id: location.id,
+      title: location.title,
+      description: location.description,
+      address: location.address,
+      lat: location.locationLat?.toString(),
+      lng: location.locationLng?.toString(),
+    );
+  }
+
+  final String? id;
+  final TextEditingController titleController;
+  final TextEditingController descriptionController;
+  final TextEditingController addressController;
+  final TextEditingController latController;
+  final TextEditingController lngController;
+
+  void dispose() {
+    titleController.dispose();
+    descriptionController.dispose();
+    addressController.dispose();
+    latController.dispose();
+    lngController.dispose();
+  }
+}
+
+class _CustomerLocationCard extends StatelessWidget {
+  const _CustomerLocationCard({
+    required this.draft,
+    required this.canRemove,
+    required this.onRemove,
+  });
+
+  final _CustomerLocationDraft draft;
+  final bool canRemove;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: draft.titleController,
+                  decoration: const InputDecoration(
+                    labelText: 'Konum Başlığı',
+                    hintText: 'Örn. Merkez Ofis',
+                    prefixIcon: Icon(Icons.place_outlined),
+                  ),
+                ),
+              ),
+              if (canRemove) ...[
+                const Gap(10),
+                IconButton(
+                  tooltip: 'Konumu sil',
+                  onPressed: onRemove,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+              ],
+            ],
+          ),
+          const Gap(12),
+          TextFormField(
+            controller: draft.descriptionController,
+            minLines: 2,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Konum Açıklaması',
+              hintText: 'Servis giriş kapısı, mağaza içi nokta vb.',
+              alignLabelWithHint: true,
+              prefixIcon: Icon(Icons.info_outline_rounded),
+            ),
+          ),
+          const Gap(12),
+          TextFormField(
+            controller: draft.addressController,
+            minLines: 2,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Adres',
+              hintText: 'Cadde, sokak, no, ilçe...',
+              alignLabelWithHint: true,
+              prefixIcon: Icon(Icons.home_work_outlined),
+            ),
+          ),
+          const Gap(12),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: draft.latController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Konum Lat',
+                    hintText: '41.0',
+                  ),
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: TextFormField(
+                  controller: draft.lngController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Konum Lng',
+                    hintText: '29.0',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -148,7 +148,7 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
   final rows = await client
       .from('customers')
       .select(
-        'id,name,city,email,vkn,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,notes,is_active,created_at',
+        'id,name,city,email,vkn,tckn_ms,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,notes,is_active,created_at',
       )
       .inFilter('id', currentPageIds);
   final rowById = {
@@ -258,3 +258,31 @@ final customerCitiesProvider = FutureProvider<List<String>>((ref) async {
     return const [];
   }
 });
+
+final customerLocationsProvider =
+    FutureProvider.family<List<CustomerLocation>, String>((
+      ref,
+      customerId,
+    ) async {
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
+
+      try {
+        final rows = await client
+            .from('customer_locations')
+            .select(
+              'id,customer_id,title,description,address,location_lat,location_lng,is_active,created_at',
+            )
+            .eq('customer_id', customerId)
+            .eq('is_active', true)
+            .order('created_at', ascending: false);
+
+        return (rows as List)
+            .map(
+              (row) => CustomerLocation.fromJson(row as Map<String, dynamic>),
+            )
+            .toList(growable: false);
+      } catch (_) {
+        return const [];
+      }
+    });

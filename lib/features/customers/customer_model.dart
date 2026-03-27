@@ -11,6 +11,7 @@ class Customer {
     required this.phone3,
     required this.phone3Title,
     required this.vkn,
+    required this.tcknMs,
     required this.notes,
     required this.isActive,
     required this.activeLineCount,
@@ -28,6 +29,7 @@ class Customer {
   final String? phone3;
   final String? phone3Title;
   final String? vkn;
+  final String? tcknMs;
   final String? notes;
   final bool isActive;
   final int activeLineCount;
@@ -46,10 +48,46 @@ class Customer {
       phone3: json['phone_3']?.toString(),
       phone3Title: json['phone_3_title']?.toString(),
       vkn: json['vkn']?.toString(),
+      tcknMs: json['tckn_ms']?.toString(),
       notes: json['notes']?.toString(),
       isActive: (json['is_active'] as bool?) ?? true,
       activeLineCount: (json['active_line_count'] as num?)?.toInt() ?? 0,
       activeGmp3Count: (json['active_gmp3_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class CustomerLocation {
+  const CustomerLocation({
+    required this.id,
+    required this.customerId,
+    required this.title,
+    required this.description,
+    required this.address,
+    required this.locationLat,
+    required this.locationLng,
+    required this.isActive,
+  });
+
+  final String id;
+  final String customerId;
+  final String title;
+  final String? description;
+  final String? address;
+  final double? locationLat;
+  final double? locationLng;
+  final bool isActive;
+
+  factory CustomerLocation.fromJson(Map<String, dynamic> json) {
+    return CustomerLocation(
+      id: json['id'].toString(),
+      customerId: json['customer_id']?.toString() ?? '',
+      title: (json['title'] ?? '').toString(),
+      description: json['description']?.toString(),
+      address: json['address']?.toString(),
+      locationLat: (json['location_lat'] as num?)?.toDouble(),
+      locationLng: (json['location_lng'] as num?)?.toDouble(),
+      isActive: (json['is_active'] as bool?) ?? true,
     );
   }
 }

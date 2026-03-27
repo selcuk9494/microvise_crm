@@ -12,6 +12,8 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../customers/customer_detail_screen.dart';
+import '../customers/customer_model.dart';
+import '../customers/customers_providers.dart';
 import 'work_order_model.dart';
 
 Future<void> showWorkOrderCloseSheet(
@@ -43,6 +45,8 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
   final _latController = TextEditingController();
   final _lngController = TextEditingController();
   final _addressController = TextEditingController();
+  final _locationTitleController = TextEditingController();
+  final _locationDescriptionController = TextEditingController();
 
   final SignatureController _signatureController = SignatureController(
     penStrokeWidth: 2.5,
@@ -52,6 +56,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
   bool _saving = false;
   bool _addLine = false;
   bool _addGmp3 = false;
+  bool _saveAsCustomerLocation = false;
 
   final _lineNumberController = TextEditingController();
   final _lineSimController = TextEditingController();
@@ -59,6 +64,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
   final _gmp3NameController = TextEditingController(text: 'GMP3 Lisansı');
 
   String? _selectedBranchId;
+  String? _selectedCustomerLocationId;
   final List<_PaymentDraft> _payments = [_PaymentDraft()];
 
   @override
@@ -67,6 +73,8 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     _latController.dispose();
     _lngController.dispose();
     _addressController.dispose();
+    _locationTitleController.dispose();
+    _locationDescriptionController.dispose();
     _signatureController.dispose();
     _lineNumberController.dispose();
     _lineSimController.dispose();
@@ -99,6 +107,43 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               .from('branches')
               .update({...?latMap, ...?lngMap, ...?addressMap})
               .eq('id', branchId);
+        }
+      }
+
+      if (_saveAsCustomerLocation) {
+        final title = _locationTitleController.text.trim();
+        final description = _locationDescriptionController.text.trim();
+        final address = _addressController.text.trim();
+        final lat = double.tryParse(_latController.text.trim());
+        final lng = double.tryParse(_lngController.text.trim());
+
+        if (title.isNotEmpty ||
+            description.isNotEmpty ||
+            address.isNotEmpty ||
+            lat != null ||
+            lng != null) {
+          final payload = {
+            'customer_id': customer.id,
+            'title': title.isEmpty ? 'İş Emri Konumu' : title,
+            'description': description.isEmpty ? null : description,
+            'address': address.isEmpty ? null : address,
+            'location_lat': lat,
+            'location_lng': lng,
+            'is_active': true,
+          };
+
+          if (_selectedCustomerLocationId != null) {
+            await client
+                .from('customer_locations')
+                .update(payload)
+                .eq('id', _selectedCustomerLocationId!);
+          } else {
+            await client.from('customer_locations').insert({
+              ...payload,
+              'created_by': client.auth.currentUser?.id,
+            });
+          }
+          ref.invalidate(customerLocationsProvider(customer.id));
         }
       }
 
@@ -243,6 +288,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     final branchesAsync = ref.watch(
       customerBranchesProvider(widget.order.customerId),
     );
+    final customerLocationsAsync = ref.watch(
+      customerLocationsProvider(widget.order.customerId),
+    );
 
     return Container(
       decoration: const BoxDecoration(
@@ -263,14 +311,46 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               order: widget.order,
               customer: customer,
               branchesAsync: branchesAsync,
+              customerLocationsAsync: customerLocationsAsync,
               selectedBranchId: _selectedBranchId ?? widget.order.branchId,
               onBranchChanged: _saving
                   ? null
                   : (id) => setState(() => _selectedBranchId = id),
+              selectedCustomerLocationId: _selectedCustomerLocationId,
+              onCustomerLocationChanged: _saving
+                  ? null
+                  : (id, locations) {
+                      setState(() {
+                        _selectedCustomerLocationId = id;
+                        if (id == null) return;
+                        CustomerLocation? selected;
+                        for (final location in locations) {
+                          if (location.id == id) {
+                            selected = location;
+                            break;
+                          }
+                        }
+                        if (selected == null) return;
+                        _locationTitleController.text = selected.title;
+                        _locationDescriptionController.text =
+                            selected.description ?? '';
+                        _addressController.text = selected.address ?? '';
+                        _latController.text =
+                            selected.locationLat?.toString() ?? '';
+                        _lngController.text =
+                            selected.locationLng?.toString() ?? '';
+                      });
+                    },
               notesController: _notesController,
               addressController: _addressController,
               latController: _latController,
               lngController: _lngController,
+              locationTitleController: _locationTitleController,
+              locationDescriptionController: _locationDescriptionController,
+              saveAsCustomerLocation: _saveAsCustomerLocation,
+              onToggleSaveAsCustomerLocation: _saving
+                  ? null
+                  : (value) => setState(() => _saveAsCustomerLocation = value),
               addLine: _addLine,
               addGmp3: _addGmp3,
               onToggleAddLine: _saving
@@ -323,12 +403,19 @@ class _SheetBody extends StatelessWidget {
     required this.order,
     required this.customer,
     required this.branchesAsync,
+    required this.customerLocationsAsync,
     required this.selectedBranchId,
     required this.onBranchChanged,
+    required this.selectedCustomerLocationId,
+    required this.onCustomerLocationChanged,
     required this.notesController,
     required this.addressController,
     required this.latController,
     required this.lngController,
+    required this.locationTitleController,
+    required this.locationDescriptionController,
+    required this.saveAsCustomerLocation,
+    required this.onToggleSaveAsCustomerLocation,
     required this.addLine,
     required this.addGmp3,
     required this.onToggleAddLine,
@@ -347,12 +434,20 @@ class _SheetBody extends StatelessWidget {
   final WorkOrder order;
   final CustomerDetail customer;
   final AsyncValue<List<CustomerBranch>> branchesAsync;
+  final AsyncValue<List<CustomerLocation>> customerLocationsAsync;
   final String? selectedBranchId;
   final ValueChanged<String?>? onBranchChanged;
+  final String? selectedCustomerLocationId;
+  final void Function(String?, List<CustomerLocation>)?
+  onCustomerLocationChanged;
   final TextEditingController notesController;
   final TextEditingController addressController;
   final TextEditingController latController;
   final TextEditingController lngController;
+  final TextEditingController locationTitleController;
+  final TextEditingController locationDescriptionController;
+  final bool saveAsCustomerLocation;
+  final ValueChanged<bool>? onToggleSaveAsCustomerLocation;
   final bool addLine;
   final bool addGmp3;
   final ValueChanged<bool>? onToggleAddLine;
@@ -449,6 +544,51 @@ class _SheetBody extends StatelessWidget {
                       error: (error, stackTrace) => const SizedBox.shrink(),
                     ),
                     const Gap(12),
+                    customerLocationsAsync.when(
+                      data: (locations) => DropdownButtonFormField<String?>(
+                        initialValue: selectedCustomerLocationId,
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('Kayıtlı konum seç (opsiyonel)'),
+                          ),
+                          ...locations.map(
+                            (location) => DropdownMenuItem<String?>(
+                              value: location.id,
+                              child: Text(location.title),
+                            ),
+                          ),
+                        ],
+                        onChanged: onCustomerLocationChanged == null
+                            ? null
+                            : (value) =>
+                                  onCustomerLocationChanged!(value, locations),
+                        decoration: const InputDecoration(
+                          labelText: 'Müşteri Konumu',
+                        ),
+                      ),
+                      loading: () => const SizedBox.shrink(),
+                      error: (error, stackTrace) => const SizedBox.shrink(),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: locationTitleController,
+                      decoration: const InputDecoration(
+                        labelText: 'Konum Başlığı',
+                        hintText: 'Örn. Servis Noktası',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: locationDescriptionController,
+                      minLines: 2,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Konum Açıklaması',
+                        hintText: 'Kapı, kat, mağaza içi notlar...',
+                      ),
+                    ),
+                    const Gap(12),
                     TextField(
                       controller: addressController,
                       minLines: 2,
@@ -489,6 +629,16 @@ class _SheetBody extends StatelessWidget {
                           ),
                         ),
                       ],
+                    ),
+                    const Gap(12),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      value: saveAsCustomerLocation,
+                      onChanged: onToggleSaveAsCustomerLocation,
+                      title: const Text('Müşteriye konum olarak kaydet'),
+                      subtitle: const Text(
+                        'Bu konum kapanışta müşteri kayıtlarına işlensin.',
+                      ),
                     ),
                   ],
                 ),

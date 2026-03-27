@@ -1,6 +1,5 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
-import 'dart:convert';
 import 'dart:html' as html;
 
 import 'application_form_model.dart';
@@ -21,13 +20,12 @@ Future<bool> printApplicationForm(
     kind: kind,
     settings: settings ?? ApplicationFormPrintSettings.defaults,
   );
-  final bytes = utf8.encode(htmlContent);
-  final blob = html.Blob([bytes], 'text/html;charset=utf-8');
-  final url = html.Url.createObjectUrlFromBlob(blob);
-  html.window.open(url, '_blank');
-  Future<void>.delayed(const Duration(seconds: 5), () {
-    html.Url.revokeObjectUrl(url);
-  });
+  final popup = html.window.open('', '_blank');
+  if (popup is! html.Window) return false;
+  popup.document.documentElement?.setInnerHtml(
+    htmlContent,
+    treeSanitizer: html.NodeTreeSanitizer.trusted,
+  );
   return true;
 }
 
@@ -37,9 +35,7 @@ String _buildPrintableHtml(
   required ApplicationFormPrintSettings settings,
 }) {
   String escape(String? value) {
-    return const HtmlEscape(
-      HtmlEscapeMode.element,
-    ).convert((value ?? '').trim());
+    return (html.DivElement()..text = (value ?? '').trim()).innerHtml ?? '';
   }
 
   String withPlaceholder(String? value, String fallback) {
@@ -112,7 +108,7 @@ String _buildPrintableHtml(
 <html lang="tr">
   <head>
     <meta charset="utf-8">
-    <title>$formCode</title>
+    <title></title>
     <script>
       window.onload = function() {
         setTimeout(function() { window.print(); }, 250);
@@ -121,52 +117,54 @@ String _buildPrintableHtml(
     <style>
       @page {
         size: A4 portrait;
-        margin: 12mm;
+        margin: 7mm;
       }
       body {
         margin: 0;
         background: #fff;
         color: #000;
         font-family: Arial, Helvetica, sans-serif;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
       }
       .sheet {
-        width: 820px;
+        width: 740px;
         margin: 0 auto;
-        padding: 10px 8px 24px;
+        padding: 4px 4px 12px;
       }
       .top-code {
         text-align: right;
-        font-size: 16px;
-        margin: 6px 0 18px;
+        font-size: 14px;
+        margin: 2px 0 10px;
       }
       .title {
         text-align: center;
         font-weight: 700;
-        font-size: 24px;
-        margin: 6px 0 22px;
+        font-size: 20px;
+        margin: 2px 0 12px;
         white-space: pre-line;
       }
       .office {
-        font-size: 22px;
+        font-size: 18px;
         font-weight: 700;
         line-height: 1.35;
         white-space: pre-line;
-        margin-bottom: 26px;
+        margin-bottom: 14px;
       }
       .intro {
-        font-size: 18px;
-        line-height: 1.58;
-        margin: 0 0 26px;
+        font-size: 15px;
+        line-height: 1.42;
+        margin: 0 0 16px;
         max-width: 92%;
       }
       .line {
         display: flex;
         align-items: baseline;
         flex-wrap: nowrap;
-        gap: 8px;
-        font-size: 18px;
-        line-height: 1.45;
-        margin: 2px 0;
+        gap: 6px;
+        font-size: 15px;
+        line-height: 1.28;
+        margin: 1px 0;
       }
       .indent-1 { padding-left: 20px; }
       .indent-2 { padding-left: 54px; }
@@ -181,7 +179,7 @@ String _buildPrintableHtml(
       .dotted {
         display: inline-block;
         min-width: 120px;
-        border-bottom: 2px dotted #333;
+        border-bottom: 1px dotted #333;
         padding: 0 4px 1px;
         line-height: 1.1;
       }
@@ -205,41 +203,41 @@ String _buildPrintableHtml(
         margin-top: 54px;
       }
       .signature-title {
-        font-size: 18px;
+        font-size: 16px;
         font-weight: 700;
         display: inline-block;
-        border-bottom: 4px solid #000;
+        border-bottom: 3px solid #000;
         padding: 0 4px 2px;
-        margin-bottom: 16px;
+        margin-bottom: 12px;
       }
       .signature-line {
         display: flex;
         align-items: baseline;
         gap: 8px;
-        font-size: 18px;
-        margin: 14px 0;
+        font-size: 15px;
+        margin: 10px 0;
       }
       .underline-title {
         display: inline-block;
-        border-bottom: 4px solid #000;
+        border-bottom: 3px solid #000;
         padding-bottom: 2px;
         font-weight: 700;
       }
       .box {
-        border: 4px solid #000;
-        padding: 10px 14px;
-        width: 600px;
-        margin: 18px auto 12px;
+        border: 3px solid #000;
+        padding: 8px 12px;
+        width: 520px;
+        margin: 14px auto 10px;
       }
       .box-title {
         text-align: center;
-        font-size: 18px;
-        margin-bottom: 18px;
+        font-size: 16px;
+        margin-bottom: 12px;
       }
       .notice {
-        font-size: 16px;
-        line-height: 1.45;
-        margin: 10px 4px 18px;
+        font-size: 14px;
+        line-height: 1.35;
+        margin: 8px 4px 12px;
         text-align: center;
       }
       .dual-sign {
@@ -252,17 +250,17 @@ String _buildPrintableHtml(
         width: 48%;
       }
       .dual-col .head {
-        font-size: 18px;
+        font-size: 16px;
         font-weight: 700;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
         white-space: pre-line;
       }
       .mini-line {
         display: flex;
         align-items: baseline;
         gap: 8px;
-        font-size: 17px;
-        margin: 6px 0;
+        font-size: 14px;
+        margin: 4px 0;
       }
       .page {
         position: relative;

@@ -745,6 +745,7 @@ class _CustomerCard extends ConsumerWidget {
                           city: customer.city,
                           email: customer.email,
                           vkn: customer.vkn,
+                          tcknMs: customer.tcknMs,
                           phone1Title: customer.phone1Title,
                           phone1: customer.phone1,
                           phone2Title: customer.phone2Title,
@@ -888,7 +889,8 @@ Future<void> _downloadCustomerImportTemplate(BuildContext context) async {
       excel.TextCellValue('Firma Adı'),
       excel.TextCellValue('Şehir'),
       excel.TextCellValue('E-posta'),
-      excel.TextCellValue('VKN / TCKN'),
+      excel.TextCellValue('VKN'),
+      excel.TextCellValue('TCKN-MŞ'),
       excel.TextCellValue('Telefon 1 Başlığı'),
       excel.TextCellValue('Telefon 1'),
       excel.TextCellValue('Telefon 2 Başlığı'),
@@ -905,6 +907,7 @@ Future<void> _downloadCustomerImportTemplate(BuildContext context) async {
       excel.TextCellValue('Istanbul'),
       excel.TextCellValue('info@microvise.com'),
       excel.TextCellValue('1234567890'),
+      excel.TextCellValue('MS-1001'),
       excel.TextCellValue('Yetkili'),
       excel.TextCellValue('05551234567'),
       excel.TextCellValue('Muhasebe'),
@@ -997,7 +1000,8 @@ Future<void> _exportCustomersToExcel(
       excel.TextCellValue('Firma Adı'),
       excel.TextCellValue('Şehir'),
       excel.TextCellValue('E-posta'),
-      excel.TextCellValue('VKN / TCKN'),
+      excel.TextCellValue('VKN'),
+      excel.TextCellValue('TCKN-MŞ'),
       excel.TextCellValue('Telefon 1 Başlığı'),
       excel.TextCellValue('Telefon 1'),
       excel.TextCellValue('Telefon 2 Başlığı'),
@@ -1015,6 +1019,7 @@ Future<void> _exportCustomersToExcel(
         excel.TextCellValue((c['city'] ?? '').toString()),
         excel.TextCellValue((c['email'] ?? '').toString()),
         excel.TextCellValue((c['vkn'] ?? '').toString()),
+        excel.TextCellValue((c['tckn_ms'] ?? '').toString()),
         excel.TextCellValue((c['phone_1_title'] ?? '').toString()),
         excel.TextCellValue((c['phone_1'] ?? '').toString()),
         excel.TextCellValue((c['phone_2_title'] ?? '').toString()),
@@ -1102,7 +1107,8 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
   final idIndex = columnOf(['müşteri id', 'musteri id', 'customer id', 'id']);
   final cityIndex = columnOf(['şehir', 'city']);
   final emailIndex = columnOf(['e-posta', 'email']);
-  final vknIndex = columnOf(['vkn / tckn', 'vkn', 'tckn']);
+  final vknIndex = columnOf(['vkn']);
+  final tcknMsIndex = columnOf(['tckn-mş', 'tckn-ms', 'tckn mş', 'tckn ms']);
   final phone1TitleIndex = columnOf(['telefon 1 başlığı', 'phone 1 title']);
   final phone1Index = columnOf(['telefon 1', 'telefon', 'phone 1']);
   final phone2TitleIndex = columnOf(['telefon 2 başlığı', 'phone 2 title']);
@@ -1124,7 +1130,7 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
 
   final existingRows = await client
       .from('customers')
-      .select('id,name,city,email,vkn');
+      .select('id,name,city,email,vkn,tckn_ms');
 
   final existingByVkn = <String, String>{};
   final existingByEmail = <String, String>{};
@@ -1137,8 +1143,10 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
     existingIds.add(id);
 
     final normalizedVkn = normalize(map['vkn']?.toString());
+    final normalizedTcknMs = normalize(map['tckn_ms']?.toString());
     final normalizedEmail = normalize(map['email']?.toString());
     if (normalizedVkn.isNotEmpty) existingByVkn[normalizedVkn] = id;
+    if (normalizedTcknMs.isNotEmpty) existingByVkn[normalizedTcknMs] = id;
     if (normalizedEmail.isNotEmpty) existingByEmail[normalizedEmail] = id;
   }
 
@@ -1159,11 +1167,13 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
     final city = readText(row, cityIndex);
     final email = readText(row, emailIndex);
     final vkn = readText(row, vknIndex);
+    final tcknMs = readText(row, tcknMsIndex);
     final payload = {
       'name': name,
       'city': city,
       'email': email,
       'vkn': vkn,
+      'tckn_ms': tcknMs,
       'phone_1_title': readText(row, phone1TitleIndex),
       'phone_1': readText(row, phone1Index),
       'phone_2_title': readText(row, phone2TitleIndex),
@@ -1176,10 +1186,13 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
 
     final normalizedEmail = normalize(email);
     final normalizedVkn = normalize(vkn);
+    final normalizedTcknMs = normalize(tcknMs);
     final importKey = importedId != null && importedId.isNotEmpty
         ? 'id:$importedId'
         : normalizedVkn.isNotEmpty
         ? 'vkn:$normalizedVkn'
+        : normalizedTcknMs.isNotEmpty
+        ? 'tcknms:$normalizedTcknMs'
         : normalizedEmail.isNotEmpty
         ? 'email:$normalizedEmail'
         : 'row:$i';
@@ -1194,6 +1207,9 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
             ? importedId
             : null) ??
         (normalizedVkn.isNotEmpty ? existingByVkn[normalizedVkn] : null) ??
+        (normalizedTcknMs.isNotEmpty
+            ? existingByVkn[normalizedTcknMs]
+            : null) ??
         (normalizedEmail.isNotEmpty ? existingByEmail[normalizedEmail] : null);
 
     if (existingId != null) {
@@ -1216,6 +1232,9 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
     existingIds.add(insertedId);
     if (normalizedVkn.isNotEmpty) {
       existingByVkn[normalizedVkn] = insertedId;
+    }
+    if (normalizedTcknMs.isNotEmpty) {
+      existingByVkn[normalizedTcknMs] = insertedId;
     }
     if (normalizedEmail.isNotEmpty) {
       existingByEmail[normalizedEmail] = insertedId;

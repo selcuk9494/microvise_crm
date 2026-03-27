@@ -9,6 +9,8 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../application_forms/application_form_model.dart';
+import '../forms/scrap_form_model.dart';
+import '../forms/transfer_form_model.dart';
 
 final deviceBrandsProvider = FutureProvider<List<DeviceBrand>>((ref) async {
   final client = ref.watch(supabaseClientProvider);
@@ -147,6 +149,45 @@ final applicationFormPrintSettingsProvider =
       }
     });
 
+final scrapFormPrintSettingsProvider = FutureProvider<ScrapFormPrintSettings>((
+  ref,
+) async {
+  final client = ref.watch(supabaseClientProvider);
+  if (client == null) return ScrapFormPrintSettings.defaults;
+  try {
+    final row = await client
+        .from('scrap_form_settings')
+        .select(
+          'id,form_code,title,date_label,row_number_label,service_section_title,service_company_label,service_identity_label,service_address_label,service_tax_label,service_company_value,service_identity_value,service_address_value,service_tax_value,owner_section_title,owner_name_label,owner_address_label,owner_tax_label,device_section_title,start_date_label,last_used_date_label,summary_title,z_report_label,vat_total_label,gross_total_label,purpose_label,other_findings_label,owner_signature_title,service_signature_title',
+        )
+        .eq('id', 'default')
+        .maybeSingle();
+    if (row == null) return ScrapFormPrintSettings.defaults;
+    return ScrapFormPrintSettings.fromJson(row);
+  } catch (_) {
+    return ScrapFormPrintSettings.defaults;
+  }
+});
+
+final transferFormPrintSettingsProvider =
+    FutureProvider<TransferFormPrintSettings>((ref) async {
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return TransferFormPrintSettings.defaults;
+      try {
+        final row = await client
+            .from('transfer_form_settings')
+            .select(
+              'id,title,subtitle,office_title,row_number_label,transferor_section_title,transferor_name_label,transferor_address_label,transferor_tax_label,transferor_approval_label,transferee_section_title,transferee_name_label,transferee_address_label,transferee_tax_label,transferee_approval_label,device_summary_title,total_sales_receipt_label,vat_collected_label,last_receipt_date_no_label,z_report_count_label,other_device_info_label,device_info_title,brand_model_label,device_serial_no_label,fiscal_symbol_company_code_label,department_count_label,transfer_info_title,transfer_date_label,transfer_reason_label,service_company_label,service_company_value,statement_text,transferor_signature_title,transferee_signature_title,office_fill_title,office_fill_text,controller_title,controller_date_label',
+            )
+            .eq('id', 'default')
+            .maybeSingle();
+        if (row == null) return TransferFormPrintSettings.defaults;
+        return TransferFormPrintSettings.fromJson(row);
+      } catch (_) {
+        return TransferFormPrintSettings.defaults;
+      }
+    });
+
 class WorkOrderType {
   final String id;
   final String name;
@@ -282,6 +323,10 @@ class DefinitionsScreen extends ConsumerWidget {
     final applicationFormSettingsAsync = ref.watch(
       applicationFormPrintSettingsProvider,
     );
+    final scrapFormSettingsAsync = ref.watch(scrapFormPrintSettingsProvider);
+    final transferFormSettingsAsync = ref.watch(
+      transferFormPrintSettingsProvider,
+    );
     final width = MediaQuery.sizeOf(context).width;
     final isMobile = width < 720;
     return DefaultTabController(
@@ -359,8 +404,11 @@ class DefinitionsScreen extends ConsumerWidget {
                 SizedBox(
                   width: isMobile ? (width - 44) / 2 : null,
                   child: _DefinitionStatCard(
-                    label: 'Başvuru Formu',
-                    value: applicationFormSettingsAsync.hasValue
+                    label: 'Form Çıktıları',
+                    value:
+                        applicationFormSettingsAsync.hasValue &&
+                            scrapFormSettingsAsync.hasValue &&
+                            transferFormSettingsAsync.hasValue
                         ? 'Hazır'
                         : '—',
                     icon: Icons.description_rounded,
@@ -388,7 +436,7 @@ class DefinitionsScreen extends ConsumerWidget {
                       Tab(text: 'Mali Semboller'),
                       Tab(text: 'Meslek Türleri'),
                       Tab(text: 'Şehirler'),
-                      Tab(text: 'Başvuru Formu'),
+                      Tab(text: 'Form Çıktıları'),
                     ],
                   ),
                   const Divider(height: 1),
@@ -2794,6 +2842,48 @@ class _ApplicationFormSettingsTabState
   final _kdv4aApprovalNumberController = TextEditingController();
   final _kdv4aDeliveryReceiverNameController = TextEditingController();
   final _kdv4aDeliveryReceiverTitleController = TextEditingController();
+  final _scrapFormCodeController = TextEditingController();
+  final _scrapTitleController = TextEditingController();
+  final _scrapDateLabelController = TextEditingController();
+  final _scrapRowNumberLabelController = TextEditingController();
+  final _scrapServiceSectionTitleController = TextEditingController();
+  final _scrapServiceCompanyLabelController = TextEditingController();
+  final _scrapServiceIdentityLabelController = TextEditingController();
+  final _scrapServiceAddressLabelController = TextEditingController();
+  final _scrapServiceTaxLabelController = TextEditingController();
+  final _scrapServiceCompanyValueController = TextEditingController();
+  final _scrapServiceIdentityValueController = TextEditingController();
+  final _scrapServiceAddressValueController = TextEditingController();
+  final _scrapServiceTaxValueController = TextEditingController();
+  final _scrapOwnerSectionTitleController = TextEditingController();
+  final _scrapOwnerNameLabelController = TextEditingController();
+  final _scrapOwnerAddressLabelController = TextEditingController();
+  final _scrapOwnerTaxLabelController = TextEditingController();
+  final _scrapDeviceSectionTitleController = TextEditingController();
+  final _scrapStartDateLabelController = TextEditingController();
+  final _scrapLastUsedDateLabelController = TextEditingController();
+  final _scrapSummaryTitleController = TextEditingController();
+  final _scrapZReportLabelController = TextEditingController();
+  final _scrapVatTotalLabelController = TextEditingController();
+  final _scrapGrossTotalLabelController = TextEditingController();
+  final _scrapPurposeLabelController = TextEditingController();
+  final _scrapOtherFindingsLabelController = TextEditingController();
+  final _scrapOwnerSignatureTitleController = TextEditingController();
+  final _scrapServiceSignatureTitleController = TextEditingController();
+  final _transferTitleController = TextEditingController();
+  final _transferSubtitleController = TextEditingController();
+  final _transferOfficeTitleController = TextEditingController();
+  final _transferRowNumberLabelController = TextEditingController();
+  final _transferTransferorSectionTitleController = TextEditingController();
+  final _transferTransfereeSectionTitleController = TextEditingController();
+  final _transferDeviceSummaryTitleController = TextEditingController();
+  final _transferDeviceInfoTitleController = TextEditingController();
+  final _transferTransferInfoTitleController = TextEditingController();
+  final _transferServiceCompanyValueController = TextEditingController();
+  final _transferStatementTextController = TextEditingController();
+  final _transferOfficeFillTitleController = TextEditingController();
+  final _transferOfficeFillTextController = TextEditingController();
+  final _transferControllerTitleController = TextEditingController();
   bool _initialized = false;
   bool _saving = false;
 
@@ -2823,10 +2913,56 @@ class _ApplicationFormSettingsTabState
     _kdv4aApprovalNumberController.dispose();
     _kdv4aDeliveryReceiverNameController.dispose();
     _kdv4aDeliveryReceiverTitleController.dispose();
+    _scrapFormCodeController.dispose();
+    _scrapTitleController.dispose();
+    _scrapDateLabelController.dispose();
+    _scrapRowNumberLabelController.dispose();
+    _scrapServiceSectionTitleController.dispose();
+    _scrapServiceCompanyLabelController.dispose();
+    _scrapServiceIdentityLabelController.dispose();
+    _scrapServiceAddressLabelController.dispose();
+    _scrapServiceTaxLabelController.dispose();
+    _scrapServiceCompanyValueController.dispose();
+    _scrapServiceIdentityValueController.dispose();
+    _scrapServiceAddressValueController.dispose();
+    _scrapServiceTaxValueController.dispose();
+    _scrapOwnerSectionTitleController.dispose();
+    _scrapOwnerNameLabelController.dispose();
+    _scrapOwnerAddressLabelController.dispose();
+    _scrapOwnerTaxLabelController.dispose();
+    _scrapDeviceSectionTitleController.dispose();
+    _scrapStartDateLabelController.dispose();
+    _scrapLastUsedDateLabelController.dispose();
+    _scrapSummaryTitleController.dispose();
+    _scrapZReportLabelController.dispose();
+    _scrapVatTotalLabelController.dispose();
+    _scrapGrossTotalLabelController.dispose();
+    _scrapPurposeLabelController.dispose();
+    _scrapOtherFindingsLabelController.dispose();
+    _scrapOwnerSignatureTitleController.dispose();
+    _scrapServiceSignatureTitleController.dispose();
+    _transferTitleController.dispose();
+    _transferSubtitleController.dispose();
+    _transferOfficeTitleController.dispose();
+    _transferRowNumberLabelController.dispose();
+    _transferTransferorSectionTitleController.dispose();
+    _transferTransfereeSectionTitleController.dispose();
+    _transferDeviceSummaryTitleController.dispose();
+    _transferDeviceInfoTitleController.dispose();
+    _transferTransferInfoTitleController.dispose();
+    _transferServiceCompanyValueController.dispose();
+    _transferStatementTextController.dispose();
+    _transferOfficeFillTitleController.dispose();
+    _transferOfficeFillTextController.dispose();
+    _transferControllerTitleController.dispose();
     super.dispose();
   }
 
-  void _apply(ApplicationFormPrintSettings settings) {
+  void _apply(
+    ApplicationFormPrintSettings settings,
+    ScrapFormPrintSettings scrapSettings,
+    TransferFormPrintSettings transferSettings,
+  ) {
     if (_initialized) return;
     _officeTitleController.text = settings.officeTitle;
     _introTextController.text = settings.introText;
@@ -2857,6 +2993,62 @@ class _ApplicationFormSettingsTabState
         settings.kdv4aDeliveryReceiverName;
     _kdv4aDeliveryReceiverTitleController.text =
         settings.kdv4aDeliveryReceiverTitle;
+    _scrapFormCodeController.text = scrapSettings.formCode;
+    _scrapTitleController.text = scrapSettings.title;
+    _scrapDateLabelController.text = scrapSettings.dateLabel;
+    _scrapRowNumberLabelController.text = scrapSettings.rowNumberLabel;
+    _scrapServiceSectionTitleController.text =
+        scrapSettings.serviceSectionTitle;
+    _scrapServiceCompanyLabelController.text =
+        scrapSettings.serviceCompanyLabel;
+    _scrapServiceIdentityLabelController.text =
+        scrapSettings.serviceIdentityLabel;
+    _scrapServiceAddressLabelController.text =
+        scrapSettings.serviceAddressLabel;
+    _scrapServiceTaxLabelController.text = scrapSettings.serviceTaxLabel;
+    _scrapServiceCompanyValueController.text =
+        scrapSettings.serviceCompanyValue;
+    _scrapServiceIdentityValueController.text =
+        scrapSettings.serviceIdentityValue;
+    _scrapServiceAddressValueController.text =
+        scrapSettings.serviceAddressValue;
+    _scrapServiceTaxValueController.text = scrapSettings.serviceTaxValue;
+    _scrapOwnerSectionTitleController.text = scrapSettings.ownerSectionTitle;
+    _scrapOwnerNameLabelController.text = scrapSettings.ownerNameLabel;
+    _scrapOwnerAddressLabelController.text = scrapSettings.ownerAddressLabel;
+    _scrapOwnerTaxLabelController.text = scrapSettings.ownerTaxLabel;
+    _scrapDeviceSectionTitleController.text = scrapSettings.deviceSectionTitle;
+    _scrapStartDateLabelController.text = scrapSettings.startDateLabel;
+    _scrapLastUsedDateLabelController.text = scrapSettings.lastUsedDateLabel;
+    _scrapSummaryTitleController.text = scrapSettings.summaryTitle;
+    _scrapZReportLabelController.text = scrapSettings.zReportLabel;
+    _scrapVatTotalLabelController.text = scrapSettings.vatTotalLabel;
+    _scrapGrossTotalLabelController.text = scrapSettings.grossTotalLabel;
+    _scrapPurposeLabelController.text = scrapSettings.purposeLabel;
+    _scrapOtherFindingsLabelController.text = scrapSettings.otherFindingsLabel;
+    _scrapOwnerSignatureTitleController.text =
+        scrapSettings.ownerSignatureTitle;
+    _scrapServiceSignatureTitleController.text =
+        scrapSettings.serviceSignatureTitle;
+    _transferTitleController.text = transferSettings.title;
+    _transferSubtitleController.text = transferSettings.subtitle;
+    _transferOfficeTitleController.text = transferSettings.officeTitle;
+    _transferRowNumberLabelController.text = transferSettings.rowNumberLabel;
+    _transferTransferorSectionTitleController.text =
+        transferSettings.transferorSectionTitle;
+    _transferTransfereeSectionTitleController.text =
+        transferSettings.transfereeSectionTitle;
+    _transferDeviceSummaryTitleController.text =
+        transferSettings.deviceSummaryTitle;
+    _transferDeviceInfoTitleController.text = transferSettings.deviceInfoTitle;
+    _transferTransferInfoTitleController.text =
+        transferSettings.transferInfoTitle;
+    _transferServiceCompanyValueController.text =
+        transferSettings.serviceCompanyValue;
+    _transferStatementTextController.text = transferSettings.statementText;
+    _transferOfficeFillTitleController.text = transferSettings.officeFillTitle;
+    _transferOfficeFillTextController.text = transferSettings.officeFillText;
+    _transferControllerTitleController.text = transferSettings.controllerTitle;
     _initialized = true;
   }
 
@@ -2906,7 +3098,72 @@ class _ApplicationFormSettingsTabState
             .text
             .trim(),
       });
+      await client.from('scrap_form_settings').upsert({
+        'id': 'default',
+        'form_code': _scrapFormCodeController.text.trim(),
+        'title': _scrapTitleController.text.trim(),
+        'date_label': _scrapDateLabelController.text.trim(),
+        'row_number_label': _scrapRowNumberLabelController.text.trim(),
+        'service_section_title': _scrapServiceSectionTitleController.text
+            .trim(),
+        'service_company_label': _scrapServiceCompanyLabelController.text
+            .trim(),
+        'service_identity_label': _scrapServiceIdentityLabelController.text
+            .trim(),
+        'service_address_label': _scrapServiceAddressLabelController.text
+            .trim(),
+        'service_tax_label': _scrapServiceTaxLabelController.text.trim(),
+        'service_company_value': _scrapServiceCompanyValueController.text
+            .trim(),
+        'service_identity_value': _scrapServiceIdentityValueController.text
+            .trim(),
+        'service_address_value': _scrapServiceAddressValueController.text
+            .trim(),
+        'service_tax_value': _scrapServiceTaxValueController.text.trim(),
+        'owner_section_title': _scrapOwnerSectionTitleController.text.trim(),
+        'owner_name_label': _scrapOwnerNameLabelController.text.trim(),
+        'owner_address_label': _scrapOwnerAddressLabelController.text.trim(),
+        'owner_tax_label': _scrapOwnerTaxLabelController.text.trim(),
+        'device_section_title': _scrapDeviceSectionTitleController.text.trim(),
+        'start_date_label': _scrapStartDateLabelController.text.trim(),
+        'last_used_date_label': _scrapLastUsedDateLabelController.text.trim(),
+        'summary_title': _scrapSummaryTitleController.text.trim(),
+        'z_report_label': _scrapZReportLabelController.text.trim(),
+        'vat_total_label': _scrapVatTotalLabelController.text.trim(),
+        'gross_total_label': _scrapGrossTotalLabelController.text.trim(),
+        'purpose_label': _scrapPurposeLabelController.text.trim(),
+        'other_findings_label': _scrapOtherFindingsLabelController.text.trim(),
+        'owner_signature_title': _scrapOwnerSignatureTitleController.text
+            .trim(),
+        'service_signature_title': _scrapServiceSignatureTitleController.text
+            .trim(),
+      });
+      await client.from('transfer_form_settings').upsert({
+        'id': 'default',
+        'title': _transferTitleController.text.trim(),
+        'subtitle': _transferSubtitleController.text.trim(),
+        'office_title': _transferOfficeTitleController.text.trim(),
+        'row_number_label': _transferRowNumberLabelController.text.trim(),
+        'transferor_section_title': _transferTransferorSectionTitleController
+            .text
+            .trim(),
+        'transferee_section_title': _transferTransfereeSectionTitleController
+            .text
+            .trim(),
+        'device_summary_title': _transferDeviceSummaryTitleController.text
+            .trim(),
+        'device_info_title': _transferDeviceInfoTitleController.text.trim(),
+        'transfer_info_title': _transferTransferInfoTitleController.text.trim(),
+        'service_company_value': _transferServiceCompanyValueController.text
+            .trim(),
+        'statement_text': _transferStatementTextController.text.trim(),
+        'office_fill_title': _transferOfficeFillTitleController.text.trim(),
+        'office_fill_text': _transferOfficeFillTextController.text.trim(),
+        'controller_title': _transferControllerTitleController.text.trim(),
+      });
       ref.invalidate(applicationFormPrintSettingsProvider);
+      ref.invalidate(scrapFormPrintSettingsProvider);
+      ref.invalidate(transferFormPrintSettingsProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -2921,255 +3178,650 @@ class _ApplicationFormSettingsTabState
   @override
   Widget build(BuildContext context) {
     final settingsAsync = ref.watch(applicationFormPrintSettingsProvider);
+    final scrapSettingsAsync = ref.watch(scrapFormPrintSettingsProvider);
+    final transferSettingsAsync = ref.watch(transferFormPrintSettingsProvider);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: settingsAsync.when(
-        data: (settings) {
-          _apply(settings);
-          return SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Başvuru Formu Sabit Alanları',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const Gap(8),
-                Text(
-                  'KDV4 / KDV4A çıktısında formdan gelmeyen sabit metinleri buradan değiştirebilirsiniz.',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
-                ),
-                const Gap(16),
-                TextField(
-                  controller: _officeTitleController,
-                  minLines: 3,
-                  maxLines: 4,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Sol Üst Kurum Başlığı',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _introTextController,
-                  minLines: 3,
-                  maxLines: 5,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Açıklama Paragrafı',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _optionalPowerController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Güç Kaynağı Önlem Sabit Metni',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _manualIncludedController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Genel Kullanım Kılavuzu Sabit Metni',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _serviceCompanyNameController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Bakım Firması Ünvanı',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _serviceCompanyAddressController,
-                  minLines: 2,
-                  maxLines: 3,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Bakım Firması Adresi',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _applicantStatusController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Başvuru Sahibi Statüsü',
-                  ),
-                ),
-                const Gap(24),
-                Text(
-                  'KDV 4A Sabit Alanları',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _officeTitle4aController,
-                  minLines: 3,
-                  maxLines: 4,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'KDV 4A Sol Üst Kurum Başlığı',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aTitleController,
-                  minLines: 3,
-                  maxLines: 4,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(labelText: 'KDV 4A Başlık'),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aSerialNumberController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'KDV 4A Sıra No',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aSellerCompanyNameController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Satan Firma Ünvanı',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aSellerAddressController,
-                  minLines: 2,
-                  maxLines: 3,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Satan Firma Adresi',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aSellerTaxRegistryController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Satan Firma Vergi Dairesi ve Dosya Sicil No',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aSellerLicenseNumberController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(labelText: 'Ruhsatname No'),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aWarrantyPeriodController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Garanti Süresi',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aDepartmentCountController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Departman Sayısı',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aServiceCompanyNameController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Yetkili Bakım Firması Ünvanı',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aServiceCompanyAddressController,
-                  minLines: 2,
-                  maxLines: 3,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Yetkili Bakım Firması Adresi',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aSealApplicantNameController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Mali Mühürü Tatbik Eden Açık İsmi',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aSealApplicantTitleController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Mali Mühürü Tatbik Eden Makamı',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aApprovalDateController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Onay Belgesi Tarihi',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aApprovalNumberController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Onay Belgesi Sayısı',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aDeliveryReceiverNameController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Teslim Alan Açık İsmi',
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: _kdv4aDeliveryReceiverTitleController,
-                  enabled: widget.isAdmin && !_saving,
-                  decoration: const InputDecoration(
-                    labelText: 'Teslim Alan Makamı',
-                  ),
-                ),
-                const Gap(18),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton.icon(
-                    onPressed: widget.isAdmin && !_saving ? _save : null,
-                    icon: _saving
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
+        data: (settings) => scrapSettingsAsync.when(
+          data: (scrapSettings) => transferSettingsAsync.when(
+            data: (transferSettings) {
+              _apply(settings, scrapSettings, transferSettings);
+              return SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Resmi Form Sabit Alanları',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const Gap(8),
+                    Text(
+                      'KDV4 / KDV4A / Hurda / Devir çıktılarında formdan gelmeyen sabit metinleri buradan değiştirebilirsiniz.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                    const Gap(16),
+                    TextField(
+                      controller: _officeTitleController,
+                      minLines: 3,
+                      maxLines: 4,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Sol Üst Kurum Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _introTextController,
+                      minLines: 3,
+                      maxLines: 5,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Açıklama Paragrafı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _optionalPowerController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Güç Kaynağı Önlem Sabit Metni',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _manualIncludedController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Genel Kullanım Kılavuzu Sabit Metni',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _serviceCompanyNameController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Bakım Firması Ünvanı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _serviceCompanyAddressController,
+                      minLines: 2,
+                      maxLines: 3,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Bakım Firması Adresi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _applicantStatusController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Başvuru Sahibi Statüsü',
+                      ),
+                    ),
+                    const Gap(24),
+                    Text(
+                      'KDV 4A Sabit Alanları',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _officeTitle4aController,
+                      minLines: 3,
+                      maxLines: 4,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'KDV 4A Sol Üst Kurum Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aTitleController,
+                      minLines: 3,
+                      maxLines: 4,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'KDV 4A Başlık',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aSerialNumberController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'KDV 4A Sıra No',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aSellerCompanyNameController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Satan Firma Ünvanı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aSellerAddressController,
+                      minLines: 2,
+                      maxLines: 3,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Satan Firma Adresi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aSellerTaxRegistryController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText:
+                            'Satan Firma Vergi Dairesi ve Dosya Sicil No',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aSellerLicenseNumberController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Ruhsatname No',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aWarrantyPeriodController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Garanti Süresi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aDepartmentCountController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Departman Sayısı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aServiceCompanyNameController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Yetkili Bakım Firması Ünvanı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aServiceCompanyAddressController,
+                      minLines: 2,
+                      maxLines: 3,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Yetkili Bakım Firması Adresi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aSealApplicantNameController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Mali Mühürü Tatbik Eden Açık İsmi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aSealApplicantTitleController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Mali Mühürü Tatbik Eden Makamı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aApprovalDateController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Onay Belgesi Tarihi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aApprovalNumberController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Onay Belgesi Sayısı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aDeliveryReceiverNameController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Teslim Alan Açık İsmi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _kdv4aDeliveryReceiverTitleController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Teslim Alan Makamı',
+                      ),
+                    ),
+                    const Gap(24),
+                    Text(
+                      'Hurda Formu Sabit Alanları',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapFormCodeController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(labelText: 'Form Kodu'),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapTitleController,
+                      minLines: 3,
+                      maxLines: 4,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Hurda Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        SizedBox(
+                          width: 220,
+                          child: TextField(
+                            controller: _scrapDateLabelController,
+                            enabled: widget.isAdmin && !_saving,
+                            decoration: const InputDecoration(
+                              labelText: 'Tarih Etiketi',
                             ),
-                          )
-                        : const Icon(Icons.save_rounded, size: 18),
-                    label: const Text('Kaydet'),
-                  ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 220,
+                          child: TextField(
+                            controller: _scrapRowNumberLabelController,
+                            enabled: widget.isAdmin && !_saving,
+                            decoration: const InputDecoration(
+                              labelText: 'Sıra No Etiketi',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapServiceSectionTitleController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Yetkili Servis Bölüm Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapServiceCompanyLabelController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Servis Firma Etiketi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapServiceIdentityLabelController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Servis Ünvan / Sicil Etiketi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapServiceAddressLabelController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Servis Adres Etiketi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapServiceTaxLabelController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Servis Vergi Etiketi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapServiceCompanyValueController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Servis Firma Sabit Değeri',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapServiceIdentityValueController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Servis Ünvan / Sicil Sabit Değeri',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapServiceAddressValueController,
+                      minLines: 2,
+                      maxLines: 3,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Servis Adres Sabit Değeri',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapServiceTaxValueController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Servis Vergi Sabit Değeri',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapOwnerSectionTitleController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Mükellef Bölüm Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapOwnerNameLabelController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Mükellef Ad Etiketi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapOwnerAddressLabelController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Mükellef Adres Etiketi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapOwnerTaxLabelController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Mükellef Vergi Etiketi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapDeviceSectionTitleController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Cihaz Bölüm Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapStartDateLabelController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Başlangıç Tarihi Etiketi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapLastUsedDateLabelController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Son Kullanım Tarihi Etiketi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapSummaryTitleController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Özet Bölüm Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapZReportLabelController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Z Rapor Etiketi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapVatTotalLabelController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'KDV Tahsilat Etiketi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapGrossTotalLabelController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Hasılat Etiketi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapPurposeLabelController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Müdahale Amacı Etiketi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapOtherFindingsLabelController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Diğer Tespitler Etiketi',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapOwnerSignatureTitleController,
+                      minLines: 2,
+                      maxLines: 3,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Mükellef İmza Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _scrapServiceSignatureTitleController,
+                      minLines: 2,
+                      maxLines: 3,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Servis İmza Başlığı',
+                      ),
+                    ),
+                    const Gap(24),
+                    Text(
+                      'Devir Formu Sabit Alanları',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _transferTitleController,
+                      minLines: 2,
+                      maxLines: 3,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Devir Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _transferSubtitleController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Devir Alt Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _transferOfficeTitleController,
+                      minLines: 3,
+                      maxLines: 4,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Devir Kurum Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        SizedBox(
+                          width: 220,
+                          child: TextField(
+                            controller: _transferRowNumberLabelController,
+                            enabled: widget.isAdmin && !_saving,
+                            decoration: const InputDecoration(
+                              labelText: 'Sıra No Etiketi',
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 320,
+                          child: TextField(
+                            controller: _transferServiceCompanyValueController,
+                            enabled: widget.isAdmin && !_saving,
+                            decoration: const InputDecoration(
+                              labelText: 'Yetkili Firma Sabit Değeri',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _transferTransferorSectionTitleController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Devreden Bölüm Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _transferTransfereeSectionTitleController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Devralan Bölüm Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _transferDeviceSummaryTitleController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Devir Öncesi Bilgi Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _transferDeviceInfoTitleController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Cihaz Bilgi Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _transferTransferInfoTitleController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Devir Bilgi Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _transferStatementTextController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Beyan Metni',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _transferOfficeFillTitleController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Daire Tarafından Doldurulacaktır Başlığı',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _transferOfficeFillTextController,
+                      minLines: 2,
+                      maxLines: 3,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Daire Açıklama Metni',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: _transferControllerTitleController,
+                      enabled: widget.isAdmin && !_saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Kontrol Eden Başlığı',
+                      ),
+                    ),
+                    const Gap(18),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton.icon(
+                        onPressed: widget.isAdmin && !_saving ? _save : null,
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.save_rounded, size: 18),
+                        label: const Text('Kaydet'),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          );
-        },
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
+          ),
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
+        ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
       ),

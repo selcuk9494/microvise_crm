@@ -647,9 +647,9 @@ final _navItems = <_NavItem>[
     icon: PhosphorIcons.users(PhosphorIconsStyle.regular),
   ),
   _NavItem(
-    path: '/basvuru-formu',
-    label: 'Başvuru Formu',
-    icon: PhosphorIcons.notePencil(PhosphorIconsStyle.regular),
+    path: '/formlar',
+    label: 'Formlar',
+    icon: PhosphorIcons.files(PhosphorIconsStyle.regular),
   ),
   _NavItem(
     path: '/is-emirleri',

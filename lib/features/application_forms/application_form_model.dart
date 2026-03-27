@@ -4,6 +4,7 @@ class ApplicationFormRecord {
     required this.applicationDate,
     required this.customerId,
     required this.customerName,
+    required this.customerTcknMs,
     required this.workAddress,
     required this.taxOfficeCityName,
     required this.documentType,
@@ -25,6 +26,7 @@ class ApplicationFormRecord {
   final DateTime applicationDate;
   final String? customerId;
   final String customerName;
+  final String? customerTcknMs;
   final String? workAddress;
   final String? taxOfficeCityName;
   final String documentType;
@@ -57,6 +59,7 @@ class ApplicationFormRecord {
           DateTime.now(),
       customerId: json['customer_id']?.toString(),
       customerName: json['customer_name']?.toString() ?? '—',
+      customerTcknMs: json['customer_tckn_ms']?.toString(),
       workAddress: json['work_address']?.toString(),
       taxOfficeCityName: json['tax_office_city_name']?.toString(),
       documentType: json['document_type']?.toString() ?? 'VKN',
