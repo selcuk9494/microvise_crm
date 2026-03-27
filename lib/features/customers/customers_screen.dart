@@ -79,27 +79,6 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           icon: const Icon(Icons.refresh_rounded, size: 18),
           label: const Text('Yenile'),
         ),
-        if (!isMobile) ...[
-          const Gap(10),
-          OutlinedButton.icon(
-            onPressed: () => _downloadCustomerImportTemplate(context),
-            icon: const Icon(Icons.file_download_outlined, size: 18),
-            label: const Text('Şablon İndir'),
-          ),
-          const Gap(10),
-          OutlinedButton.icon(
-            onPressed: () => _exportCustomersToExcel(context, ref),
-            icon: const Icon(Icons.download_rounded, size: 18),
-            label: const Text('Dışa Aktar'),
-          ),
-          const Gap(10),
-          OutlinedButton.icon(
-            onPressed: () => _importExcel(context, ref),
-            icon: const Icon(Icons.upload_rounded, size: 18),
-            label: const Text('İçe Aktar'),
-          ),
-          const Gap(10),
-        ],
         FilledButton.icon(
           onPressed: () => _showCustomerForm(context, ref, openDetail: true),
           icon: const Icon(Icons.add_rounded, size: 18),
@@ -110,7 +89,46 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         children: [
           AppCard(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (!isMobile) ...[
+                  Row(
+                    children: [
+                      Text(
+                        'Filtreler ve Veri İşlemleri',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const Spacer(),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () =>
+                                _downloadCustomerImportTemplate(context),
+                            icon: const Icon(
+                              Icons.file_download_outlined,
+                              size: 18,
+                            ),
+                            label: const Text('Şablon İndir'),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: () =>
+                                _exportCustomersToExcel(context, ref),
+                            icon: const Icon(Icons.download_rounded, size: 18),
+                            label: const Text('Dışa Aktar'),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: () => _importExcel(context, ref),
+                            icon: const Icon(Icons.upload_rounded, size: 18),
+                            label: const Text('İçe Aktar'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const Gap(16),
+                ],
                 Wrap(
                   spacing: 12,
                   runSpacing: 12,
@@ -295,63 +313,127 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 children: [
                   _SummaryRow(customers: customers),
                   const Gap(12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: isMobile ? double.infinity : null,
-                        child: Text(
-                          'Toplam ${pageData.totalCount} müşteri • Sayfa $currentPage / $totalPages • ${customers.length} kayıt gösteriliyor',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: const Color(0xFF64748B)),
-                        ),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: currentPage > 1
-                            ? () => ref
-                                  .read(customerPageProvider.notifier)
-                                  .previous()
-                            : null,
-                        icon: const Icon(Icons.chevron_left_rounded, size: 18),
-                        label: const Text('Önceki'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: pageData.hasNextPage
-                            ? () =>
-                                  ref.read(customerPageProvider.notifier).next()
-                            : null,
-                        icon: const Icon(Icons.chevron_right_rounded, size: 18),
-                        label: const Text('Sonraki'),
-                      ),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          for (var page = startPage; page <= endPage; page++)
-                            page == currentPage
-                                ? FilledButton(
-                                    onPressed: null,
-                                    child: Text(page.toString()),
-                                  )
-                                : OutlinedButton(
-                                    onPressed: () => ref
+                  AppCard(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isCompact = constraints.maxWidth < 980;
+                        final summaryText =
+                            'Toplam ${pageData.totalCount} musteri • Sayfa $currentPage / $totalPages • ${customers.length} kayit gosteriliyor';
+                        final pageButtons = Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: currentPage > 1
+                                  ? () => ref
                                         .read(customerPageProvider.notifier)
-                                        .set(page),
-                                    child: Text(page.toString()),
+                                        .previous()
+                                  : null,
+                              icon: const Icon(
+                                Icons.chevron_left_rounded,
+                                size: 18,
+                              ),
+                              label: const Text('Önceki'),
+                            ),
+                            for (var page = startPage; page <= endPage; page++)
+                              page == currentPage
+                                  ? FilledButton(
+                                      onPressed: null,
+                                      child: Text(page.toString()),
+                                    )
+                                  : OutlinedButton(
+                                      onPressed: () => ref
+                                          .read(customerPageProvider.notifier)
+                                          .set(page),
+                                      child: Text(page.toString()),
+                                    ),
+                            OutlinedButton.icon(
+                              onPressed: pageData.hasNextPage
+                                  ? () => ref
+                                        .read(customerPageProvider.notifier)
+                                        .next()
+                                  : null,
+                              icon: const Icon(
+                                Icons.chevron_right_rounded,
+                                size: 18,
+                              ),
+                              label: const Text('Sonraki'),
+                            ),
+                          ],
+                        );
+
+                        if (isCompact) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                summaryText,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(color: const Color(0xFF64748B)),
+                              ),
+                              const Gap(12),
+                              pageButtons,
+                              const Gap(8),
+                              TextButton.icon(
+                                onPressed: () => _showCustomerForm(
+                                  context,
+                                  ref,
+                                  openDetail: false,
+                                ),
+                                icon: const Icon(Icons.add_rounded, size: 18),
+                                label: const Text('Hızlı Ekle'),
+                              ),
+                            ],
+                          );
+                        }
+
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                summaryText,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(color: const Color(0xFF64748B)),
+                              ),
+                            ),
+                            const Gap(16),
+                            Flexible(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  pageButtons,
+                                  const Gap(8),
+                                  TextButton.icon(
+                                    onPressed: () => _showCustomerForm(
+                                      context,
+                                      ref,
+                                      openDetail: false,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.add_rounded,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Hızlı Ekle'),
                                   ),
-                        ],
-                      ),
-                      TextButton.icon(
-                        onPressed: () =>
-                            _showCustomerForm(context, ref, openDetail: false),
-                        icon: const Icon(Icons.add_rounded, size: 18),
-                        label: const Text('Hızlı Ekle'),
-                      ),
-                    ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
                   ),
                   const Gap(12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Her sayfada $customerPageSize kayıt gösterilir.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
                   ListView.separated(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -364,16 +446,6 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         onChanged: () => _refreshCustomerData(ref),
                       );
                     },
-                  ),
-                  const Gap(12),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      'Her sayfada $customerPageSize kayıt gösterilir.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
                   ),
                 ],
               );
@@ -418,8 +490,8 @@ class _SummaryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final isMobile = width < 720;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isMobile = screenWidth < 720;
     final active = customers.where((customer) => customer.isActive).length;
     final passive = customers.length - active;
     final totalLines = customers.fold<int>(
@@ -427,47 +499,54 @@ class _SummaryRow extends StatelessWidget {
       (sum, customer) => sum + customer.activeLineCount,
     );
 
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        SizedBox(
-          width: isMobile ? (width - 44) / 2 : (width - 120) / 4,
-          child: _SummaryStat(
-            label: 'Toplam',
-            value: customers.length.toString(),
-            icon: Icons.groups_2_rounded,
-            tone: AppBadgeTone.primary,
-          ),
-        ),
-        SizedBox(
-          width: isMobile ? (width - 44) / 2 : (width - 120) / 4,
-          child: _SummaryStat(
-            label: 'Aktif',
-            value: active.toString(),
-            icon: Icons.check_circle_outline_rounded,
-            tone: AppBadgeTone.success,
-          ),
-        ),
-        SizedBox(
-          width: isMobile ? (width - 44) / 2 : (width - 120) / 4,
-          child: _SummaryStat(
-            label: 'Pasif',
-            value: passive.toString(),
-            icon: Icons.pause_circle_outline_rounded,
-            tone: AppBadgeTone.neutral,
-          ),
-        ),
-        SizedBox(
-          width: isMobile ? (width - 44) / 2 : (width - 120) / 4,
-          child: _SummaryStat(
-            label: 'Aktif Hat',
-            value: totalLines.toString(),
-            icon: Icons.sim_card_outlined,
-            tone: AppBadgeTone.warning,
-          ),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cardWidth = isMobile
+            ? (constraints.maxWidth - 12) / 2
+            : (constraints.maxWidth - 36) / 4;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            SizedBox(
+              width: cardWidth,
+              child: _SummaryStat(
+                label: 'Toplam',
+                value: customers.length.toString(),
+                icon: Icons.groups_2_rounded,
+                tone: AppBadgeTone.primary,
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _SummaryStat(
+                label: 'Aktif',
+                value: active.toString(),
+                icon: Icons.check_circle_outline_rounded,
+                tone: AppBadgeTone.success,
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _SummaryStat(
+                label: 'Pasif',
+                value: passive.toString(),
+                icon: Icons.pause_circle_outline_rounded,
+                tone: AppBadgeTone.neutral,
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _SummaryStat(
+                label: 'Aktif Hat',
+                value: totalLines.toString(),
+                icon: Icons.sim_card_outlined,
+                tone: AppBadgeTone.warning,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
