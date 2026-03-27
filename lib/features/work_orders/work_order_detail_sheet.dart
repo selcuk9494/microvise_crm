@@ -196,9 +196,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           'work_order_id': widget.order.id,
           'amount': amount,
           'currency': p.currency,
-          'exchange_rate': p.currency == 'TRY'
-              ? 1.0
-              : _exchangeRates[p.currency],
+          'description': p.description,
           'paid_at': now.toIso8601String(),
           'created_by': client.auth.currentUser?.id,
           'is_active': true,
@@ -813,15 +811,18 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Not', style: Theme.of(context).textTheme.titleSmall),
+          Text(
+            'Kapanış Açıklaması',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
           const Gap(10),
           TextField(
             controller: _notesController,
             minLines: 2,
             maxLines: 4,
             decoration: const InputDecoration(
-              labelText: 'Kapanış Notu',
-              hintText: 'İsteğe bağlı',
+              labelText: 'Açıklama',
+              hintText: 'İş emri kapanışına dair açıklama girin',
             ),
           ),
         ],
@@ -910,6 +911,7 @@ class _PaymentDraft {
   _PaymentDraft();
 
   final amountController = TextEditingController();
+  final descriptionController = TextEditingController();
   String currency = 'TRY';
 
   double? get amount {
@@ -917,8 +919,14 @@ class _PaymentDraft {
     return double.tryParse(raw);
   }
 
+  String? get description {
+    final value = descriptionController.text.trim();
+    return value.isEmpty ? null : value;
+  }
+
   void dispose() {
     amountController.dispose();
+    descriptionController.dispose();
   }
 }
 
@@ -958,16 +966,28 @@ class _PaymentRowState extends State<_PaymentRow> {
           children: [
             Expanded(
               flex: 3,
-              child: TextField(
-                controller: widget.draft.amountController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Tutar',
-                  hintText: '0.00',
-                ),
-                onChanged: (_) => setState(() {}),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: widget.draft.amountController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Tutar',
+                      hintText: '0.00',
+                    ),
+                    onChanged: (value) => setState(() {}),
+                  ),
+                  const Gap(8),
+                  TextField(
+                    controller: widget.draft.descriptionController,
+                    decoration: const InputDecoration(
+                      labelText: 'Açıklama',
+                      hintText: 'Örn: Kurulum tahsilatı',
+                    ),
+                  ),
+                ],
               ),
             ),
             const Gap(10),

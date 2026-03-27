@@ -461,8 +461,27 @@ class _BranchesTab extends ConsumerWidget {
                 return ListView.separated(
                   itemCount: branches.length,
                   separatorBuilder: (context, index) => const Gap(10),
-                  itemBuilder: (context, index) =>
-                      _BranchItem(branch: branches[index]),
+                  itemBuilder: (context, index) => _BranchItem(
+                    branch: branches[index],
+                    onEdit: () async {
+                      await _showBranchDialog(
+                        context,
+                        ref,
+                        customerId: customerId,
+                        branch: branches[index],
+                      );
+                      ref.invalidate(customerBranchesProvider(customerId));
+                    },
+                    onToggleActive: () async {
+                      final client = ref.read(supabaseClientProvider);
+                      if (client == null) return;
+                      await client
+                          .from('branches')
+                          .update({'is_active': !branches[index].isActive})
+                          .eq('id', branches[index].id);
+                      ref.invalidate(customerBranchesProvider(customerId));
+                    },
+                  ),
                 );
               },
               loading: () => const _ListSkeleton(),
@@ -687,9 +706,15 @@ class _WorkOrdersTab extends ConsumerWidget {
 }
 
 class _BranchItem extends StatelessWidget {
-  const _BranchItem({required this.branch});
+  const _BranchItem({
+    required this.branch,
+    required this.onEdit,
+    required this.onToggleActive,
+  });
 
   final CustomerBranch branch;
+  final Future<void> Function() onEdit;
+  final Future<void> Function() onToggleActive;
 
   @override
   Widget build(BuildContext context) {
@@ -731,6 +756,23 @@ class _BranchItem extends StatelessWidget {
                 tone: branch.isActive
                     ? AppBadgeTone.success
                     : AppBadgeTone.neutral,
+              ),
+              const Gap(8),
+              PopupMenuButton<String>(
+                onSelected: (value) async {
+                  if (value == 'edit') {
+                    await onEdit();
+                    return;
+                  }
+                  await onToggleActive();
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+                  PopupMenuItem(
+                    value: 'toggle',
+                    child: Text(branch.isActive ? 'Pasif Yap' : 'Aktif Yap'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1068,17 +1110,28 @@ Future<void> _showAddBranchDialog(
   WidgetRef ref, {
   required String customerId,
 }) async {
+  await _showBranchDialog(context, ref, customerId: customerId);
+}
+
+Future<void> _showBranchDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required String customerId,
+  CustomerBranch? branch,
+}) async {
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (context) => _AddBranchDialog(customerId: customerId),
+    builder: (context) =>
+        _AddBranchDialog(customerId: customerId, branch: branch),
   );
 }
 
 class _AddBranchDialog extends ConsumerStatefulWidget {
-  const _AddBranchDialog({required this.customerId});
+  const _AddBranchDialog({required this.customerId, this.branch});
 
   final String customerId;
+  final CustomerBranch? branch;
 
   @override
   ConsumerState<_AddBranchDialog> createState() => _AddBranchDialogState();
@@ -1086,13 +1139,29 @@ class _AddBranchDialog extends ConsumerStatefulWidget {
 
 class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController(text: 'Merkez');
-  final _cityController = TextEditingController();
-  final _addressController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _latController = TextEditingController();
-  final _lngController = TextEditingController();
+  late final TextEditingController _nameController;
+  late final TextEditingController _cityController;
+  late final TextEditingController _addressController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _latController;
+  late final TextEditingController _lngController;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final branch = widget.branch;
+    _nameController = TextEditingController(text: branch?.name ?? 'Merkez');
+    _cityController = TextEditingController(text: branch?.city ?? '');
+    _addressController = TextEditingController(text: branch?.address ?? '');
+    _phoneController = TextEditingController(text: branch?.phone ?? '');
+    _latController = TextEditingController(
+      text: branch?.locationLat?.toString() ?? '',
+    );
+    _lngController = TextEditingController(
+      text: branch?.locationLng?.toString() ?? '',
+    );
+  }
 
   @override
   void dispose() {
@@ -1117,7 +1186,7 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
       final lat = double.tryParse(_latController.text.trim());
       final lng = double.tryParse(_lngController.text.trim());
 
-      await client.from('branches').insert({
+      final payload = {
         'customer_id': widget.customerId,
         'name': _nameController.text.trim(),
         'city': _cityController.text.trim().isEmpty
@@ -1131,19 +1200,36 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
             : _phoneController.text.trim(),
         'location_lat': lat,
         'location_lng': lng,
-        'is_active': true,
-      });
+        'is_active': widget.branch?.isActive ?? true,
+      };
+
+      if (widget.branch == null) {
+        await client.from('branches').insert(payload);
+      } else {
+        await client
+            .from('branches')
+            .update(payload)
+            .eq('id', widget.branch!.id);
+      }
 
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Şube eklendi.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.branch == null ? 'Şube eklendi.' : 'Şube güncellendi.',
+          ),
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Şube eklenemedi.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.branch == null ? 'Şube eklenemedi.' : 'Şube güncellenemedi.',
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1168,7 +1254,7 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
                   children: [
                     Expanded(
                       child: Text(
-                        'Şube Ekle',
+                        widget.branch == null ? 'Şube Ekle' : 'Şube Düzenle',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),

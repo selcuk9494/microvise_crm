@@ -65,6 +65,37 @@ final taxRatesProvider = FutureProvider<List<TaxRate>>((ref) async {
       .toList(growable: false);
 });
 
+final cityDefinitionsProvider = FutureProvider<List<CityDefinition>>((
+  ref,
+) async {
+  final client = ref.watch(supabaseClientProvider);
+  if (client == null) return const [];
+
+  try {
+    final rows = await client
+        .from('cities')
+        .select('id,name,code,is_active')
+        .order('name');
+    return (rows as List)
+        .map((e) => CityDefinition.fromJson(e as Map<String, dynamic>))
+        .toList(growable: false);
+  } catch (_) {
+    final customerRows = await client.from('customers').select('city');
+    final branchRows = await client.from('branches').select('city');
+    final names = <String>{};
+    for (final row in [...(customerRows as List), ...(branchRows as List)]) {
+      final name = row['city']?.toString().trim();
+      if (name == null || name.isEmpty) continue;
+      names.add(name);
+    }
+    final sorted = names.toList()..sort();
+    return [
+      for (final name in sorted)
+        CityDefinition(id: name, name: name, code: null, isActive: true),
+    ];
+  }
+});
+
 class WorkOrderType {
   final String id;
   final String name;
@@ -113,6 +144,27 @@ class TaxRate {
   );
 }
 
+class CityDefinition {
+  final String id;
+  final String name;
+  final String? code;
+  final bool isActive;
+
+  CityDefinition({
+    required this.id,
+    required this.name,
+    required this.code,
+    this.isActive = true,
+  });
+
+  factory CityDefinition.fromJson(Map<String, dynamic> json) => CityDefinition(
+    id: json['id'].toString(),
+    name: json['name']?.toString() ?? '',
+    code: json['code']?.toString(),
+    isActive: json['is_active'] as bool? ?? true,
+  );
+}
+
 class DefinitionsScreen extends ConsumerWidget {
   const DefinitionsScreen({super.key});
 
@@ -123,8 +175,9 @@ class DefinitionsScreen extends ConsumerWidget {
     final modelsAsync = ref.watch(deviceModelsProvider);
     final typesAsync = ref.watch(workOrderTypesProvider);
     final ratesAsync = ref.watch(taxRatesProvider);
+    final citiesAsync = ref.watch(cityDefinitionsProvider);
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: AppPageLayout(
         title: 'Tanımlamalar',
         subtitle: 'Sistem tanımları ve ayarları',
@@ -163,6 +216,14 @@ class DefinitionsScreen extends ConsumerWidget {
                     icon: Icons.percent_rounded,
                   ),
                 ),
+                const Gap(12),
+                Expanded(
+                  child: _DefinitionStatCard(
+                    label: 'Şehir',
+                    value: citiesAsync.asData?.value.length.toString() ?? '—',
+                    icon: Icons.location_city_rounded,
+                  ),
+                ),
               ],
             ),
             const Gap(16),
@@ -182,6 +243,7 @@ class DefinitionsScreen extends ConsumerWidget {
                       Tab(text: 'Modeller'),
                       Tab(text: 'İş Emri Tipleri'),
                       Tab(text: 'KDV Oranları'),
+                      Tab(text: 'Şehirler'),
                     ],
                   ),
                   const Divider(height: 1),
@@ -193,6 +255,7 @@ class DefinitionsScreen extends ConsumerWidget {
                         _ModelsTab(isAdmin: isAdmin),
                         _WorkOrderTypesTab(isAdmin: isAdmin),
                         _TaxRatesTab(isAdmin: isAdmin),
+                        _CitiesTab(isAdmin: isAdmin),
                       ],
                     ),
                   ),
@@ -836,7 +899,17 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
             tone: t.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
           ),
           const Gap(10),
-          if (widget.isAdmin)
+          if (widget.isAdmin) ...[
+            OutlinedButton(
+              onPressed: _saving
+                  ? null
+                  : () async {
+                      await _showEditWorkOrderTypeDialog(context, ref, t);
+                      ref.invalidate(workOrderTypesProvider);
+                    },
+              child: const Text('Düzenle'),
+            ),
+            const Gap(6),
             OutlinedButton(
               onPressed: _saving ? null : _toggleActive,
               child: _saving
@@ -847,6 +920,7 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
                     )
                   : Text(t.isActive ? 'Pasif Yap' : 'Aktif Yap'),
             ),
+          ],
         ],
       ),
     );
@@ -901,6 +975,158 @@ class _TaxRatesTab extends ConsumerWidget {
               error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CitiesTab extends ConsumerWidget {
+  const _CitiesTab({required this.isAdmin});
+
+  final bool isAdmin;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final citiesAsync = ref.watch(cityDefinitionsProvider);
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Şehir Tanımları',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: isAdmin
+                    ? () async {
+                        await _showCityDialog(context, ref);
+                        ref.invalidate(cityDefinitionsProvider);
+                      }
+                    : null,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Ekle'),
+              ),
+            ],
+          ),
+          const Gap(12),
+          Expanded(
+            child: citiesAsync.when(
+              data: (items) {
+                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+                return ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (context, index) => const Gap(10),
+                  itemBuilder: (context, index) =>
+                      _CityRow(city: items[index], isAdmin: isAdmin),
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CityRow extends ConsumerStatefulWidget {
+  const _CityRow({required this.city, required this.isAdmin});
+
+  final CityDefinition city;
+  final bool isAdmin;
+
+  @override
+  ConsumerState<_CityRow> createState() => _CityRowState();
+}
+
+class _CityRowState extends ConsumerState<_CityRow> {
+  bool _saving = false;
+
+  Future<void> _toggleActive() async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+    setState(() => _saving = true);
+    try {
+      await client
+          .from('cities')
+          .update({'is_active': !widget.city.isActive})
+          .eq('id', widget.city.id);
+      ref.invalidate(cityDefinitionsProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final city = widget.city;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  city.name,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    decoration: city.isActive
+                        ? null
+                        : TextDecoration.lineThrough,
+                  ),
+                ),
+                if (city.code?.trim().isNotEmpty ?? false) ...[
+                  const Gap(2),
+                  Text(
+                    city.code!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          AppBadge(
+            label: city.isActive ? 'Aktif' : 'Pasif',
+            tone: city.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
+          ),
+          const Gap(10),
+          if (widget.isAdmin) ...[
+            OutlinedButton(
+              onPressed: _saving
+                  ? null
+                  : () async {
+                      await _showCityDialog(context, ref, city: city);
+                      ref.invalidate(cityDefinitionsProvider);
+                    },
+              child: const Text('Düzenle'),
+            ),
+            const Gap(6),
+            OutlinedButton(
+              onPressed: _saving ? null : _toggleActive,
+              child: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(city.isActive ? 'Pasif Yap' : 'Aktif Yap'),
+            ),
+          ],
         ],
       ),
     );
@@ -1040,9 +1266,19 @@ Future<void> _showCreateWorkOrderTypeDialog(
   BuildContext context,
   WidgetRef ref,
 ) async {
-  final nameController = TextEditingController();
-  final descController = TextEditingController();
-  String selectedColor = '#6366F1';
+  await _showEditWorkOrderTypeDialog(context, ref, null);
+}
+
+Future<void> _showEditWorkOrderTypeDialog(
+  BuildContext context,
+  WidgetRef ref,
+  WorkOrderType? existing,
+) async {
+  final nameController = TextEditingController(text: existing?.name ?? '');
+  final descController = TextEditingController(
+    text: existing?.description ?? '',
+  );
+  String selectedColor = existing?.color ?? '#6366F1';
   bool saving = false;
 
   final colors = [
@@ -1075,7 +1311,9 @@ Future<void> _showCreateWorkOrderTypeDialog(
                   children: [
                     Expanded(
                       child: Text(
-                        'İş Emri Tipi Ekle',
+                        existing == null
+                            ? 'İş Emri Tipi Ekle'
+                            : 'İş Emri Tipi Düzenle',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
@@ -1162,15 +1400,25 @@ Future<void> _showCreateWorkOrderTypeDialog(
                                 if (client == null) return;
                                 setState(() => saving = true);
                                 try {
-                                  await client.from('work_order_types').insert({
+                                  final payload = {
                                     'name': name,
                                     'description':
                                         descController.text.trim().isEmpty
                                         ? null
                                         : descController.text.trim(),
                                     'color': selectedColor,
-                                    'is_active': true,
-                                  });
+                                    'is_active': existing?.isActive ?? true,
+                                  };
+                                  if (existing == null) {
+                                    await client
+                                        .from('work_order_types')
+                                        .insert(payload);
+                                  } else {
+                                    await client
+                                        .from('work_order_types')
+                                        .update(payload)
+                                        .eq('id', existing.id);
+                                  }
                                   if (!context.mounted) return;
                                   Navigator.of(context).pop();
                                 } finally {
@@ -1380,6 +1628,131 @@ class _DefinitionStatCard extends StatelessWidget {
       ),
     );
   }
+}
+
+Future<void> _showCityDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  CityDefinition? city,
+}) async {
+  final nameController = TextEditingController(text: city?.name ?? '');
+  final codeController = TextEditingController(text: city?.code ?? '');
+  bool saving = false;
+
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: AppCard(
+          padding: const EdgeInsets.all(20),
+          child: StatefulBuilder(
+            builder: (context, setState) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        city == null ? 'Şehir Ekle' : 'Şehir Düzenle',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Kapat',
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Şehir Adı',
+                    hintText: 'Örn: İstanbul',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: codeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Şehir Kodu',
+                    hintText: 'Örn: 34',
+                  ),
+                ),
+                const Gap(18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        child: const Text('Vazgeç'),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                final client = ref.read(supabaseClientProvider);
+                                if (client == null) return;
+                                final name = nameController.text.trim();
+                                if (name.isEmpty) return;
+                                setState(() => saving = true);
+                                try {
+                                  final payload = {
+                                    'name': name,
+                                    'code': codeController.text.trim().isEmpty
+                                        ? null
+                                        : codeController.text.trim(),
+                                    'is_active': city?.isActive ?? true,
+                                  };
+                                  if (city == null) {
+                                    await client.from('cities').insert(payload);
+                                  } else {
+                                    await client
+                                        .from('cities')
+                                        .update(payload)
+                                        .eq('id', city.id);
+                                  }
+                                  if (!context.mounted) return;
+                                  Navigator.of(context).pop();
+                                } finally {
+                                  setState(() => saving = false);
+                                }
+                              },
+                        child: saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Kaydet'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _Empty extends StatelessWidget {

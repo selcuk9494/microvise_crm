@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 
@@ -757,30 +758,166 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
     }
   }
 
-  void _exportStatement(String format) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '${format.toUpperCase()} ekstre özelliği yakında eklenecek',
-        ),
+  Future<void> _exportStatement(String format) async {
+    final invoices =
+        ref
+            .read(
+              invoicesProvider(InvoiceFilter(customerId: widget.customerId)),
+            )
+            .value ??
+        const <Invoice>[];
+    final transactions =
+        ref
+            .read(
+              transactionsProvider(
+                TransactionFilter(customerId: widget.customerId),
+              ),
+            )
+            .value ??
+        const <Transaction>[];
+    if (invoices.isEmpty && transactions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ekstre için veri bulunamadı.')),
+      );
+      return;
+    }
+    await _showStatementPreview(
+      title: '${format.toUpperCase()} Ekstre Önizleme',
+      text: _buildStatementText(
+        invoices: invoices,
+        transactions: transactions,
+        onlySelected: false,
       ),
     );
   }
 
-  void _sendStatement() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('E-posta ekstre özelliği yakında eklenecek'),
+  Future<void> _sendStatement() async {
+    final invoices =
+        ref
+            .read(
+              invoicesProvider(InvoiceFilter(customerId: widget.customerId)),
+            )
+            .value ??
+        const <Invoice>[];
+    final transactions =
+        ref
+            .read(
+              transactionsProvider(
+                TransactionFilter(customerId: widget.customerId),
+              ),
+            )
+            .value ??
+        const <Transaction>[];
+    if (invoices.isEmpty && transactions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gönderilecek ekstre verisi yok.')),
+      );
+      return;
+    }
+    await _showStatementPreview(
+      title: 'E-posta Ekstre İçeriği',
+      text: _buildStatementText(
+        invoices: invoices,
+        transactions: transactions,
+        onlySelected: false,
       ),
     );
   }
 
-  void _exportSelectedStatement() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '${_selectedInvoices.length} fatura için ekstre oluşturulacak',
+  Future<void> _exportSelectedStatement() async {
+    final invoices =
+        ref
+            .read(
+              invoicesProvider(InvoiceFilter(customerId: widget.customerId)),
+            )
+            .value ??
+        const <Invoice>[];
+    final transactions =
+        ref
+            .read(
+              transactionsProvider(
+                TransactionFilter(customerId: widget.customerId),
+              ),
+            )
+            .value ??
+        const <Transaction>[];
+    if (_selectedInvoices.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Önce fatura seçin.')));
+      return;
+    }
+    await _showStatementPreview(
+      title: 'Seçili Açık Faturalar Ekstresi',
+      text: _buildStatementText(
+        invoices: invoices,
+        transactions: transactions,
+        onlySelected: true,
+      ),
+    );
+  }
+
+  String _buildStatementText({
+    required List<Invoice> invoices,
+    required List<Transaction> transactions,
+    required bool onlySelected,
+  }) {
+    final filteredInvoices = onlySelected
+        ? invoices
+              .where((invoice) => _selectedInvoices.contains(invoice.id))
+              .toList()
+        : invoices;
+    final totalOpen = filteredInvoices.fold<double>(
+      0,
+      (sum, invoice) => sum + invoice.remainingAmount,
+    );
+    final lines = <String>[
+      'Cari: ${widget.customerName}',
+      'Tarih: ${DateFormat('d MMMM y HH:mm', 'tr_TR').format(DateTime.now())}',
+      '',
+      'Açık Fatura Toplamı: ${_money.format(totalOpen)}',
+      '',
+      'Faturalar',
+      for (final invoice in filteredInvoices)
+        '- ${invoice.invoiceNumber} | ${DateFormat('d MMM y', 'tr_TR').format(invoice.invoiceDate)} | ${invoice.status} | Kalan: ${_money.format(invoice.remainingAmount)}',
+      '',
+      'İşlemler',
+      for (final tx in transactions)
+        '- ${DateFormat('d MMM y', 'tr_TR').format(tx.transactionDate)} | ${tx.transactionType == 'collection' ? 'Tahsilat' : 'Ödeme'} | ${_money.format(tx.amount)}${tx.invoiceNumber != null ? ' | ${tx.invoiceNumber}' : ''}${tx.description?.trim().isNotEmpty ?? false ? ' | ${tx.description}' : ''}',
+    ];
+    return lines.join('\n');
+  }
+
+  Future<void> _showStatementPreview({
+    required String title,
+    required String text,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 680,
+          child: SingleChildScrollView(child: SelectableText(text)),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Kapat'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: text));
+              if (!context.mounted) return;
+              Navigator.of(context).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Ekstre panoya kopyalandı.')),
+              );
+            },
+            icon: const Icon(Icons.copy_rounded, size: 18),
+            label: const Text('Kopyala'),
+          ),
+        ],
       ),
     );
   }
