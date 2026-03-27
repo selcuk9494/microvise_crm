@@ -97,40 +97,68 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
   final search = filters.search.trim();
   final city = filters.city;
   final start = (page - 1) * customerPageSize;
-  final end = start + customerPageSize;
 
-  var q = client
-      .from('customers')
-      .select(
-        'id,name,city,email,vkn,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,notes,is_active',
-      );
-  var totalQuery = client.from('customers').select('id');
+  var sortQuery = client.from('customers').select('id,name,created_at');
 
   if (city != null && city.isNotEmpty) {
-    q = q.eq('city', city);
-    totalQuery = totalQuery.eq('city', city);
+    sortQuery = sortQuery.eq('city', city);
   }
   if (search.isNotEmpty) {
-    q = q.ilike('name', '%$search%');
-    totalQuery = totalQuery.ilike('name', '%$search%');
+    sortQuery = sortQuery.ilike('name', '%$search%');
   }
 
-  final totalRows = await totalQuery;
-  final totalCount = (totalRows as List).length;
-  final orderedQuery = switch (sort) {
-    CustomerSortOption.id => q.order('id'),
-    CustomerSortOption.nameAsc => q.order('name'),
-    CustomerSortOption.nameDesc => q.order('name', ascending: false),
-  };
-  final rows = await orderedQuery.range(start, end);
-  final customerRows = (rows as List)
+  final sortRows = await sortQuery;
+  final sortedRows = (sortRows as List)
       .map((e) => e as Map<String, dynamic>)
-      .toList(growable: false);
+      .toList(growable: true);
 
-  final hasNextPage = customerRows.length > customerPageSize;
-  final currentPageRows = hasNextPage
-      ? customerRows.take(customerPageSize).toList(growable: false)
-      : customerRows;
+  sortedRows.sort((a, b) {
+    return switch (sort) {
+      CustomerSortOption.id => _compareCreatedAt(
+        a['created_at']?.toString(),
+        b['created_at']?.toString(),
+      ),
+      CustomerSortOption.nameAsc => _normalizeSortText(
+        a['name']?.toString() ?? '',
+      ).compareTo(_normalizeSortText(b['name']?.toString() ?? '')),
+      CustomerSortOption.nameDesc => _normalizeSortText(
+        b['name']?.toString() ?? '',
+      ).compareTo(_normalizeSortText(a['name']?.toString() ?? '')),
+    };
+  });
+
+  final totalCount = sortedRows.length;
+  final currentPageIds = sortedRows
+      .skip(start)
+      .take(customerPageSize)
+      .map((row) => row['id']?.toString())
+      .whereType<String>()
+      .toList(growable: false);
+  final hasNextPage = start + currentPageIds.length < totalCount;
+
+  if (currentPageIds.isEmpty) {
+    return CustomerPageData(
+      items: const [],
+      page: page,
+      hasNextPage: false,
+      totalCount: totalCount,
+    );
+  }
+
+  final rows = await client
+      .from('customers')
+      .select(
+        'id,name,city,email,vkn,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,notes,is_active,created_at',
+      )
+      .inFilter('id', currentPageIds);
+  final rowById = {
+    for (final row in (rows as List).cast<Map<String, dynamic>>())
+      row['id']?.toString() ?? '': row,
+  };
+  final currentPageRows = [
+    for (final id in currentPageIds)
+      if (rowById.containsKey(id)) rowById[id]!,
+  ];
 
   if (currentPageRows.isEmpty) {
     return CustomerPageData(
@@ -187,6 +215,28 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
         .toList(growable: false),
   );
 });
+
+int _compareCreatedAt(String? left, String? right) {
+  final leftDate = DateTime.tryParse(left ?? '');
+  final rightDate = DateTime.tryParse(right ?? '');
+  if (leftDate == null && rightDate == null) return 0;
+  if (leftDate == null) return 1;
+  if (rightDate == null) return -1;
+  return leftDate.compareTo(rightDate);
+}
+
+String _normalizeSortText(String value) {
+  return value
+      .trim()
+      .toLowerCase()
+      .replaceAll('ç', 'c')
+      .replaceAll('ğ', 'g')
+      .replaceAll('ı', 'i')
+      .replaceAll('i̇', 'i')
+      .replaceAll('ö', 'o')
+      .replaceAll('ş', 's')
+      .replaceAll('ü', 'u');
+}
 
 final customerCitiesProvider = FutureProvider<List<String>>((ref) async {
   final client = ref.watch(supabaseClientProvider);
