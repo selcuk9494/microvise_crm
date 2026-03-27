@@ -46,6 +46,8 @@ class _CreateWorkOrderDialogState
 
   List<_CustomerOption> _customers = const [];
   String? _selectedCustomerId;
+  List<String> _cities = const [];
+  String? _selectedCity;
   List<_BranchOption> _branches = const [];
   String? _selectedBranchId;
   List<_WorkOrderTypeOption> _workOrderTypes = const [];
@@ -61,6 +63,7 @@ class _CreateWorkOrderDialogState
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadCustomers();
+      _loadCities();
       _loadWorkOrderTypes();
     });
   }
@@ -72,7 +75,7 @@ class _CreateWorkOrderDialogState
     try {
       final rows = await client
           .from('customers')
-          .select('id,name,is_active')
+          .select('id,name,city,is_active')
           .eq('is_active', true)
           .order('name')
           .limit(200);
@@ -86,6 +89,31 @@ class _CreateWorkOrderDialogState
     } catch (_) {
       if (!mounted) return;
       setState(() => _customers = const []);
+    }
+  }
+
+  Future<void> _loadCities() async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      final rows = await client
+          .from('cities')
+          .select('name')
+          .eq('is_active', true)
+          .order('name');
+
+      final items = (rows as List)
+          .map((row) => row['name']?.toString().trim())
+          .whereType<String>()
+          .where((name) => name.isNotEmpty)
+          .toList(growable: false);
+
+      if (!mounted) return;
+      setState(() => _cities = items);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _cities = const []);
     }
   }
 
@@ -220,6 +248,7 @@ class _CreateWorkOrderDialogState
         'status': 'open',
         'assigned_to': assignedTo,
         'scheduled_date': _scheduledDate?.toIso8601String().substring(0, 10),
+        'city': _selectedCity,
         'contact_phone': _contactPhoneController.text.trim().isEmpty
             ? null
             : _contactPhoneController.text.trim(),
@@ -323,10 +352,13 @@ class _CreateWorkOrderDialogState
                     },
                     displayStringForOption: (o) => o.name,
                     onSelected: (o) {
-                      _selectedCustomerId = o.id;
-                      _customerController.text = o.name;
-                      _selectedBranchId = null;
-                      _branches = const [];
+                      setState(() {
+                        _selectedCustomerId = o.id;
+                        _customerController.text = o.name;
+                        _selectedCity = o.city ?? _selectedCity;
+                        _selectedBranchId = null;
+                        _branches = const [];
+                      });
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         _loadBranches(o.id);
                       });
@@ -377,6 +409,26 @@ class _CreateWorkOrderDialogState
                   ),
                   const Gap(12),
                 ],
+                DropdownButtonFormField<String?>(
+                  initialValue: _selectedCity,
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Şehir seç'),
+                    ),
+                    ..._cities.map(
+                      (city) => DropdownMenuItem<String?>(
+                        value: city,
+                        child: Text(city),
+                      ),
+                    ),
+                  ],
+                  onChanged: _saving
+                      ? null
+                      : (value) => setState(() => _selectedCity = value),
+                  decoration: const InputDecoration(labelText: 'Şehir'),
+                ),
+                const Gap(12),
                 DropdownButtonFormField<String?>(
                   initialValue: _selectedWorkOrderTypeId,
                   items: [
@@ -579,15 +631,21 @@ class _CreateWorkOrderDialogState
 }
 
 class _CustomerOption {
-  const _CustomerOption({required this.id, required this.name});
+  const _CustomerOption({
+    required this.id,
+    required this.name,
+    required this.city,
+  });
 
   final String id;
   final String name;
+  final String? city;
 
   factory _CustomerOption.fromJson(Map<String, dynamic> json) {
     return _CustomerOption(
       id: json['id'].toString(),
       name: (json['name'] ?? '').toString(),
+      city: json['city']?.toString(),
     );
   }
 }

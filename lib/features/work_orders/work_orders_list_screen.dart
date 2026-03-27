@@ -316,13 +316,39 @@ class _WorkOrderList extends StatelessWidget {
       );
     }
 
-    return ListView.separated(
+    final ref = ProviderScope.containerOf(context);
+    final canReorder = items.every((item) => item.status == 'open');
+    if (!canReorder) {
+      return ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+        itemCount: items.length,
+        separatorBuilder: (context, index) => const Gap(10),
+        itemBuilder: (context, index) {
+          final order = items[index];
+          return _WorkOrderCard(order: order, onTap: () => onTap(order));
+        },
+      );
+    }
+
+    return ReorderableListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
       itemCount: items.length,
-      separatorBuilder: (context, index) => const Gap(10),
+      onReorder: (oldIndex, newIndex) async {
+        final reordered = [...items];
+        if (newIndex > oldIndex) newIndex -= 1;
+        final item = reordered.removeAt(oldIndex);
+        reordered.insert(newIndex, item);
+        await ref
+            .read(workOrdersBoardProvider.notifier)
+            .reorderOpenOrders(reordered);
+      },
       itemBuilder: (context, index) {
         final order = items[index];
-        return _WorkOrderCard(order: order, onTap: () => onTap(order));
+        return Padding(
+          key: ValueKey(order.id),
+          padding: EdgeInsets.only(bottom: index == items.length - 1 ? 0 : 10),
+          child: _WorkOrderCard(order: order, onTap: () => onTap(order)),
+        );
       },
     );
   }
@@ -410,6 +436,19 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                           icon: Icons.business_rounded,
                           label: order.customerName ?? '-',
                         ),
+                        if (order.city?.trim().isNotEmpty ?? false)
+                          _WorkOrderMetaChip(
+                            icon: Icons.location_city_rounded,
+                            label: order.city!,
+                            backgroundColor: _cityTone(
+                              order.city!,
+                            ).withValues(alpha: 0.12),
+                            borderColor: _cityTone(
+                              order.city!,
+                            ).withValues(alpha: 0.24),
+                            foregroundColor: _cityTone(order.city!),
+                            emphasize: true,
+                          ),
                         if (order.workOrderTypeName?.trim().isNotEmpty ?? false)
                           _WorkOrderMetaChip(
                             icon: Icons.category_rounded,
@@ -478,25 +517,35 @@ class _WorkOrderMetaChip extends StatelessWidget {
     required this.icon,
     required this.label,
     this.emphasize = false,
+    this.backgroundColor,
+    this.borderColor,
+    this.foregroundColor,
   });
 
   final IconData icon;
   final String label;
   final bool emphasize;
+  final Color? backgroundColor;
+  final Color? borderColor;
+  final Color? foregroundColor;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: emphasize
-            ? AppTheme.primary.withValues(alpha: 0.08)
-            : const Color(0xFFF8FAFC),
+        color:
+            backgroundColor ??
+            (emphasize
+                ? AppTheme.primary.withValues(alpha: 0.08)
+                : const Color(0xFFF8FAFC)),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: emphasize
-              ? AppTheme.primary.withValues(alpha: 0.18)
-              : AppTheme.border,
+          color:
+              borderColor ??
+              (emphasize
+                  ? AppTheme.primary.withValues(alpha: 0.18)
+                  : AppTheme.border),
         ),
       ),
       child: Row(
@@ -505,13 +554,17 @@ class _WorkOrderMetaChip extends StatelessWidget {
           Icon(
             icon,
             size: 14,
-            color: emphasize ? AppTheme.primary : const Color(0xFF64748B),
+            color:
+                foregroundColor ??
+                (emphasize ? AppTheme.primary : const Color(0xFF64748B)),
           ),
           const Gap(6),
           Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: emphasize ? AppTheme.primary : const Color(0xFF475569),
+              color:
+                  foregroundColor ??
+                  (emphasize ? AppTheme.primary : const Color(0xFF475569)),
               fontWeight: emphasize ? FontWeight.w600 : FontWeight.w500,
             ),
           ),
@@ -519,4 +572,20 @@ class _WorkOrderMetaChip extends StatelessWidget {
       ),
     );
   }
+}
+
+Color _cityTone(String city) {
+  const palette = [
+    Color(0xFF2563EB),
+    Color(0xFF16A34A),
+    Color(0xFFEA580C),
+    Color(0xFF9333EA),
+    Color(0xFFDC2626),
+    Color(0xFF0891B2),
+    Color(0xFFCA8A04),
+    Color(0xFF4F46E5),
+  ];
+  final normalized = city.trim().toLowerCase();
+  final hash = normalized.codeUnits.fold<int>(0, (sum, unit) => sum + unit);
+  return palette[hash % palette.length];
 }

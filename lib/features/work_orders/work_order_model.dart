@@ -5,6 +5,7 @@ class WorkOrder {
     required this.customerId,
     required this.customerName,
     this.description,
+    this.city,
     required this.status,
     required this.branchId,
     this.branchName,
@@ -15,6 +16,7 @@ class WorkOrder {
     this.contactPhone,
     this.locationLink,
     this.closeNotes,
+    this.sortOrder = 0,
     required this.isActive,
   });
 
@@ -23,6 +25,7 @@ class WorkOrder {
   final String customerId;
   final String? customerName;
   final String? description;
+  final String? city;
   final String status;
   final String? branchId;
   final String? branchName;
@@ -33,6 +36,7 @@ class WorkOrder {
   final String? contactPhone;
   final String? locationLink;
   final String? closeNotes;
+  final int sortOrder;
   final bool isActive;
 
   factory WorkOrder.fromJson(Map<String, dynamic> json) {
@@ -42,6 +46,7 @@ class WorkOrder {
       customerId: json['customer_id'].toString(),
       customerName: json['customer_name']?.toString(),
       description: json['description']?.toString(),
+      city: json['city']?.toString(),
       status: (json['status'] ?? 'open').toString(),
       branchId: json['branch_id']?.toString(),
       branchName: json['branch_name']?.toString(),
@@ -54,17 +59,24 @@ class WorkOrder {
       contactPhone: json['contact_phone']?.toString(),
       locationLink: json['location_link']?.toString(),
       closeNotes: json['close_notes']?.toString(),
+      sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
       isActive: (json['is_active'] as bool?) ?? true,
     );
   }
 
-  WorkOrder copyWith({String? status, String? branchId, String? branchName}) {
+  WorkOrder copyWith({
+    String? status,
+    String? branchId,
+    String? branchName,
+    int? sortOrder,
+  }) {
     return WorkOrder(
       id: id,
       title: title,
       customerId: customerId,
       customerName: customerName,
       description: description,
+      city: city,
       status: status ?? this.status,
       branchId: branchId ?? this.branchId,
       branchName: branchName ?? this.branchName,
@@ -75,6 +87,7 @@ class WorkOrder {
       contactPhone: contactPhone,
       locationLink: locationLink,
       closeNotes: closeNotes,
+      sortOrder: sortOrder ?? this.sortOrder,
       isActive: isActive,
     );
   }

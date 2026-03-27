@@ -20,7 +20,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     var q = client
         .from('work_orders')
         .select(
-          'id,title,description,status,is_active,customer_id,branch_id,assigned_to,scheduled_date,work_order_type_id,contact_phone,location_link,close_notes,customers(name),branches(name),work_order_types(name)',
+          'id,title,description,city,status,is_active,customer_id,branch_id,assigned_to,scheduled_date,work_order_type_id,contact_phone,location_link,close_notes,sort_order,customers(name),branches(name),work_order_types(name)',
         )
         .eq('is_active', true);
 
@@ -30,9 +30,11 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
       q = q.eq('assigned_to', userId);
     }
 
-    final rows = await q.order('created_at', ascending: false);
+    final rows = await q
+        .order('sort_order')
+        .order('created_at', ascending: false);
 
-    return (rows as List)
+    final items = (rows as List)
         .map((e) {
           final map = e as Map<String, dynamic>;
           final customers = map['customers'] as Map<String, dynamic>?;
@@ -47,6 +49,19 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
           });
         })
         .toList(growable: false);
+
+    final statusRank = {'open': 0, 'in_progress': 1, 'done': 2};
+    final sortedItems = [...items]
+      ..sort((a, b) {
+        final statusCompare = (statusRank[a.status] ?? 99).compareTo(
+          statusRank[b.status] ?? 99,
+        );
+        if (statusCompare != 0) return statusCompare;
+        final sortCompare = a.sortOrder.compareTo(b.sortOrder);
+        if (sortCompare != 0) return sortCompare;
+        return 0;
+      });
+    return sortedItems;
   }
 
   Future<void> refresh() async {
@@ -75,6 +90,36 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
           .from('work_orders')
           .update({'status': newStatus})
           .eq('id', workOrderId);
+    } catch (_) {
+      state = AsyncData(current);
+    }
+  }
+
+  Future<void> reorderOpenOrders(List<WorkOrder> reorderedOpenOrders) async {
+    final current = state.asData?.value;
+    if (current == null) return;
+
+    final openIds = reorderedOpenOrders.map((item) => item.id).toSet();
+    final reordered = [
+      for (final item in reorderedOpenOrders)
+        item.copyWith(sortOrder: reorderedOpenOrders.indexOf(item)),
+    ];
+    final next = [
+      ...reordered,
+      ...current.where((item) => !openIds.contains(item.id)),
+    ];
+    state = AsyncData(next);
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      for (var i = 0; i < reorderedOpenOrders.length; i++) {
+        await client
+            .from('work_orders')
+            .update({'sort_order': i})
+            .eq('id', reorderedOpenOrders[i].id);
+      }
     } catch (_) {
       state = AsyncData(current);
     }
