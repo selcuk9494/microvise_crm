@@ -1883,9 +1883,7 @@ Future<void> _extendLineAndQueueInvoice(
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'Hat uzatıldı; fatura listesi için migration 0003 gerekli.',
-            ),
+            content: Text('Hat uzatıldı; fatura kuyruğuna eklenemedi.'),
           ),
         );
       }
@@ -1946,9 +1944,7 @@ Future<void> _extendGmp3AndQueueInvoice(
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'GMP3 uzatıldı; fatura listesi için migration 0003 gerekli.',
-            ),
+            content: Text('GMP3 uzatıldı; fatura kuyruğuna eklenemedi.'),
           ),
         );
       }

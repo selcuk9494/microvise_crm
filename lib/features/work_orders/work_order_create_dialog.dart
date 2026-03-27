@@ -46,6 +46,8 @@ class _CreateWorkOrderDialogState
   String? _selectedCustomerId;
   List<_BranchOption> _branches = const [];
   String? _selectedBranchId;
+  List<_WorkOrderTypeOption> _workOrderTypes = const [];
+  String? _selectedWorkOrderTypeId;
   DateTime? _scheduledDate;
 
   bool _usersLoaded = false;
@@ -55,7 +57,10 @@ class _CreateWorkOrderDialogState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCustomers());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadCustomers();
+      _loadWorkOrderTypes();
+    });
   }
 
   Future<void> _loadCustomers() async {
@@ -131,6 +136,36 @@ class _CreateWorkOrderDialogState
     }
   }
 
+  Future<void> _loadWorkOrderTypes() async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      final rows = await client
+          .from('work_order_types')
+          .select('id,name,description')
+          .eq('is_active', true)
+          .order('sort_order')
+          .order('name')
+          .limit(100);
+
+      final items = (rows as List)
+          .map((e) => _WorkOrderTypeOption.fromJson(e as Map<String, dynamic>))
+          .toList(growable: false);
+
+      if (!mounted) return;
+      setState(() {
+        _workOrderTypes = items;
+        if (items.length == 1) {
+          _selectedWorkOrderTypeId = items.first.id;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _workOrderTypes = const []);
+    }
+  }
+
   @override
   void dispose() {
     _customerController.dispose();
@@ -171,6 +206,7 @@ class _CreateWorkOrderDialogState
       await client.from('work_orders').insert({
         'customer_id': customerId,
         'branch_id': _selectedBranchId,
+        'work_order_type_id': _selectedWorkOrderTypeId,
         'title': _titleController.text.trim(),
         'description': _descController.text.trim().isEmpty
             ? null
@@ -329,6 +365,34 @@ class _CreateWorkOrderDialogState
                   ),
                   const Gap(12),
                 ],
+                DropdownButtonFormField<String?>(
+                  initialValue: _selectedWorkOrderTypeId,
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('İş emri tipi seç'),
+                    ),
+                    ..._workOrderTypes.map(
+                      (type) => DropdownMenuItem<String?>(
+                        value: type.id,
+                        child: Text(type.name),
+                      ),
+                    ),
+                  ],
+                  onChanged: _saving
+                      ? null
+                      : (value) =>
+                            setState(() => _selectedWorkOrderTypeId = value),
+                  decoration: const InputDecoration(labelText: 'İş Emri Tipi'),
+                  validator: (value) {
+                    if (_workOrderTypes.isEmpty) return null;
+                    if ((value ?? '').isEmpty) {
+                      return 'İş emri tipi seçin.';
+                    }
+                    return null;
+                  },
+                ),
+                const Gap(12),
                 Row(
                   children: [
                     Expanded(
@@ -499,6 +563,26 @@ class _UserOption {
       id: json['id'].toString(),
       fullName: json['full_name']?.toString(),
       role: json['role']?.toString(),
+    );
+  }
+}
+
+class _WorkOrderTypeOption {
+  const _WorkOrderTypeOption({
+    required this.id,
+    required this.name,
+    required this.description,
+  });
+
+  final String id;
+  final String name;
+  final String? description;
+
+  factory _WorkOrderTypeOption.fromJson(Map<String, dynamic> json) {
+    return _WorkOrderTypeOption(
+      id: json['id'].toString(),
+      name: json['name']?.toString() ?? '',
+      description: json['description']?.toString(),
     );
   }
 }
