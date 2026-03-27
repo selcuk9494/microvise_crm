@@ -34,7 +34,8 @@ class _WorkOrderCloseSheet extends ConsumerStatefulWidget {
   final WorkOrder order;
 
   @override
-  ConsumerState<_WorkOrderCloseSheet> createState() => _WorkOrderCloseSheetState();
+  ConsumerState<_WorkOrderCloseSheet> createState() =>
+      _WorkOrderCloseSheetState();
 }
 
 class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
@@ -89,13 +90,15 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         final lat = double.tryParse(_latController.text.trim());
         final lng = double.tryParse(_lngController.text.trim());
         final address = _addressController.text.trim();
+        final latMap = lat == null ? null : {'location_lat': lat};
+        final lngMap = lng == null ? null : {'location_lng': lng};
+        final addressMap = address.isEmpty ? null : {'address': address};
 
         if (lat != null || lng != null || address.isNotEmpty) {
-          await client.from('branches').update({
-            if (lat != null) 'location_lat': lat,
-            if (lng != null) 'location_lng': lng,
-            if (address.isNotEmpty) 'address': address,
-          }).eq('id', branchId);
+          await client
+              .from('branches')
+              .update({...?latMap, ...?lngMap, ...?addressMap})
+              .eq('id', branchId);
         }
       }
 
@@ -158,18 +161,22 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
       Uint8List? signatureBytes = await _signatureController.toPngBytes();
       String? signatureDataUrl;
       if (signatureBytes != null && signatureBytes.isNotEmpty) {
-        signatureDataUrl = 'data:image/png;base64,${base64Encode(signatureBytes)}';
+        signatureDataUrl =
+            'data:image/png;base64,${base64Encode(signatureBytes)}';
       }
 
-      await client.from('work_orders').update({
-        'status': 'done',
-        'branch_id': branchId,
-        'closed_at': now.toIso8601String(),
-        'closed_by': client.auth.currentUser?.id,
-        'close_notes': _notesController.text.trim().isEmpty
-            ? null
-            : _notesController.text.trim(),
-      }).eq('id', widget.order.id);
+      await client
+          .from('work_orders')
+          .update({
+            'status': 'done',
+            'branch_id': branchId,
+            'closed_at': now.toIso8601String(),
+            'closed_by': client.auth.currentUser?.id,
+            'close_notes': _notesController.text.trim().isEmpty
+                ? null
+                : _notesController.text.trim(),
+          })
+          .eq('id', widget.order.id);
 
       if (customer.email != null &&
           customer.email!.trim().isNotEmpty &&
@@ -187,7 +194,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         } catch (_) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('İmza kaydedildi; e-posta gönderilemedi.')),
+              const SnackBar(
+                content: Text('İmza kaydedildi; e-posta gönderilemedi.'),
+              ),
             );
           }
         }
@@ -195,9 +204,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
 
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İş emri kapatıldı.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('İş emri kapatıldı.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -205,8 +214,12 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final customerAsync = ref.watch(customerDetailProvider(widget.order.customerId));
-    final branchesAsync = ref.watch(customerBranchesProvider(widget.order.customerId));
+    final customerAsync = ref.watch(
+      customerDetailProvider(widget.order.customerId),
+    );
+    final branchesAsync = ref.watch(
+      customerBranchesProvider(widget.order.customerId),
+    );
 
     return Container(
       decoration: const BoxDecoration(
@@ -228,15 +241,21 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               customer: customer,
               branchesAsync: branchesAsync,
               selectedBranchId: _selectedBranchId ?? widget.order.branchId,
-              onBranchChanged: _saving ? null : (id) => setState(() => _selectedBranchId = id),
+              onBranchChanged: _saving
+                  ? null
+                  : (id) => setState(() => _selectedBranchId = id),
               notesController: _notesController,
               addressController: _addressController,
               latController: _latController,
               lngController: _lngController,
               addLine: _addLine,
               addGmp3: _addGmp3,
-              onToggleAddLine: _saving ? null : (v) => setState(() => _addLine = v),
-              onToggleAddGmp3: _saving ? null : (v) => setState(() => _addGmp3 = v),
+              onToggleAddLine: _saving
+                  ? null
+                  : (v) => setState(() => _addLine = v),
+              onToggleAddGmp3: _saving
+                  ? null
+                  : (v) => setState(() => _addGmp3 = v),
               lineNumberController: _lineNumberController,
               lineSimController: _lineSimController,
               gmp3NameController: _gmp3NameController,
@@ -249,24 +268,23 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               onRemovePayment: _saving
                   ? null
                   : (index) => setState(() {
-                        _payments[index].dispose();
-                        _payments.removeAt(index);
-                      }),
+                      _payments[index].dispose();
+                      _payments.removeAt(index);
+                    }),
               onSave: () => _save(customer),
             ),
             loading: () => const Padding(
               padding: EdgeInsets.all(18),
               child: Center(child: CircularProgressIndicator()),
             ),
-            error: (_, __) => Padding(
+            error: (error, stackTrace) => Padding(
               padding: const EdgeInsets.all(18),
               child: AppCard(
                 child: Text(
                   'Müşteri bilgisi yüklenemedi.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ),
             ),
@@ -328,7 +346,11 @@ class _SheetBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final money = NumberFormat.currency(locale: 'tr_TR', symbol: '', decimalDigits: 2);
+    final money = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: '',
+      decimalDigits: 2,
+    );
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -357,10 +379,9 @@ class _SheetBody extends StatelessWidget {
                     '${customer.name} • ${order.title}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: const Color(0xFF64748B)),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
                   ),
                 ],
               ),
@@ -378,11 +399,14 @@ class _SheetBody extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Şube & Konum', style: Theme.of(context).textTheme.titleSmall),
+                    Text(
+                      'Şube & Konum',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                     const Gap(10),
                     branchesAsync.when(
                       data: (branches) => DropdownButtonFormField<String?>(
-                        value: selectedBranchId,
+                        initialValue: selectedBranchId,
                         items: [
                           const DropdownMenuItem<String?>(
                             value: null,
@@ -399,7 +423,7 @@ class _SheetBody extends StatelessWidget {
                         decoration: const InputDecoration(labelText: 'Şube'),
                       ),
                       loading: () => const SizedBox.shrink(),
-                      error: (_, __) => const SizedBox.shrink(),
+                      error: (error, stackTrace) => const SizedBox.shrink(),
                     ),
                     const Gap(12),
                     TextField(
@@ -455,7 +479,10 @@ class _SheetBody extends StatelessWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text('Ödemeler', style: Theme.of(context).textTheme.titleSmall),
+                          child: Text(
+                            'Ödemeler',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
                         ),
                         OutlinedButton.icon(
                           onPressed: onAddPayment,
@@ -469,7 +496,9 @@ class _SheetBody extends StatelessWidget {
                       _PaymentRow(
                         draft: payments[i],
                         canRemove: payments.length > 1,
-                        onRemove: onRemovePayment == null ? null : () => onRemovePayment!(i),
+                        onRemove: onRemovePayment == null
+                            ? null
+                            : () => onRemovePayment!(i),
                         money: money,
                       ),
                       if (i != payments.length - 1) const Gap(10),
@@ -504,7 +533,9 @@ class _SheetBody extends StatelessWidget {
                     Row(
                       children: [
                         OutlinedButton(
-                          onPressed: saving ? null : () => signatureController.clear(),
+                          onPressed: saving
+                              ? null
+                              : () => signatureController.clear(),
                           child: const Text('Temizle'),
                         ),
                         const Gap(12),
@@ -513,9 +544,7 @@ class _SheetBody extends StatelessWidget {
                             customer.email?.trim().isNotEmpty ?? false
                                 ? 'İmza ile birlikte e-posta gönderimi denenecek.'
                                 : 'E-posta yoksa gönderim yapılmaz.',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
+                            style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: const Color(0xFF64748B)),
                           ),
                         ),
@@ -530,14 +559,19 @@ class _SheetBody extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Ek Satış (opsiyonel)', style: Theme.of(context).textTheme.titleSmall),
+                    Text(
+                      'Ek Satış (opsiyonel)',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                     const Gap(10),
                     SwitchListTile.adaptive(
                       contentPadding: EdgeInsets.zero,
                       value: addLine,
                       onChanged: onToggleAddLine,
                       title: const Text('Hat Satışı Ekle'),
-                      subtitle: const Text('Başlangıç: bugün • Bitiş: yıl sonu'),
+                      subtitle: const Text(
+                        'Başlangıç: bugün • Bitiş: yıl sonu',
+                      ),
                     ),
                     if (addLine) ...[
                       const Gap(10),
@@ -564,7 +598,9 @@ class _SheetBody extends StatelessWidget {
                       value: addGmp3,
                       onChanged: onToggleAddGmp3,
                       title: const Text('GMP3 Lisansı Sat'),
-                      subtitle: const Text('Başlangıç: bugün • Bitiş: yıl sonu'),
+                      subtitle: const Text(
+                        'Başlangıç: bugün • Bitiş: yıl sonu',
+                      ),
                     ),
                     if (addGmp3) ...[
                       const Gap(10),
@@ -688,14 +724,15 @@ class _PaymentRowState extends State<_PaymentRow> {
         Expanded(
           flex: 2,
           child: DropdownButtonFormField<String>(
-            value: widget.draft.currency,
+            initialValue: widget.draft.currency,
             items: const [
               DropdownMenuItem(value: 'TRY', child: Text('TRY')),
               DropdownMenuItem(value: 'USD', child: Text('USD')),
               DropdownMenuItem(value: 'EUR', child: Text('EUR')),
               DropdownMenuItem(value: 'GBP', child: Text('GBP (STG)')),
             ],
-            onChanged: (v) => setState(() => widget.draft.currency = v ?? 'TRY'),
+            onChanged: (v) =>
+                setState(() => widget.draft.currency = v ?? 'TRY'),
             decoration: const InputDecoration(labelText: 'Para Birimi'),
           ),
         ),
@@ -710,4 +747,3 @@ class _PaymentRowState extends State<_PaymentRow> {
     );
   }
 }
-

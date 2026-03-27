@@ -77,11 +77,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     try {
       _exchangeRates = await CurrencyService.getExchangeRates();
     } catch (_) {
-      _exchangeRates = {
-        'USD': 34.50,
-        'EUR': 37.20,
-        'GBP': 43.80,
-      };
+      _exchangeRates = {'USD': 34.50, 'EUR': 37.20, 'GBP': 43.80};
     }
     if (mounted) setState(() => _loadingRates = false);
   }
@@ -108,20 +104,21 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
 
     setState(() => _saving = true);
     try {
-      await client.from('work_orders').update({
-        'status': newStatus,
-      }).eq('id', widget.order.id);
+      await client
+          .from('work_orders')
+          .update({'status': newStatus})
+          .eq('id', widget.order.id);
 
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('İş emri durumu güncellendi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('İş emri durumu güncellendi.')));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Durum güncellenemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Durum güncellenemedi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -140,13 +137,15 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         final lat = double.tryParse(_latController.text.trim());
         final lng = double.tryParse(_lngController.text.trim());
         final address = _addressController.text.trim();
+        final latMap = lat == null ? null : {'location_lat': lat};
+        final lngMap = lng == null ? null : {'location_lng': lng};
+        final addressMap = address.isEmpty ? null : {'address': address};
 
         if (lat != null || lng != null || address.isNotEmpty) {
-          await client.from('branches').update({
-            if (lat != null) 'location_lat': lat,
-            if (lng != null) 'location_lng': lng,
-            if (address.isNotEmpty) 'address': address,
-          }).eq('id', branchId);
+          await client
+              .from('branches')
+              .update({...?latMap, ...?lngMap, ...?addressMap})
+              .eq('id', branchId);
         }
       }
 
@@ -197,7 +196,9 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           'work_order_id': widget.order.id,
           'amount': amount,
           'currency': p.currency,
-          'exchange_rate': p.currency == 'TRY' ? 1.0 : _exchangeRates[p.currency],
+          'exchange_rate': p.currency == 'TRY'
+              ? 1.0
+              : _exchangeRates[p.currency],
           'paid_at': now.toIso8601String(),
           'created_by': client.auth.currentUser?.id,
           'is_active': true,
@@ -214,15 +215,18 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             'data:image/png;base64,${base64Encode(signatureBytes)}';
       }
 
-      await client.from('work_orders').update({
-        'status': 'done',
-        'branch_id': branchId,
-        'closed_at': now.toIso8601String(),
-        'closed_by': client.auth.currentUser?.id,
-        'close_notes': _notesController.text.trim().isEmpty
-            ? null
-            : _notesController.text.trim(),
-      }).eq('id', widget.order.id);
+      await client
+          .from('work_orders')
+          .update({
+            'status': 'done',
+            'branch_id': branchId,
+            'closed_at': now.toIso8601String(),
+            'closed_by': client.auth.currentUser?.id,
+            'close_notes': _notesController.text.trim().isEmpty
+                ? null
+                : _notesController.text.trim(),
+          })
+          .eq('id', widget.order.id);
 
       if (customer.email != null &&
           customer.email!.trim().isNotEmpty &&
@@ -241,7 +245,8 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                  content: Text('İmza kaydedildi; e-posta gönderilemedi.')),
+                content: Text('İmza kaydedildi; e-posta gönderilemedi.'),
+              ),
             );
           }
         }
@@ -249,14 +254,14 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
 
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İş emri kapatıldı.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('İş emri kapatıldı.')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Hata: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Hata: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -264,10 +269,12 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final customerAsync =
-        ref.watch(customerDetailProvider(widget.order.customerId));
-    final branchesAsync =
-        ref.watch(customerBranchesProvider(widget.order.customerId));
+    final customerAsync = ref.watch(
+      customerDetailProvider(widget.order.customerId),
+    );
+    final branchesAsync = ref.watch(
+      customerBranchesProvider(widget.order.customerId),
+    );
     final isDone = widget.order.status == 'done';
 
     return Container(
@@ -336,15 +343,14 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
               padding: EdgeInsets.all(18),
               child: Center(child: CircularProgressIndicator()),
             ),
-            error: (_, __) => Padding(
+            error: (error, stackTrace) => Padding(
               padding: const EdgeInsets.all(18),
               child: AppCard(
                 child: Text(
                   'Müşteri bilgisi yüklenemedi.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ),
             ),
@@ -377,10 +383,9 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 customer.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: const Color(0xFF64748B)),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
               ),
             ],
           ),
@@ -400,19 +405,37 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('İş Emri Detayları',
-              style: Theme.of(context).textTheme.titleSmall),
+          Text(
+            'İş Emri Detayları',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
           const Gap(12),
-          _InfoRow(icon: Icons.business_rounded, label: 'Müşteri', value: customer.name),
+          _InfoRow(
+            icon: Icons.business_rounded,
+            label: 'Müşteri',
+            value: customer.name,
+          ),
           const Gap(8),
-          _InfoRow(icon: Icons.calendar_today_rounded, label: 'Planlanan Tarih', value: dateText),
+          _InfoRow(
+            icon: Icons.calendar_today_rounded,
+            label: 'Planlanan Tarih',
+            value: dateText,
+          ),
           if (customer.email?.isNotEmpty ?? false) ...[
             const Gap(8),
-            _InfoRow(icon: Icons.email_rounded, label: 'E-posta', value: customer.email!),
+            _InfoRow(
+              icon: Icons.email_rounded,
+              label: 'E-posta',
+              value: customer.email!,
+            ),
           ],
           if (customer.phone1?.isNotEmpty ?? false) ...[
             const Gap(8),
-            _InfoRow(icon: Icons.phone_rounded, label: 'Telefon', value: customer.phone1!),
+            _InfoRow(
+              icon: Icons.phone_rounded,
+              label: 'Telefon',
+              value: customer.phone1!,
+            ),
           ],
         ],
       ),
@@ -432,7 +455,9 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
               if (widget.order.status == 'open')
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: _saving ? null : () => _updateStatus('in_progress'),
+                    onPressed: _saving
+                        ? null
+                        : () => _updateStatus('in_progress'),
                     icon: const Icon(Icons.play_arrow_rounded, size: 18),
                     label: const Text('Başla'),
                   ),
@@ -468,8 +493,11 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
 
   Widget _buildPaymentsCard(BuildContext context) {
     final isDone = widget.order.status == 'done';
-    final money =
-        NumberFormat.currency(locale: 'tr_TR', symbol: '', decimalDigits: 2);
+    final money = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: '',
+      decimalDigits: 2,
+    );
 
     return AppCard(
       padding: const EdgeInsets.all(16),
@@ -479,8 +507,10 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           Row(
             children: [
               Expanded(
-                child:
-                    Text('Ödemeler', style: Theme.of(context).textTheme.titleSmall),
+                child: Text(
+                  'Ödemeler',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
               ),
               if (!isDone)
                 OutlinedButton.icon(
@@ -504,10 +534,9 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 const Gap(8),
                 Text(
                   'Kurlar yükleniyor...',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ],
             ),
@@ -522,16 +551,19 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.currency_exchange_rounded,
-                      size: 16, color: AppTheme.success),
+                  Icon(
+                    Icons.currency_exchange_rounded,
+                    size: 16,
+                    color: AppTheme.success,
+                  ),
                   const Gap(8),
                   Expanded(
                     child: Text(
                       'USD: ${money.format(_exchangeRates['USD'] ?? 0)} TL | EUR: ${money.format(_exchangeRates['EUR'] ?? 0)} TL | GBP: ${money.format(_exchangeRates['GBP'] ?? 0)} TL',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFF166534),
-                            fontWeight: FontWeight.w500,
-                          ),
+                        color: const Color(0xFF166534),
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],
@@ -549,16 +581,18 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline_rounded,
-                      size: 18, color: const Color(0xFF64748B)),
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 18,
+                    color: const Color(0xFF64748B),
+                  ),
                   const Gap(10),
                   Expanded(
                     child: Text(
                       'Ödeme eklemek için butona tıklayın.',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: const Color(0xFF64748B)),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
                     ),
                   ),
                 ],
@@ -571,9 +605,9 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
               onRemove: isDone || _saving
                   ? null
                   : () => setState(() {
-                        _payments[i].dispose();
-                        _payments.removeAt(i);
-                      }),
+                      _payments[i].dispose();
+                      _payments.removeAt(i);
+                    }),
               money: money,
               exchangeRates: _exchangeRates,
             ),
@@ -620,10 +654,9 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                   customer.email?.trim().isNotEmpty ?? false
                       ? 'İmza ile birlikte e-posta gönderilecek.'
                       : 'E-posta adresi yoksa gönderim yapılmaz.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ),
             ],
@@ -634,7 +667,9 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   }
 
   Widget _buildBranchLocationCard(
-      BuildContext context, AsyncValue<List<CustomerBranch>> branchesAsync) {
+    BuildContext context,
+    AsyncValue<List<CustomerBranch>> branchesAsync,
+  ) {
     return AppCard(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -644,7 +679,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           const Gap(10),
           branchesAsync.when(
             data: (branches) => DropdownButtonFormField<String?>(
-              value: _selectedBranchId ?? widget.order.branchId,
+              initialValue: _selectedBranchId ?? widget.order.branchId,
               items: [
                 const DropdownMenuItem<String?>(
                   value: null,
@@ -657,12 +692,13 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                   ),
                 ),
               ],
-              onChanged:
-                  _saving ? null : (v) => setState(() => _selectedBranchId = v),
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() => _selectedBranchId = v),
               decoration: const InputDecoration(labelText: 'Şube'),
             ),
             loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
+            error: (error, stackTrace) => const SizedBox.shrink(),
           ),
           const Gap(12),
           TextField(
@@ -717,8 +753,10 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Ek Satış (opsiyonel)',
-              style: Theme.of(context).textTheme.titleSmall),
+          Text(
+            'Ek Satış (opsiyonel)',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
           const Gap(10),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
@@ -797,17 +835,16 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         children: [
           Expanded(
             child: OutlinedButton(
-              onPressed:
-                  _saving ? null : () => setState(() => _isClosing = false),
+              onPressed: _saving
+                  ? null
+                  : () => setState(() => _isClosing = false),
               child: const Text('Vazgeç'),
             ),
           ),
           const Gap(12),
           Expanded(
             child: FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.success,
-              ),
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.success),
               onPressed: _saving ? null : () => _closeWorkOrder(customer),
               child: _saving
                   ? const SizedBox(
@@ -851,18 +888,17 @@ class _InfoRow extends StatelessWidget {
         const Gap(10),
         Text(
           '$label:',
-          style: Theme.of(context)
-              .textTheme
-              .bodySmall
-              ?.copyWith(color: const Color(0xFF64748B)),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
         ),
         const Gap(8),
         Expanded(
           child: Text(
             value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w500,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
           ),
         ),
       ],
@@ -924,8 +960,9 @@ class _PaymentRowState extends State<_PaymentRow> {
               flex: 3,
               child: TextField(
                 controller: widget.draft.amountController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(
                   labelText: 'Tutar',
                   hintText: '0.00',
@@ -937,7 +974,7 @@ class _PaymentRowState extends State<_PaymentRow> {
             Expanded(
               flex: 2,
               child: DropdownButtonFormField<String>(
-                value: widget.draft.currency,
+                initialValue: widget.draft.currency,
                 items: const [
                   DropdownMenuItem(value: 'TRY', child: Text('TRY')),
                   DropdownMenuItem(value: 'USD', child: Text('USD')),
@@ -969,15 +1006,18 @@ class _PaymentRowState extends State<_PaymentRow> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.swap_horiz_rounded,
-                    size: 14, color: const Color(0xFF64748B)),
+                Icon(
+                  Icons.swap_horiz_rounded,
+                  size: 14,
+                  color: const Color(0xFF64748B),
+                ),
                 const Gap(6),
                 Text(
                   '${widget.money.format(tryAmount)} TL',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF475569),
-                        fontWeight: FontWeight.w600,
-                      ),
+                    color: const Color(0xFF475569),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
