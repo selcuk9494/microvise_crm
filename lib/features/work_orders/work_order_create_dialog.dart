@@ -80,9 +80,11 @@ class _CreateWorkOrderDialogState
           .order('name')
           .limit(200);
 
-      final items = (rows as List)
-          .map((e) => _CustomerOption.fromJson(e as Map<String, dynamic>))
-          .toList(growable: false);
+      final items =
+          (rows as List)
+              .map((e) => _CustomerOption.fromJson(e as Map<String, dynamic>))
+              .toList(growable: false)
+            ..sort((a, b) => _sortKey(a.name).compareTo(_sortKey(b.name)));
 
       if (!mounted) return;
       setState(() => _customers = items);
@@ -628,6 +630,19 @@ class _CreateWorkOrderDialogState
       ),
     );
   }
+}
+
+String _sortKey(String value) {
+  return value
+      .toLowerCase()
+      .replaceAll('ç', 'c')
+      .replaceAll('ğ', 'g')
+      .replaceAll('ı', 'i')
+      .replaceAll('İ', 'i')
+      .replaceAll('ö', 'o')
+      .replaceAll('ş', 's')
+      .replaceAll('ü', 'u')
+      .trim();
 }
 
 class _CustomerOption {
