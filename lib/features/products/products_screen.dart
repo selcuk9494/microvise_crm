@@ -215,20 +215,38 @@ class _LinesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final linesAsync = ref.watch(issuedLinesProvider);
+    final licensesAsync = ref.watch(issuedLicensesProvider);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: linesAsync.when(
-        data: (items) {
-          if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
-          return ListView.separated(
-            itemCount: items.length,
-            separatorBuilder: (context, index) => const Gap(10),
-            itemBuilder: (context, index) =>
-                _LineRow(item: items[index], isAdmin: isAdmin),
-          );
-        },
+        data: (items) => licensesAsync.when(
+          data: (licenses) {
+            final licensedCustomerIds = licenses
+                .where((license) => license.licenseType == 'gmp3')
+                .map((license) => license.customerId)
+                .toSet();
+            final lineOnlyItems = items
+                .where((line) => !licensedCustomerIds.contains(line.customerId))
+                .toList(growable: false);
+
+            if (lineOnlyItems.isEmpty) {
+              return const _Empty(
+                text: 'Sadece hatti olan musteri kaydi bulunmuyor.',
+              );
+            }
+            return ListView.separated(
+              itemCount: lineOnlyItems.length,
+              separatorBuilder: (context, index) => const Gap(10),
+              itemBuilder: (context, index) =>
+                  _LineRow(item: lineOnlyItems[index], isAdmin: isAdmin),
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stackTrace) =>
+              const _Empty(text: 'Lisanslar yuklenemedi.'),
+        ),
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stackTrace) => const _Empty(text: 'Hatlar yüklenemedi.'),
+        error: (error, stackTrace) => const _Empty(text: 'Hatlar yuklenemedi.'),
       ),
     );
   }
