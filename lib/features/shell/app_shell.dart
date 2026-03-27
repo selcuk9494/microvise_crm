@@ -43,7 +43,11 @@ class _DesktopShell extends ConsumerWidget {
           Container(
             width: 280,
             decoration: BoxDecoration(
-              color: AppTheme.surface,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.white, AppTheme.surfaceMuted],
+              ),
               border: Border(right: BorderSide(color: AppTheme.border)),
             ),
             child: SafeArea(
@@ -109,16 +113,16 @@ class _MobileShell extends StatelessWidget {
       backgroundColor: AppTheme.background,
       body: child,
       floatingActionButton: FloatingActionButton(
-        backgroundColor: AppTheme.primary,
+        backgroundColor: AppTheme.primaryDark,
         foregroundColor: Colors.white,
         onPressed: () => _showQuickCreateSheet(context),
         child: const Icon(Icons.add_rounded),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: BottomAppBar(
-        color: AppTheme.surface,
+        color: Colors.white,
         surfaceTintColor: Colors.transparent,
-        height: 66,
+        height: 74,
         padding: EdgeInsets.zero,
         child: Row(
           children: [
@@ -164,23 +168,34 @@ class _BrandHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(18),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
-                color: AppTheme.primary,
-                borderRadius: BorderRadius.circular(12),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppTheme.primary, AppTheme.primaryDark],
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primary.withValues(alpha: 0.25),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
               child: const Icon(
                 Icons.grid_view_rounded,
                 color: Colors.white,
-                size: 20,
+                size: 22,
               ),
             ),
             const Gap(12),
@@ -189,13 +204,13 @@ class _BrandHeader extends StatelessWidget {
               children: [
                 Text(
                   'Microvise',
-                  style: Theme.of(context).textTheme.titleSmall,
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
                 Text(
                   'CRM & Servis',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -219,7 +234,7 @@ class _TopBar extends StatelessWidget {
         height: 64,
         padding: const EdgeInsets.symmetric(horizontal: 18),
         decoration: BoxDecoration(
-          color: AppTheme.background,
+          color: Colors.white.withValues(alpha: 0.85),
           border: Border(bottom: BorderSide(color: AppTheme.border)),
         ),
         child: Row(
@@ -229,11 +244,11 @@ class _TopBar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 onTap: onSearchTap,
                 child: Container(
-                  height: 40,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  height: 44,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
-                    color: AppTheme.surface,
-                    borderRadius: BorderRadius.circular(12),
+                    color: AppTheme.surfaceMuted,
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: AppTheme.border),
                   ),
                   child: Row(
@@ -243,13 +258,13 @@ class _TopBar extends StatelessWidget {
                           PhosphorIconsStyle.regular,
                         ),
                         size: 18,
-                        color: const Color(0xFF64748B),
+                        color: AppTheme.textMuted,
                       ),
                       const Gap(10),
                       Text(
                         'Ara (müşteri, iş emri, servis...)',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: const Color(0xFF94A3B8),
+                          color: const Color(0xFF8CA0B8),
                         ),
                       ),
                     ],
@@ -263,7 +278,7 @@ class _TopBar extends StatelessWidget {
               onPressed: () {},
               icon: Icon(
                 PhosphorIcons.bell(PhosphorIconsStyle.regular),
-                color: const Color(0xFF0F172A),
+                color: AppTheme.text,
               ),
             ),
             const Gap(6),
@@ -283,11 +298,11 @@ class _ProfileButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         onTap: () => controller.isOpen ? controller.close() : controller.open(),
         child: Container(
-          height: 40,
+          height: 44,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(12),
+            color: AppTheme.surfaceMuted,
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(color: AppTheme.border),
           ),
           child: Row(
@@ -331,24 +346,31 @@ class _SidebarItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = active
-        ? AppTheme.primary.withValues(alpha: 0.10)
-        : Colors.transparent;
+    final bg = active ? Colors.white : Colors.transparent;
     final border = active
-        ? AppTheme.primary.withValues(alpha: 0.18)
+        ? AppTheme.primary.withValues(alpha: 0.24)
         : AppTheme.border;
-    final fg = active ? AppTheme.primary : const Color(0xFF0F172A);
+    final fg = active ? AppTheme.primaryDark : AppTheme.text;
 
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
       child: Container(
-        height: 44,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: border),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: AppTheme.primary.withValues(alpha: 0.10),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
+              : null,
         ),
         child: Row(
           children: [
@@ -385,13 +407,13 @@ class _BottomItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? AppTheme.primary : const Color(0xFF64748B);
+    final color = active ? AppTheme.primaryDark : AppTheme.textMuted;
     return Expanded(
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -423,8 +445,8 @@ class _AccountCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppTheme.border),
       ),
       child: Row(
@@ -448,9 +470,9 @@ class _AccountCard extends StatelessWidget {
                 ),
                 Text(
                   'Admin / Personel',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -461,7 +483,7 @@ class _AccountCard extends StatelessWidget {
             icon: Icon(
               PhosphorIcons.signOut(PhosphorIconsStyle.regular),
               size: 18,
-              color: const Color(0xFF0F172A),
+              color: AppTheme.text,
             ),
           ),
         ],
