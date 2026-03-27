@@ -12,6 +12,10 @@ final customerFiltersProvider =
 final customerPageProvider = NotifierProvider<CustomerPageNotifier, int>(
   CustomerPageNotifier.new,
 );
+final customerSortProvider =
+    NotifierProvider<CustomerSortNotifier, CustomerSortOption>(
+      CustomerSortNotifier.new,
+    );
 
 class CustomerFiltersNotifier extends Notifier<CustomerFilters> {
   @override
@@ -37,6 +41,15 @@ class CustomerPageNotifier extends Notifier<int> {
   void previous() => state = state > 1 ? state - 1 : 1;
 
   void reset() => state = 1;
+}
+
+enum CustomerSortOption { id, nameAsc, nameDesc }
+
+class CustomerSortNotifier extends Notifier<CustomerSortOption> {
+  @override
+  CustomerSortOption build() => CustomerSortOption.id;
+
+  void set(CustomerSortOption value) => state = value;
 }
 
 class CustomerFilters {
@@ -80,6 +93,7 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
 
   final filters = ref.watch(customerFiltersProvider);
   final page = ref.watch(customerPageProvider);
+  final sort = ref.watch(customerSortProvider);
   final search = filters.search.trim();
   final city = filters.city;
   final start = (page - 1) * customerPageSize;
@@ -103,7 +117,12 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
 
   final totalRows = await totalQuery;
   final totalCount = (totalRows as List).length;
-  final rows = await q.order('name').range(start, end);
+  final orderedQuery = switch (sort) {
+    CustomerSortOption.id => q.order('id'),
+    CustomerSortOption.nameAsc => q.order('name'),
+    CustomerSortOption.nameDesc => q.order('name', ascending: false),
+  };
+  final rows = await orderedQuery.range(start, end);
   final customerRows = (rows as List)
       .map((e) => e as Map<String, dynamic>)
       .toList(growable: false);

@@ -61,6 +61,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final citiesAsync = ref.watch(customerCitiesProvider);
     final filters = ref.watch(customerFiltersProvider);
     final currentPage = ref.watch(customerPageProvider);
+    final sort = ref.watch(customerSortProvider);
 
     return AppPageLayout(
       title: 'Müşteriler',
@@ -166,6 +167,36 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                             labelText: 'Şehir yüklenemedi',
                             prefixIcon: Icon(Icons.error_outline_rounded),
                           ),
+                        ),
+                      ),
+                    ),
+                    const Gap(12),
+                    SizedBox(
+                      width: 220,
+                      child: DropdownButtonFormField<CustomerSortOption>(
+                        initialValue: sort,
+                        items: const [
+                          DropdownMenuItem(
+                            value: CustomerSortOption.id,
+                            child: Text('ID Numarası'),
+                          ),
+                          DropdownMenuItem(
+                            value: CustomerSortOption.nameAsc,
+                            child: Text('A - Z'),
+                          ),
+                          DropdownMenuItem(
+                            value: CustomerSortOption.nameDesc,
+                            child: Text('Z - A'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          ref.read(customerSortProvider.notifier).set(value);
+                          ref.read(customerPageProvider.notifier).reset();
+                        },
+                        decoration: const InputDecoration(
+                          labelText: 'Sıralama',
+                          prefixIcon: Icon(Icons.sort_by_alpha_rounded),
                         ),
                       ),
                     ),
