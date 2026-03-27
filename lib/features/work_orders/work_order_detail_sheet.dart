@@ -197,6 +197,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           'work_order_id': widget.order.id,
           'amount': amount,
           'currency': p.currency,
+          'payment_method': p.method,
           'description': p.description,
           'paid_at': now.toIso8601String(),
           'created_by': client.auth.currentUser?.id,
@@ -208,11 +209,21 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           await client.from('payments').insert(paymentRows);
         } catch (e) {
           final message = e.toString();
-          if (!message.contains("'description' column")) rethrow;
+          if (!message.contains("'description' column") &&
+              !message.contains("'payment_method' column")) {
+            rethrow;
+          }
           final fallbackRows = paymentRows
-              .map(
-                (row) => Map<String, dynamic>.from(row)..remove('description'),
-              )
+              .map((row) {
+                final next = Map<String, dynamic>.from(row);
+                if (message.contains("'description' column")) {
+                  next.remove('description');
+                }
+                if (message.contains("'payment_method' column")) {
+                  next.remove('payment_method');
+                }
+                return next;
+              })
               .toList(growable: false);
           await client.from('payments').insert(fallbackRows);
         }
@@ -744,6 +755,13 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 ],
               ),
             ),
+          if (isDone && widget.order.payments.isNotEmpty) ...[
+            const Gap(4),
+            for (int i = 0; i < widget.order.payments.length; i++) ...[
+              _SavedPaymentRow(payment: widget.order.payments[i], money: money),
+              if (i != widget.order.payments.length - 1) const Gap(10),
+            ],
+          ],
           for (int i = 0; i < _payments.length; i++) ...[
             _PaymentRow(
               draft: _payments[i],
@@ -1065,6 +1083,7 @@ class _PaymentDraft {
   final amountController = TextEditingController();
   final descriptionController = TextEditingController();
   String currency = 'TRY';
+  String method = 'cash';
 
   double? get amount {
     final raw = amountController.text.trim().replaceAll(',', '.');
@@ -1144,18 +1163,41 @@ class _PaymentRowState extends State<_PaymentRow> {
             ),
             const Gap(10),
             Expanded(
-              flex: 2,
-              child: DropdownButtonFormField<String>(
-                initialValue: widget.draft.currency,
-                items: const [
-                  DropdownMenuItem(value: 'TRY', child: Text('TRY')),
-                  DropdownMenuItem(value: 'USD', child: Text('USD')),
-                  DropdownMenuItem(value: 'EUR', child: Text('EUR')),
-                  DropdownMenuItem(value: 'GBP', child: Text('GBP (STG)')),
+              flex: 3,
+              child: Column(
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: widget.draft.currency,
+                    items: const [
+                      DropdownMenuItem(value: 'TRY', child: Text('TRY')),
+                      DropdownMenuItem(value: 'USD', child: Text('USD')),
+                      DropdownMenuItem(value: 'EUR', child: Text('EUR')),
+                      DropdownMenuItem(value: 'GBP', child: Text('GBP (STG)')),
+                    ],
+                    onChanged: (v) =>
+                        setState(() => widget.draft.currency = v ?? 'TRY'),
+                    decoration: const InputDecoration(labelText: 'Para Birimi'),
+                  ),
+                  const Gap(8),
+                  DropdownButtonFormField<String>(
+                    initialValue: widget.draft.method,
+                    items: const [
+                      DropdownMenuItem(value: 'cash', child: Text('Nakit')),
+                      DropdownMenuItem(
+                        value: 'bank',
+                        child: Text('Havale/EFT'),
+                      ),
+                      DropdownMenuItem(value: 'pos', child: Text('POS')),
+                      DropdownMenuItem(
+                        value: 'credit_card',
+                        child: Text('Kredi Kartı'),
+                      ),
+                    ],
+                    onChanged: (v) =>
+                        setState(() => widget.draft.method = v ?? 'cash'),
+                    decoration: const InputDecoration(labelText: 'Ödeme Türü'),
+                  ),
                 ],
-                onChanged: (v) =>
-                    setState(() => widget.draft.currency = v ?? 'TRY'),
-                decoration: const InputDecoration(labelText: 'Para Birimi'),
               ),
             ),
             const Gap(10),
@@ -1198,4 +1240,102 @@ class _PaymentRowState extends State<_PaymentRow> {
       ],
     );
   }
+}
+
+class _SavedPaymentRow extends StatelessWidget {
+  const _SavedPaymentRow({required this.payment, required this.money});
+
+  final WorkOrderPayment payment;
+  final NumberFormat money;
+
+  @override
+  Widget build(BuildContext context) {
+    final paidAt = payment.paidAt == null
+        ? null
+        : DateFormat('d MMM y HH:mm', 'tr_TR').format(payment.paidAt!);
+    final methodLabel = _paymentMethodLabel(payment.paymentMethod);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppTheme.success.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.payments_rounded,
+              size: 18,
+              color: AppTheme.success,
+            ),
+          ),
+          const Gap(10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${money.format(payment.amount)} ${payment.currency}',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                if (payment.description?.trim().isNotEmpty ?? false)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      payment.description!,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const Gap(10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (methodLabel != null)
+                Text(
+                  methodLabel,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              if (paidAt != null)
+                Text(
+                  paidAt,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String? _paymentMethodLabel(String? method) {
+  return switch (method) {
+    'cash' => 'Nakit',
+    'bank' => 'Havale/EFT',
+    'pos' => 'POS',
+    'credit_card' => 'Kredi Kartı',
+    'check' => 'Çek',
+    'other' => 'Diğer',
+    _ => null,
+  };
 }

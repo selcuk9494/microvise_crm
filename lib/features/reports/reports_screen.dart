@@ -80,7 +80,7 @@ final reportsDataProvider = FutureProvider<ReportsData>((ref) async {
 
   var paymentsQ = client
       .from('payments')
-      .select('paid_at,amount,currency,customers(name)')
+      .select('paid_at,amount,currency,payment_method,customers(name)')
       .gte('paid_at', from.toIso8601String())
       .eq('is_active', true);
   if (filters.userId != null) {
@@ -90,6 +90,7 @@ final reportsDataProvider = FutureProvider<ReportsData>((ref) async {
 
   final revenueByDay = <DateTime, double>{};
   final revenueByCustomer = <String, double>{};
+  final dailyPayments = <DateTime, _DailyPaymentAccumulator>{};
   for (final row in (payments as List)) {
     final paidAt = DateTime.tryParse(row['paid_at']?.toString() ?? '');
     final amountRaw = row['amount'];
@@ -99,6 +100,9 @@ final reportsDataProvider = FutureProvider<ReportsData>((ref) async {
     if (paidAt == null || amount == null) continue;
     final day = DateTime(paidAt.year, paidAt.month, paidAt.day);
     revenueByDay.update(day, (v) => v + amount, ifAbsent: () => amount);
+    dailyPayments
+        .putIfAbsent(day, _DailyPaymentAccumulator.new)
+        .add(amount, row['payment_method']?.toString());
     final customer = (row['customers'] as Map<String, dynamic>?)?['name']
         ?.toString();
     if (customer != null && customer.trim().isNotEmpty) {
@@ -149,6 +153,18 @@ final reportsDataProvider = FutureProvider<ReportsData>((ref) async {
     0,
     (sum, value) => sum + value,
   );
+  final dailyPaymentReports =
+      dailyPayments.entries
+          .map(
+            (entry) => DailyPaymentReport(
+              day: entry.key,
+              total: entry.value.total,
+              count: entry.value.count,
+              methodCounts: entry.value.methodCounts,
+            ),
+          )
+          .toList(growable: false)
+        ..sort((a, b) => b.day.compareTo(a.day));
   final totalWorkOrders = open + inProgress + done;
   final completedRate = totalWorkOrders == 0 ? 0.0 : done / totalWorkOrders;
 
@@ -160,6 +176,7 @@ final reportsDataProvider = FutureProvider<ReportsData>((ref) async {
       done: done,
     ),
     topCustomers: topCustomers.take(6).toList(growable: false),
+    dailyPayments: dailyPaymentReports.take(10).toList(growable: false),
     totalRevenue: totalRevenue,
     totalWorkOrders: totalWorkOrders,
     completedRate: completedRate,
@@ -289,6 +306,88 @@ class ReportsScreen extends ConsumerWidget {
                           ),
                           const Gap(12),
                           _StatusBars(status: data.workOrderStatus),
+                        ],
+                      ),
+                    ),
+                    const Gap(16),
+                    AppCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Günlük Ödeme Raporu',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const Gap(12),
+                          if (data.dailyPayments.isEmpty)
+                            Text(
+                              'Bu aralıkta ödeme kaydı yok.',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: const Color(0xFF64748B)),
+                            )
+                          else
+                            for (final item in data.dailyPayments)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            DateFormat(
+                                              'd MMMM y',
+                                              'tr_TR',
+                                            ).format(item.day),
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                          ),
+                                        ),
+                                        Text(
+                                          money.format(item.total),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: AppTheme.success,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                    const Gap(4),
+                                    Text(
+                                      '${item.count} ödeme',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: const Color(0xFF64748B),
+                                          ),
+                                    ),
+                                    if (item.methodCounts.isNotEmpty) ...[
+                                      const Gap(6),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: item.methodCounts.entries
+                                            .map(
+                                              (entry) => _MethodBadge(
+                                                label:
+                                                    '${_paymentMethodLabel(entry.key)} • ${entry.value}',
+                                              ),
+                                            )
+                                            .toList(growable: false),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
                         ],
                       ),
                     ),
@@ -696,6 +795,7 @@ class ReportsData {
     required this.revenueTrend,
     required this.workOrderStatus,
     required this.topCustomers,
+    required this.dailyPayments,
     required this.totalRevenue,
     required this.totalWorkOrders,
     required this.completedRate,
@@ -704,6 +804,7 @@ class ReportsData {
   final List<ReportPoint> revenueTrend;
   final WorkOrderStatusReport workOrderStatus;
   final List<MapEntry<String, double>> topCustomers;
+  final List<DailyPaymentReport> dailyPayments;
   final double totalRevenue;
   final int totalWorkOrders;
   final double completedRate;
@@ -712,6 +813,7 @@ class ReportsData {
     revenueTrend: [],
     workOrderStatus: WorkOrderStatusReport(open: 0, inProgress: 0, done: 0),
     topCustomers: [],
+    dailyPayments: [],
     totalRevenue: 0,
     totalWorkOrders: 0,
     completedRate: 0,
@@ -735,6 +837,70 @@ class WorkOrderStatusReport {
   final int open;
   final int inProgress;
   final int done;
+}
+
+class DailyPaymentReport {
+  const DailyPaymentReport({
+    required this.day,
+    required this.total,
+    required this.count,
+    required this.methodCounts,
+  });
+
+  final DateTime day;
+  final double total;
+  final int count;
+  final Map<String, int> methodCounts;
+}
+
+class _DailyPaymentAccumulator {
+  double total = 0;
+  int count = 0;
+  final Map<String, int> methodCounts = {};
+
+  void add(double amount, String? method) {
+    total += amount;
+    count += 1;
+    if (method == null || method.trim().isEmpty) return;
+    methodCounts.update(method, (value) => value + 1, ifAbsent: () => 1);
+  }
+}
+
+class _MethodBadge extends StatelessWidget {
+  const _MethodBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: const Color(0xFF475569),
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+String _paymentMethodLabel(String? method) {
+  return switch (method) {
+    'cash' => 'Nakit',
+    'bank' => 'Havale/EFT',
+    'pos' => 'POS',
+    'credit_card' => 'Kredi Kartı',
+    'check' => 'Çek',
+    'other' => 'Diğer',
+    _ => 'Belirsiz',
+  };
 }
 
 class ReportUser {

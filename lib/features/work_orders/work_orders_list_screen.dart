@@ -371,6 +371,11 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
   Widget build(BuildContext context) {
     final order = widget.order;
     final isMobile = MediaQuery.sizeOf(context).width < 720;
+    final money = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: '',
+      decimalDigits: 2,
+    );
     final dateText = order.scheduledDate != null
         ? DateFormat('d MMM y', 'tr_TR').format(order.scheduledDate!)
         : 'Tarih belirlenmedi';
@@ -473,6 +478,19 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                           _WorkOrderMetaChip(
                             icon: Icons.link_rounded,
                             label: 'Konum',
+                          ),
+                        if (order.status == 'done' && order.payments.isNotEmpty)
+                          _WorkOrderMetaChip(
+                            icon: Icons.payments_rounded,
+                            label: _paymentSummary(order, money),
+                            backgroundColor: AppTheme.success.withValues(
+                              alpha: 0.10,
+                            ),
+                            borderColor: AppTheme.success.withValues(
+                              alpha: 0.18,
+                            ),
+                            foregroundColor: AppTheme.success,
+                            emphasize: true,
                           ),
                       ],
                     ),
@@ -588,4 +606,18 @@ Color _cityTone(String city) {
   final normalized = city.trim().toLowerCase();
   final hash = normalized.codeUnits.fold<int>(0, (sum, unit) => sum + unit);
   return palette[hash % palette.length];
+}
+
+String _paymentSummary(WorkOrder order, NumberFormat money) {
+  final totals = <String, double>{};
+  for (final payment in order.payments) {
+    totals.update(
+      payment.currency,
+      (value) => value + payment.amount,
+      ifAbsent: () => payment.amount,
+    );
+  }
+  return totals.entries
+      .map((entry) => '${money.format(entry.value)} ${entry.key}')
+      .join(' + ');
 }

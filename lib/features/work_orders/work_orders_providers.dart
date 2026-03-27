@@ -20,7 +20,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     var q = client
         .from('work_orders')
         .select(
-          'id,title,description,city,status,is_active,customer_id,branch_id,assigned_to,scheduled_date,work_order_type_id,contact_phone,location_link,close_notes,sort_order,customers(name),branches(name),work_order_types(name)',
+          'id,title,description,city,status,is_active,customer_id,branch_id,assigned_to,scheduled_date,work_order_type_id,contact_phone,location_link,close_notes,sort_order,customers(name),branches(name),work_order_types(name),payments(amount,currency,description,paid_at,payment_method,is_active)',
         )
         .eq('is_active', true);
 

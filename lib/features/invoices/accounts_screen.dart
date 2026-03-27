@@ -701,6 +701,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
                 items: const [
                   DropdownMenuItem(value: 'cash', child: Text('Nakit')),
                   DropdownMenuItem(value: 'bank', child: Text('Havale/EFT')),
+                  DropdownMenuItem(value: 'pos', child: Text('POS')),
                   DropdownMenuItem(
                     value: 'credit_card',
                     child: Text('Kredi Kartı'),

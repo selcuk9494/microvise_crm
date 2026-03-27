@@ -302,6 +302,11 @@ class _WorkOrderListTileState extends ConsumerState<_WorkOrderListTile> {
   @override
   Widget build(BuildContext context) {
     final w = widget.order;
+    final money = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: '',
+      decimalDigits: 2,
+    );
     final scheduled = w.scheduledDate == null
         ? null
         : DateFormat('d MMM y', 'tr_TR').format(w.scheduledDate!);
@@ -412,6 +417,19 @@ class _WorkOrderListTileState extends ConsumerState<_WorkOrderListTile> {
                             icon: Icons.link_rounded,
                             label: 'Konum',
                           ),
+                        if (w.status == 'done' && w.payments.isNotEmpty)
+                          _WorkOrderMetaChip(
+                            icon: Icons.payments_rounded,
+                            label: _paymentSummary(w, money),
+                            emphasize: true,
+                            backgroundColor: AppTheme.success.withValues(
+                              alpha: 0.10,
+                            ),
+                            borderColor: AppTheme.success.withValues(
+                              alpha: 0.18,
+                            ),
+                            foregroundColor: AppTheme.success,
+                          ),
                       ],
                     ),
                     if (w.description?.trim().isNotEmpty ?? false) ...[
@@ -453,6 +471,20 @@ Color _cityTone(String city) {
   final normalized = city.trim().toLowerCase();
   final hash = normalized.codeUnits.fold<int>(0, (sum, unit) => sum + unit);
   return palette[hash % palette.length];
+}
+
+String _paymentSummary(WorkOrder order, NumberFormat money) {
+  final totals = <String, double>{};
+  for (final payment in order.payments) {
+    totals.update(
+      payment.currency,
+      (value) => value + payment.amount,
+      ifAbsent: () => payment.amount,
+    );
+  }
+  return totals.entries
+      .map((entry) => '${money.format(entry.value)} ${entry.key}')
+      .join(' + ');
 }
 
 class _WorkOrderCard extends StatefulWidget {

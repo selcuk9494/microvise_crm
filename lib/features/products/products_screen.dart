@@ -1195,18 +1195,29 @@ Future<void> _extendLineAndQueueInvoice(
         .update({'ends_at': newEndStr, 'expires_at': newEndStr})
         .eq('id', line.id);
 
-    await client.from('invoice_items').insert({
-      'customer_id': line.customerId,
-      'item_type': 'line_renewal',
-      'source_table': 'lines',
-      'source_id': line.id,
-      'description':
-          'Hat uzatma (${line.number ?? ''}) (yeni bitiş: $newEndStr)',
-      'amount': request.amount,
-      'currency': request.currency,
-      'status': 'pending',
-      'created_by': client.auth.currentUser?.id,
-    });
+    try {
+      await client.from('invoice_items').insert({
+        'customer_id': line.customerId,
+        'item_type': 'line_renewal',
+        'source_table': 'lines',
+        'source_id': line.id,
+        'description':
+            'Hat uzatma (${line.number ?? ''}) (yeni bitiş: $newEndStr)',
+        'amount': request.amount,
+        'currency': request.currency,
+        'status': 'pending',
+        'created_by': client.auth.currentUser?.id,
+      });
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hat uzatıldı; faturalama listesine eklenemedi.'),
+          ),
+        );
+      }
+      return;
+    }
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1303,17 +1314,28 @@ Future<void> _extendLicenseAndQueueInvoice(
         .update({'ends_at': newEndStr, 'expires_at': newEndStr})
         .eq('id', license.id);
 
-    await client.from('invoice_items').insert({
-      'customer_id': license.customerId,
-      'item_type': 'gmp3_renewal',
-      'source_table': 'licenses',
-      'source_id': license.id,
-      'description': 'GMP3 uzatma (${license.name}) (yeni bitiş: $newEndStr)',
-      'amount': request.amount,
-      'currency': request.currency,
-      'status': 'pending',
-      'created_by': client.auth.currentUser?.id,
-    });
+    try {
+      await client.from('invoice_items').insert({
+        'customer_id': license.customerId,
+        'item_type': 'gmp3_renewal',
+        'source_table': 'licenses',
+        'source_id': license.id,
+        'description': 'GMP3 uzatma (${license.name}) (yeni bitiş: $newEndStr)',
+        'amount': request.amount,
+        'currency': request.currency,
+        'status': 'pending',
+        'created_by': client.auth.currentUser?.id,
+      });
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Lisans uzatıldı; faturalama listesine eklenemedi.'),
+          ),
+        );
+      }
+      return;
+    }
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1355,18 +1377,20 @@ Future<void> _extendLinesInBulk(
           .from('lines')
           .update({'ends_at': newEndStr, 'expires_at': newEndStr})
           .eq('id', line.id);
-      await client.from('invoice_items').insert({
-        'customer_id': line.customerId,
-        'item_type': 'line_renewal',
-        'source_table': 'lines',
-        'source_id': line.id,
-        'description':
-            'Hat uzatma (${line.number ?? ''}) (yeni bitiş: $newEndStr)',
-        'amount': request.amount,
-        'currency': request.currency,
-        'status': 'pending',
-        'created_by': client.auth.currentUser?.id,
-      });
+      try {
+        await client.from('invoice_items').insert({
+          'customer_id': line.customerId,
+          'item_type': 'line_renewal',
+          'source_table': 'lines',
+          'source_id': line.id,
+          'description':
+              'Hat uzatma (${line.number ?? ''}) (yeni bitiş: $newEndStr)',
+          'amount': request.amount,
+          'currency': request.currency,
+          'status': 'pending',
+          'created_by': client.auth.currentUser?.id,
+        });
+      } catch (_) {}
     }
 
     if (context.mounted) {
@@ -1407,17 +1431,20 @@ Future<void> _extendLicensesInBulk(
           .from('licenses')
           .update({'ends_at': newEndStr, 'expires_at': newEndStr})
           .eq('id', license.id);
-      await client.from('invoice_items').insert({
-        'customer_id': license.customerId,
-        'item_type': 'gmp3_renewal',
-        'source_table': 'licenses',
-        'source_id': license.id,
-        'description': 'GMP3 uzatma (${license.name}) (yeni bitiş: $newEndStr)',
-        'amount': request.amount,
-        'currency': request.currency,
-        'status': 'pending',
-        'created_by': client.auth.currentUser?.id,
-      });
+      try {
+        await client.from('invoice_items').insert({
+          'customer_id': license.customerId,
+          'item_type': 'gmp3_renewal',
+          'source_table': 'licenses',
+          'source_id': license.id,
+          'description':
+              'GMP3 uzatma (${license.name}) (yeni bitiş: $newEndStr)',
+          'amount': request.amount,
+          'currency': request.currency,
+          'status': 'pending',
+          'created_by': client.auth.currentUser?.id,
+        });
+      } catch (_) {}
     }
 
     if (context.mounted) {

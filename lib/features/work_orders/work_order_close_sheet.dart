@@ -149,6 +149,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           'work_order_id': widget.order.id,
           'amount': amount,
           'currency': p.currency,
+          'payment_method': p.method,
           'description': p.description,
           'paid_at': now.toIso8601String(),
           'created_by': client.auth.currentUser?.id,
@@ -160,11 +161,21 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           await client.from('payments').insert(paymentRows);
         } catch (e) {
           final message = e.toString();
-          if (!message.contains("'description' column")) rethrow;
+          if (!message.contains("'description' column") &&
+              !message.contains("'payment_method' column")) {
+            rethrow;
+          }
           final fallbackRows = paymentRows
-              .map(
-                (row) => Map<String, dynamic>.from(row)..remove('description'),
-              )
+              .map((row) {
+                final next = Map<String, dynamic>.from(row);
+                if (message.contains("'description' column")) {
+                  next.remove('description');
+                }
+                if (message.contains("'payment_method' column")) {
+                  next.remove('payment_method');
+                }
+                return next;
+              })
               .toList(growable: false);
           await client.from('payments').insert(fallbackRows);
         }
@@ -691,6 +702,7 @@ class _PaymentDraft {
   final amountController = TextEditingController();
   final descriptionController = TextEditingController();
   String currency = 'TRY';
+  String method = 'cash';
 
   double? get amount {
     final raw = amountController.text.trim().replaceAll(',', '.');
@@ -758,18 +770,38 @@ class _PaymentRowState extends State<_PaymentRow> {
         ),
         const Gap(10),
         Expanded(
-          flex: 2,
-          child: DropdownButtonFormField<String>(
-            initialValue: widget.draft.currency,
-            items: const [
-              DropdownMenuItem(value: 'TRY', child: Text('TRY')),
-              DropdownMenuItem(value: 'USD', child: Text('USD')),
-              DropdownMenuItem(value: 'EUR', child: Text('EUR')),
-              DropdownMenuItem(value: 'GBP', child: Text('GBP (STG)')),
+          flex: 3,
+          child: Column(
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: widget.draft.currency,
+                items: const [
+                  DropdownMenuItem(value: 'TRY', child: Text('TRY')),
+                  DropdownMenuItem(value: 'USD', child: Text('USD')),
+                  DropdownMenuItem(value: 'EUR', child: Text('EUR')),
+                  DropdownMenuItem(value: 'GBP', child: Text('GBP (STG)')),
+                ],
+                onChanged: (v) =>
+                    setState(() => widget.draft.currency = v ?? 'TRY'),
+                decoration: const InputDecoration(labelText: 'Para Birimi'),
+              ),
+              const Gap(8),
+              DropdownButtonFormField<String>(
+                initialValue: widget.draft.method,
+                items: const [
+                  DropdownMenuItem(value: 'cash', child: Text('Nakit')),
+                  DropdownMenuItem(value: 'bank', child: Text('Havale/EFT')),
+                  DropdownMenuItem(value: 'pos', child: Text('POS')),
+                  DropdownMenuItem(
+                    value: 'credit_card',
+                    child: Text('Kredi Kartı'),
+                  ),
+                ],
+                onChanged: (v) =>
+                    setState(() => widget.draft.method = v ?? 'cash'),
+                decoration: const InputDecoration(labelText: 'Ödeme Türü'),
+              ),
             ],
-            onChanged: (v) =>
-                setState(() => widget.draft.currency = v ?? 'TRY'),
-            decoration: const InputDecoration(labelText: 'Para Birimi'),
           ),
         ),
         const Gap(10),

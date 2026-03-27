@@ -17,6 +17,7 @@ class WorkOrder {
     this.locationLink,
     this.closeNotes,
     this.sortOrder = 0,
+    this.payments = const [],
     required this.isActive,
   });
 
@@ -37,6 +38,7 @@ class WorkOrder {
   final String? locationLink;
   final String? closeNotes;
   final int sortOrder;
+  final List<WorkOrderPayment> payments;
   final bool isActive;
 
   factory WorkOrder.fromJson(Map<String, dynamic> json) {
@@ -60,6 +62,11 @@ class WorkOrder {
       locationLink: json['location_link']?.toString(),
       closeNotes: json['close_notes']?.toString(),
       sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
+      payments: ((json['payments'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(WorkOrderPayment.fromJson)
+          .where((payment) => payment.isActive)
+          .toList(growable: false),
       isActive: (json['is_active'] as bool?) ?? true,
     );
   }
@@ -88,7 +95,41 @@ class WorkOrder {
       locationLink: locationLink,
       closeNotes: closeNotes,
       sortOrder: sortOrder ?? this.sortOrder,
+      payments: payments,
       isActive: isActive,
+    );
+  }
+}
+
+class WorkOrderPayment {
+  const WorkOrderPayment({
+    required this.amount,
+    required this.currency,
+    required this.paidAt,
+    this.description,
+    this.paymentMethod,
+    this.isActive = true,
+  });
+
+  final double amount;
+  final String currency;
+  final DateTime? paidAt;
+  final String? description;
+  final String? paymentMethod;
+  final bool isActive;
+
+  factory WorkOrderPayment.fromJson(Map<String, dynamic> json) {
+    final amountRaw = json['amount'];
+    final amount = amountRaw is num
+        ? amountRaw.toDouble()
+        : double.tryParse(amountRaw?.toString() ?? '') ?? 0;
+    return WorkOrderPayment(
+      amount: amount,
+      currency: json['currency']?.toString() ?? 'TRY',
+      paidAt: DateTime.tryParse(json['paid_at']?.toString() ?? ''),
+      description: json['description']?.toString(),
+      paymentMethod: json['payment_method']?.toString(),
+      isActive: (json['is_active'] as bool?) ?? true,
     );
   }
 }
