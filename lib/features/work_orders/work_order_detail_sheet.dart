@@ -1,13 +1,14 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 import 'package:signature/signature.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/platform/open_external_url.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
@@ -434,6 +435,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         break;
       }
     }
+    final directionsUrl = _buildDirectionsUrl(selectedBranch);
 
     return AppCard(
       padding: const EdgeInsets.all(16),
@@ -499,9 +501,13 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           if (widget.order.contactPhone?.trim().isNotEmpty ?? false) ...[
             const Gap(8),
             _InfoRow(
-              icon: Icons.support_agent_rounded,
+              icon: Icons.phone_in_talk_rounded,
               label: 'İrtibat Numarası',
               value: widget.order.contactPhone!,
+              valueStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppTheme.error,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ],
           if (widget.order.locationLink?.trim().isNotEmpty ?? false) ...[
@@ -536,8 +542,49 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
               value: widget.order.closeNotes!,
             ),
           ],
+          if (directionsUrl != null) ...[
+            const Gap(14),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () => _openDirections(context, directionsUrl),
+                icon: const Icon(Icons.directions_rounded, size: 18),
+                label: const Text('Adres Tarifi Al'),
+              ),
+            ),
+          ],
         ],
       ),
+    );
+  }
+
+  String? _buildDirectionsUrl(CustomerBranch? selectedBranch) {
+    final locationLink = widget.order.locationLink?.trim();
+    if (locationLink != null && locationLink.isNotEmpty) {
+      return locationLink;
+    }
+    if (selectedBranch?.locationLat != null &&
+        selectedBranch?.locationLng != null) {
+      return 'https://www.google.com/maps/dir/?api=1&destination='
+          '${selectedBranch!.locationLat},${selectedBranch.locationLng}';
+    }
+    final address = selectedBranch?.address?.trim();
+    if (address != null && address.isNotEmpty) {
+      return 'https://www.google.com/maps/dir/?api=1&destination='
+          '${Uri.encodeComponent(address)}';
+    }
+    return null;
+  }
+
+  Future<void> _openDirections(BuildContext context, String url) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final opened = await openExternalUrl(url);
+    if (opened || !mounted) return;
+
+    await Clipboard.setData(ClipboardData(text: url));
+    if (!mounted) return;
+    messenger?.showSnackBar(
+      const SnackBar(content: Text('Konum linki kopyalandı.')),
     );
   }
 
@@ -976,11 +1023,13 @@ class _InfoRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    this.valueStyle,
   });
 
   final IconData icon;
   final String label;
   final String value;
+  final TextStyle? valueStyle;
 
   @override
   Widget build(BuildContext context) {
@@ -998,9 +1047,11 @@ class _InfoRow extends StatelessWidget {
         Expanded(
           child: Text(
             value,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+            style:
+                valueStyle ??
+                Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
           ),
         ),
       ],
