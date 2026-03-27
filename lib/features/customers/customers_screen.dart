@@ -224,11 +224,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         ),
                         const Gap(16),
                         FilledButton.icon(
-                          onPressed: () => _showCustomerForm(
-                            context,
-                            ref,
-                            openDetail: true,
-                          ),
+                          onPressed: () =>
+                              _showCustomerForm(context, ref, openDetail: true),
                           icon: const Icon(Icons.add_rounded, size: 18),
                           label: const Text('İlk Müşteriyi Ekle'),
                         ),
@@ -679,18 +676,36 @@ Future<void> _exportCustomersToExcel(
     final sheet = file['Müşteriler'];
 
     sheet.appendRow([
-      excel.TextCellValue('Firma'),
+      excel.TextCellValue('Firma Adı'),
       excel.TextCellValue('Şehir'),
-      excel.TextCellValue('Email'),
-      excel.TextCellValue('Telefon'),
+      excel.TextCellValue('E-posta'),
+      excel.TextCellValue('VKN / TCKN'),
+      excel.TextCellValue('Telefon 1 Başlığı'),
+      excel.TextCellValue('Telefon 1'),
+      excel.TextCellValue('Telefon 2 Başlığı'),
+      excel.TextCellValue('Telefon 2'),
+      excel.TextCellValue('Telefon 3 Başlığı'),
+      excel.TextCellValue('Telefon 3'),
+      excel.TextCellValue('Aktif Müşteri'),
+      excel.TextCellValue('Notlar'),
     ]);
 
     for (final c in customers) {
       sheet.appendRow([
-        excel.TextCellValue(c['name'] ?? ''),
-        excel.TextCellValue(c['city'] ?? ''),
-        excel.TextCellValue(c['email'] ?? ''),
-        excel.TextCellValue(c['phone_1'] ?? ''),
+        excel.TextCellValue((c['name'] ?? '').toString()),
+        excel.TextCellValue((c['city'] ?? '').toString()),
+        excel.TextCellValue((c['email'] ?? '').toString()),
+        excel.TextCellValue((c['vkn'] ?? '').toString()),
+        excel.TextCellValue((c['phone_1_title'] ?? '').toString()),
+        excel.TextCellValue((c['phone_1'] ?? '').toString()),
+        excel.TextCellValue((c['phone_2_title'] ?? '').toString()),
+        excel.TextCellValue((c['phone_2'] ?? '').toString()),
+        excel.TextCellValue((c['phone_3_title'] ?? '').toString()),
+        excel.TextCellValue((c['phone_3'] ?? '').toString()),
+        excel.TextCellValue(
+          ((c['is_active'] as bool?) ?? true) ? 'Evet' : 'Hayır',
+        ),
+        excel.TextCellValue((c['notes'] ?? '').toString()),
       ]);
     }
 
@@ -733,17 +748,80 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
   final bytes = result.files.first.bytes!;
   final excelFile = excel.Excel.decodeBytes(bytes);
   final sheet = excelFile.tables.values.first;
+  if (sheet.rows.isEmpty) return;
+
+  final headers = sheet.rows.first
+      .map((cell) => cell?.value?.toString().trim().toLowerCase() ?? '')
+      .toList(growable: false);
+
+  int columnOf(List<String> keys) {
+    for (final key in keys) {
+      final index = headers.indexOf(key.toLowerCase());
+      if (index != -1) return index;
+    }
+    return -1;
+  }
+
+  String? readText(List<excel.Data?> row, int index) {
+    if (index < 0 || index >= row.length) return null;
+    final value = row[index]?.value?.toString().trim();
+    if (value == null || value.isEmpty) return null;
+    return value;
+  }
+
+  bool readBool(List<excel.Data?> row, int index) {
+    final raw = readText(row, index)?.toLowerCase();
+    if (raw == null) return true;
+    return raw == 'evet' ||
+        raw == 'true' ||
+        raw == '1' ||
+        raw == 'aktif' ||
+        raw == 'yes';
+  }
+
+  final nameIndex = columnOf(['firma adı', 'firma', 'name']);
+  final cityIndex = columnOf(['şehir', 'city']);
+  final emailIndex = columnOf(['e-posta', 'email']);
+  final vknIndex = columnOf(['vkn / tckn', 'vkn', 'tckn']);
+  final phone1TitleIndex = columnOf(['telefon 1 başlığı', 'phone 1 title']);
+  final phone1Index = columnOf(['telefon 1', 'telefon', 'phone 1']);
+  final phone2TitleIndex = columnOf(['telefon 2 başlığı', 'phone 2 title']);
+  final phone2Index = columnOf(['telefon 2', 'phone 2']);
+  final phone3TitleIndex = columnOf(['telefon 3 başlığı', 'phone 3 title']);
+  final phone3Index = columnOf(['telefon 3', 'phone 3']);
+  final isActiveIndex = columnOf(['aktif müşteri', 'aktif', 'is_active']);
+  final notesIndex = columnOf(['notlar', 'not', 'notes']);
+
+  if (nameIndex == -1) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Excel dosyasında Firma Adı kolonu yok.')),
+    );
+    return;
+  }
+
+  var importedCount = 0;
 
   for (int i = 1; i < sheet.rows.length; i++) {
     final row = sheet.rows[i];
+    final name = readText(row, nameIndex);
+    if (name == null) continue;
 
     await client.from('customers').insert({
-      'name': row[0]?.value?.toString(),
-      'city': row[1]?.value?.toString(),
-      'email': row[2]?.value?.toString(),
-      'phone_1': row[3]?.value?.toString(),
-      'is_active': true,
+      'name': name,
+      'city': readText(row, cityIndex),
+      'email': readText(row, emailIndex),
+      'vkn': readText(row, vknIndex),
+      'phone_1_title': readText(row, phone1TitleIndex),
+      'phone_1': readText(row, phone1Index),
+      'phone_2_title': readText(row, phone2TitleIndex),
+      'phone_2': readText(row, phone2Index),
+      'phone_3_title': readText(row, phone3TitleIndex),
+      'phone_3': readText(row, phone3Index),
+      'notes': readText(row, notesIndex),
+      'is_active': readBool(row, isActiveIndex),
     });
+    importedCount++;
   }
 
   ref.invalidate(customersProvider);
@@ -751,7 +829,7 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
 
   if (!context.mounted) return;
 
-  ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(const SnackBar(content: Text('Import tamamlandı')));
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text('$importedCount müşteri içe aktarıldı')),
+  );
 }
