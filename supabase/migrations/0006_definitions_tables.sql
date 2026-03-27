@@ -47,12 +47,20 @@ alter table public.work_orders
 alter table public.work_order_types enable row level security;
 alter table public.tax_rates enable row level security;
 
+drop policy if exists "work_order_types_select" on public.work_order_types;
 create policy "work_order_types_select" on public.work_order_types for select to authenticated using (true);
+drop policy if exists "work_order_types_insert" on public.work_order_types;
 create policy "work_order_types_insert" on public.work_order_types for insert to authenticated with check (true);
+drop policy if exists "work_order_types_update" on public.work_order_types;
 create policy "work_order_types_update" on public.work_order_types for update to authenticated using (true);
+drop policy if exists "work_order_types_delete" on public.work_order_types;
 create policy "work_order_types_delete" on public.work_order_types for delete to authenticated using (true);
 
+drop policy if exists "tax_rates_select" on public.tax_rates;
 create policy "tax_rates_select" on public.tax_rates for select to authenticated using (true);
+drop policy if exists "tax_rates_insert" on public.tax_rates;
 create policy "tax_rates_insert" on public.tax_rates for insert to authenticated with check (true);
+drop policy if exists "tax_rates_update" on public.tax_rates;
 create policy "tax_rates_update" on public.tax_rates for update to authenticated using (true);
+drop policy if exists "tax_rates_delete" on public.tax_rates;
 create policy "tax_rates_delete" on public.tax_rates for delete to authenticated using (true);
