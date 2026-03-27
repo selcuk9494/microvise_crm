@@ -9,8 +9,8 @@ import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
-import 'customer_form_dialog.dart';
 import 'customers_providers.dart';
+import 'customer_form_dialog.dart';
 
 final customerDetailProvider = FutureProvider.family<CustomerDetail, String>((
   ref,
@@ -1237,6 +1237,7 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final citiesAsync = ref.watch(customerCitiesProvider);
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
       backgroundColor: Colors.transparent,
@@ -1287,11 +1288,46 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
                     ),
                     const Gap(12),
                     Expanded(
-                      child: TextFormField(
-                        controller: _cityController,
-                        decoration: const InputDecoration(
-                          labelText: 'Şube Şehir',
-                          hintText: 'Örn: İstanbul',
+                      child: citiesAsync.when(
+                        data: (cities) => DropdownButtonFormField<String?>(
+                          initialValue: _cityController.text.trim().isEmpty
+                              ? null
+                              : _cityController.text.trim(),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('Şehir seç'),
+                            ),
+                            ...cities.map(
+                              (city) => DropdownMenuItem<String?>(
+                                value: city,
+                                child: Text(city),
+                              ),
+                            ),
+                          ],
+                          onChanged: _saving
+                              ? null
+                              : (value) => setState(
+                                  () => _cityController.text = value ?? '',
+                                ),
+                          decoration: const InputDecoration(
+                            labelText: 'Şube Şehir',
+                          ),
+                        ),
+                        loading: () => TextFormField(
+                          controller: _cityController,
+                          enabled: false,
+                          decoration: const InputDecoration(
+                            labelText: 'Şube Şehir',
+                            hintText: 'Şehirler yükleniyor',
+                          ),
+                        ),
+                        error: (error, stackTrace) => TextFormField(
+                          controller: _cityController,
+                          decoration: const InputDecoration(
+                            labelText: 'Şube Şehir',
+                            hintText: 'Şehir bulunamadı',
+                          ),
                         ),
                       ),
                     ),

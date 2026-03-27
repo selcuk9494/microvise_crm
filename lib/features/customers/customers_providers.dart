@@ -106,15 +106,19 @@ final customerCitiesProvider = FutureProvider<List<String>>((ref) async {
   final client = ref.watch(supabaseClientProvider);
   if (client == null) return const [];
 
-  final rows = await client.from('customers').select('city');
+  try {
+    final rows = await client
+        .from('cities')
+        .select('name,is_active')
+        .eq('is_active', true)
+        .order('name');
 
-  final set = <String>{};
-  for (final row in (rows as List)) {
-    final city = row['city']?.toString();
-    if (city == null || city.trim().isEmpty) continue;
-    set.add(city);
+    return (rows as List)
+        .map((row) => row['name']?.toString().trim())
+        .whereType<String>()
+        .where((name) => name.isNotEmpty)
+        .toList(growable: false);
+  } catch (_) {
+    return const [];
   }
-
-  final cities = set.toList()..sort();
-  return cities;
 });

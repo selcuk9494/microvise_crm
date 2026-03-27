@@ -100,6 +100,9 @@ class WorkOrderType {
   final String id;
   final String name;
   final String? description;
+  final String? locationInfo;
+  final String? contactName;
+  final String? contactPhone;
   final String color;
   final bool isActive;
 
@@ -107,6 +110,9 @@ class WorkOrderType {
     required this.id,
     required this.name,
     this.description,
+    this.locationInfo,
+    this.contactName,
+    this.contactPhone,
     this.color = '#6366F1',
     this.isActive = true,
   });
@@ -115,6 +121,9 @@ class WorkOrderType {
     id: json['id'].toString(),
     name: json['name']?.toString() ?? '',
     description: json['description']?.toString(),
+    locationInfo: json['location_info']?.toString(),
+    contactName: json['contact_name']?.toString(),
+    contactPhone: json['contact_phone']?.toString(),
     color: json['color']?.toString() ?? '#6366F1',
     isActive: json['is_active'] as bool? ?? true,
   );
@@ -891,6 +900,30 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
                     ),
                   ),
                 ],
+                if (t.locationInfo?.trim().isNotEmpty ?? false) ...[
+                  const Gap(4),
+                  Text(
+                    'Konum: ${t.locationInfo!}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+                if ((t.contactName?.trim().isNotEmpty ?? false) ||
+                    (t.contactPhone?.trim().isNotEmpty ?? false)) ...[
+                  const Gap(2),
+                  Text(
+                    [
+                      if (t.contactName?.trim().isNotEmpty ?? false)
+                        t.contactName!,
+                      if (t.contactPhone?.trim().isNotEmpty ?? false)
+                        t.contactPhone!,
+                    ].join(' • '),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1278,6 +1311,15 @@ Future<void> _showEditWorkOrderTypeDialog(
   final descController = TextEditingController(
     text: existing?.description ?? '',
   );
+  final locationController = TextEditingController(
+    text: existing?.locationInfo ?? '',
+  );
+  final contactNameController = TextEditingController(
+    text: existing?.contactName ?? '',
+  );
+  final contactPhoneController = TextEditingController(
+    text: existing?.contactPhone ?? '',
+  );
   String selectedColor = existing?.color ?? '#6366F1';
   bool saving = false;
 
@@ -1343,6 +1385,39 @@ Future<void> _showEditWorkOrderTypeDialog(
                   ),
                 ),
                 const Gap(12),
+                TextField(
+                  controller: locationController,
+                  decoration: const InputDecoration(
+                    labelText: 'Konum Bilgisi',
+                    hintText: 'Örn: Lefkoşa Merkez / Organize Sanayi',
+                  ),
+                ),
+                const Gap(12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: contactNameController,
+                        decoration: const InputDecoration(
+                          labelText: 'İrtibat Kişisi',
+                          hintText: 'Örn: Servis Yetkilisi',
+                        ),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: TextField(
+                        controller: contactPhoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'İrtibat Telefonu',
+                          hintText: '0 5xx xxx xx xx',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const Gap(12),
                 Text(
                   'Renk Seçin',
                   style: Theme.of(context).textTheme.bodySmall,
@@ -1406,6 +1481,22 @@ Future<void> _showEditWorkOrderTypeDialog(
                                         descController.text.trim().isEmpty
                                         ? null
                                         : descController.text.trim(),
+                                    'location_info':
+                                        locationController.text.trim().isEmpty
+                                        ? null
+                                        : locationController.text.trim(),
+                                    'contact_name':
+                                        contactNameController.text
+                                            .trim()
+                                            .isEmpty
+                                        ? null
+                                        : contactNameController.text.trim(),
+                                    'contact_phone':
+                                        contactPhoneController.text
+                                            .trim()
+                                            .isEmpty
+                                        ? null
+                                        : contactPhoneController.text.trim(),
                                     'color': selectedColor,
                                     'is_active': existing?.isActive ?? true,
                                   };
@@ -1449,6 +1540,9 @@ Future<void> _showEditWorkOrderTypeDialog(
 
   nameController.dispose();
   descController.dispose();
+  locationController.dispose();
+  contactNameController.dispose();
+  contactPhoneController.dispose();
 }
 
 Future<void> _showCreateTaxRateDialog(
