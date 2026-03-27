@@ -65,27 +65,45 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
 
     return AppPageLayout(
       title: 'İş Emirleri',
-      subtitle: 'Tüm iş emirlerini yönetin',
+      subtitle: isCompact
+          ? 'Açık işleri sürükleyip sıralayın.'
+          : 'Tüm iş emirlerini yönetin',
       actions: [
-        OutlinedButton.icon(
-          onPressed: () => ref.read(workOrdersBoardProvider.notifier).refresh(),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
-          label: const Text('Yenile'),
-        ),
-        const Gap(10),
-        FilledButton.icon(
-          onPressed: () async {
-            await showCreateWorkOrderDialog(context, ref);
-            ref.read(workOrdersBoardProvider.notifier).refresh();
-          },
-          icon: const Icon(Icons.add_rounded, size: 18),
-          label: const Text('Yeni İş Emri'),
-        ),
+        if (isCompact) ...[
+          OutlinedButton(
+            onPressed: () =>
+                ref.read(workOrdersBoardProvider.notifier).refresh(),
+            child: const Icon(Icons.refresh_rounded, size: 20),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await showCreateWorkOrderDialog(context, ref);
+              ref.read(workOrdersBoardProvider.notifier).refresh();
+            },
+            child: const Icon(Icons.add_rounded, size: 20),
+          ),
+        ] else ...[
+          OutlinedButton.icon(
+            onPressed: () =>
+                ref.read(workOrdersBoardProvider.notifier).refresh(),
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Yenile'),
+          ),
+          const Gap(10),
+          FilledButton.icon(
+            onPressed: () async {
+              await showCreateWorkOrderDialog(context, ref);
+              ref.read(workOrdersBoardProvider.notifier).refresh();
+            },
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('Yeni İş Emri'),
+          ),
+        ],
       ],
       body: Column(
         children: [
           Container(
-            margin: const EdgeInsets.symmetric(horizontal: 2),
+            margin: EdgeInsets.symmetric(horizontal: isCompact ? 0 : 2),
             decoration: BoxDecoration(
               color: AppTheme.surface,
               borderRadius: BorderRadius.circular(14),
@@ -98,7 +116,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
               dividerColor: Colors.transparent,
               tabAlignment: isCompact ? TabAlignment.start : TabAlignment.fill,
               labelPadding: EdgeInsets.symmetric(
-                horizontal: isCompact ? 16 : 24,
+                horizontal: isCompact ? 12 : 24,
               ),
               tabs: [
                 Tab(
@@ -188,14 +206,10 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
               ],
             ),
           ),
-          const Gap(16),
+          Gap(isCompact ? 10 : 16),
           Expanded(
             child: boardAsync.when(
               data: (items) {
-                debugPrint('WorkOrders loaded: ${items.length} items');
-                for (final item in items) {
-                  debugPrint('  - ${item.title}: status=${item.status}');
-                }
                 return TabBarView(
                   controller: _tabController,
                   children: [
@@ -289,6 +303,7 @@ class _WorkOrderList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
     if (items.isEmpty) {
       return Center(
         child: AppCard(
@@ -320,45 +335,90 @@ class _WorkOrderList extends StatelessWidget {
     final canReorder = items.every((item) => item.status == 'open');
     if (!canReorder) {
       return ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+        padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 0 : 2,
+          vertical: 4,
+        ),
         itemCount: items.length,
-        separatorBuilder: (context, index) => const Gap(10),
+        separatorBuilder: (context, index) => Gap(isMobile ? 8 : 10),
         itemBuilder: (context, index) {
           final order = items[index];
-          return _WorkOrderCard(order: order, onTap: () => onTap(order));
+          return _WorkOrderCard(
+            order: order,
+            onTap: () => onTap(order),
+            reorderEnabled: false,
+            reorderIndex: index,
+          );
         },
       );
     }
 
-    return ReorderableListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
-      itemCount: items.length,
-      onReorder: (oldIndex, newIndex) async {
-        final reordered = [...items];
-        if (newIndex > oldIndex) newIndex -= 1;
-        final item = reordered.removeAt(oldIndex);
-        reordered.insert(newIndex, item);
-        await ref
-            .read(workOrdersBoardProvider.notifier)
-            .reorderOpenOrders(reordered);
-      },
-      itemBuilder: (context, index) {
-        final order = items[index];
-        return Padding(
-          key: ValueKey(order.id),
-          padding: EdgeInsets.only(bottom: index == items.length - 1 ? 0 : 10),
-          child: _WorkOrderCard(order: order, onTap: () => onTap(order)),
-        );
-      },
+    return Column(
+      children: [
+        if (isMobile)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Açık iş emirlerini tutup sürükleyerek sırala.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+              ),
+            ),
+          ),
+        Expanded(
+          child: ReorderableListView.builder(
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 0 : 2,
+              vertical: 4,
+            ),
+            itemCount: items.length,
+            buildDefaultDragHandles: false,
+            onReorder: (oldIndex, newIndex) async {
+              final reordered = [...items];
+              if (newIndex > oldIndex) newIndex -= 1;
+              final item = reordered.removeAt(oldIndex);
+              reordered.insert(newIndex, item);
+              await ref
+                  .read(workOrdersBoardProvider.notifier)
+                  .reorderOpenOrders(reordered);
+            },
+            itemBuilder: (context, index) {
+              final order = items[index];
+              return Padding(
+                key: ValueKey(order.id),
+                padding: EdgeInsets.only(
+                  bottom: index == items.length - 1 ? 0 : (isMobile ? 8 : 10),
+                ),
+                child: _WorkOrderCard(
+                  order: order,
+                  onTap: () => onTap(order),
+                  reorderEnabled: true,
+                  reorderIndex: index,
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
 
 class _WorkOrderCard extends StatefulWidget {
-  const _WorkOrderCard({required this.order, required this.onTap});
+  const _WorkOrderCard({
+    required this.order,
+    required this.onTap,
+    required this.reorderEnabled,
+    required this.reorderIndex,
+  });
 
   final WorkOrder order;
   final VoidCallback onTap;
+  final bool reorderEnabled;
+  final int reorderIndex;
 
   @override
   State<_WorkOrderCard> createState() => _WorkOrderCardState();
@@ -391,16 +451,16 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(isMobile ? 12 : 14),
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           curve: Curves.easeOut,
           transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(isMobile ? 12 : 16),
           decoration: BoxDecoration(
             color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(isMobile ? 12 : 14),
             border: Border.all(
               color: _hovered
                   ? AppTheme.primary.withValues(alpha: 0.3)
@@ -421,26 +481,62 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      order.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: order.isActive
-                            ? TextDecoration.none
-                            : TextDecoration.lineThrough,
-                      ),
-                    ),
-                    const Gap(6),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _WorkOrderMetaChip(
-                          icon: Icons.business_rounded,
-                          label: order.customerName ?? '-',
+                        Expanded(
+                          child: Text(
+                            order.title,
+                            maxLines: isMobile ? 1 : 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  decoration: order.isActive
+                                      ? TextDecoration.none
+                                      : TextDecoration.lineThrough,
+                                ),
+                          ),
                         ),
+                        if (widget.reorderEnabled)
+                          ReorderableDragStartListener(
+                            index: widget.reorderIndex,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: Icon(
+                                Icons.drag_indicator_rounded,
+                                size: isMobile ? 18 : 20,
+                                color: const Color(0xFF94A3B8),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    Gap(isMobile ? 4 : 6),
+                    if (isMobile &&
+                        (order.customerName?.trim().isNotEmpty ?? false))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          order.customerName!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: const Color(0xFF64748B),
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ),
+                    Wrap(
+                      spacing: isMobile ? 6 : 8,
+                      runSpacing: isMobile ? 6 : 8,
+                      children: [
+                        if (!isMobile)
+                          _WorkOrderMetaChip(
+                            icon: Icons.business_rounded,
+                            label: order.customerName ?? '-',
+                          ),
                         if (order.city?.trim().isNotEmpty ?? false)
                           _WorkOrderMetaChip(
                             icon: Icons.location_city_rounded,
@@ -459,25 +555,30 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                             icon: Icons.category_rounded,
                             label: order.workOrderTypeName!,
                             emphasize: true,
+                            compact: isMobile,
                           ),
                         if (order.branchName?.trim().isNotEmpty ?? false)
                           _WorkOrderMetaChip(
                             icon: Icons.account_tree_rounded,
                             label: order.branchName!,
+                            compact: isMobile,
                           ),
                         _WorkOrderMetaChip(
                           icon: Icons.calendar_today_rounded,
                           label: dateText,
+                          compact: isMobile,
                         ),
                         if (order.contactPhone?.trim().isNotEmpty ?? false)
                           _WorkOrderMetaChip(
                             icon: Icons.phone_rounded,
                             label: order.contactPhone!,
+                            compact: isMobile,
                           ),
                         if (order.locationLink?.trim().isNotEmpty ?? false)
                           _WorkOrderMetaChip(
                             icon: Icons.link_rounded,
                             label: 'Konum',
+                            compact: isMobile,
                           ),
                         if (order.status == 'done' && order.payments.isNotEmpty)
                           _WorkOrderMetaChip(
@@ -491,14 +592,15 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                             ),
                             foregroundColor: AppTheme.success,
                             emphasize: true,
+                            compact: isMobile,
                           ),
                       ],
                     ),
                     if (order.description?.trim().isNotEmpty ?? false) ...[
-                      const Gap(8),
+                      Gap(isMobile ? 6 : 8),
                       Text(
                         order.description!,
-                        maxLines: isMobile ? 3 : 2,
+                        maxLines: isMobile ? 2 : 2,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: const Color(0xFF64748B),
@@ -514,12 +616,14 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   AppBadge(label: statusLabel, tone: statusTone),
-                  const Gap(8),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 20,
-                    color: const Color(0xFF94A3B8),
-                  ),
+                  if (!widget.reorderEnabled) ...[
+                    const Gap(8),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 20,
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ],
                 ],
               ),
             ],
@@ -535,6 +639,7 @@ class _WorkOrderMetaChip extends StatelessWidget {
     required this.icon,
     required this.label,
     this.emphasize = false,
+    this.compact = false,
     this.backgroundColor,
     this.borderColor,
     this.foregroundColor,
@@ -543,6 +648,7 @@ class _WorkOrderMetaChip extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool emphasize;
+  final bool compact;
   final Color? backgroundColor;
   final Color? borderColor;
   final Color? foregroundColor;
@@ -550,7 +656,10 @@ class _WorkOrderMetaChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 5 : 7,
+      ),
       decoration: BoxDecoration(
         color:
             backgroundColor ??
@@ -571,19 +680,22 @@ class _WorkOrderMetaChip extends StatelessWidget {
         children: [
           Icon(
             icon,
-            size: 14,
+            size: compact ? 12 : 14,
             color:
                 foregroundColor ??
                 (emphasize ? AppTheme.primary : const Color(0xFF64748B)),
           ),
-          const Gap(6),
+          Gap(compact ? 4 : 6),
           Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color:
                   foregroundColor ??
                   (emphasize ? AppTheme.primary : const Color(0xFF475569)),
               fontWeight: emphasize ? FontWeight.w600 : FontWeight.w500,
+              fontSize: compact ? 11.5 : null,
             ),
           ),
         ],
