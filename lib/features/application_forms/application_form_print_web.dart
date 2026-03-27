@@ -117,7 +117,7 @@ String _buildPrintableHtml(
     <style>
       @page {
         size: A4 portrait;
-        margin: 7mm;
+        margin: 5mm;
       }
       body {
         margin: 0;
@@ -128,47 +128,47 @@ String _buildPrintableHtml(
         print-color-adjust: exact;
       }
       .sheet {
-        width: 740px;
+        width: 700px;
         margin: 0 auto;
-        padding: 4px 4px 12px;
+        padding: 2px 2px 8px;
       }
       .top-code {
         text-align: right;
-        font-size: 14px;
-        margin: 2px 0 10px;
+        font-size: 12px;
+        margin: 1px 0 6px;
       }
       .title {
         text-align: center;
         font-weight: 700;
-        font-size: 20px;
-        margin: 2px 0 12px;
+        font-size: 18px;
+        margin: 1px 0 8px;
         white-space: pre-line;
       }
       .office {
-        font-size: 18px;
+        font-size: 15px;
         font-weight: 700;
-        line-height: 1.35;
+        line-height: 1.2;
         white-space: pre-line;
-        margin-bottom: 14px;
+        margin-bottom: 8px;
       }
       .intro {
-        font-size: 15px;
-        line-height: 1.42;
-        margin: 0 0 16px;
+        font-size: 13px;
+        line-height: 1.28;
+        margin: 0 0 10px;
         max-width: 92%;
       }
       .line {
         display: flex;
         align-items: baseline;
         flex-wrap: nowrap;
-        gap: 6px;
-        font-size: 15px;
-        line-height: 1.28;
+        gap: 5px;
+        font-size: 13px;
+        line-height: 1.16;
         margin: 1px 0;
       }
-      .indent-1 { padding-left: 20px; }
-      .indent-2 { padding-left: 54px; }
-      .indent-3 { padding-left: 90px; }
+      .indent-1 { padding-left: 14px; }
+      .indent-2 { padding-left: 36px; }
+      .indent-3 { padding-left: 64px; }
       .label {
         white-space: pre-wrap;
       }
@@ -178,7 +178,7 @@ String _buildPrintableHtml(
       }
       .dotted {
         display: inline-block;
-        min-width: 120px;
+        min-width: 90px;
         border-bottom: 1px dotted #333;
         padding: 0 4px 1px;
         line-height: 1.1;
@@ -186,9 +186,9 @@ String _buildPrintableHtml(
       .grow {
         flex: 1;
       }
-      .wide { min-width: 540px; }
-      .medium { min-width: 360px; }
-      .short { min-width: 180px; }
+      .wide { min-width: 470px; }
+      .medium { min-width: 300px; }
+      .short { min-width: 140px; }
       .flex-none { flex: 0 0 auto; }
       .fixed {
         font-weight: 400;
@@ -198,24 +198,24 @@ String _buildPrintableHtml(
         font-weight: 700;
       }
       .signature-block {
-        width: 340px;
+        width: 300px;
         margin-left: auto;
-        margin-top: 54px;
+        margin-top: 28px;
       }
       .signature-title {
-        font-size: 16px;
+        font-size: 14px;
         font-weight: 700;
         display: inline-block;
         border-bottom: 3px solid #000;
         padding: 0 4px 2px;
-        margin-bottom: 12px;
+        margin-bottom: 8px;
       }
       .signature-line {
         display: flex;
         align-items: baseline;
         gap: 8px;
-        font-size: 15px;
-        margin: 10px 0;
+        font-size: 13px;
+        margin: 6px 0;
       }
       .underline-title {
         display: inline-block;
@@ -225,34 +225,34 @@ String _buildPrintableHtml(
       }
       .box {
         border: 3px solid #000;
-        padding: 8px 12px;
-        width: 520px;
-        margin: 14px auto 10px;
+        padding: 6px 10px;
+        width: 470px;
+        margin: 8px auto 6px;
       }
       .box-title {
         text-align: center;
-        font-size: 16px;
-        margin-bottom: 12px;
+        font-size: 14px;
+        margin-bottom: 8px;
       }
       .notice {
-        font-size: 14px;
-        line-height: 1.35;
-        margin: 8px 4px 12px;
+        font-size: 12px;
+        line-height: 1.2;
+        margin: 6px 4px 8px;
         text-align: center;
       }
       .dual-sign {
         display: flex;
         justify-content: space-between;
-        gap: 28px;
-        margin-top: 8px;
+        gap: 20px;
+        margin-top: 4px;
       }
       .dual-col {
         width: 48%;
       }
       .dual-col .head {
-        font-size: 16px;
+        font-size: 14px;
         font-weight: 700;
-        margin-bottom: 8px;
+        margin-bottom: 4px;
         white-space: pre-line;
       }
       .mini-line {

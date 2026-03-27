@@ -520,12 +520,32 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
     required DateTime initialDate,
     required ValueChanged<DateTime> onSelected,
   }) async {
-    final picked = await showDatePicker(
+    DateTime tempDate = initialDate;
+    final picked = await showDialog<DateTime>(
       context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      locale: const Locale('tr', 'TR'),
+      builder: (context) => AlertDialog(
+        title: const Text('Tarih Seç'),
+        content: SizedBox(
+          width: 320,
+          height: 360,
+          child: CalendarDatePicker(
+            initialDate: initialDate,
+            firstDate: DateTime(2020),
+            lastDate: DateTime(2100),
+            onDateChanged: (value) => tempDate = value,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(tempDate),
+            child: const Text('Seç'),
+          ),
+        ],
+      ),
     );
     if (picked == null) return;
     onSelected(picked);

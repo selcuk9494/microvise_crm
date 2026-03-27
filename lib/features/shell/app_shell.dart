@@ -26,15 +26,26 @@ class AppShell extends ConsumerWidget {
   }
 }
 
-class _DesktopShell extends ConsumerWidget {
+class _DesktopShell extends ConsumerStatefulWidget {
   const _DesktopShell({required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_DesktopShell> createState() => _DesktopShellState();
+}
+
+class _DesktopShellState extends ConsumerState<_DesktopShell> {
+  bool _formsExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
     final items = _navItems;
+    final hasActiveFormsChild = items
+        .where((item) => item.path == '/formlar')
+        .expand((item) => item.children)
+        .any((child) => _isActive(location, child.path));
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -61,13 +72,29 @@ class _DesktopShell extends ConsumerWidget {
                       child: ListView(
                         children: [
                           for (final item in items) ...[
-                            _SidebarItem(
-                              label: item.label,
-                              icon: item.icon,
-                              active: _isActive(location, item.path),
-                              onTap: () => context.go(item.path),
-                            ),
-                            if (item.children.isNotEmpty) ...[
+                            if (item.children.isEmpty)
+                              _SidebarItem(
+                                label: item.label,
+                                icon: item.icon,
+                                active: _isActive(location, item.path),
+                                onTap: () => context.go(item.path),
+                              )
+                            else
+                              _SidebarExpandableItem(
+                                label: item.label,
+                                icon: item.icon,
+                                active:
+                                    _isActive(location, item.path) ||
+                                    hasActiveFormsChild,
+                                expanded: _formsExpanded || hasActiveFormsChild,
+                                onTap: () {
+                                  setState(() {
+                                    _formsExpanded = !_formsExpanded;
+                                  });
+                                },
+                              ),
+                            if (item.children.isNotEmpty &&
+                                (_formsExpanded || hasActiveFormsChild)) ...[
                               const Gap(6),
                               Padding(
                                 padding: const EdgeInsets.only(left: 20),
@@ -106,7 +133,7 @@ class _DesktopShell extends ConsumerWidget {
             child: Column(
               children: [
                 _TopBar(onSearchTap: () => _showSearchSheet(context)),
-                Expanded(child: child),
+                Expanded(child: widget.child),
               ],
             ),
           ),
@@ -401,6 +428,74 @@ class _SidebarItem extends StatelessWidget {
                   color: fg,
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SidebarExpandableItem extends StatelessWidget {
+  const _SidebarExpandableItem({
+    required this.label,
+    required this.icon,
+    required this.active,
+    required this.expanded,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool active;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = active ? Colors.white : Colors.transparent;
+    final border = active
+        ? AppTheme.primary.withValues(alpha: 0.24)
+        : AppTheme.border;
+    final fg = active ? AppTheme.primaryDark : AppTheme.text;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: border),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: AppTheme.primary.withValues(alpha: 0.10),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: fg),
+            const Gap(10),
+            Expanded(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                  color: fg,
+                ),
+              ),
+            ),
+            Icon(
+              expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+              size: 18,
+              color: fg,
             ),
           ],
         ),

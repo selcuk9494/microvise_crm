@@ -39,8 +39,8 @@ String _buildPrintableHtml(
     return '<span class="$klass">$valueHtml</span>';
   }
 
-  String blue(String? value) =>
-      '<span class="blue">${escape((value ?? '').trim())}</span>';
+  String valueText(String? value) =>
+      '<span class="value-text">${escape((value ?? '').trim())}</span>';
 
   return '''
 <!doctype html>
@@ -54,7 +54,7 @@ String _buildPrintableHtml(
       };
     </script>
     <style>
-      @page { size: A4 portrait; margin: 7mm; }
+      @page { size: A4 portrait; margin: 5mm; }
       body {
         margin: 0;
         background: #fff;
@@ -63,86 +63,86 @@ String _buildPrintableHtml(
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
-      .sheet { width: 780px; margin: 0 auto; padding: 2px; }
+      .sheet { width: 720px; margin: 0 auto; padding: 2px 0 6px; }
       .title {
-        color: #ff0000;
+        color: #000;
         text-align: center;
-        font-size: 24px;
+        font-size: 20px;
         font-weight: 700;
-        line-height: 1.2;
+        line-height: 1.1;
         white-space: pre-line;
       }
       .subtitle {
-        color: #ff0000;
+        color: #000;
         text-align: center;
-        font-size: 18px;
+        font-size: 15px;
         font-weight: 700;
-        margin-top: 4px;
+        margin-top: 2px;
       }
       .top-row {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        margin-top: 12px;
+        margin-top: 8px;
       }
       .office {
-        color: #ff0000;
-        font-size: 17px;
+        color: #000;
+        font-size: 15px;
         font-weight: 700;
-        line-height: 1.3;
+        line-height: 1.15;
         white-space: pre-line;
       }
       .row-no {
         display: flex;
         align-items: baseline;
-        gap: 8px;
-        color: #ff0000;
-        font-size: 17px;
+        gap: 6px;
+        color: #000;
+        font-size: 15px;
         font-weight: 700;
       }
       .dotted {
         display: inline-flex;
         align-items: center;
-        min-height: 24px;
+        min-height: 20px;
         border-bottom: 2px dotted #333;
         flex: 1;
-        padding-left: 4px;
+        padding-left: 2px;
       }
       .section {
-        margin-top: 10px;
+        margin-top: 6px;
       }
       .section-title {
-        color: #ff0000;
-        font-size: 17px;
+        color: #000;
+        font-size: 15px;
         font-weight: 700;
       }
       .line {
         display: flex;
         align-items: baseline;
-        gap: 8px;
-        margin: 2px 0;
+        gap: 6px;
+        margin: 1px 0;
       }
       .label {
-        background: #fff200;
-        font-size: 16px;
+        background: transparent;
+        font-size: 14px;
         font-weight: 700;
-        padding: 1px 4px;
+        padding: 0 2px;
         color: #000;
       }
       .plain-label {
-        font-size: 16px;
+        font-size: 14px;
         font-weight: 700;
         color: #000;
-        padding: 1px 4px;
+        padding: 0 2px;
       }
-      .blue {
+      .value-text {
         color: #000;
-        font-size: 16px;
+        font-size: 14px;
         font-weight: 700;
       }
-      .red {
-        color: #ff0000;
-        font-size: 16px;
+      .constant-text {
+        color: #000;
+        font-size: 14px;
         font-weight: 700;
       }
       .value-colon {
@@ -152,51 +152,51 @@ String _buildPrintableHtml(
       .signature-row {
         display: flex;
         justify-content: space-between;
-        gap: 40px;
-        margin-top: 18px;
+        gap: 28px;
+        margin-top: 10px;
       }
       .signature-col {
         flex: 1;
       }
       .sig-title {
-        color: #ff0000;
-        font-size: 17px;
+        color: #000;
+        font-size: 15px;
         font-weight: 700;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
       }
       .office-fill {
-        margin-top: 10px;
+        margin-top: 8px;
         border-top: 2px solid #333;
         border-bottom: 2px solid #333;
         text-align: center;
-        color: #ff0000;
-        font-size: 17px;
+        color: #000;
+        font-size: 15px;
         font-weight: 700;
-        padding: 2px 0;
+        padding: 1px 0;
       }
       .office-text {
-        margin-top: 8px;
-        color: #ff0000;
-        font-size: 16px;
+        margin-top: 6px;
+        color: #000;
+        font-size: 14px;
         font-weight: 700;
       }
       .controller {
-        margin-top: 18px;
+        margin-top: 10px;
         text-align: center;
-        color: #ff0000;
-        font-size: 16px;
+        color: #000;
+        font-size: 14px;
         font-weight: 700;
       }
       .controller-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 18px 48px;
-        margin-top: 6px;
+        gap: 10px 28px;
+        margin-top: 4px;
       }
       .small-line {
         display: flex;
         align-items: baseline;
-        gap: 8px;
+        gap: 6px;
       }
     </style>
   </head>
@@ -209,64 +209,64 @@ String _buildPrintableHtml(
         <div class="office">${escape(settings.officeTitle)}</div>
         <div class="row-no">
           <span>${escape(settings.rowNumberLabel)} :</span>
-          ${dotted(blue(record.rowNumber), extra: 'row')}
+          ${dotted(valueText(record.rowNumber), extra: 'row')}
         </div>
       </div>
 
       <div class="section">
         <div class="section-title">${escape(settings.transferorSectionTitle)}</div>
-        <div class="line"><span class="label">${escape(settings.transferorNameLabel)} :</span>${dotted(blue(record.transferorName))}</div>
-        <div class="line"><span class="label">${escape(settings.transferorAddressLabel)} :</span>${dotted(blue(record.transferorAddress))}</div>
-        <div class="line"><span class="label">${escape(settings.transferorTaxLabel)} :</span>${dotted(blue(record.transferorTaxOfficeAndRegistry))}</div>
-        <div class="line"><span class="label">${escape(settings.transferorApprovalLabel)} :</span>${dotted(blue(record.transferorApprovalDateNo))}</div>
+        <div class="line"><span class="label">${escape(settings.transferorNameLabel)} :</span>${dotted(valueText(record.transferorName))}</div>
+        <div class="line"><span class="label">${escape(settings.transferorAddressLabel)} :</span>${dotted(valueText(record.transferorAddress))}</div>
+        <div class="line"><span class="label">${escape(settings.transferorTaxLabel)} :</span>${dotted(valueText(record.transferorTaxOfficeAndRegistry))}</div>
+        <div class="line"><span class="label">${escape(settings.transferorApprovalLabel)} :</span>${dotted(valueText(record.transferorApprovalDateNo))}</div>
       </div>
 
       <div class="section">
         <div class="section-title">${escape(settings.transfereeSectionTitle)}</div>
-        <div class="line"><span class="label">${escape(settings.transfereeNameLabel)} :</span>${dotted(blue(record.transfereeName))}</div>
-        <div class="line"><span class="label">${escape(settings.transfereeAddressLabel)} :</span>${dotted(blue(record.transfereeAddress))}</div>
-        <div class="line"><span class="label">${escape(settings.transfereeTaxLabel)} :</span>${dotted(blue(record.transfereeTaxOfficeAndRegistry))}</div>
-        <div class="line"><span class="label">${escape(settings.transfereeApprovalLabel)} :</span>${dotted(blue(record.transfereeApprovalDateNo))}</div>
+        <div class="line"><span class="label">${escape(settings.transfereeNameLabel)} :</span>${dotted(valueText(record.transfereeName))}</div>
+        <div class="line"><span class="label">${escape(settings.transfereeAddressLabel)} :</span>${dotted(valueText(record.transfereeAddress))}</div>
+        <div class="line"><span class="label">${escape(settings.transfereeTaxLabel)} :</span>${dotted(valueText(record.transfereeTaxOfficeAndRegistry))}</div>
+        <div class="line"><span class="label">${escape(settings.transfereeApprovalLabel)} :</span>${dotted(valueText(record.transfereeApprovalDateNo))}</div>
       </div>
 
       <div class="section">
         <div class="section-title">${escape(settings.deviceSummaryTitle)}</div>
-        <div class="line"><span class="label">${escape(settings.totalSalesReceiptLabel)} :</span>${dotted(blue(record.totalSalesReceipt))}</div>
-        <div class="line"><span class="label">${escape(settings.vatCollectedLabel)} :</span>${dotted(blue(record.vatCollected))}</div>
-        <div class="line"><span class="label">${escape(settings.lastReceiptDateNoLabel)} :</span>${dotted(blue(record.lastReceiptDateNo))}</div>
-        <div class="line"><span class="label">${escape(settings.zReportCountLabel)} :</span>${dotted(blue(record.zReportCount))}</div>
-        <div class="line"><span class="label">${escape(settings.otherDeviceInfoLabel)} :</span>${dotted(blue(record.otherDeviceInfo))}</div>
+        <div class="line"><span class="label">${escape(settings.totalSalesReceiptLabel)} :</span>${dotted(valueText(record.totalSalesReceipt))}</div>
+        <div class="line"><span class="label">${escape(settings.vatCollectedLabel)} :</span>${dotted(valueText(record.vatCollected))}</div>
+        <div class="line"><span class="label">${escape(settings.lastReceiptDateNoLabel)} :</span>${dotted(valueText(record.lastReceiptDateNo))}</div>
+        <div class="line"><span class="label">${escape(settings.zReportCountLabel)} :</span>${dotted(valueText(record.zReportCount))}</div>
+        <div class="line"><span class="label">${escape(settings.otherDeviceInfoLabel)} :</span>${dotted(valueText(record.otherDeviceInfo))}</div>
       </div>
 
       <div class="section">
         <div class="section-title">${escape(settings.deviceInfoTitle)}</div>
-        <div class="line"><span class="label">${escape(settings.brandModelLabel)} :</span>${dotted(blue(record.brandModel))}</div>
-        <div class="line"><span class="label">${escape(settings.deviceSerialNoLabel)} :</span>${dotted(blue(record.deviceSerialNo))}</div>
-        <div class="line"><span class="label">${escape(settings.fiscalSymbolCompanyCodeLabel)} :</span>${dotted(blue(record.fiscalSymbolCompanyCode))}</div>
-        <div class="line"><span class="label">${escape(settings.departmentCountLabel)} :</span>${dotted(blue(record.departmentCount))}</div>
+        <div class="line"><span class="label">${escape(settings.brandModelLabel)} :</span>${dotted(valueText(record.brandModel))}</div>
+        <div class="line"><span class="label">${escape(settings.deviceSerialNoLabel)} :</span>${dotted(valueText(record.deviceSerialNo))}</div>
+        <div class="line"><span class="label">${escape(settings.fiscalSymbolCompanyCodeLabel)} :</span>${dotted(valueText(record.fiscalSymbolCompanyCode))}</div>
+        <div class="line"><span class="label">${escape(settings.departmentCountLabel)} :</span>${dotted(valueText(record.departmentCount))}</div>
       </div>
 
       <div class="section">
         <div class="section-title">${escape(settings.transferInfoTitle)}</div>
-        <div class="line"><span class="label">${escape(settings.transferDateLabel)} :</span>${dotted(blue(formatDate(record.transferDate)))}</div>
-        <div class="line"><span class="label">${escape(settings.transferReasonLabel)} :</span>${dotted(blue(record.transferReason))}</div>
-        <div class="line"><span class="red">${escape(settings.serviceCompanyLabel)} :</span>${dotted('<span class="red">${escape(settings.serviceCompanyValue)}</span>')}</div>
+        <div class="line"><span class="label">${escape(settings.transferDateLabel)} :</span>${dotted(valueText(formatDate(record.transferDate)))}</div>
+        <div class="line"><span class="label">${escape(settings.transferReasonLabel)} :</span>${dotted(valueText(record.transferReason))}</div>
+        <div class="line"><span class="constant-text">${escape(settings.serviceCompanyLabel)} :</span>${dotted('<span class="constant-text">${escape(settings.serviceCompanyValue)}</span>')}</div>
       </div>
 
-      <div style="text-align:center; margin-top:8px;" class="red">${escape(settings.statementText)}</div>
+      <div style="text-align:center; margin-top:8px;" class="constant-text">${escape(settings.statementText)}</div>
 
       <div class="signature-row">
         <div class="signature-col">
           <div class="sig-title">${escape(settings.transferorSignatureTitle)}</div>
-          <div class="small-line"><span class="red">İmzası</span><span class="value-colon">:</span>${dotted('')}</div>
-          <div class="small-line"><span class="red">Açık İsmi</span><span class="value-colon">:</span>${dotted('')}</div>
-          <div class="small-line"><span class="red">Adresi.</span><span class="value-colon">:</span>${dotted('')}</div>
+          <div class="small-line"><span class="constant-text">İmzası</span><span class="value-colon">:</span>${dotted('')}</div>
+          <div class="small-line"><span class="constant-text">Açık İsmi</span><span class="value-colon">:</span>${dotted('')}</div>
+          <div class="small-line"><span class="constant-text">Adresi.</span><span class="value-colon">:</span>${dotted('')}</div>
         </div>
         <div class="signature-col">
           <div class="sig-title">${escape(settings.transfereeSignatureTitle)}</div>
-          <div class="small-line"><span class="red">İmzası</span><span class="value-colon">:</span>${dotted('')}</div>
-          <div class="small-line"><span class="red">Açık İsmi</span><span class="value-colon">:</span>${dotted('')}</div>
-          <div class="small-line"><span class="red">Adresi</span><span class="value-colon">:</span>${dotted('')}</div>
+          <div class="small-line"><span class="constant-text">İmzası</span><span class="value-colon">:</span>${dotted('')}</div>
+          <div class="small-line"><span class="constant-text">Açık İsmi</span><span class="value-colon">:</span>${dotted('')}</div>
+          <div class="small-line"><span class="constant-text">Adresi</span><span class="value-colon">:</span>${dotted('')}</div>
         </div>
       </div>
 
@@ -276,18 +276,18 @@ String _buildPrintableHtml(
       <div class="controller">${escape(settings.controllerTitle)}</div>
       <div class="controller-grid">
         <div>
-          <div class="small-line"><span class="red">İmzası</span><span class="value-colon">:</span>${dotted('')}</div>
-          <div class="small-line"><span class="red">Açık İsmi</span><span class="value-colon">:</span>${dotted('')}</div>
-          <div class="small-line"><span class="red">Görevi</span><span class="value-colon">:</span>${dotted('')}</div>
+          <div class="small-line"><span class="constant-text">İmzası</span><span class="value-colon">:</span>${dotted('')}</div>
+          <div class="small-line"><span class="constant-text">Açık İsmi</span><span class="value-colon">:</span>${dotted('')}</div>
+          <div class="small-line"><span class="constant-text">Görevi</span><span class="value-colon">:</span>${dotted('')}</div>
         </div>
         <div>
-          <div class="small-line"><span class="red"> </span><span class="value-colon"></span>${dotted('')}</div>
-          <div class="small-line"><span class="red"> </span><span class="value-colon"></span>${dotted('')}</div>
-          <div class="small-line"><span class="red"> </span><span class="value-colon"></span>${dotted('')}</div>
+          <div class="small-line"><span class="constant-text"> </span><span class="value-colon"></span>${dotted('')}</div>
+          <div class="small-line"><span class="constant-text"> </span><span class="value-colon"></span>${dotted('')}</div>
+          <div class="small-line"><span class="constant-text"> </span><span class="value-colon"></span>${dotted('')}</div>
         </div>
       </div>
       <div style="width:300px; margin-top:8px;">
-        <div class="small-line"><span class="red">${escape(settings.controllerDateLabel)} :</span>${dotted('')}</div>
+        <div class="small-line"><span class="constant-text">${escape(settings.controllerDateLabel)} :</span>${dotted('')}</div>
       </div>
     </div>
   </body>

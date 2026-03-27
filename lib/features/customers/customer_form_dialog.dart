@@ -606,23 +606,11 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
             .from('customers')
             .update(payload)
             .eq('id', widget.initialData!.id!);
-        try {
-          await client
-              .from('customer_locations')
-              .delete()
-              .eq('customer_id', widget.initialData!.id!);
-          if (locationPayloads.isNotEmpty) {
-            await client.from('customer_locations').insert([
-              for (final row in locationPayloads)
-                {
-                  ...row,
-                  'id': row['id'],
-                  'customer_id': widget.initialData!.id!,
-                  'created_by': client.auth.currentUser?.id,
-                },
-            ]);
-          }
-        } catch (_) {}
+        await _saveCustomerLocations(
+          client,
+          customerId: widget.initialData!.id!,
+          locationPayloads: locationPayloads,
+        );
         ref.invalidate(customerLocationsProvider(widget.initialData!.id!));
         if (!mounted) return;
         ref.invalidate(customersProvider);
@@ -640,19 +628,11 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
           .single();
 
       final customerId = inserted['id'].toString();
-      try {
-        if (locationPayloads.isNotEmpty) {
-          await client.from('customer_locations').insert([
-            for (final row in locationPayloads)
-              {
-                ...row,
-                'id': row['id'],
-                'customer_id': customerId,
-                'created_by': client.auth.currentUser?.id,
-              },
-          ]);
-        }
-      } catch (_) {}
+      await _saveCustomerLocations(
+        client,
+        customerId: customerId,
+        locationPayloads: locationPayloads,
+      );
 
       if (!mounted) return;
       ref.invalidate(customersProvider);
@@ -679,6 +659,52 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   String? _nullIfEmpty(String value) {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  Future<void> _saveCustomerLocations(
+    dynamic client, {
+    required String customerId,
+    required List<Map<String, dynamic>> locationPayloads,
+  }) async {
+    await client
+        .from('customer_locations')
+        .delete()
+        .eq('customer_id', customerId);
+    if (locationPayloads.isEmpty) {
+      return;
+    }
+
+    List<Map<String, dynamic>> rows({required bool includeLocationLink}) {
+      return [
+        for (final row in locationPayloads)
+          {
+            if ((row['id'] as String?) != null) 'id': row['id'],
+            'customer_id': customerId,
+            'title': row['title'],
+            'description': row['description'],
+            'address': row['address'],
+            if (includeLocationLink) 'location_link': row['location_link'],
+            'location_lat': row['location_lat'],
+            'location_lng': row['location_lng'],
+            'is_active': true,
+            'created_by': client.auth.currentUser?.id,
+          },
+      ];
+    }
+
+    try {
+      await client
+          .from('customer_locations')
+          .insert(rows(includeLocationLink: true));
+    } catch (e) {
+      final message = e.toString();
+      if (!message.contains("'location_link' column")) {
+        rethrow;
+      }
+      await client
+          .from('customer_locations')
+          .insert(rows(includeLocationLink: false));
+    }
   }
 }
 

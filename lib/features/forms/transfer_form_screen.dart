@@ -476,12 +476,32 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
   }
 
   Future<void> _pickTransferDate() async {
-    final picked = await showDatePicker(
+    DateTime tempDate = _transferDate;
+    final picked = await showDialog<DateTime>(
       context: context,
-      initialDate: _transferDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      locale: const Locale('tr', 'TR'),
+      builder: (context) => AlertDialog(
+        title: const Text('Devir Tarihi Seç'),
+        content: SizedBox(
+          width: 320,
+          height: 360,
+          child: CalendarDatePicker(
+            initialDate: _transferDate,
+            firstDate: DateTime(2020),
+            lastDate: DateTime(2100),
+            onDateChanged: (value) => tempDate = value,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(tempDate),
+            child: const Text('Seç'),
+          ),
+        ],
+      ),
     );
     if (picked == null) return;
     setState(() => _transferDate = picked);
@@ -491,6 +511,21 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
     final id = await showCreateCustomerDialog(context);
     if (id == null) return;
     ref.invalidate(transferFormCustomersProvider);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    final customers = await ref.read(transferFormCustomersProvider.future);
+    final created = customers.where((item) => item.id == id).firstOrNull;
+    if (created == null || !mounted) return;
+    setState(() {
+      _transfereeCustomerId = created.id;
+      _transfereeController.text = created.name;
+      _transfereeTaxController.text = [
+        if ((created.city ?? '').trim().isNotEmpty) created.city!.trim(),
+        if ((created.vkn ?? '').trim().isNotEmpty) created.vkn!.trim(),
+      ].join(' ');
+      if ((created.address ?? '').trim().isNotEmpty) {
+        _transfereeAddressController.text = created.address!.trim();
+      }
+    });
   }
 
   Future<void> _pickCustomer({
