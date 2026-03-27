@@ -25,6 +25,10 @@ final productSortProvider =
     NotifierProvider<ProductSortNotifier, ProductListSort>(
       ProductSortNotifier.new,
     );
+final productQuickFilterProvider =
+    NotifierProvider<ProductQuickFilterNotifier, ProductQuickFilter>(
+      ProductQuickFilterNotifier.new,
+    );
 final selectedLineIdsProvider =
     NotifierProvider<SelectedLineIdsNotifier, Set<String>>(
       SelectedLineIdsNotifier.new,
@@ -57,11 +61,26 @@ class ProductCustomerFilterNotifier extends Notifier<String?> {
 
 enum ProductListSort { customerName, nearestEndDate, latestEndDate }
 
+enum ProductQuickFilter {
+  all,
+  expiringSoon,
+  expired,
+  endingThisMonth,
+  noEndDate,
+}
+
 class ProductSortNotifier extends Notifier<ProductListSort> {
   @override
   ProductListSort build() => ProductListSort.nearestEndDate;
 
   void set(ProductListSort value) => state = value;
+}
+
+class ProductQuickFilterNotifier extends Notifier<ProductQuickFilter> {
+  @override
+  ProductQuickFilter build() => ProductQuickFilter.all;
+
+  void set(ProductQuickFilter value) => state = value;
 }
 
 class SelectedLineIdsNotifier extends Notifier<Set<String>> {
@@ -205,6 +224,7 @@ class ProductsScreen extends ConsumerWidget {
     final showPassive = ref.watch(showPassiveProvider);
     final customersAsync = ref.watch(customersLookupProvider);
     final sort = ref.watch(productSortProvider);
+    final quickFilter = ref.watch(productQuickFilterProvider);
     final selectedCustomerId = ref.watch(productCustomerFilterProvider);
 
     return DefaultTabController(
@@ -287,6 +307,43 @@ class ProductsScreen extends ConsumerWidget {
                         ref.read(productSortProvider.notifier).set(value);
                       },
                       decoration: const InputDecoration(labelText: 'Listeleme'),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 220,
+                    child: DropdownButtonFormField<ProductQuickFilter>(
+                      initialValue: quickFilter,
+                      items: const [
+                        DropdownMenuItem(
+                          value: ProductQuickFilter.all,
+                          child: Text('Tüm kayıtlar'),
+                        ),
+                        DropdownMenuItem(
+                          value: ProductQuickFilter.expiringSoon,
+                          child: Text('Yakında bitecek'),
+                        ),
+                        DropdownMenuItem(
+                          value: ProductQuickFilter.expired,
+                          child: Text('Bitenler'),
+                        ),
+                        DropdownMenuItem(
+                          value: ProductQuickFilter.endingThisMonth,
+                          child: Text('Bu ay bitecek'),
+                        ),
+                        DropdownMenuItem(
+                          value: ProductQuickFilter.noEndDate,
+                          child: Text('Tarihsiz'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        ref
+                            .read(productQuickFilterProvider.notifier)
+                            .set(value);
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Hızlı Filtre',
+                      ),
                     ),
                   ),
                   if (isAdmin)
@@ -372,30 +429,36 @@ class _LinesTab extends ConsumerWidget {
               lineOnlyItems,
               ref.watch(productSortProvider),
             );
-            final visibleIds = sortedItems.map((item) => item.id).toSet();
+            final filteredItems = _filterByQuickRule(
+              sortedItems,
+              ref.watch(productQuickFilterProvider),
+              (item) => item.endsAt,
+            );
+            final visibleIds = filteredItems.map((item) => item.id).toSet();
             final selectedVisibleIds = selectedIds
                 .where(visibleIds.contains)
                 .toSet();
 
-            if (sortedItems.isEmpty) {
+            if (filteredItems.isEmpty) {
               return const _Empty(
-                text: 'Sadece hatti olan musteri kaydi bulunmuyor.',
+                text:
+                    'Seçili filtrede sadece hattı olan müşteri kaydı bulunmuyor.',
               );
             }
             return Column(
               children: [
                 if (isAdmin)
                   _BulkActionBar(
-                    title: '${sortedItems.length} hat listeleniyor',
+                    title: '${filteredItems.length} hat listeleniyor',
                     selectedCount: selectedVisibleIds.length,
                     onToggleAll: () {
                       final notifier = ref.read(
                         selectedLineIdsProvider.notifier,
                       );
-                      if (selectedVisibleIds.length == sortedItems.length) {
+                      if (selectedVisibleIds.length == filteredItems.length) {
                         notifier.clear();
                       } else {
-                        notifier.replace(sortedItems.map((item) => item.id));
+                        notifier.replace(filteredItems.map((item) => item.id));
                       }
                     },
                     onExtend: selectedVisibleIds.isEmpty
@@ -404,7 +467,7 @@ class _LinesTab extends ConsumerWidget {
                             await _extendLinesInBulk(
                               context,
                               ref,
-                              lines: sortedItems
+                              lines: filteredItems
                                   .where(
                                     (item) =>
                                         selectedVisibleIds.contains(item.id),
@@ -419,18 +482,18 @@ class _LinesTab extends ConsumerWidget {
                 if (isAdmin) const Gap(12),
                 Expanded(
                   child: ListView.separated(
-                    itemCount: sortedItems.length,
+                    itemCount: filteredItems.length,
                     separatorBuilder: (context, index) => const Gap(10),
                     itemBuilder: (context, index) => _LineRow(
-                      item: sortedItems[index],
+                      item: filteredItems[index],
                       isAdmin: isAdmin,
                       selected: selectedVisibleIds.contains(
-                        sortedItems[index].id,
+                        filteredItems[index].id,
                       ),
                       onSelectedChanged: isAdmin
                           ? (_) => ref
                                 .read(selectedLineIdsProvider.notifier)
-                                .toggle(sortedItems[index].id)
+                                .toggle(filteredItems[index].id)
                           : null,
                     ),
                   ),
@@ -468,28 +531,38 @@ class _LicensesTab extends ConsumerWidget {
               items.where((e) => e.licenseType == 'gmp3').toList(),
               ref.watch(productSortProvider),
             );
+            final filteredLicenses = _filterByQuickRule(
+              gmp3,
+              ref.watch(productQuickFilterProvider),
+              (item) => item.endsAt,
+            );
             final lineCustomerIds = lines
                 .map((line) => line.customerId)
                 .toSet();
-            final visibleIds = gmp3.map((item) => item.id).toSet();
+            final visibleIds = filteredLicenses.map((item) => item.id).toSet();
             final selectedVisibleIds = selectedIds
                 .where(visibleIds.contains)
                 .toSet();
-            if (gmp3.isEmpty) return const _Empty(text: 'Kayıt yok.');
+            if (filteredLicenses.isEmpty) {
+              return const _Empty(text: 'Seçili filtrede kayıt yok.');
+            }
             return Column(
               children: [
                 if (isAdmin)
                   _BulkActionBar(
-                    title: '${gmp3.length} lisans listeleniyor',
+                    title: '${filteredLicenses.length} lisans listeleniyor',
                     selectedCount: selectedVisibleIds.length,
                     onToggleAll: () {
                       final notifier = ref.read(
                         selectedLicenseIdsProvider.notifier,
                       );
-                      if (selectedVisibleIds.length == gmp3.length) {
+                      if (selectedVisibleIds.length ==
+                          filteredLicenses.length) {
                         notifier.clear();
                       } else {
-                        notifier.replace(gmp3.map((item) => item.id));
+                        notifier.replace(
+                          filteredLicenses.map((item) => item.id),
+                        );
                       }
                     },
                     onExtend: selectedVisibleIds.isEmpty
@@ -498,7 +571,7 @@ class _LicensesTab extends ConsumerWidget {
                             await _extendLicensesInBulk(
                               context,
                               ref,
-                              licenses: gmp3
+                              licenses: filteredLicenses
                                   .where(
                                     (item) =>
                                         selectedVisibleIds.contains(item.id),
@@ -515,17 +588,21 @@ class _LicensesTab extends ConsumerWidget {
                 if (isAdmin) const Gap(12),
                 Expanded(
                   child: ListView.separated(
-                    itemCount: gmp3.length,
+                    itemCount: filteredLicenses.length,
                     separatorBuilder: (context, index) => const Gap(10),
                     itemBuilder: (context, index) => _LicenseRow(
-                      item: gmp3[index],
+                      item: filteredLicenses[index],
                       isAdmin: isAdmin,
-                      hasLine: lineCustomerIds.contains(gmp3[index].customerId),
-                      selected: selectedVisibleIds.contains(gmp3[index].id),
+                      hasLine: lineCustomerIds.contains(
+                        filteredLicenses[index].customerId,
+                      ),
+                      selected: selectedVisibleIds.contains(
+                        filteredLicenses[index].id,
+                      ),
                       onSelectedChanged: isAdmin
                           ? (_) => ref
                                 .read(selectedLicenseIdsProvider.notifier)
-                                .toggle(gmp3[index].id)
+                                .toggle(filteredLicenses[index].id)
                           : null,
                     ),
                   ),
@@ -1679,6 +1756,41 @@ int _compareDates(DateTime? a, DateTime? b) {
   if (a == null) return 1;
   if (b == null) return -1;
   return a.compareTo(b);
+}
+
+List<T> _filterByQuickRule<T>(
+  List<T> items,
+  ProductQuickFilter filter,
+  DateTime? Function(T item) endsAtSelector,
+) {
+  if (filter == ProductQuickFilter.all) return items;
+
+  final now = DateTime.now();
+  final monthStart = DateTime(now.year, now.month, 1);
+  final nextMonthStart = DateTime(now.year, now.month + 1, 1);
+  final soonThreshold = now.add(const Duration(days: 30));
+
+  return items
+      .where((item) {
+        final endsAt = endsAtSelector(item);
+        switch (filter) {
+          case ProductQuickFilter.all:
+            return true;
+          case ProductQuickFilter.expiringSoon:
+            return endsAt != null &&
+                !endsAt.isBefore(now) &&
+                !endsAt.isAfter(soonThreshold);
+          case ProductQuickFilter.expired:
+            return endsAt != null && endsAt.isBefore(now);
+          case ProductQuickFilter.endingThisMonth:
+            return endsAt != null &&
+                !endsAt.isBefore(monthStart) &&
+                endsAt.isBefore(nextMonthStart);
+          case ProductQuickFilter.noEndDate:
+            return endsAt == null;
+        }
+      })
+      .toList(growable: false);
 }
 
 class IssuedLine {
