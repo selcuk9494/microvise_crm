@@ -39,6 +39,10 @@ String _buildPrintableHtml(
     return const HtmlEscape(HtmlEscapeMode.element).convert(text);
   }
 
+  String fixed(String value) {
+    return '<span class="fixed-value">${const HtmlEscape(HtmlEscapeMode.element).convert(value)}</span>';
+  }
+
   final applicationDate =
       '${record.applicationDate.day.toString().padLeft(2, '0')}.${record.applicationDate.month.toString().padLeft(2, '0')}.${record.applicationDate.year}';
   final okcDate = record.okcStartDate == null
@@ -53,7 +57,10 @@ String _buildPrintableHtml(
     ('Adı - Soyadı / Ünvanı', escape(record.customerName, '[2]')),
     ('İşyeri Adresi', escape(record.workAddress, '[3]')),
     ('Bağlı olduğu Vergi Dairesi', escape(record.taxOfficeCityName, '[4]')),
-    ('Türü', escape(record.documentType, 'VKN')),
+    (
+      'Türü',
+      fixed(record.documentType.trim().isEmpty ? 'VKN' : record.documentType),
+    ),
     ('Dosya Sicil No', escape(record.fileRegistryNumber, '[5]')),
     ('Cihazın çalıştırılma Tarihi', escape(applicationDate, '[6]')),
     ('Direktör', escape(record.director, '[7]')),
@@ -113,6 +120,7 @@ String _buildPrintableHtml(
         margin-bottom: 6px;
         font-size: 12px;
         font-weight: 700;
+        color: #b91c1c;
       }
       table {
         width: 100%;
@@ -137,6 +145,10 @@ String _buildPrintableHtml(
         color: #000;
         font-weight: 500;
         word-break: break-word;
+      }
+      .fixed-value {
+        color: #b91c1c;
+        font-weight: 700;
       }
       .placeholder {
         color: #b91c1c;
