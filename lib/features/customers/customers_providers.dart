@@ -3,10 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/supabase/supabase_providers.dart';
 import 'customer_model.dart';
 
+const customerPageSize = 50;
+
 final customerFiltersProvider =
     NotifierProvider<CustomerFiltersNotifier, CustomerFilters>(
       CustomerFiltersNotifier.new,
     );
+final customerPageProvider = NotifierProvider<CustomerPageNotifier, int>(
+  CustomerPageNotifier.new,
+);
 
 class CustomerFiltersNotifier extends Notifier<CustomerFilters> {
   @override
@@ -21,6 +26,19 @@ class CustomerFiltersNotifier extends Notifier<CustomerFilters> {
   }
 }
 
+class CustomerPageNotifier extends Notifier<int> {
+  @override
+  int build() => 1;
+
+  void set(int page) => state = page < 1 ? 1 : page;
+
+  void next() => state = state + 1;
+
+  void previous() => state = state > 1 ? state - 1 : 1;
+
+  void reset() => state = 1;
+}
+
 class CustomerFilters {
   const CustomerFilters({required this.search, required this.city});
 
@@ -32,13 +50,30 @@ class CustomerFilters {
   }
 }
 
-final customersProvider = FutureProvider<List<Customer>>((ref) async {
+class CustomerPageData {
+  const CustomerPageData({
+    required this.items,
+    required this.page,
+    required this.hasNextPage,
+  });
+
+  final List<Customer> items;
+  final int page;
+  final bool hasNextPage;
+}
+
+final customersProvider = FutureProvider<CustomerPageData>((ref) async {
   final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
+  if (client == null) {
+    return const CustomerPageData(items: [], page: 1, hasNextPage: false);
+  }
 
   final filters = ref.watch(customerFiltersProvider);
+  final page = ref.watch(customerPageProvider);
   final search = filters.search.trim();
   final city = filters.city;
+  final start = (page - 1) * customerPageSize;
+  final end = start + customerPageSize;
 
   var q = client
       .from('customers')
@@ -53,14 +88,21 @@ final customersProvider = FutureProvider<List<Customer>>((ref) async {
     q = q.ilike('name', '%$search%');
   }
 
-  final rows = await q.order('name');
+  final rows = await q.order('name').range(start, end);
   final customerRows = (rows as List)
       .map((e) => e as Map<String, dynamic>)
       .toList(growable: false);
 
-  if (customerRows.isEmpty) return const [];
+  final hasNextPage = customerRows.length > customerPageSize;
+  final currentPageRows = hasNextPage
+      ? customerRows.take(customerPageSize).toList(growable: false)
+      : customerRows;
 
-  final ids = customerRows
+  if (currentPageRows.isEmpty) {
+    return CustomerPageData(items: const [], page: page, hasNextPage: false);
+  }
+
+  final ids = currentPageRows
       .map((e) => e['id'].toString())
       .toList(growable: false);
 
@@ -91,15 +133,19 @@ final customersProvider = FutureProvider<List<Customer>>((ref) async {
     gmp3Counts.update(id, (v) => v + 1, ifAbsent: () => 1);
   }
 
-  return customerRows
-      .map(
-        (e) => Customer.fromJson({
-          ...e,
-          'active_line_count': lineCounts[e['id']?.toString()] ?? 0,
-          'active_gmp3_count': gmp3Counts[e['id']?.toString()] ?? 0,
-        }),
-      )
-      .toList(growable: false);
+  return CustomerPageData(
+    page: page,
+    hasNextPage: hasNextPage,
+    items: currentPageRows
+        .map(
+          (e) => Customer.fromJson({
+            ...e,
+            'active_line_count': lineCounts[e['id']?.toString()] ?? 0,
+            'active_gmp3_count': gmp3Counts[e['id']?.toString()] ?? 0,
+          }),
+        )
+        .toList(growable: false),
+  );
 });
 
 final customerCitiesProvider = FutureProvider<List<String>>((ref) async {

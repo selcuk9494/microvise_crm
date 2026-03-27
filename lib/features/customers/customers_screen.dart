@@ -60,6 +60,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final customersAsync = ref.watch(customersProvider);
     final citiesAsync = ref.watch(customerCitiesProvider);
     final filters = ref.watch(customerFiltersProvider);
+    final currentPage = ref.watch(customerPageProvider);
 
     return AppPageLayout(
       title: 'Müşteriler',
@@ -70,6 +71,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           onPressed: () {
             ref.invalidate(customersProvider);
             ref.invalidate(customerCitiesProvider);
+            ref.read(customerPageProvider.notifier).reset();
           },
           icon: const Icon(Icons.refresh_rounded, size: 18),
           label: const Text('Yenile'),
@@ -110,9 +112,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       flex: 2,
                       child: TextField(
                         controller: _searchController,
-                        onChanged: ref
-                            .read(customerFiltersProvider.notifier)
-                            .setSearch,
+                        onChanged: (value) {
+                          ref
+                              .read(customerFiltersProvider.notifier)
+                              .setSearch(value);
+                          ref.read(customerPageProvider.notifier).reset();
+                        },
                         decoration: const InputDecoration(
                           labelText: 'Müşteri Ara',
                           hintText: 'Firma adına göre arayın',
@@ -137,9 +142,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                               ),
                             ),
                           ],
-                          onChanged: ref
-                              .read(customerFiltersProvider.notifier)
-                              .setCity,
+                          onChanged: (value) {
+                            ref
+                                .read(customerFiltersProvider.notifier)
+                                .setCity(value);
+                            ref.read(customerPageProvider.notifier).reset();
+                          },
                           decoration: const InputDecoration(
                             labelText: 'Şehir',
                             prefixIcon: Icon(Icons.location_city_rounded),
@@ -190,6 +198,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                             ref
                                 .read(customerFiltersProvider.notifier)
                                 .setCity(null);
+                            ref.read(customerPageProvider.notifier).reset();
                           },
                           icon: const Icon(Icons.clear_rounded, size: 18),
                           label: const Text('Filtreleri Temizle'),
@@ -203,7 +212,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           ),
           const Gap(16),
           customersAsync.when(
-            data: (customers) {
+            data: (pageData) {
+              final customers = pageData.items;
               if (customers.isEmpty) {
                 return AppCard(
                   child: Padding(
@@ -249,11 +259,30 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          '${customers.length} müşteri bulundu',
+                          'Sayfa $currentPage • ${customers.length} müşteri gösteriliyor',
                           style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(color: const Color(0xFF64748B)),
                         ),
                       ),
+                      OutlinedButton.icon(
+                        onPressed: currentPage > 1
+                            ? () => ref
+                                  .read(customerPageProvider.notifier)
+                                  .previous()
+                            : null,
+                        icon: const Icon(Icons.chevron_left_rounded, size: 18),
+                        label: const Text('Önceki'),
+                      ),
+                      const Gap(8),
+                      OutlinedButton.icon(
+                        onPressed: pageData.hasNextPage
+                            ? () =>
+                                  ref.read(customerPageProvider.notifier).next()
+                            : null,
+                        icon: const Icon(Icons.chevron_right_rounded, size: 18),
+                        label: const Text('Sonraki'),
+                      ),
+                      const Gap(8),
                       TextButton.icon(
                         onPressed: () =>
                             _showCustomerForm(context, ref, openDetail: false),
@@ -275,6 +304,16 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         onChanged: () => _refreshCustomerData(ref),
                       );
                     },
+                  ),
+                  const Gap(12),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      'Her sayfada $customerPageSize kayıt gösterilir.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
                   ),
                 ],
               );
