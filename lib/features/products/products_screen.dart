@@ -17,6 +17,22 @@ final productSearchProvider = NotifierProvider<ProductSearchNotifier, String>(
 final showPassiveProvider = NotifierProvider<ShowPassiveNotifier, bool>(
   ShowPassiveNotifier.new,
 );
+final productCustomerFilterProvider =
+    NotifierProvider<ProductCustomerFilterNotifier, String?>(
+      ProductCustomerFilterNotifier.new,
+    );
+final productSortProvider =
+    NotifierProvider<ProductSortNotifier, ProductListSort>(
+      ProductSortNotifier.new,
+    );
+final selectedLineIdsProvider =
+    NotifierProvider<SelectedLineIdsNotifier, Set<String>>(
+      SelectedLineIdsNotifier.new,
+    );
+final selectedLicenseIdsProvider =
+    NotifierProvider<SelectedLicenseIdsNotifier, Set<String>>(
+      SelectedLicenseIdsNotifier.new,
+    );
 
 class ProductSearchNotifier extends Notifier<String> {
   @override
@@ -32,12 +48,63 @@ class ShowPassiveNotifier extends Notifier<bool> {
   void set(bool value) => state = value;
 }
 
+class ProductCustomerFilterNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void set(String? value) => state = value;
+}
+
+enum ProductListSort { customerName, nearestEndDate, latestEndDate }
+
+class ProductSortNotifier extends Notifier<ProductListSort> {
+  @override
+  ProductListSort build() => ProductListSort.nearestEndDate;
+
+  void set(ProductListSort value) => state = value;
+}
+
+class SelectedLineIdsNotifier extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => <String>{};
+
+  void toggle(String id) {
+    final next = {...state};
+    if (!next.add(id)) {
+      next.remove(id);
+    }
+    state = next;
+  }
+
+  void replace(Iterable<String> ids) => state = ids.toSet();
+
+  void clear() => state = <String>{};
+}
+
+class SelectedLicenseIdsNotifier extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => <String>{};
+
+  void toggle(String id) {
+    final next = {...state};
+    if (!next.add(id)) {
+      next.remove(id);
+    }
+    state = next;
+  }
+
+  void replace(Iterable<String> ids) => state = ids.toSet();
+
+  void clear() => state = <String>{};
+}
+
 final issuedLinesProvider = FutureProvider<List<IssuedLine>>((ref) async {
   final client = ref.watch(supabaseClientProvider);
   if (client == null) return const [];
 
   final search = ref.watch(productSearchProvider).trim();
   final showPassive = ref.watch(showPassiveProvider);
+  final selectedCustomerId = ref.watch(productCustomerFilterProvider);
   final isAdmin = ref.watch(isAdminProvider);
 
   var q = client
@@ -48,6 +115,10 @@ final issuedLinesProvider = FutureProvider<List<IssuedLine>>((ref) async {
 
   if (!(isAdmin && showPassive)) {
     q = q.eq('is_active', true);
+  }
+
+  if ((selectedCustomerId ?? '').isNotEmpty) {
+    q = q.eq('customer_id', selectedCustomerId!);
   }
 
   if (search.isNotEmpty) {
@@ -76,6 +147,7 @@ final issuedLicensesProvider = FutureProvider<List<IssuedLicense>>((ref) async {
 
   final search = ref.watch(productSearchProvider).trim();
   final showPassive = ref.watch(showPassiveProvider);
+  final selectedCustomerId = ref.watch(productCustomerFilterProvider);
   final isAdmin = ref.watch(isAdminProvider);
 
   var q = client
@@ -86,6 +158,10 @@ final issuedLicensesProvider = FutureProvider<List<IssuedLicense>>((ref) async {
 
   if (!(isAdmin && showPassive)) {
     q = q.eq('is_active', true);
+  }
+
+  if ((selectedCustomerId ?? '').isNotEmpty) {
+    q = q.eq('customer_id', selectedCustomerId!);
   }
 
   if (search.isNotEmpty) {
@@ -127,6 +203,9 @@ class ProductsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isAdmin = ref.watch(isAdminProvider);
     final showPassive = ref.watch(showPassiveProvider);
+    final customersAsync = ref.watch(customersLookupProvider);
+    final sort = ref.watch(productSortProvider);
+    final selectedCustomerId = ref.watch(productCustomerFilterProvider);
 
     return DefaultTabController(
       length: 2,
@@ -137,9 +216,13 @@ class ProductsScreen extends ConsumerWidget {
           children: [
             AppCard(
               padding: const EdgeInsets.all(16),
-              child: Row(
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Expanded(
+                  SizedBox(
+                    width: 360,
                     child: TextField(
                       decoration: const InputDecoration(
                         labelText: 'Ara',
@@ -150,9 +233,65 @@ class ProductsScreen extends ConsumerWidget {
                           ref.read(productSearchProvider.notifier).set(v),
                     ),
                   ),
-                  const Gap(12),
+                  customersAsync.when(
+                    data: (customers) => SizedBox(
+                      width: 280,
+                      child: DropdownButtonFormField<String?>(
+                        initialValue: selectedCustomerId,
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('Tüm müşteriler'),
+                          ),
+                          ...customers
+                              .where((customer) => customer.isActive || isAdmin)
+                              .map(
+                                (customer) => DropdownMenuItem<String?>(
+                                  value: customer.id,
+                                  child: Text(customer.name),
+                                ),
+                              ),
+                        ],
+                        onChanged: (value) => ref
+                            .read(productCustomerFilterProvider.notifier)
+                            .set(value),
+                        decoration: const InputDecoration(labelText: 'Müşteri'),
+                      ),
+                    ),
+                    loading: () => const SizedBox(
+                      width: 280,
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                    error: (error, stackTrace) => const SizedBox.shrink(),
+                  ),
+                  SizedBox(
+                    width: 220,
+                    child: DropdownButtonFormField<ProductListSort>(
+                      initialValue: sort,
+                      items: const [
+                        DropdownMenuItem(
+                          value: ProductListSort.nearestEndDate,
+                          child: Text('Bitiş: yakın önce'),
+                        ),
+                        DropdownMenuItem(
+                          value: ProductListSort.latestEndDate,
+                          child: Text('Bitiş: uzak önce'),
+                        ),
+                        DropdownMenuItem(
+                          value: ProductListSort.customerName,
+                          child: Text('Müşteri adına göre'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        ref.read(productSortProvider.notifier).set(value);
+                      },
+                      decoration: const InputDecoration(labelText: 'Listeleme'),
+                    ),
+                  ),
                   if (isAdmin)
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Switch.adaptive(
                           value: showPassive,
@@ -216,6 +355,7 @@ class _LinesTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final linesAsync = ref.watch(issuedLinesProvider);
     final licensesAsync = ref.watch(issuedLicensesProvider);
+    final selectedIds = ref.watch(selectedLineIdsProvider);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: linesAsync.when(
@@ -228,17 +368,74 @@ class _LinesTab extends ConsumerWidget {
             final lineOnlyItems = items
                 .where((line) => !licensedCustomerIds.contains(line.customerId))
                 .toList(growable: false);
+            final sortedItems = _sortLines(
+              lineOnlyItems,
+              ref.watch(productSortProvider),
+            );
+            final visibleIds = sortedItems.map((item) => item.id).toSet();
+            final selectedVisibleIds = selectedIds
+                .where(visibleIds.contains)
+                .toSet();
 
-            if (lineOnlyItems.isEmpty) {
+            if (sortedItems.isEmpty) {
               return const _Empty(
                 text: 'Sadece hatti olan musteri kaydi bulunmuyor.',
               );
             }
-            return ListView.separated(
-              itemCount: lineOnlyItems.length,
-              separatorBuilder: (context, index) => const Gap(10),
-              itemBuilder: (context, index) =>
-                  _LineRow(item: lineOnlyItems[index], isAdmin: isAdmin),
+            return Column(
+              children: [
+                if (isAdmin)
+                  _BulkActionBar(
+                    title: '${sortedItems.length} hat listeleniyor',
+                    selectedCount: selectedVisibleIds.length,
+                    onToggleAll: () {
+                      final notifier = ref.read(
+                        selectedLineIdsProvider.notifier,
+                      );
+                      if (selectedVisibleIds.length == sortedItems.length) {
+                        notifier.clear();
+                      } else {
+                        notifier.replace(sortedItems.map((item) => item.id));
+                      }
+                    },
+                    onExtend: selectedVisibleIds.isEmpty
+                        ? null
+                        : () async {
+                            await _extendLinesInBulk(
+                              context,
+                              ref,
+                              lines: sortedItems
+                                  .where(
+                                    (item) =>
+                                        selectedVisibleIds.contains(item.id),
+                                  )
+                                  .toList(growable: false),
+                            );
+                            ref.invalidate(issuedLinesProvider);
+                            ref.invalidate(invoiceItemsProvider);
+                            ref.read(selectedLineIdsProvider.notifier).clear();
+                          },
+                  ),
+                if (isAdmin) const Gap(12),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: sortedItems.length,
+                    separatorBuilder: (context, index) => const Gap(10),
+                    itemBuilder: (context, index) => _LineRow(
+                      item: sortedItems[index],
+                      isAdmin: isAdmin,
+                      selected: selectedVisibleIds.contains(
+                        sortedItems[index].id,
+                      ),
+                      onSelectedChanged: isAdmin
+                          ? (_) => ref
+                                .read(selectedLineIdsProvider.notifier)
+                                .toggle(sortedItems[index].id)
+                          : null,
+                    ),
+                  ),
+                ),
+              ],
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -260,19 +457,86 @@ class _LicensesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final licensesAsync = ref.watch(issuedLicensesProvider);
+    final linesAsync = ref.watch(issuedLinesProvider);
+    final selectedIds = ref.watch(selectedLicenseIdsProvider);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: licensesAsync.when(
-        data: (items) {
-          final gmp3 = items.where((e) => e.licenseType == 'gmp3').toList();
-          if (gmp3.isEmpty) return const _Empty(text: 'Kayıt yok.');
-          return ListView.separated(
-            itemCount: gmp3.length,
-            separatorBuilder: (context, index) => const Gap(10),
-            itemBuilder: (context, index) =>
-                _LicenseRow(item: gmp3[index], isAdmin: isAdmin),
-          );
-        },
+        data: (items) => linesAsync.when(
+          data: (lines) {
+            final gmp3 = _sortLicenses(
+              items.where((e) => e.licenseType == 'gmp3').toList(),
+              ref.watch(productSortProvider),
+            );
+            final lineCustomerIds = lines
+                .map((line) => line.customerId)
+                .toSet();
+            final visibleIds = gmp3.map((item) => item.id).toSet();
+            final selectedVisibleIds = selectedIds
+                .where(visibleIds.contains)
+                .toSet();
+            if (gmp3.isEmpty) return const _Empty(text: 'Kayıt yok.');
+            return Column(
+              children: [
+                if (isAdmin)
+                  _BulkActionBar(
+                    title: '${gmp3.length} lisans listeleniyor',
+                    selectedCount: selectedVisibleIds.length,
+                    onToggleAll: () {
+                      final notifier = ref.read(
+                        selectedLicenseIdsProvider.notifier,
+                      );
+                      if (selectedVisibleIds.length == gmp3.length) {
+                        notifier.clear();
+                      } else {
+                        notifier.replace(gmp3.map((item) => item.id));
+                      }
+                    },
+                    onExtend: selectedVisibleIds.isEmpty
+                        ? null
+                        : () async {
+                            await _extendLicensesInBulk(
+                              context,
+                              ref,
+                              licenses: gmp3
+                                  .where(
+                                    (item) =>
+                                        selectedVisibleIds.contains(item.id),
+                                  )
+                                  .toList(growable: false),
+                            );
+                            ref.invalidate(issuedLicensesProvider);
+                            ref.invalidate(invoiceItemsProvider);
+                            ref
+                                .read(selectedLicenseIdsProvider.notifier)
+                                .clear();
+                          },
+                  ),
+                if (isAdmin) const Gap(12),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: gmp3.length,
+                    separatorBuilder: (context, index) => const Gap(10),
+                    itemBuilder: (context, index) => _LicenseRow(
+                      item: gmp3[index],
+                      isAdmin: isAdmin,
+                      hasLine: lineCustomerIds.contains(gmp3[index].customerId),
+                      selected: selectedVisibleIds.contains(gmp3[index].id),
+                      onSelectedChanged: isAdmin
+                          ? (_) => ref
+                                .read(selectedLicenseIdsProvider.notifier)
+                                .toggle(gmp3[index].id)
+                          : null,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stackTrace) =>
+              const _Empty(text: 'Hatlar yüklenemedi.'),
+        ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stackTrace) =>
             const _Empty(text: 'Lisanslar yüklenemedi.'),
@@ -282,10 +546,17 @@ class _LicensesTab extends ConsumerWidget {
 }
 
 class _LineRow extends ConsumerStatefulWidget {
-  const _LineRow({required this.item, required this.isAdmin});
+  const _LineRow({
+    required this.item,
+    required this.isAdmin,
+    required this.selected,
+    required this.onSelectedChanged,
+  });
 
   final IssuedLine item;
   final bool isAdmin;
+  final bool selected;
+  final ValueChanged<bool?>? onSelectedChanged;
 
   @override
   ConsumerState<_LineRow> createState() => _LineRowState();
@@ -333,6 +604,13 @@ class _LineRowState extends ConsumerState<_LineRow> {
       ),
       child: Row(
         children: [
+          if (widget.onSelectedChanged != null) ...[
+            Checkbox.adaptive(
+              value: widget.selected,
+              onChanged: widget.onSelectedChanged,
+            ),
+            const Gap(6),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -443,10 +721,19 @@ class _LineRowState extends ConsumerState<_LineRow> {
 }
 
 class _LicenseRow extends ConsumerStatefulWidget {
-  const _LicenseRow({required this.item, required this.isAdmin});
+  const _LicenseRow({
+    required this.item,
+    required this.isAdmin,
+    required this.hasLine,
+    required this.selected,
+    required this.onSelectedChanged,
+  });
 
   final IssuedLicense item;
   final bool isAdmin;
+  final bool hasLine;
+  final bool selected;
+  final ValueChanged<bool?>? onSelectedChanged;
 
   @override
   ConsumerState<_LicenseRow> createState() => _LicenseRowState();
@@ -494,12 +781,19 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
       ),
       child: Row(
         children: [
+          if (widget.onSelectedChanged != null) ...[
+            Checkbox.adaptive(
+              value: widget.selected,
+              onChanged: widget.onSelectedChanged,
+            ),
+            const Gap(6),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item.name,
+                  widget.hasLine ? 'GMP + Hat' : item.name,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                     decoration: item.isActive
@@ -509,7 +803,10 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
                 ),
                 const Gap(4),
                 Text(
-                  item.customerName ?? '—',
+                  [
+                    if (widget.hasLine) item.name,
+                    item.customerName ?? '—',
+                  ].join(' • '),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF64748B),
                   ),
@@ -525,6 +822,10 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
             ),
           ),
           const Gap(10),
+          if (widget.hasLine) ...[
+            const AppBadge(label: 'Hatlı', tone: AppBadgeTone.primary),
+            const Gap(10),
+          ],
           AppBadge(label: statusLabel, tone: tone),
           if (widget.isAdmin) ...[
             const Gap(10),
@@ -784,114 +1085,21 @@ Future<void> _extendLineAndQueueInvoice(
   final client = ref.read(supabaseClientProvider);
   if (client == null) return;
 
-  final now = DateTime.now();
-  final baseYear = (line.endsAt != null && line.endsAt!.isAfter(now))
-      ? line.endsAt!.year
-      : now.year;
-  final newEnd = DateTime(baseYear + 1, 12, 31);
+  final newEnd = _nextRenewalEndDate(line.endsAt);
   final newEndStr = newEnd.toIso8601String().substring(0, 10);
-
-  final amountController = TextEditingController();
-  String currency = 'TRY';
-
-  final confirm = await showDialog<bool>(
-    context: context,
-    barrierDismissible: false,
-    builder: (context) => Dialog(
-      insetPadding: const EdgeInsets.all(24),
-      backgroundColor: Colors.transparent,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: AppCard(
-          padding: const EdgeInsets.all(20),
-          child: StatefulBuilder(
-            builder: (context, setState) => Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Hat Süre Uzat',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Kapat',
-                      onPressed: () => Navigator.of(context).pop(false),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                ),
-                const Gap(10),
-                Text(
-                  'Yeni bitiş tarihi: ${DateFormat('d MMM y', 'tr_TR').format(newEnd)}',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-                const Gap(12),
-                TextField(
-                  controller: amountController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Tutar (opsiyonel)',
-                    hintText: '0.00',
-                  ),
-                ),
-                const Gap(12),
-                DropdownButtonFormField<String>(
-                  initialValue: currency,
-                  items: const [
-                    DropdownMenuItem(value: 'TRY', child: Text('TRY')),
-                    DropdownMenuItem(value: 'USD', child: Text('USD')),
-                    DropdownMenuItem(value: 'EUR', child: Text('EUR')),
-                  ],
-                  onChanged: (v) => setState(() => currency = v ?? 'TRY'),
-                  decoration: const InputDecoration(labelText: 'Para Birimi'),
-                ),
-                const Gap(18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(false),
-                        child: const Text('Vazgeç'),
-                      ),
-                    ),
-                    const Gap(12),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () => Navigator.of(context).pop(true),
-                        child: const Text('Uzat'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ),
+  final request = await _showRenewDialog(
+    context,
+    title: 'Hat Süre Uzat',
+    message:
+        'Yeni bitiş tarihi: ${DateFormat('d MMM y', 'tr_TR').format(newEnd)}',
   );
-
-  if (confirm != true) {
-    amountController.dispose();
-    return;
-  }
+  if (request == null) return;
 
   try {
     await client
         .from('lines')
         .update({'ends_at': newEndStr, 'expires_at': newEndStr})
         .eq('id', line.id);
-
-    final amountRaw = amountController.text.trim().replaceAll(',', '.');
-    final amount = amountRaw.isEmpty ? null : double.tryParse(amountRaw);
 
     await client.from('invoice_items').insert({
       'customer_id': line.customerId,
@@ -900,8 +1108,8 @@ Future<void> _extendLineAndQueueInvoice(
       'source_id': line.id,
       'description':
           'Hat uzatma (${line.number ?? ''}) (yeni bitiş: $newEndStr)',
-      'amount': amount,
-      'currency': currency,
+      'amount': request.amount,
+      'currency': request.currency,
       'status': 'pending',
       'created_by': client.auth.currentUser?.id,
     });
@@ -919,8 +1127,6 @@ Future<void> _extendLineAndQueueInvoice(
         context,
       ).showSnackBar(const SnackBar(content: Text('İşlem başarısız.')));
     }
-  } finally {
-    amountController.dispose();
   }
 }
 
@@ -987,17 +1193,170 @@ Future<void> _extendLicenseAndQueueInvoice(
   final client = ref.read(supabaseClientProvider);
   if (client == null) return;
 
-  final now = DateTime.now();
-  final baseYear = (license.endsAt != null && license.endsAt!.isAfter(now))
-      ? license.endsAt!.year
-      : now.year;
-  final newEnd = DateTime(baseYear + 1, 12, 31);
+  final newEnd = _nextRenewalEndDate(license.endsAt);
   final newEndStr = newEnd.toIso8601String().substring(0, 10);
+  final request = await _showRenewDialog(
+    context,
+    title: 'Lisans Süre Uzat',
+    message:
+        'Yeni bitiş tarihi: ${DateFormat('d MMM y', 'tr_TR').format(newEnd)}',
+  );
+  if (request == null) return;
 
+  try {
+    await client
+        .from('licenses')
+        .update({'ends_at': newEndStr, 'expires_at': newEndStr})
+        .eq('id', license.id);
+
+    await client.from('invoice_items').insert({
+      'customer_id': license.customerId,
+      'item_type': 'gmp3_renewal',
+      'source_table': 'licenses',
+      'source_id': license.id,
+      'description': 'GMP3 uzatma (${license.name}) (yeni bitiş: $newEndStr)',
+      'amount': request.amount,
+      'currency': request.currency,
+      'status': 'pending',
+      'created_by': client.auth.currentUser?.id,
+    });
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Lisans uzatıldı ve faturalama listesine eklendi.'),
+        ),
+      );
+    }
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('İşlem başarısız.')));
+    }
+  }
+}
+
+Future<void> _extendLinesInBulk(
+  BuildContext context,
+  WidgetRef ref, {
+  required List<IssuedLine> lines,
+}) async {
+  final client = ref.read(supabaseClientProvider);
+  if (client == null || lines.isEmpty) return;
+
+  final request = await _showRenewDialog(
+    context,
+    title: 'Toplu Hat Süre Uzat',
+    message: '${lines.length} seçili hattın süresi bir yıl uzatılacak.',
+  );
+  if (request == null) return;
+
+  try {
+    for (final line in lines) {
+      final newEndStr = _nextRenewalEndDate(
+        line.endsAt,
+      ).toIso8601String().substring(0, 10);
+      await client
+          .from('lines')
+          .update({'ends_at': newEndStr, 'expires_at': newEndStr})
+          .eq('id', line.id);
+      await client.from('invoice_items').insert({
+        'customer_id': line.customerId,
+        'item_type': 'line_renewal',
+        'source_table': 'lines',
+        'source_id': line.id,
+        'description':
+            'Hat uzatma (${line.number ?? ''}) (yeni bitiş: $newEndStr)',
+        'amount': request.amount,
+        'currency': request.currency,
+        'status': 'pending',
+        'created_by': client.auth.currentUser?.id,
+      });
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${lines.length} hat uzatıldı.')));
+    }
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Toplu hat uzatma başarısız.')),
+      );
+    }
+  }
+}
+
+Future<void> _extendLicensesInBulk(
+  BuildContext context,
+  WidgetRef ref, {
+  required List<IssuedLicense> licenses,
+}) async {
+  final client = ref.read(supabaseClientProvider);
+  if (client == null || licenses.isEmpty) return;
+
+  final request = await _showRenewDialog(
+    context,
+    title: 'Toplu Lisans Süre Uzat',
+    message: '${licenses.length} seçili lisansın süresi bir yıl uzatılacak.',
+  );
+  if (request == null) return;
+
+  try {
+    for (final license in licenses) {
+      final newEndStr = _nextRenewalEndDate(
+        license.endsAt,
+      ).toIso8601String().substring(0, 10);
+      await client
+          .from('licenses')
+          .update({'ends_at': newEndStr, 'expires_at': newEndStr})
+          .eq('id', license.id);
+      await client.from('invoice_items').insert({
+        'customer_id': license.customerId,
+        'item_type': 'gmp3_renewal',
+        'source_table': 'licenses',
+        'source_id': license.id,
+        'description': 'GMP3 uzatma (${license.name}) (yeni bitiş: $newEndStr)',
+        'amount': request.amount,
+        'currency': request.currency,
+        'status': 'pending',
+        'created_by': client.auth.currentUser?.id,
+      });
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${licenses.length} lisans uzatıldı.')),
+      );
+    }
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Toplu lisans uzatma başarısız.')),
+      );
+    }
+  }
+}
+
+DateTime _nextRenewalEndDate(DateTime? endsAt) {
+  final now = DateTime.now();
+  final baseYear = (endsAt != null && endsAt.isAfter(now))
+      ? endsAt.year
+      : now.year;
+  return DateTime(baseYear + 1, 12, 31);
+}
+
+Future<_RenewalRequest?> _showRenewDialog(
+  BuildContext context, {
+  required String title,
+  required String message,
+}) async {
   final amountController = TextEditingController();
   String currency = 'TRY';
 
-  final confirm = await showDialog<bool>(
+  final request = await showDialog<_RenewalRequest>(
     context: context,
     barrierDismissible: false,
     builder: (context) => Dialog(
@@ -1016,20 +1375,20 @@ Future<void> _extendLicenseAndQueueInvoice(
                   children: [
                     Expanded(
                       child: Text(
-                        'Lisans Süre Uzat',
+                        title,
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: () => Navigator.of(context).pop(false),
+                      onPressed: () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
                 ),
                 const Gap(10),
                 Text(
-                  'Yeni bitiş tarihi: ${DateFormat('d MMM y', 'tr_TR').format(newEnd)}',
+                  message,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF64748B),
                   ),
@@ -1053,7 +1412,8 @@ Future<void> _extendLicenseAndQueueInvoice(
                     DropdownMenuItem(value: 'USD', child: Text('USD')),
                     DropdownMenuItem(value: 'EUR', child: Text('EUR')),
                   ],
-                  onChanged: (v) => setState(() => currency = v ?? 'TRY'),
+                  onChanged: (value) =>
+                      setState(() => currency = value ?? 'TRY'),
                   decoration: const InputDecoration(labelText: 'Para Birimi'),
                 ),
                 const Gap(18),
@@ -1061,14 +1421,26 @@ Future<void> _extendLicenseAndQueueInvoice(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(false),
+                        onPressed: () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
                     const Gap(12),
                     Expanded(
                       child: FilledButton(
-                        onPressed: () => Navigator.of(context).pop(true),
+                        onPressed: () {
+                          final amountRaw = amountController.text
+                              .trim()
+                              .replaceAll(',', '.');
+                          Navigator.of(context).pop(
+                            _RenewalRequest(
+                              amount: amountRaw.isEmpty
+                                  ? null
+                                  : double.tryParse(amountRaw),
+                              currency: currency,
+                            ),
+                          );
+                        },
                         child: const Text('Uzat'),
                       ),
                     ),
@@ -1082,48 +1454,8 @@ Future<void> _extendLicenseAndQueueInvoice(
     ),
   );
 
-  if (confirm != true) {
-    amountController.dispose();
-    return;
-  }
-
-  try {
-    await client
-        .from('licenses')
-        .update({'ends_at': newEndStr, 'expires_at': newEndStr})
-        .eq('id', license.id);
-
-    final amountRaw = amountController.text.trim().replaceAll(',', '.');
-    final amount = amountRaw.isEmpty ? null : double.tryParse(amountRaw);
-
-    await client.from('invoice_items').insert({
-      'customer_id': license.customerId,
-      'item_type': 'gmp3_renewal',
-      'source_table': 'licenses',
-      'source_id': license.id,
-      'description': 'GMP3 uzatma (${license.name}) (yeni bitiş: $newEndStr)',
-      'amount': amount,
-      'currency': currency,
-      'status': 'pending',
-      'created_by': client.auth.currentUser?.id,
-    });
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Lisans uzatıldı ve faturalama listesine eklendi.'),
-        ),
-      );
-    }
-  } catch (_) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('İşlem başarısız.')));
-    }
-  } finally {
-    amountController.dispose();
-  }
+  amountController.dispose();
+  return request;
 }
 
 class _TransferDialog extends StatefulWidget {
@@ -1235,6 +1567,118 @@ class _Empty extends StatelessWidget {
       ),
     );
   }
+}
+
+class _RenewalRequest {
+  const _RenewalRequest({required this.amount, required this.currency});
+
+  final double? amount;
+  final String currency;
+}
+
+class _BulkActionBar extends StatelessWidget {
+  const _BulkActionBar({
+    required this.title,
+    required this.selectedCount,
+    required this.onToggleAll,
+    required this.onExtend,
+  });
+
+  final String title;
+  final int selectedCount;
+  final VoidCallback onToggleAll;
+  final VoidCallback? onExtend;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              selectedCount > 0 ? '$title • $selectedCount seçili' : title,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+          OutlinedButton(
+            onPressed: onToggleAll,
+            child: Text(selectedCount > 0 ? 'Seçimi Temizle' : 'Tümünü Seç'),
+          ),
+          const Gap(10),
+          FilledButton.icon(
+            onPressed: onExtend,
+            icon: const Icon(Icons.schedule_rounded),
+            label: const Text('Toplu Süre Uzat'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+List<IssuedLine> _sortLines(List<IssuedLine> items, ProductListSort sort) {
+  final sorted = [...items];
+  sorted.sort(
+    (a, b) => _compareItems(
+      sort,
+      customerA: a.customerName,
+      customerB: b.customerName,
+      endsAtA: a.endsAt,
+      endsAtB: b.endsAt,
+    ),
+  );
+  return sorted;
+}
+
+List<IssuedLicense> _sortLicenses(
+  List<IssuedLicense> items,
+  ProductListSort sort,
+) {
+  final sorted = [...items];
+  sorted.sort(
+    (a, b) => _compareItems(
+      sort,
+      customerA: a.customerName,
+      customerB: b.customerName,
+      endsAtA: a.endsAt,
+      endsAtB: b.endsAt,
+    ),
+  );
+  return sorted;
+}
+
+int _compareItems(
+  ProductListSort sort, {
+  required String? customerA,
+  required String? customerB,
+  required DateTime? endsAtA,
+  required DateTime? endsAtB,
+}) {
+  switch (sort) {
+    case ProductListSort.customerName:
+      return (customerA ?? '').toLowerCase().compareTo(
+        (customerB ?? '').toLowerCase(),
+      );
+    case ProductListSort.latestEndDate:
+      return _compareDates(endsAtB, endsAtA);
+    case ProductListSort.nearestEndDate:
+      return _compareDates(endsAtA, endsAtB);
+  }
+}
+
+int _compareDates(DateTime? a, DateTime? b) {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return a.compareTo(b);
 }
 
 class IssuedLine {
