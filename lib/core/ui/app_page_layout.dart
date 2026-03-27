@@ -19,6 +19,7 @@ class AppPageLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
+    final isMobile = width < 720;
     final horizontalPadding = width >= 1200
         ? 32.0
         : width >= 720
@@ -62,11 +63,8 @@ class AppPageLayout extends StatelessWidget {
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(color: AppTheme.border),
                     ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
+                    child: isMobile
+                        ? Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
@@ -84,24 +82,61 @@ class AppPageLayout extends StatelessWidget {
                                         ?.copyWith(color: AppTheme.textMuted),
                                   ),
                                 ),
+                              if (actions != null) ...[
+                                const SizedBox(height: 16),
+                                Wrap(
+                                  spacing: 10,
+                                  runSpacing: 10,
+                                  children: actions!,
+                                ),
+                              ],
+                            ],
+                          )
+                        : Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      title,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleLarge,
+                                    ),
+                                    if (subtitle != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 6),
+                                        child: Text(
+                                          subtitle!,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.copyWith(
+                                                color: AppTheme.textMuted,
+                                              ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              if (actions != null)
+                                Flexible(
+                                  child: Align(
+                                    alignment: Alignment.topRight,
+                                    child: Wrap(
+                                      spacing: 10,
+                                      runSpacing: 10,
+                                      alignment: WrapAlignment.end,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: actions!,
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
-                        ),
-                        if (actions != null)
-                          Flexible(
-                            child: Align(
-                              alignment: Alignment.topRight,
-                              child: Wrap(
-                                spacing: 10,
-                                runSpacing: 10,
-                                alignment: WrapAlignment.end,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: actions!,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
                   ),
                 ),
               ),

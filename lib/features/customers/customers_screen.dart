@@ -57,6 +57,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final isMobile = width < 720;
     final customersAsync = ref.watch(customersProvider);
     final citiesAsync = ref.watch(customerCitiesProvider);
     final filters = ref.watch(customerFiltersProvider);
@@ -77,25 +79,27 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           icon: const Icon(Icons.refresh_rounded, size: 18),
           label: const Text('Yenile'),
         ),
-        const Gap(10),
-        OutlinedButton.icon(
-          onPressed: () => _downloadCustomerImportTemplate(context),
-          icon: const Icon(Icons.file_download_outlined, size: 18),
-          label: const Text('Şablon İndir'),
-        ),
-        const Gap(10),
-        OutlinedButton.icon(
-          onPressed: () => _exportCustomersToExcel(context, ref),
-          icon: const Icon(Icons.download_rounded, size: 18),
-          label: const Text('Dışa Aktar'),
-        ),
-        const Gap(10),
-        OutlinedButton.icon(
-          onPressed: () => _importExcel(context, ref),
-          icon: const Icon(Icons.upload_rounded, size: 18),
-          label: const Text('İçe Aktar'),
-        ),
-        const Gap(10),
+        if (!isMobile) ...[
+          const Gap(10),
+          OutlinedButton.icon(
+            onPressed: () => _downloadCustomerImportTemplate(context),
+            icon: const Icon(Icons.file_download_outlined, size: 18),
+            label: const Text('Şablon İndir'),
+          ),
+          const Gap(10),
+          OutlinedButton.icon(
+            onPressed: () => _exportCustomersToExcel(context, ref),
+            icon: const Icon(Icons.download_rounded, size: 18),
+            label: const Text('Dışa Aktar'),
+          ),
+          const Gap(10),
+          OutlinedButton.icon(
+            onPressed: () => _importExcel(context, ref),
+            icon: const Icon(Icons.upload_rounded, size: 18),
+            label: const Text('İçe Aktar'),
+          ),
+          const Gap(10),
+        ],
         FilledButton.icon(
           onPressed: () => _showCustomerForm(context, ref, openDetail: true),
           icon: const Icon(Icons.add_rounded, size: 18),
@@ -107,10 +111,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           AppCard(
             child: Column(
               children: [
-                Row(
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
                   children: [
-                    Expanded(
-                      flex: 2,
+                    SizedBox(
+                      width: isMobile ? double.infinity : width * 0.38,
                       child: TextField(
                         controller: _searchController,
                         onChanged: (value) {
@@ -126,8 +132,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         ),
                       ),
                     ),
-                    const Gap(12),
-                    Expanded(
+                    SizedBox(
+                      width: isMobile ? double.infinity : width * 0.24,
                       child: citiesAsync.when(
                         data: (cities) => DropdownButtonFormField<String?>(
                           initialValue: filters.city,
@@ -170,9 +176,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         ),
                       ),
                     ),
-                    const Gap(12),
                     SizedBox(
-                      width: 220,
+                      width: isMobile ? double.infinity : 220,
                       child: DropdownButtonFormField<CustomerSortOption>(
                         initialValue: sort,
                         items: const [
@@ -290,9 +295,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 children: [
                   _SummaryRow(customers: customers),
                   const Gap(12),
-                  Row(
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      Expanded(
+                      SizedBox(
+                        width: isMobile ? double.infinity : null,
                         child: Text(
                           'Toplam ${pageData.totalCount} müşteri • Sayfa $currentPage / $totalPages • ${customers.length} kayıt gösteriliyor',
                           style: Theme.of(context).textTheme.bodyMedium
@@ -308,7 +317,6 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         icon: const Icon(Icons.chevron_left_rounded, size: 18),
                         label: const Text('Önceki'),
                       ),
-                      const Gap(8),
                       OutlinedButton.icon(
                         onPressed: pageData.hasNextPage
                             ? () =>
@@ -317,9 +325,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         icon: const Icon(Icons.chevron_right_rounded, size: 18),
                         label: const Text('Sonraki'),
                       ),
-                      const Gap(8),
                       Wrap(
                         spacing: 6,
+                        runSpacing: 6,
                         children: [
                           for (var page = startPage; page <= endPage; page++)
                             page == currentPage
@@ -335,7 +343,6 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                   ),
                         ],
                       ),
-                      const Gap(8),
                       TextButton.icon(
                         onPressed: () =>
                             _showCustomerForm(context, ref, openDetail: false),
@@ -411,6 +418,8 @@ class _SummaryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final isMobile = width < 720;
     final active = customers.where((customer) => customer.isActive).length;
     final passive = customers.length - active;
     final totalLines = customers.fold<int>(
@@ -418,9 +427,12 @@ class _SummaryRow extends StatelessWidget {
       (sum, customer) => sum + customer.activeLineCount,
     );
 
-    return Row(
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
       children: [
-        Expanded(
+        SizedBox(
+          width: isMobile ? (width - 44) / 2 : (width - 120) / 4,
           child: _SummaryStat(
             label: 'Toplam',
             value: customers.length.toString(),
@@ -428,8 +440,8 @@ class _SummaryRow extends StatelessWidget {
             tone: AppBadgeTone.primary,
           ),
         ),
-        const Gap(12),
-        Expanded(
+        SizedBox(
+          width: isMobile ? (width - 44) / 2 : (width - 120) / 4,
           child: _SummaryStat(
             label: 'Aktif',
             value: active.toString(),
@@ -437,8 +449,8 @@ class _SummaryRow extends StatelessWidget {
             tone: AppBadgeTone.success,
           ),
         ),
-        const Gap(12),
-        Expanded(
+        SizedBox(
+          width: isMobile ? (width - 44) / 2 : (width - 120) / 4,
           child: _SummaryStat(
             label: 'Pasif',
             value: passive.toString(),
@@ -446,8 +458,8 @@ class _SummaryRow extends StatelessWidget {
             tone: AppBadgeTone.neutral,
           ),
         ),
-        const Gap(12),
-        Expanded(
+        SizedBox(
+          width: isMobile ? (width - 44) / 2 : (width - 120) / 4,
           child: _SummaryStat(
             label: 'Aktif Hat',
             value: totalLines.toString(),
