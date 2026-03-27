@@ -160,6 +160,7 @@ to authenticated
 with check (public.is_admin());
 
 drop policy if exists "work_orders_select_active_or_admin" on public.work_orders;
+drop policy if exists "work_orders_select_active_or_assigned" on public.work_orders;
 create policy "work_orders_select_active_or_assigned"
 on public.work_orders
 for select
@@ -176,6 +177,7 @@ using (
 );
 
 drop policy if exists "work_orders_update_authenticated" on public.work_orders;
+drop policy if exists "work_orders_update_admin_or_assigned" on public.work_orders;
 create policy "work_orders_update_admin_or_assigned"
 on public.work_orders
 for update
@@ -190,4 +192,3 @@ with check (
   or assigned_to = auth.uid()
   or created_by = auth.uid()
 );
-
