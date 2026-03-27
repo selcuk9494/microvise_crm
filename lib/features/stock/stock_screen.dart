@@ -18,7 +18,11 @@ class StockScreen extends ConsumerStatefulWidget {
 }
 
 class _StockScreenState extends ConsumerState<StockScreen> {
-  final _money = NumberFormat.currency(locale: 'tr_TR', symbol: '', decimalDigits: 2);
+  final _money = NumberFormat.currency(
+    locale: 'tr_TR',
+    symbol: '',
+    decimalDigits: 2,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -50,16 +54,24 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.inventory_2_rounded, size: 48, color: const Color(0xFF94A3B8)),
+                      Icon(
+                        Icons.inventory_2_rounded,
+                        size: 48,
+                        color: const Color(0xFF94A3B8),
+                      ),
                       const Gap(12),
                       Text(
                         'Stok takipli ürün bulunmuyor',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF64748B),
+                        ),
                       ),
                       const Gap(8),
                       Text(
                         'Ürün tanımlarken "Stok Takibi" seçeneğini aktif edin.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF94A3B8)),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF94A3B8),
+                        ),
                       ),
                     ],
                   ),
@@ -69,8 +81,12 @@ class _StockScreenState extends ConsumerState<StockScreen> {
           }
 
           // Separate low stock items
-          final lowStock = stocks.where((s) => (s.currentStock ?? 0) <= s.minStock).toList();
-          final normalStock = stocks.where((s) => (s.currentStock ?? 0) > s.minStock).toList();
+          final lowStock = stocks
+              .where((s) => (s.currentStock ?? 0) <= s.minStock)
+              .toList();
+          final normalStock = stocks
+              .where((s) => (s.currentStock ?? 0) > s.minStock)
+              .toList();
 
           return ListView(
             padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -92,7 +108,9 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                       title: 'Kritik Stok',
                       value: lowStock.length.toString(),
                       icon: Icons.warning_rounded,
-                      color: lowStock.isEmpty ? AppTheme.success : AppTheme.error,
+                      color: lowStock.isEmpty
+                          ? AppTheme.success
+                          : AppTheme.error,
                     ),
                   ),
                 ],
@@ -105,7 +123,9 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                   decoration: BoxDecoration(
                     color: AppTheme.error.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
+                    border: Border.all(
+                      color: AppTheme.error.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -114,7 +134,8 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                       Expanded(
                         child: Text(
                           'Kritik Stok Seviyesi - ${lowStock.length} ürün',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
                                 color: AppTheme.error,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -124,10 +145,16 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                   ),
                 ),
                 const Gap(12),
-                ...lowStock.map((p) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _StockCard(product: p, money: _money, isLowStock: true),
-                    )),
+                ...lowStock.map(
+                  (p) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _StockCard(
+                      product: p,
+                      money: _money,
+                      isLowStock: true,
+                    ),
+                  ),
+                ),
                 const Gap(8),
               ],
               // Normal Stock
@@ -137,19 +164,27 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 const Gap(12),
-                ...normalStock.map((p) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _StockCard(product: p, money: _money, isLowStock: false),
-                    )),
+                ...normalStock.map(
+                  (p) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _StockCard(
+                      product: p,
+                      money: _money,
+                      isLowStock: false,
+                    ),
+                  ),
+                ),
               ],
             ],
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, __) => Center(
+        error: (error, stackTrace) => Center(
           child: Text(
             'Stok bilgileri yüklenemedi',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
           ),
         ),
       ),
@@ -181,11 +216,17 @@ class _StockScreenState extends ConsumerState<StockScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
-                value: selectedProductId,
-                items: stocks.map((p) => DropdownMenuItem(
-                      value: p.id,
-                      child: Text('${p.name} (Stok: ${p.currentStock?.toStringAsFixed(0) ?? 0})'),
-                    )).toList(),
+                initialValue: selectedProductId,
+                items: stocks
+                    .map(
+                      (p) => DropdownMenuItem(
+                        value: p.id,
+                        child: Text(
+                          '${p.name} (Stok: ${p.currentStock?.toStringAsFixed(0) ?? 0})',
+                        ),
+                      ),
+                    )
+                    .toList(),
                 onChanged: (v) => setState(() => selectedProductId = v),
                 decoration: const InputDecoration(labelText: 'Ürün'),
               ),
@@ -197,14 +238,19 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                   ButtonSegment(value: 'adjustment', label: Text('Düzeltme')),
                 ],
                 selected: {adjustmentType},
-                onSelectionChanged: (s) => setState(() => adjustmentType = s.first),
+                onSelectionChanged: (s) =>
+                    setState(() => adjustmentType = s.first),
               ),
               const Gap(12),
               TextField(
                 controller: quantityController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: InputDecoration(
-                  labelText: adjustmentType == 'adjustment' ? 'Yeni Miktar' : 'Miktar',
+                  labelText: adjustmentType == 'adjustment'
+                      ? 'Yeni Miktar'
+                      : 'Miktar',
                 ),
               ),
               const Gap(12),
@@ -215,7 +261,10 @@ class _StockScreenState extends ConsumerState<StockScreen> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('İptal')),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('İptal'),
+            ),
             FilledButton(
               onPressed: saving
                   ? null
@@ -227,10 +276,14 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                         return;
                       }
 
-                      final qty = double.tryParse(quantityController.text.replaceAll(',', '.'));
+                      final qty = double.tryParse(
+                        quantityController.text.replaceAll(',', '.'),
+                      );
                       if (qty == null || qty < 0) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Geçerli bir miktar girin')),
+                          const SnackBar(
+                            content: Text('Geçerli bir miktar girin'),
+                          ),
                         );
                         return;
                       }
@@ -241,32 +294,44 @@ class _StockScreenState extends ConsumerState<StockScreen> {
 
                       try {
                         double adjustedQty = qty;
-                        
+
                         // For adjustment type, calculate the difference
                         if (adjustmentType == 'adjustment') {
-                          final currentProduct = stocks.firstWhere((p) => p.id == selectedProductId);
+                          final currentProduct = stocks.firstWhere(
+                            (p) => p.id == selectedProductId,
+                          );
                           final currentStock = currentProduct.currentStock ?? 0;
                           adjustedQty = qty - currentStock;
                         }
 
                         await client.from('stock_movements').insert({
                           'product_id': selectedProductId,
-                          'movement_type': adjustmentType == 'adjustment' ? 'adjustment' : adjustmentType,
+                          'movement_type': adjustmentType == 'adjustment'
+                              ? 'adjustment'
+                              : adjustmentType,
                           'quantity': adjustedQty.abs(),
                           'reference_type': 'adjustment',
-                          'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+                          'notes': notesController.text.trim().isEmpty
+                              ? null
+                              : notesController.text.trim(),
                           'created_by': client.auth.currentUser?.id,
                         });
 
                         if (context.mounted) Navigator.pop(context, true);
                       } catch (e) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hata: $e')));
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('Hata: $e')));
                         }
                       }
                     },
               child: saving
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Text('Kaydet'),
             ),
           ],
@@ -314,11 +379,15 @@ class _SummaryCard extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
               ),
               Text(
                 value,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -329,7 +398,11 @@ class _SummaryCard extends StatelessWidget {
 }
 
 class _StockCard extends StatelessWidget {
-  const _StockCard({required this.product, required this.money, required this.isLowStock});
+  const _StockCard({
+    required this.product,
+    required this.money,
+    required this.isLowStock,
+  });
 
   final Product product;
   final NumberFormat money;
@@ -367,23 +440,27 @@ class _StockCard extends StatelessWidget {
               children: [
                 Text(
                   product.name,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const Gap(4),
                 Row(
                   children: [
                     Text(
                       'Min: ${money.format(min)}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
                     ),
                     const Gap(12),
                     if (product.code != null)
                       Text(
                         product.code!,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: const Color(0xFF94A3B8),
-                              fontFamily: 'monospace',
-                            ),
+                          color: const Color(0xFF94A3B8),
+                          fontFamily: 'monospace',
+                        ),
                       ),
                   ],
                 ),
@@ -406,13 +483,15 @@ class _StockCard extends StatelessWidget {
               Text(
                 money.format(current),
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: isLowStock ? AppTheme.error : null,
-                    ),
+                  fontWeight: FontWeight.w700,
+                  color: isLowStock ? AppTheme.error : null,
+                ),
               ),
               Text(
                 'adet',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
               ),
             ],
           ),

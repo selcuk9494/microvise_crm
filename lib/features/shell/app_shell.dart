@@ -44,9 +44,7 @@ class _DesktopShell extends ConsumerWidget {
             width: 280,
             decoration: BoxDecoration(
               color: AppTheme.surface,
-              border: Border(
-                right: BorderSide(color: AppTheme.border),
-              ),
+              border: Border(right: BorderSide(color: AppTheme.border)),
             ),
             child: SafeArea(
               child: Padding(
@@ -58,7 +56,7 @@ class _DesktopShell extends ConsumerWidget {
                     Expanded(
                       child: ListView.separated(
                         itemCount: items.length,
-                        separatorBuilder: (_, __) => const Gap(6),
+                        separatorBuilder: (context, index) => const Gap(6),
                         itemBuilder: (context, index) {
                           final item = items[index];
                           final active = _isActive(location, item.path);
@@ -86,9 +84,7 @@ class _DesktopShell extends ConsumerWidget {
           Expanded(
             child: Column(
               children: [
-                _TopBar(
-                  onSearchTap: () => _showSearchSheet(context),
-                ),
+                _TopBar(onSearchTap: () => _showSearchSheet(context)),
                 Expanded(child: child),
               ],
             ),
@@ -197,10 +193,9 @@ class _BrandHeader extends StatelessWidget {
                 ),
                 Text(
                   'CRM & Servis',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ],
             ),
@@ -254,8 +249,8 @@ class _TopBar extends StatelessWidget {
                       Text(
                         'Ara (müşteri, iş emri, servis...)',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: const Color(0xFF94A3B8),
-                            ),
+                          color: const Color(0xFF94A3B8),
+                        ),
                       ),
                     ],
                   ),
@@ -307,10 +302,7 @@ class _ProfileButton extends StatelessWidget {
                 ),
               ),
               const Gap(10),
-              Text(
-                'Profil',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
+              Text('Profil', style: Theme.of(context).textTheme.bodyMedium),
               const Gap(6),
               const Icon(Icons.expand_more_rounded, size: 18),
             ],
@@ -318,10 +310,7 @@ class _ProfileButton extends StatelessWidget {
         ),
       ),
       menuChildren: [
-        MenuItemButton(
-          onPressed: () {},
-          child: const Text('Ayarlar'),
-        ),
+        MenuItemButton(onPressed: () {}, child: const Text('Ayarlar')),
       ],
     );
   }
@@ -342,10 +331,12 @@ class _SidebarItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg =
-        active ? AppTheme.primary.withValues(alpha: 0.10) : Colors.transparent;
-    final border =
-        active ? AppTheme.primary.withValues(alpha: 0.18) : AppTheme.border;
+    final bg = active
+        ? AppTheme.primary.withValues(alpha: 0.10)
+        : Colors.transparent;
+    final border = active
+        ? AppTheme.primary.withValues(alpha: 0.18)
+        : AppTheme.border;
     final fg = active ? AppTheme.primary : const Color(0xFF0F172A);
 
     return InkWell(
@@ -367,9 +358,9 @@ class _SidebarItem extends StatelessWidget {
               child: Text(
                 label,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-                      color: fg,
-                    ),
+                  fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                  color: fg,
+                ),
               ),
             ),
           ],
@@ -410,9 +401,9 @@ class _BottomItem extends StatelessWidget {
                 label,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: color,
-                      fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-                    ),
+                  color: color,
+                  fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                ),
               ),
             ],
           ),
@@ -451,16 +442,15 @@ class _AccountCard extends StatelessWidget {
               children: [
                 Text(
                   'Hesap',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 Text(
                   'Admin / Personel',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ],
             ),
@@ -553,10 +543,9 @@ Future<void> _showSearchSheet(BuildContext context) async {
           const Gap(12),
           Text(
             'Son aramalar yakında burada görünecek.',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: const Color(0xFF64748B)),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
           ),
           const Gap(12),
         ],
@@ -566,7 +555,11 @@ Future<void> _showSearchSheet(BuildContext context) async {
 }
 
 class _SheetItem extends StatelessWidget {
-  const _SheetItem({required this.title, required this.icon, required this.onTap});
+  const _SheetItem({
+    required this.title,
+    required this.icon,
+    required this.onTap,
+  });
 
   final String title;
   final IconData icon;
@@ -588,9 +581,9 @@ class _SheetItem extends StatelessWidget {
       ),
       title: Text(
         title,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
       ),
       trailing: const Icon(Icons.chevron_right_rounded),
       onTap: onTap,
@@ -599,7 +592,9 @@ class _SheetItem extends StatelessWidget {
 }
 
 bool _isActive(String matchedLocation, String path) {
-  if (path == '/panel') return matchedLocation == '/panel' || matchedLocation == '/';
+  if (path == '/panel') {
+    return matchedLocation == '/panel' || matchedLocation == '/';
+  }
   return matchedLocation == path || matchedLocation.startsWith('$path/');
 }
 

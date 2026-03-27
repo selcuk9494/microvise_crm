@@ -34,86 +34,69 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       path: '/kurulum',
       builder: (context, state) => const SetupRequiredScreen(),
     ),
-    GoRoute(
-      path: '/giris',
-      builder: (context, state) => const LoginScreen(),
-    ),
+    GoRoute(path: '/giris', builder: (context, state) => const LoginScreen()),
     ShellRoute(
       builder: (context, state, child) => AppShell(child: child),
       routes: [
-        GoRoute(
-          path: '/',
-          redirect: (_, __) => '/panel',
-        ),
+        GoRoute(path: '/', redirect: (context, state) => '/panel'),
         GoRoute(
           path: '/panel',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: DashboardScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: DashboardScreen()),
         ),
         GoRoute(
           path: '/musteriler',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: CustomersScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: CustomersScreen()),
           routes: [
             GoRoute(
               path: ':id',
-              builder: (context, state) => CustomerDetailScreen(
-                customerId: state.pathParameters['id']!,
-              ),
+              builder: (context, state) =>
+                  CustomerDetailScreen(customerId: state.pathParameters['id']!),
             ),
           ],
         ),
         GoRoute(
           path: '/is-emirleri',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: WorkOrdersKanbanScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: WorkOrdersKanbanScreen()),
         ),
         GoRoute(
           path: '/servis',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: ServiceScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: ServiceScreen()),
           routes: [
             GoRoute(
               path: ':id',
-              builder: (context, state) => ServiceDetailScreen(
-                serviceId: state.pathParameters['id']!,
-              ),
+              builder: (context, state) =>
+                  ServiceDetailScreen(serviceId: state.pathParameters['id']!),
             ),
           ],
         ),
         GoRoute(
           path: '/raporlar',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: ReportsScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: ReportsScreen()),
         ),
         GoRoute(
           path: '/personel',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: PersonnelScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: PersonnelScreen()),
         ),
         GoRoute(
           path: '/faturalama',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: BillingScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: BillingScreen()),
         ),
         GoRoute(
           path: '/urunler',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: ProductsScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: ProductsScreen()),
         ),
         GoRoute(
           path: '/tanimlamalar',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: DefinitionsScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: DefinitionsScreen()),
         ),
       ],
     ),
