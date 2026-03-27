@@ -39,6 +39,26 @@ final applicationFormCustomersProvider = FutureProvider<List<_CustomerOption>>((
   return items;
 });
 
+final applicationFormStockProductsProvider =
+    FutureProvider<List<_StockProductOption>>((ref) async {
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
+
+      final rows = await client
+          .from('products')
+          .select('id,code,name,is_active')
+          .eq('is_active', true)
+          .order('name');
+
+      final items = (rows as List)
+          .map(
+            (row) => _StockProductOption.fromJson(row as Map<String, dynamic>),
+          )
+          .toList(growable: false);
+      items.sort((a, b) => _sortKey(a.label).compareTo(_sortKey(b.label)));
+      return items;
+    });
+
 final applicationFormsProvider = FutureProvider<List<_ApplicationFormSummary>>((
   ref,
 ) async {
@@ -76,6 +96,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   late final TextEditingController _fileRegistryController;
   late final TextEditingController _directorController;
   late final TextEditingController _accountingOfficeController;
+  late final TextEditingController _stockRegistryNumberController;
   late final TextEditingController _invoiceNumberController;
   DateTime _applicationDate = DateTime.now();
   DateTime _okcStartDate = DateTime.now();
@@ -85,6 +106,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   String? _selectedBrandId;
   String? _selectedModelId;
   String? _selectedFiscalSymbolId;
+  String? _selectedStockProductId;
   String? _selectedBusinessActivityId;
   bool _saving = false;
 
@@ -96,6 +118,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     _fileRegistryController = TextEditingController();
     _directorController = TextEditingController();
     _accountingOfficeController = TextEditingController();
+    _stockRegistryNumberController = TextEditingController();
     _invoiceNumberController = TextEditingController();
   }
 
@@ -106,6 +129,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     _fileRegistryController.dispose();
     _directorController.dispose();
     _accountingOfficeController.dispose();
+    _stockRegistryNumberController.dispose();
     _invoiceNumberController.dispose();
     super.dispose();
   }
@@ -165,6 +189,10 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     final brands = ref.read(deviceBrandsProvider).asData?.value;
     final models = ref.read(deviceModelsProvider).asData?.value;
     final fiscalSymbols = ref.read(fiscalSymbolsProvider).asData?.value;
+    final stockProducts = ref
+        .read(applicationFormStockProductsProvider)
+        .asData
+        ?.value;
     final activities = ref.read(businessActivityTypesProvider).asData?.value;
 
     final customer = customers
@@ -181,6 +209,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         .firstOrNull;
     final fiscal = fiscalSymbols
         ?.where((item) => item.id == _selectedFiscalSymbolId)
+        .firstOrNull;
+    final stockProduct = stockProducts
+        ?.where((item) => item.id == _selectedStockProductId)
         .firstOrNull;
     final activity = activities
         ?.where((item) => item.id == _selectedBusinessActivityId)
@@ -210,6 +241,12 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         'fiscal_symbol_name': fiscal?.code?.trim().isNotEmpty ?? false
             ? fiscal!.code!.trim()
             : fiscal?.name,
+        'stock_product_id': stockProduct?.id,
+        'stock_product_name': stockProduct?.name,
+        'stock_registry_number':
+            _stockRegistryNumberController.text.trim().isEmpty
+            ? null
+            : _stockRegistryNumberController.text.trim(),
         'accounting_office': _accountingOfficeController.text.trim().isEmpty
             ? null
             : _accountingOfficeController.text.trim(),
@@ -234,12 +271,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         _selectedBrandId = null;
         _selectedModelId = null;
         _selectedFiscalSymbolId = null;
+        _selectedStockProductId = null;
         _selectedBusinessActivityId = null;
         _customerController.clear();
         _workAddressController.clear();
         _fileRegistryController.clear();
         _directorController.clear();
         _accountingOfficeController.clear();
+        _stockRegistryNumberController.clear();
         _invoiceNumberController.clear();
       });
     } finally {
@@ -256,6 +295,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     final brandsAsync = ref.watch(deviceBrandsProvider);
     final modelsAsync = ref.watch(deviceModelsProvider);
     final fiscalSymbolsAsync = ref.watch(fiscalSymbolsProvider);
+    final stockProductsAsync = ref.watch(applicationFormStockProductsProvider);
     final activitiesAsync = ref.watch(businessActivityTypesProvider);
     final recentFormsAsync = ref.watch(applicationFormsProvider);
 
@@ -509,6 +549,53 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                             ),
                             loading: () => const _ContentLoading(),
                             error: (error, stackTrace) => const _ContentError(),
+                          ),
+                        ),
+                        const Gap(10),
+                        _FormRow(
+                          label: 'Sicil Numarası',
+                          child: Column(
+                            children: [
+                              stockProductsAsync.when(
+                                data: (items) => _ApplicationDropdown<String>(
+                                  value: _selectedStockProductId,
+                                  hintText: 'Stok listesinden seçin',
+                                  items: items
+                                      .map(
+                                        (item) => DropdownMenuItem<String>(
+                                          value: item.id,
+                                          child: Text(item.label),
+                                        ),
+                                      )
+                                      .toList(growable: false),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _selectedStockProductId = value;
+                                      final selected = items
+                                          .where((item) => item.id == value)
+                                          .firstOrNull;
+                                      if (selected != null &&
+                                          _stockRegistryNumberController.text
+                                              .trim()
+                                              .isEmpty) {
+                                        _stockRegistryNumberController.text =
+                                            selected.code?.trim().isNotEmpty ??
+                                                false
+                                            ? selected.code!.trim()
+                                            : selected.name;
+                                      }
+                                    });
+                                  },
+                                ),
+                                loading: () => const _ContentLoading(),
+                                error: (error, stackTrace) =>
+                                    const _ContentError(),
+                              ),
+                              const Gap(8),
+                              _ApplicationTextField(
+                                controller: _stockRegistryNumberController,
+                              ),
+                            ],
                           ),
                         ),
                         const Gap(10),
@@ -1073,6 +1160,29 @@ class _ApplicationFormSummary {
       modelName: json['model_name']?.toString(),
       businessActivityName: json['business_activity_name']?.toString(),
       invoiceNumber: json['invoice_number']?.toString(),
+    );
+  }
+}
+
+class _StockProductOption {
+  const _StockProductOption({
+    required this.id,
+    required this.name,
+    required this.code,
+  });
+
+  final String id;
+  final String name;
+  final String? code;
+
+  String get label =>
+      code?.trim().isNotEmpty ?? false ? '${code!.trim()} - $name' : name;
+
+  factory _StockProductOption.fromJson(Map<String, dynamic> json) {
+    return _StockProductOption(
+      id: json['id'].toString(),
+      name: json['name']?.toString() ?? '',
+      code: json['code']?.toString(),
     );
   }
 }
