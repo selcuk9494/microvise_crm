@@ -430,6 +430,15 @@ class _WorkOrderListTileState extends ConsumerState<_WorkOrderListTile> {
                             ),
                             foregroundColor: AppTheme.success,
                           ),
+                        if (w.status == 'done' && w.payments.isNotEmpty)
+                          for (final chip in _paymentMethodChips(w))
+                            _WorkOrderMetaChip(
+                              icon: chip.icon,
+                              label: chip.label,
+                              backgroundColor: chip.backgroundColor,
+                              borderColor: chip.borderColor,
+                              foregroundColor: chip.foregroundColor,
+                            ),
                       ],
                     ),
                     if (w.description?.trim().isNotEmpty ?? false) ...[
@@ -485,6 +494,107 @@ String _paymentSummary(WorkOrder order, NumberFormat money) {
   return totals.entries
       .map((entry) => '${money.format(entry.value)} ${entry.key}')
       .join(' + ');
+}
+
+List<_PaymentMethodChipData> _paymentMethodChips(WorkOrder order) {
+  final counts = <String, int>{};
+  for (final payment in order.payments) {
+    final method = payment.paymentMethod?.trim();
+    if (method == null || method.isEmpty) continue;
+    counts.update(method, (value) => value + 1, ifAbsent: () => 1);
+  }
+
+  final entries = counts.entries.toList()
+    ..sort((a, b) => a.key.compareTo(b.key));
+  return entries
+      .map((entry) {
+        final tone = _paymentMethodTone(entry.key);
+        return _PaymentMethodChipData(
+          label: '${_paymentMethodText(entry.key)} ${entry.value}',
+          icon: tone.icon,
+          backgroundColor: tone.background,
+          borderColor: tone.border,
+          foregroundColor: tone.foreground,
+        );
+      })
+      .toList(growable: false);
+}
+
+String _paymentMethodText(String method) {
+  return switch (method) {
+    'cash' => 'Nakit',
+    'bank' => 'Havale',
+    'pos' => 'POS',
+    'credit_card' => 'Kart',
+    'check' => 'Çek',
+    'other' => 'Diğer',
+    _ => method,
+  };
+}
+
+_PaymentMethodTone _paymentMethodTone(String method) {
+  return switch (method) {
+    'cash' => const _PaymentMethodTone(
+      icon: Icons.payments_outlined,
+      background: Color(0xFFECFDF5),
+      border: Color(0xFFA7F3D0),
+      foreground: Color(0xFF059669),
+    ),
+    'bank' => const _PaymentMethodTone(
+      icon: Icons.account_balance_rounded,
+      background: Color(0xFFEFF6FF),
+      border: Color(0xFFBFDBFE),
+      foreground: Color(0xFF2563EB),
+    ),
+    'pos' => const _PaymentMethodTone(
+      icon: Icons.point_of_sale_rounded,
+      background: Color(0xFFFFF7ED),
+      border: Color(0xFFFED7AA),
+      foreground: Color(0xFFEA580C),
+    ),
+    'credit_card' => const _PaymentMethodTone(
+      icon: Icons.credit_card_rounded,
+      background: Color(0xFFFAF5FF),
+      border: Color(0xFFE9D5FF),
+      foreground: Color(0xFF9333EA),
+    ),
+    _ => const _PaymentMethodTone(
+      icon: Icons.payments_rounded,
+      background: Color(0xFFF8FAFC),
+      border: Color(0xFFE2E8F0),
+      foreground: Color(0xFF475569),
+    ),
+  };
+}
+
+class _PaymentMethodChipData {
+  const _PaymentMethodChipData({
+    required this.label,
+    required this.icon,
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.foregroundColor,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color backgroundColor;
+  final Color borderColor;
+  final Color foregroundColor;
+}
+
+class _PaymentMethodTone {
+  const _PaymentMethodTone({
+    required this.icon,
+    required this.background,
+    required this.border,
+    required this.foreground,
+  });
+
+  final IconData icon;
+  final Color background;
+  final Color border;
+  final Color foreground;
 }
 
 class _WorkOrderCard extends StatefulWidget {
