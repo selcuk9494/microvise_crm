@@ -123,7 +123,29 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     );
     if (saved == null || !mounted) return;
 
-    ref.invalidate(applicationFormsProvider);
+    final _ = await ref.refresh(applicationFormsProvider.future);
+    await _showPrintOptions(saved);
+  }
+
+  Future<void> _openEditDialog(ApplicationFormRecord record) async {
+    final saved = await showDialog<ApplicationFormRecord>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _ApplicationFormDialog(initialRecord: record),
+    );
+    if (saved == null || !mounted) return;
+    final _ = await ref.refresh(applicationFormsProvider.future);
+  }
+
+  Future<void> _openDuplicateDialog(ApplicationFormRecord record) async {
+    final saved = await showDialog<ApplicationFormRecord>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) =>
+          _ApplicationFormDialog(initialRecord: record, duplicateMode: true),
+    );
+    if (saved == null || !mounted) return;
+    final _ = await ref.refresh(applicationFormsProvider.future);
     await _showPrintOptions(saved);
   }
 
@@ -363,6 +385,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           filtered[index],
                           kind: ApplicationPrintKind.kdv4a,
                         ),
+                        onEdit: () => _openEditDialog(filtered[index]),
+                        onDuplicate: () =>
+                            _openDuplicateDialog(filtered[index]),
                       ),
                       if (index != filtered.length - 1) const Gap(12),
                     ],
@@ -429,7 +454,15 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
 }
 
 class _ApplicationFormDialog extends ConsumerStatefulWidget {
-  const _ApplicationFormDialog();
+  const _ApplicationFormDialog({
+    this.initialRecord,
+    this.duplicateMode = false,
+  });
+
+  final ApplicationFormRecord? initialRecord;
+  final bool duplicateMode;
+
+  bool get isEdit => initialRecord != null && !duplicateMode;
 
   @override
   ConsumerState<_ApplicationFormDialog> createState() =>
@@ -461,13 +494,97 @@ class _ApplicationFormDialogState
   @override
   void initState() {
     super.initState();
-    _customerController = TextEditingController();
-    _workAddressController = TextEditingController();
-    _fileRegistryController = TextEditingController();
-    _directorController = TextEditingController();
-    _accountingOfficeController = TextEditingController();
-    _stockRegistryNumberController = TextEditingController();
-    _invoiceNumberController = TextEditingController();
+    final initial = widget.initialRecord;
+    _customerController = TextEditingController(
+      text: initial?.customerName ?? '',
+    );
+    _workAddressController = TextEditingController(
+      text: initial?.workAddress ?? '',
+    );
+    _fileRegistryController = TextEditingController(
+      text: initial?.fileRegistryNumber ?? '',
+    );
+    _directorController = TextEditingController(text: initial?.director ?? '');
+    _accountingOfficeController = TextEditingController(
+      text: initial?.accountingOffice ?? '',
+    );
+    _stockRegistryNumberController = TextEditingController(
+      text: initial?.stockRegistryNumber ?? '',
+    );
+    _invoiceNumberController = TextEditingController(
+      text: initial?.invoiceNumber ?? '',
+    );
+    _applicationDate = initial?.applicationDate ?? DateTime.now();
+    _okcStartDate = initial?.okcStartDate ?? DateTime.now();
+    _selectedCustomerId = initial?.customerId;
+    _loadInitialSelections();
+  }
+
+  Future<void> _loadInitialSelections() async {
+    final initial = widget.initialRecord;
+    if (initial == null) return;
+
+    final customers = await ref.read(applicationFormCustomersProvider.future);
+    final cities = await ref.read(cityDefinitionsProvider.future);
+    final models = await ref.read(deviceModelsProvider.future);
+    final fiscalSymbols = await ref.read(fiscalSymbolsProvider.future);
+    final stockProducts = await ref.read(
+      applicationFormStockProductsProvider.future,
+    );
+    final activities = await ref.read(businessActivityTypesProvider.future);
+
+    if (!mounted) return;
+    setState(() {
+      _selectedCustomerId ??= customers
+          .where((item) => item.id == initial.customerId)
+          .map((item) => item.id)
+          .firstOrNull;
+      _selectedCityId ??= cities
+          .where(
+            (item) =>
+                _sortKey(item.name) ==
+                _sortKey(initial.taxOfficeCityName ?? ''),
+          )
+          .map((item) => item.id)
+          .firstOrNull;
+      _selectedModelId ??= models
+          .where(
+            (item) =>
+                _sortKey(item.name) == _sortKey(initial.modelName ?? '') &&
+                _sortKey(item.brandName ?? '') ==
+                    _sortKey(initial.brandName ?? ''),
+          )
+          .map((item) => item.id)
+          .firstOrNull;
+      _selectedFiscalSymbolId ??= fiscalSymbols
+          .where(
+            (item) =>
+                _sortKey(item.name) ==
+                    _sortKey(initial.fiscalSymbolName ?? '') ||
+                _sortKey(item.code ?? '') ==
+                    _sortKey(initial.fiscalSymbolName ?? ''),
+          )
+          .map((item) => item.id)
+          .firstOrNull;
+      _selectedStockProductId ??= stockProducts
+          .where(
+            (item) =>
+                _sortKey(item.name) ==
+                    _sortKey(initial.stockProductName ?? '') ||
+                _sortKey(item.code ?? '') ==
+                    _sortKey(initial.stockRegistryNumber ?? ''),
+          )
+          .map((item) => item.id)
+          .firstOrNull;
+      _selectedBusinessActivityId ??= activities
+          .where(
+            (item) =>
+                _sortKey(item.name) ==
+                _sortKey(initial.businessActivityName ?? ''),
+          )
+          .map((item) => item.id)
+          .firstOrNull;
+    });
   }
 
   @override
@@ -584,52 +701,56 @@ class _ApplicationFormDialogState
 
     setState(() => _saving = true);
     try {
-      final inserted = await client
-          .from('application_forms')
-          .insert({
-            'application_date': DateFormat(
-              'yyyy-MM-dd',
-            ).format(_applicationDate),
-            'customer_id': customer?.id,
-            'customer_name': _customerController.text.trim(),
-            'work_address': _workAddressController.text.trim(),
-            'tax_office_city_id': city?.id.isEmpty ?? true ? null : city?.id,
-            'tax_office_city_name': city?.name,
-            'document_type': _documentType,
-            'file_registry_number': _fileRegistryController.text.trim().isEmpty
-                ? null
-                : _fileRegistryController.text.trim(),
-            'director': _directorController.text.trim().isEmpty
-                ? null
-                : _directorController.text.trim(),
-            'brand_id': model?.brandId,
-            'brand_name': model?.brandName,
-            'model_id': model?.id,
-            'model_name': model?.name,
-            'fiscal_symbol_id': fiscal?.id,
-            'fiscal_symbol_name': fiscal?.code?.trim().isNotEmpty ?? false
-                ? fiscal!.code!.trim()
-                : fiscal?.name,
-            'stock_product_id': stockProduct?.id,
-            'stock_product_name': stockProduct?.name,
-            'stock_registry_number':
-                _stockRegistryNumberController.text.trim().isEmpty
-                ? null
-                : _stockRegistryNumberController.text.trim(),
-            'accounting_office': _accountingOfficeController.text.trim().isEmpty
-                ? null
-                : _accountingOfficeController.text.trim(),
-            'okc_start_date': DateFormat('yyyy-MM-dd').format(_okcStartDate),
-            'business_activity_type_id': activity?.id,
-            'business_activity_name': activity?.name,
-            'invoice_number': _invoiceNumberController.text.trim().isEmpty
-                ? null
-                : _invoiceNumberController.text.trim(),
-          })
-          .select(
-            'id,application_date,customer_id,customer_name,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,created_at',
-          )
-          .single();
+      final payload = {
+        'application_date': DateFormat('yyyy-MM-dd').format(_applicationDate),
+        'customer_id': customer?.id,
+        'customer_name': _customerController.text.trim(),
+        'work_address': _workAddressController.text.trim(),
+        'tax_office_city_id': city?.id.isEmpty ?? true ? null : city?.id,
+        'tax_office_city_name': city?.name,
+        'document_type': _documentType,
+        'file_registry_number': _fileRegistryController.text.trim().isEmpty
+            ? null
+            : _fileRegistryController.text.trim(),
+        'director': _directorController.text.trim().isEmpty
+            ? null
+            : _directorController.text.trim(),
+        'brand_id': model?.brandId,
+        'brand_name': model?.brandName,
+        'model_id': model?.id,
+        'model_name': model?.name,
+        'fiscal_symbol_id': fiscal?.id,
+        'fiscal_symbol_name': fiscal?.code?.trim().isNotEmpty ?? false
+            ? fiscal!.code!.trim()
+            : fiscal?.name,
+        'stock_product_id': stockProduct?.id,
+        'stock_product_name': stockProduct?.name,
+        'stock_registry_number':
+            _stockRegistryNumberController.text.trim().isEmpty
+            ? null
+            : _stockRegistryNumberController.text.trim(),
+        'accounting_office': _accountingOfficeController.text.trim().isEmpty
+            ? null
+            : _accountingOfficeController.text.trim(),
+        'okc_start_date': DateFormat('yyyy-MM-dd').format(_okcStartDate),
+        'business_activity_type_id': activity?.id,
+        'business_activity_name': activity?.name,
+        'invoice_number': _invoiceNumberController.text.trim().isEmpty
+            ? null
+            : _invoiceNumberController.text.trim(),
+      };
+
+      final inserted =
+          await (widget.isEdit
+                  ? client
+                        .from('application_forms')
+                        .update(payload)
+                        .eq('id', widget.initialRecord!.id)
+                  : client.from('application_forms').insert(payload))
+              .select(
+                'id,application_date,customer_id,customer_name,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,created_at',
+              )
+              .single();
 
       ref.invalidate(applicationFormsProvider);
       if (!mounted) return;
@@ -669,12 +790,18 @@ class _ApplicationFormDialogState
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Yeni Başvuru',
+                              widget.isEdit
+                                  ? 'Başvuru Düzenle'
+                                  : widget.duplicateMode
+                                  ? 'Başvuru Kopyası Oluştur'
+                                  : 'Yeni Başvuru',
                               style: Theme.of(context).textTheme.titleLarge,
                             ),
                             const Gap(6),
                             Text(
-                              'Kayıt sonrası KDV ve KDV4A yazdırma seçenekleri açılır.',
+                              widget.isEdit
+                                  ? 'Kaydı güncelleyin.'
+                                  : 'Kayıt sonrası KDV ve KDV4A yazdırma seçenekleri açılır.',
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(color: AppTheme.textMuted),
                             ),
@@ -967,11 +1094,15 @@ class _ApplicationRecordCard extends StatelessWidget {
     required this.record,
     required this.onPrintKdv,
     required this.onPrintKdv4a,
+    required this.onEdit,
+    required this.onDuplicate,
   });
 
   final ApplicationFormRecord record;
   final VoidCallback onPrintKdv;
   final VoidCallback onPrintKdv4a;
+  final VoidCallback onEdit;
+  final VoidCallback onDuplicate;
 
   @override
   Widget build(BuildContext context) {
@@ -1033,6 +1164,16 @@ class _ApplicationRecordCard extends StatelessWidget {
             spacing: 10,
             runSpacing: 10,
             children: [
+              OutlinedButton.icon(
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_rounded, size: 18),
+                label: const Text('Düzenle'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onDuplicate,
+                icon: const Icon(Icons.content_copy_rounded, size: 18),
+                label: const Text('Kopya'),
+              ),
               OutlinedButton.icon(
                 onPressed: onPrintKdv,
                 icon: const Icon(Icons.print_rounded, size: 18),

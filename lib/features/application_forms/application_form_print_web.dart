@@ -17,12 +17,13 @@ Future<bool> printApplicationForm(
 }) async {
   final title = kind.label;
   final htmlContent = _buildPrintableHtml(record, title: title);
-  final dataUrl = Uri.dataFromString(
-    htmlContent,
-    mimeType: 'text/html',
-    encoding: utf8,
-  ).toString();
-  html.window.open(dataUrl, '_blank');
+  final bytes = utf8.encode(htmlContent);
+  final blob = html.Blob([bytes], 'text/html;charset=utf-8');
+  final url = html.Url.createObjectUrlFromBlob(blob);
+  html.window.open(url, '_blank');
+  Future<void>.delayed(const Duration(seconds: 5), () {
+    html.Url.revokeObjectUrl(url);
+  });
   return true;
 }
 
