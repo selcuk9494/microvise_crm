@@ -867,17 +867,12 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
 
   String normalize(String? value) => (value ?? '').trim().toLowerCase();
 
-  String nameCityKey(String? name, String? city) =>
-      '${normalize(name)}|${normalize(city)}';
-
   final existingRows = await client
       .from('customers')
       .select('id,name,city,email,vkn');
 
   final existingByVkn = <String, String>{};
   final existingByEmail = <String, String>{};
-  final existingByNameCity = <String, String>{};
-  final existingByName = <String, String>{};
   final existingIds = <String>{};
 
   for (final row in (existingRows as List)) {
@@ -888,15 +883,8 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
 
     final normalizedVkn = normalize(map['vkn']?.toString());
     final normalizedEmail = normalize(map['email']?.toString());
-    final normalizedName = normalize(map['name']?.toString());
-    final normalizedCity = normalize(map['city']?.toString());
-
     if (normalizedVkn.isNotEmpty) existingByVkn[normalizedVkn] = id;
     if (normalizedEmail.isNotEmpty) existingByEmail[normalizedEmail] = id;
-    if (normalizedName.isNotEmpty) {
-      existingByName[normalizedName] = id;
-      existingByNameCity[nameCityKey(normalizedName, normalizedCity)] = id;
-    }
   }
 
   var createdCount = 0;
@@ -931,8 +919,6 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
       'is_active': readBool(row, isActiveIndex),
     };
 
-    final normalizedName = normalize(name);
-    final normalizedCity = normalize(city);
     final normalizedEmail = normalize(email);
     final normalizedVkn = normalize(vkn);
     final importKey = importedId != null && importedId.isNotEmpty
@@ -941,7 +927,7 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
         ? 'vkn:$normalizedVkn'
         : normalizedEmail.isNotEmpty
         ? 'email:$normalizedEmail'
-        : 'nameCity:${nameCityKey(normalizedName, normalizedCity)}';
+        : 'row:$i';
 
     if (!seenImportKeys.add(importKey)) {
       skippedCount++;
@@ -953,11 +939,7 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
             ? importedId
             : null) ??
         (normalizedVkn.isNotEmpty ? existingByVkn[normalizedVkn] : null) ??
-        (normalizedEmail.isNotEmpty
-            ? existingByEmail[normalizedEmail]
-            : null) ??
-        existingByNameCity[nameCityKey(normalizedName, normalizedCity)] ??
-        existingByName[normalizedName];
+        (normalizedEmail.isNotEmpty ? existingByEmail[normalizedEmail] : null);
 
     if (existingId != null) {
       await client.from('customers').update(payload).eq('id', existingId);
@@ -983,9 +965,6 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
     if (normalizedEmail.isNotEmpty) {
       existingByEmail[normalizedEmail] = insertedId;
     }
-    existingByName[normalizedName] = insertedId;
-    existingByNameCity[nameCityKey(normalizedName, normalizedCity)] =
-        insertedId;
     createdCount++;
   }
 
