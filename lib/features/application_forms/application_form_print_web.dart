@@ -33,7 +33,9 @@ String _buildPrintableHtml(
 }) {
   String escape(String? value, String fallback) {
     final text = (value ?? '').trim();
-    if (text.isEmpty) return fallback;
+    if (text.isEmpty) {
+      return '<span class="placeholder">$fallback</span>';
+    }
     return const HtmlEscape(HtmlEscapeMode.element).convert(text);
   }
 
@@ -45,21 +47,21 @@ String _buildPrintableHtml(
 
   final rows = [
     (
-      "Satışa Ait Faturanın Tarihi ve No'su",
+      "Satışa Ait faturanın Tarih ve No' su",
       '${escape(applicationDate, '[1]')} / ${escape(record.invoiceNumber, '[1]')}',
     ),
     ('Adı - Soyadı / Ünvanı', escape(record.customerName, '[2]')),
     ('İşyeri Adresi', escape(record.workAddress, '[3]')),
-    ('Bağlı Olduğu Vergi Dairesi', escape(record.taxOfficeCityName, '[4]')),
+    ('Bağlı olduğu Vergi Dairesi', escape(record.taxOfficeCityName, '[4]')),
     ('Türü', escape(record.documentType, 'VKN')),
     ('Dosya Sicil No', escape(record.fileRegistryNumber, '[5]')),
-    ('Cihazın Çalıştırılma Tarihi', escape(applicationDate, '[6]')),
+    ('Cihazın çalıştırılma Tarihi', escape(applicationDate, '[6]')),
     ('Direktör', escape(record.director, '[7]')),
     ('Markası ve Modeli', escape(record.brandModel, '[8]')),
     ('Cihaz Sicil No', escape(record.stockRegistryNumber, '[9]')),
     ('Mali Sembol ve Firma Kodu', escape(record.fiscalSymbolName, '[10]')),
     ('Muhasebe Ofisi', escape(record.accountingOffice, '[11]')),
-    ('ÖKC Kullanmaya Başlama Tarihi', escape(okcDate, '[12]')),
+    ('Ökc Kullanmaya başlama Tarihi', escape(okcDate, '[12]')),
     (
       'Ticari Faaliyet / Meslek Türü',
       escape(record.businessActivityName, '[13]'),
@@ -91,47 +93,62 @@ String _buildPrintableHtml(
       };
     </script>
     <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 24px;
-        color: #111827;
+      @page {
+        size: A4 portrait;
+        margin: 10mm;
       }
-      h1 {
-        margin: 0 0 14px;
-        font-size: 22px;
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+        margin: 0;
+        color: #000;
+        background: #fff;
+      }
+      .sheet {
+        width: 760px;
+        margin: 0 auto;
+      }
+      .sheet-head {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 6px;
+        font-size: 12px;
+        font-weight: 700;
       }
       table {
         width: 100%;
         border-collapse: collapse;
+        table-layout: fixed;
       }
       td {
-        border: 1px solid #1f2937;
-        padding: 6px 8px;
-        vertical-align: top;
-        font-size: 14px;
+        border: 1px solid #000;
+        padding: 3px 6px;
+        vertical-align: middle;
+        font-size: 12px;
+        line-height: 1.15;
       }
       .label {
-        width: 42%;
-        background: #ffef5f;
+        width: 42.5%;
+        background: #fff15c;
         font-weight: 700;
-        color: #111827;
+        color: #000;
       }
       .value {
-        width: 58%;
-        color: #111827;
-        font-weight: 600;
+        width: 57.5%;
+        color: #000;
+        font-weight: 500;
+        word-break: break-word;
       }
-      .note {
-        margin-top: 12px;
-        color: #6b7280;
-        font-size: 12px;
+      .placeholder {
+        color: #b91c1c;
+        font-weight: 700;
       }
     </style>
   </head>
   <body>
-    <h1>$title</h1>
-    <table>$rowsHtml</table>
-    <div class="note">Numaralı alanlar netleştirilecek sabit alan placeholder'larıdır.</div>
+    <div class="sheet">
+      <div class="sheet-head">$title</div>
+      <table>$rowsHtml</table>
+    </div>
   </body>
 </html>
 ''';
