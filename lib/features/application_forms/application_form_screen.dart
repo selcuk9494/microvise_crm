@@ -105,12 +105,11 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     required DateTime? currentValue,
     required ValueChanged<DateTime?> onSelected,
   }) async {
-    final picked = await showDatePicker(
+    final picked = await showDialog<DateTime>(
       context: context,
-      initialDate: currentValue ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      locale: const Locale('tr', 'TR'),
+      builder: (context) => _ApplicationDatePickerDialog(
+        initialDate: currentValue ?? DateTime.now(),
+      ),
     );
     if (picked == null) return;
     onSelected(picked);
@@ -485,12 +484,10 @@ class _ApplicationFormDialogState
     required DateTime currentValue,
     required ValueChanged<DateTime> onSelected,
   }) async {
-    final picked = await showDatePicker(
+    final picked = await showDialog<DateTime>(
       context: context,
-      initialDate: currentValue,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      locale: const Locale('tr', 'TR'),
+      builder: (context) =>
+          _ApplicationDatePickerDialog(initialDate: currentValue),
     );
     if (picked == null) return;
     onSelected(picked);
@@ -1089,6 +1086,83 @@ class _FilterDateField extends StatelessWidget {
                   context,
                 ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted)
               : Theme.of(context).textTheme.bodyMedium,
+        ),
+      ),
+    );
+  }
+}
+
+class _ApplicationDatePickerDialog extends StatefulWidget {
+  const _ApplicationDatePickerDialog({required this.initialDate});
+
+  final DateTime initialDate;
+
+  @override
+  State<_ApplicationDatePickerDialog> createState() =>
+      _ApplicationDatePickerDialogState();
+}
+
+class _ApplicationDatePickerDialogState
+    extends State<_ApplicationDatePickerDialog> {
+  late DateTime _selectedDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDate = widget.initialDate;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: AppCard(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Tarih Seç',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              CalendarDatePicker(
+                initialDate: _selectedDate,
+                firstDate: DateTime(2020),
+                lastDate: DateTime(2100),
+                onDateChanged: (value) => setState(() => _selectedDate = value),
+              ),
+              const Gap(12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Vazgeç'),
+                    ),
+                  ),
+                  const Gap(12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(_selectedDate),
+                      child: const Text('Seç'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
