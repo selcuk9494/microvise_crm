@@ -5,6 +5,7 @@ import '../core/auth/auth_providers.dart';
 import '../core/routing/go_router_refresh_stream.dart';
 import '../core/supabase/supabase_providers.dart';
 import '../features/auth/login_screen.dart';
+import '../features/application_forms/application_form_screen.dart';
 import '../features/customers/customer_detail_screen.dart';
 import '../features/customers/customers_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
@@ -55,6 +56,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   CustomerDetailScreen(customerId: state.pathParameters['id']!),
             ),
           ],
+        ),
+        GoRoute(
+          path: '/basvuru-formu',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: ApplicationFormScreen()),
         ),
         GoRoute(
           path: '/is-emirleri',

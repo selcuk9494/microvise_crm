@@ -96,6 +96,37 @@ final cityDefinitionsProvider = FutureProvider<List<CityDefinition>>((
   }
 });
 
+final fiscalSymbolsProvider = FutureProvider<List<FiscalSymbolDefinition>>((
+  ref,
+) async {
+  final client = ref.watch(supabaseClientProvider);
+  if (client == null) return const [];
+  final rows = await client
+      .from('fiscal_symbols')
+      .select('id,name,code,is_active')
+      .order('name');
+  return (rows as List)
+      .map((e) => FiscalSymbolDefinition.fromJson(e as Map<String, dynamic>))
+      .toList(growable: false);
+});
+
+final businessActivityTypesProvider =
+    FutureProvider<List<BusinessActivityTypeDefinition>>((ref) async {
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
+      final rows = await client
+          .from('business_activity_types')
+          .select('id,name,is_active')
+          .order('name');
+      return (rows as List)
+          .map(
+            (e) => BusinessActivityTypeDefinition.fromJson(
+              e as Map<String, dynamic>,
+            ),
+          )
+          .toList(growable: false);
+    });
+
 class WorkOrderType {
   final String id;
   final String name;
@@ -174,6 +205,47 @@ class CityDefinition {
   );
 }
 
+class FiscalSymbolDefinition {
+  final String id;
+  final String name;
+  final String? code;
+  final bool isActive;
+
+  FiscalSymbolDefinition({
+    required this.id,
+    required this.name,
+    required this.code,
+    this.isActive = true,
+  });
+
+  factory FiscalSymbolDefinition.fromJson(Map<String, dynamic> json) =>
+      FiscalSymbolDefinition(
+        id: json['id'].toString(),
+        name: json['name']?.toString() ?? '',
+        code: json['code']?.toString(),
+        isActive: json['is_active'] as bool? ?? true,
+      );
+}
+
+class BusinessActivityTypeDefinition {
+  final String id;
+  final String name;
+  final bool isActive;
+
+  BusinessActivityTypeDefinition({
+    required this.id,
+    required this.name,
+    this.isActive = true,
+  });
+
+  factory BusinessActivityTypeDefinition.fromJson(Map<String, dynamic> json) =>
+      BusinessActivityTypeDefinition(
+        id: json['id'].toString(),
+        name: json['name']?.toString() ?? '',
+        isActive: json['is_active'] as bool? ?? true,
+      );
+}
+
 class DefinitionsScreen extends ConsumerWidget {
   const DefinitionsScreen({super.key});
 
@@ -185,10 +257,12 @@ class DefinitionsScreen extends ConsumerWidget {
     final typesAsync = ref.watch(workOrderTypesProvider);
     final ratesAsync = ref.watch(taxRatesProvider);
     final citiesAsync = ref.watch(cityDefinitionsProvider);
+    final fiscalSymbolsAsync = ref.watch(fiscalSymbolsProvider);
+    final businessActivitiesAsync = ref.watch(businessActivityTypesProvider);
     final width = MediaQuery.sizeOf(context).width;
     final isMobile = width < 720;
     return DefaultTabController(
-      length: 5,
+      length: 7,
       child: AppPageLayout(
         title: 'Tanımlamalar',
         subtitle: 'Sistem tanımları ve ayarları',
@@ -233,6 +307,27 @@ class DefinitionsScreen extends ConsumerWidget {
                 SizedBox(
                   width: isMobile ? (width - 44) / 2 : null,
                   child: _DefinitionStatCard(
+                    label: 'Mali Sembol',
+                    value:
+                        fiscalSymbolsAsync.asData?.value.length.toString() ??
+                        '—',
+                    icon: Icons.qr_code_rounded,
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? (width - 44) / 2 : null,
+                  child: _DefinitionStatCard(
+                    label: 'Meslek Türü',
+                    value:
+                        businessActivitiesAsync.asData?.value.length
+                            .toString() ??
+                        '—',
+                    icon: Icons.storefront_rounded,
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? (width - 44) / 2 : null,
+                  child: _DefinitionStatCard(
                     label: 'Şehir',
                     value: citiesAsync.asData?.value.length.toString() ?? '—',
                     icon: Icons.location_city_rounded,
@@ -257,6 +352,8 @@ class DefinitionsScreen extends ConsumerWidget {
                       Tab(text: 'Modeller'),
                       Tab(text: 'İş Emri Tipleri'),
                       Tab(text: 'KDV Oranları'),
+                      Tab(text: 'Mali Semboller'),
+                      Tab(text: 'Meslek Türleri'),
                       Tab(text: 'Şehirler'),
                     ],
                   ),
@@ -269,6 +366,8 @@ class DefinitionsScreen extends ConsumerWidget {
                         _ModelsTab(isAdmin: isAdmin),
                         _WorkOrderTypesTab(isAdmin: isAdmin),
                         _TaxRatesTab(isAdmin: isAdmin),
+                        _FiscalSymbolsTab(isAdmin: isAdmin),
+                        _BusinessActivitiesTab(isAdmin: isAdmin),
                         _CitiesTab(isAdmin: isAdmin),
                       ],
                     ),
@@ -1109,6 +1208,124 @@ class _TaxRatesTab extends ConsumerWidget {
   }
 }
 
+class _FiscalSymbolsTab extends ConsumerWidget {
+  const _FiscalSymbolsTab({required this.isAdmin});
+
+  final bool isAdmin;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final itemsAsync = ref.watch(fiscalSymbolsProvider);
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              SizedBox(
+                width: isMobile ? double.infinity : null,
+                child: Text(
+                  'Mali Sembol Tanımları',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: isAdmin
+                    ? () async {
+                        await _showFiscalSymbolDialog(context, ref);
+                        ref.invalidate(fiscalSymbolsProvider);
+                      }
+                    : null,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Ekle'),
+              ),
+            ],
+          ),
+          const Gap(12),
+          Expanded(
+            child: itemsAsync.when(
+              data: (items) {
+                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+                return ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (context, index) => const Gap(10),
+                  itemBuilder: (context, index) =>
+                      _FiscalSymbolRow(item: items[index], isAdmin: isAdmin),
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BusinessActivitiesTab extends ConsumerWidget {
+  const _BusinessActivitiesTab({required this.isAdmin});
+
+  final bool isAdmin;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final itemsAsync = ref.watch(businessActivityTypesProvider);
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              SizedBox(
+                width: isMobile ? double.infinity : null,
+                child: Text(
+                  'Ticari Faaliyet / Meslek Türleri',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: isAdmin
+                    ? () async {
+                        await _showBusinessActivityDialog(context, ref);
+                        ref.invalidate(businessActivityTypesProvider);
+                      }
+                    : null,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Ekle'),
+              ),
+            ],
+          ),
+          const Gap(12),
+          Expanded(
+            child: itemsAsync.when(
+              data: (items) {
+                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+                return ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (context, index) => const Gap(10),
+                  itemBuilder: (context, index) => _BusinessActivityRow(
+                    item: items[index],
+                    isAdmin: isAdmin,
+                  ),
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CitiesTab extends ConsumerWidget {
   const _CitiesTab({required this.isAdmin});
 
@@ -1160,6 +1377,256 @@ class _CitiesTab extends ConsumerWidget {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FiscalSymbolRow extends ConsumerStatefulWidget {
+  const _FiscalSymbolRow({required this.item, required this.isAdmin});
+
+  final FiscalSymbolDefinition item;
+  final bool isAdmin;
+
+  @override
+  ConsumerState<_FiscalSymbolRow> createState() => _FiscalSymbolRowState();
+}
+
+class _FiscalSymbolRowState extends ConsumerState<_FiscalSymbolRow> {
+  bool _saving = false;
+
+  Future<void> _toggleActive() async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+    setState(() => _saving = true);
+    try {
+      await client
+          .from('fiscal_symbols')
+          .update({'is_active': !widget.item.isActive})
+          .eq('id', widget.item.id);
+      ref.invalidate(fiscalSymbolsProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.item.name,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              decoration: widget.item.isActive
+                  ? null
+                  : TextDecoration.lineThrough,
+            ),
+          ),
+          if (widget.item.code?.trim().isNotEmpty ?? false) ...[
+            const Gap(2),
+            Text(
+              widget.item.code!,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+            ),
+          ],
+          const Gap(10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              AppBadge(
+                label: widget.item.isActive ? 'Aktif' : 'Pasif',
+                tone: widget.item.isActive
+                    ? AppBadgeTone.success
+                    : AppBadgeTone.neutral,
+              ),
+              if (widget.isAdmin)
+                OutlinedButton(
+                  onPressed: _saving
+                      ? null
+                      : () async {
+                          await _showFiscalSymbolDialog(
+                            context,
+                            ref,
+                            item: widget.item,
+                          );
+                          ref.invalidate(fiscalSymbolsProvider);
+                        },
+                  child: const Text('Düzenle'),
+                ),
+              if (widget.isAdmin)
+                isMobile
+                    ? SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: _saving ? null : _toggleActive,
+                          child: _saving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Text(
+                                  widget.item.isActive
+                                      ? 'Pasif Yap'
+                                      : 'Aktif Yap',
+                                ),
+                        ),
+                      )
+                    : OutlinedButton(
+                        onPressed: _saving ? null : _toggleActive,
+                        child: _saving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(
+                                widget.item.isActive
+                                    ? 'Pasif Yap'
+                                    : 'Aktif Yap',
+                              ),
+                      ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BusinessActivityRow extends ConsumerStatefulWidget {
+  const _BusinessActivityRow({required this.item, required this.isAdmin});
+
+  final BusinessActivityTypeDefinition item;
+  final bool isAdmin;
+
+  @override
+  ConsumerState<_BusinessActivityRow> createState() =>
+      _BusinessActivityRowState();
+}
+
+class _BusinessActivityRowState extends ConsumerState<_BusinessActivityRow> {
+  bool _saving = false;
+
+  Future<void> _toggleActive() async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+    setState(() => _saving = true);
+    try {
+      await client
+          .from('business_activity_types')
+          .update({'is_active': !widget.item.isActive})
+          .eq('id', widget.item.id);
+      ref.invalidate(businessActivityTypesProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.item.name,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              decoration: widget.item.isActive
+                  ? null
+                  : TextDecoration.lineThrough,
+            ),
+          ),
+          const Gap(10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              AppBadge(
+                label: widget.item.isActive ? 'Aktif' : 'Pasif',
+                tone: widget.item.isActive
+                    ? AppBadgeTone.success
+                    : AppBadgeTone.neutral,
+              ),
+              if (widget.isAdmin)
+                OutlinedButton(
+                  onPressed: _saving
+                      ? null
+                      : () async {
+                          await _showBusinessActivityDialog(
+                            context,
+                            ref,
+                            item: widget.item,
+                          );
+                          ref.invalidate(businessActivityTypesProvider);
+                        },
+                  child: const Text('Düzenle'),
+                ),
+              if (widget.isAdmin)
+                isMobile
+                    ? SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: _saving ? null : _toggleActive,
+                          child: _saving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Text(
+                                  widget.item.isActive
+                                      ? 'Pasif Yap'
+                                      : 'Aktif Yap',
+                                ),
+                        ),
+                      )
+                    : OutlinedButton(
+                        onPressed: _saving ? null : _toggleActive,
+                        child: _saving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(
+                                widget.item.isActive
+                                    ? 'Pasif Yap'
+                                    : 'Aktif Yap',
+                              ),
+                      ),
+            ],
           ),
         ],
       ),
@@ -1808,6 +2275,252 @@ Future<void> _showCreateTaxRateDialog(
 
   nameController.dispose();
   rateController.dispose();
+}
+
+Future<void> _showFiscalSymbolDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  FiscalSymbolDefinition? item,
+}) async {
+  final nameController = TextEditingController(text: item?.name ?? '');
+  final codeController = TextEditingController(text: item?.code ?? '');
+  bool saving = false;
+
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: AppCard(
+          padding: const EdgeInsets.all(20),
+          child: StatefulBuilder(
+            builder: (context, setState) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item == null
+                            ? 'Mali Sembol Ekle'
+                            : 'Mali Sembol Düzenle',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Kapat',
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Sembol Adı',
+                    hintText: 'Örn: MF-2D',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: codeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Firma Kodu (opsiyonel)',
+                    hintText: 'Örn: MF-2D',
+                  ),
+                ),
+                const Gap(18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        child: const Text('Vazgeç'),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                final client = ref.read(supabaseClientProvider);
+                                if (client == null) return;
+                                final name = nameController.text.trim();
+                                if (name.isEmpty) return;
+                                setState(() => saving = true);
+                                try {
+                                  final payload = {
+                                    'name': name,
+                                    'code': codeController.text.trim().isEmpty
+                                        ? null
+                                        : codeController.text.trim(),
+                                    'is_active': item?.isActive ?? true,
+                                  };
+                                  if (item == null) {
+                                    await client
+                                        .from('fiscal_symbols')
+                                        .insert(payload);
+                                  } else {
+                                    await client
+                                        .from('fiscal_symbols')
+                                        .update(payload)
+                                        .eq('id', item.id);
+                                  }
+                                  if (!context.mounted) return;
+                                  Navigator.of(context).pop();
+                                } finally {
+                                  setState(() => saving = false);
+                                }
+                              },
+                        child: saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Kaydet'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> _showBusinessActivityDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  BusinessActivityTypeDefinition? item,
+}) async {
+  final nameController = TextEditingController(text: item?.name ?? '');
+  bool saving = false;
+
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: AppCard(
+          padding: const EdgeInsets.all(20),
+          child: StatefulBuilder(
+            builder: (context, setState) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item == null
+                            ? 'Meslek Türü Ekle'
+                            : 'Meslek Türü Düzenle',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Kapat',
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Meslek Türü',
+                    hintText: 'Örn: Market',
+                  ),
+                ),
+                const Gap(18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        child: const Text('Vazgeç'),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                final client = ref.read(supabaseClientProvider);
+                                if (client == null) return;
+                                final name = nameController.text.trim();
+                                if (name.isEmpty) return;
+                                setState(() => saving = true);
+                                try {
+                                  final payload = {
+                                    'name': name,
+                                    'is_active': item?.isActive ?? true,
+                                  };
+                                  if (item == null) {
+                                    await client
+                                        .from('business_activity_types')
+                                        .insert(payload);
+                                  } else {
+                                    await client
+                                        .from('business_activity_types')
+                                        .update(payload)
+                                        .eq('id', item.id);
+                                  }
+                                  if (!context.mounted) return;
+                                  Navigator.of(context).pop();
+                                } finally {
+                                  setState(() => saving = false);
+                                }
+                              },
+                        child: saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Kaydet'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 Color _parseColor(String hex) {

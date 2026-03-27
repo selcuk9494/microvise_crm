@@ -647,6 +647,11 @@ final _navItems = <_NavItem>[
     icon: PhosphorIcons.users(PhosphorIconsStyle.regular),
   ),
   _NavItem(
+    path: '/basvuru-formu',
+    label: 'Başvuru Formu',
+    icon: PhosphorIcons.notePencil(PhosphorIconsStyle.regular),
+  ),
+  _NavItem(
     path: '/is-emirleri',
     label: 'İş Emirleri',
     icon: PhosphorIcons.kanban(PhosphorIconsStyle.regular),
