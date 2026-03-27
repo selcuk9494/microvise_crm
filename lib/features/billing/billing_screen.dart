@@ -70,6 +70,8 @@ class BillingScreen extends ConsumerWidget {
     final isAdmin = ref.watch(isAdminProvider);
     final itemsAsync = ref.watch(invoiceItemsProvider);
     final filters = ref.watch(billingFiltersProvider);
+    final width = MediaQuery.sizeOf(context).width;
+    final isMobile = width < 720;
     final money = NumberFormat.currency(
       locale: 'tr_TR',
       symbol: '₺',
@@ -145,9 +147,12 @@ class BillingScreen extends ConsumerWidget {
 
                 return Column(
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
                       children: [
-                        Expanded(
+                        SizedBox(
+                          width: isMobile ? (width - 44) / 2 : null,
                           child: _BillingStatCard(
                             label: 'Toplam Kalem',
                             value: items.length.toString(),
@@ -155,8 +160,8 @@ class BillingScreen extends ConsumerWidget {
                             tone: AppBadgeTone.primary,
                           ),
                         ),
-                        const Gap(12),
-                        Expanded(
+                        SizedBox(
+                          width: isMobile ? (width - 44) / 2 : null,
                           child: _BillingStatCard(
                             label: 'Bekleyen',
                             value: pendingCount.toString(),
@@ -164,8 +169,8 @@ class BillingScreen extends ConsumerWidget {
                             tone: AppBadgeTone.warning,
                           ),
                         ),
-                        const Gap(12),
-                        Expanded(
+                        SizedBox(
+                          width: isMobile ? (width - 44) / 2 : null,
                           child: _BillingStatCard(
                             label: 'Kesilen',
                             value: invoicedCount.toString(),
@@ -173,8 +178,8 @@ class BillingScreen extends ConsumerWidget {
                             tone: AppBadgeTone.success,
                           ),
                         ),
-                        const Gap(12),
-                        Expanded(
+                        SizedBox(
+                          width: isMobile ? (width - 44) / 2 : null,
                           child: _BillingStatCard(
                             label: 'Bekleyen Tutar',
                             value: money.format(pendingAmount),
@@ -188,10 +193,14 @@ class BillingScreen extends ConsumerWidget {
                     AppCard(
                       child: Column(
                         children: [
-                          Row(
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
                             children: [
-                              Expanded(
-                                flex: 2,
+                              SizedBox(
+                                width: isMobile
+                                    ? double.infinity
+                                    : width * 0.38,
                                 child: TextField(
                                   onChanged: ref
                                       .read(billingFiltersProvider.notifier)
@@ -203,8 +212,8 @@ class BillingScreen extends ConsumerWidget {
                                   ),
                                 ),
                               ),
-                              const Gap(12),
-                              Expanded(
+                              SizedBox(
+                                width: isMobile ? double.infinity : 240,
                                 child: DropdownButtonFormField<String>(
                                   initialValue: filters.status,
                                   items: const [
@@ -280,25 +289,43 @@ class BillingScreen extends ConsumerWidget {
                       child: Column(
                         children: [
                           Container(
-                            height: 44,
+                            height: isMobile ? null : 44,
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             color: const Color(0xFFF8FAFC),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    'Kalem',
-                                    style: Theme.of(context).textTheme.bodySmall
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                          color: const Color(0xFF475569),
+                            child: isMobile
+                                ? Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
+                                    child: Text(
+                                      'Fatura Kalemleri',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: const Color(0xFF475569),
+                                          ),
+                                    ),
+                                  )
+                                : Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          'Kalem',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w600,
+                                                color: const Color(0xFF475569),
+                                              ),
                                         ),
+                                      ),
+                                      const SizedBox(width: 140),
+                                      const SizedBox(width: 120),
+                                    ],
                                   ),
-                                ),
-                                const SizedBox(width: 140),
-                                const SizedBox(width: 120),
-                              ],
-                            ),
                           ),
                           const Divider(height: 1),
                           if (filtered.isEmpty)
@@ -391,6 +418,7 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
     final item = widget.item;
     final tone = item.status == 'pending'
         ? AppBadgeTone.warning
@@ -403,65 +431,53 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.description,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const Gap(4),
-                Text(
-                  item.customerLabel ?? 'Müşteri atanmadı',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF475569),
-                  ),
-                ),
-                const Gap(4),
-                Text(
-                  amountText,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            ),
+          Text(
+            item.description,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
-          const SizedBox(width: 140),
-          SizedBox(
-            width: 120,
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  AppBadge(label: statusLabel, tone: tone),
-                  const Gap(10),
-                  IconButton(
-                    tooltip: 'Durum Değiştir',
-                    onPressed: _saving ? null : _toggleInvoiced,
-                    icon: _saving
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(
-                            item.status == 'pending'
-                                ? Icons.check_rounded
-                                : Icons.undo_rounded,
-                            color: AppTheme.primary,
-                          ),
-                  ),
-                ],
+          const Gap(4),
+          Text(
+            item.customerLabel ?? 'Müşteri atanmadı',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF475569)),
+          ),
+          const Gap(4),
+          Text(
+            amountText,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+          ),
+          const Gap(10),
+          Row(
+            children: [
+              AppBadge(label: statusLabel, tone: tone),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Durum Değiştir',
+                onPressed: _saving ? null : _toggleInvoiced,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        item.status == 'pending'
+                            ? Icons.check_rounded
+                            : Icons.undo_rounded,
+                        color: AppTheme.primary,
+                      ),
               ),
-            ),
+            ],
           ),
+          if (!isMobile) const Gap(2),
         ],
       ),
     );

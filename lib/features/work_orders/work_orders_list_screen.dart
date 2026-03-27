@@ -60,6 +60,8 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
   @override
   Widget build(BuildContext context) {
     final boardAsync = ref.watch(workOrdersBoardProvider);
+    final width = MediaQuery.sizeOf(context).width;
+    final isCompact = width < 720;
 
     return AppPageLayout(
       title: 'İş Emirleri',
@@ -91,9 +93,13 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
             ),
             child: TabBar(
               controller: _tabController,
+              isScrollable: isCompact,
               indicatorSize: TabBarIndicatorSize.tab,
               dividerColor: Colors.transparent,
-              labelPadding: const EdgeInsets.symmetric(horizontal: 24),
+              tabAlignment: isCompact ? TabAlignment.start : TabAlignment.fill,
+              labelPadding: EdgeInsets.symmetric(
+                horizontal: isCompact ? 16 : 24,
+              ),
               tabs: [
                 Tab(
                   child: Row(

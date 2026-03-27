@@ -73,6 +73,8 @@ class ServiceScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final recordsAsync = ref.watch(serviceRecordsProvider);
     final filters = ref.watch(serviceFiltersProvider);
+    final width = MediaQuery.sizeOf(context).width;
+    final isMobile = width < 720;
 
     return AppPageLayout(
       title: 'Servis',
@@ -126,10 +128,12 @@ class ServiceScreen extends ConsumerWidget {
               AppCard(
                 child: Column(
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
                       children: [
-                        Expanded(
-                          flex: 2,
+                        SizedBox(
+                          width: isMobile ? double.infinity : width * 0.38,
                           child: TextField(
                             onChanged: ref
                                 .read(serviceFiltersProvider.notifier)
@@ -141,8 +145,8 @@ class ServiceScreen extends ConsumerWidget {
                             ),
                           ),
                         ),
-                        const Gap(12),
-                        Expanded(
+                        SizedBox(
+                          width: isMobile ? double.infinity : 240,
                           child: DropdownButtonFormField<String>(
                             initialValue: filters.status,
                             items: const [
@@ -332,15 +336,21 @@ class _ServiceSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final isMobile = width < 720;
     final open = items.where((item) => item.status == 'open').length;
     final inProgress = items
         .where((item) => item.status == 'in_progress')
         .length;
     final done = items.where((item) => item.status == 'done').length;
 
-    return Row(
+    final cardWidth = isMobile ? (width - 44) / 2 : null;
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
       children: [
-        Expanded(
+        SizedBox(
+          width: cardWidth,
           child: _ServiceStat(
             label: 'Toplam',
             value: items.length.toString(),
@@ -348,8 +358,8 @@ class _ServiceSummary extends StatelessWidget {
             color: AppTheme.primary,
           ),
         ),
-        const Gap(12),
-        Expanded(
+        SizedBox(
+          width: cardWidth,
           child: _ServiceStat(
             label: 'Açık',
             value: open.toString(),
@@ -357,8 +367,8 @@ class _ServiceSummary extends StatelessWidget {
             color: AppTheme.warning,
           ),
         ),
-        const Gap(12),
-        Expanded(
+        SizedBox(
+          width: cardWidth,
           child: _ServiceStat(
             label: 'Devam',
             value: inProgress.toString(),
@@ -366,8 +376,8 @@ class _ServiceSummary extends StatelessWidget {
             color: AppTheme.primary,
           ),
         ),
-        const Gap(12),
-        Expanded(
+        SizedBox(
+          width: cardWidth,
           child: _ServiceStat(
             label: 'Tamam',
             value: done.toString(),
@@ -450,6 +460,7 @@ class _ServiceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
     final status = switch (item.status) {
       'open' => ('Açık', AppBadgeTone.warning),
       'in_progress' => ('Devam', AppBadgeTone.primary),
@@ -465,41 +476,67 @@ class _ServiceRow extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: () => context.go('/servis/${item.id}'),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            if (isMobile) ...[
+              Text(
+                item.title,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const Gap(8),
+              AppBadge(label: status.$1, tone: status.$2),
+            ] else
+              Row(
                 children: [
-                  Text(
-                    item.title,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+                  Expanded(
+                    child: Text(
+                      item.title,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                  const Gap(4),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          item.customerName ?? '—',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: const Color(0xFF64748B)),
-                        ),
+                  const Gap(10),
+                  AppBadge(label: status.$1, tone: status.$2),
+                ],
+              ),
+            const Gap(4),
+            if (isMobile) ...[
+              Text(
+                item.customerName ?? '—',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+              ),
+              const Gap(2),
+              Text(
+                date,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF94A3B8)),
+              ),
+            ] else
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      item.customerName ?? '—',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
                       ),
-                      Text(
-                        date,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF94A3B8),
-                        ),
-                      ),
-                    ],
+                    ),
+                  ),
+                  Text(
+                    date,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF94A3B8),
+                    ),
                   ),
                 ],
               ),
-            ),
-            const Gap(10),
-            AppBadge(label: status.$1, tone: status.$2),
           ],
         ),
       ),
