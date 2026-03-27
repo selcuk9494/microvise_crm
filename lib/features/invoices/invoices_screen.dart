@@ -763,10 +763,22 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     );
   }
 
-  void _handleMenuAction(String action) {
+  Future<void> _handleMenuAction(String action) async {
     switch (action) {
       case 'edit':
-        // TODO: Edit
+        final invoice = ref.read(invoiceDetailProvider(widget.invoiceId)).value;
+        if (invoice == null) return;
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => InvoiceFormScreen(
+              invoiceType: invoice.invoiceType,
+              editInvoice: invoice,
+            ),
+          ),
+        );
+        if (!mounted) return;
+        ref.invalidate(invoiceDetailProvider(widget.invoiceId));
+        ref.invalidate(invoicesProvider);
         break;
       case 'payment':
         final invoiceAsync = ref.read(invoiceDetailProvider(widget.invoiceId));
