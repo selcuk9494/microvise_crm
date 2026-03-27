@@ -88,17 +88,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       body: Column(
         children: [
           AppCard(
+            padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (!isMobile) ...[
                   Row(
                     children: [
-                      Text(
-                        'Filtreler',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      const Spacer(),
                       PopupMenuButton<_CustomerDataAction>(
                         tooltip: 'Veri işlemleri',
                         onSelected: (action) {
@@ -127,20 +123,27 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         ],
                         child: OutlinedButton.icon(
                           onPressed: null,
-                          icon: const Icon(Icons.more_horiz_rounded, size: 18),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                          ),
+                          icon: const Icon(Icons.more_horiz_rounded, size: 16),
                           label: const Text('Veri'),
                         ),
                       ),
+                      const Spacer(),
                     ],
                   ),
-                  const Gap(12),
+                  const Gap(8),
                 ],
                 Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
+                  spacing: 10,
+                  runSpacing: 10,
                   children: [
                     SizedBox(
-                      width: isMobile ? double.infinity : width * 0.38,
+                      width: isMobile ? double.infinity : width * 0.33,
                       child: TextField(
                         controller: _searchController,
                         onChanged: (value) {
@@ -157,7 +160,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       ),
                     ),
                     SizedBox(
-                      width: isMobile ? double.infinity : width * 0.24,
+                      width: isMobile ? double.infinity : width * 0.20,
                       child: citiesAsync.when(
                         data: (cities) => DropdownButtonFormField<String?>(
                           initialValue: filters.city,
@@ -201,7 +204,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       ),
                     ),
                     SizedBox(
-                      width: isMobile ? double.infinity : 220,
+                      width: isMobile ? double.infinity : 190,
                       child: DropdownButtonFormField<CustomerSortOption>(
                         initialValue: sort,
                         items: const [
@@ -232,7 +235,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   ],
                 ),
                 if (filters.search.isNotEmpty || filters.city != null) ...[
-                  const Gap(12),
+                  const Gap(8),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Wrap(
@@ -318,8 +321,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
               return Column(
                 children: [
                   _SummaryRow(customers: customers),
-                  const Gap(10),
+                  const Gap(8),
                   AppCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         final isCompact = constraints.maxWidth < 980;
@@ -377,9 +384,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 style: Theme.of(context).textTheme.bodyMedium
                                     ?.copyWith(color: const Color(0xFF64748B)),
                               ),
-                              const Gap(10),
+                              const Gap(8),
                               pageButtons,
-                              const Gap(6),
+                              const Gap(4),
                               TextButton.icon(
                                 onPressed: () => _showCustomerForm(
                                   context,
@@ -409,7 +416,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   pageButtons,
-                                  const Gap(6),
+                                  const Gap(4),
                                   TextButton.icon(
                                     onPressed: () => _showCustomerForm(
                                       context,
@@ -430,12 +437,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       },
                     ),
                   ),
-                  const Gap(8),
+                  const Gap(6),
                   ListView.separated(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: customers.length,
-                    separatorBuilder: (context, index) => const Gap(10),
+                    separatorBuilder: (context, index) => const Gap(8),
                     itemBuilder: (context, index) {
                       final customer = customers[index];
                       return _CustomerCard(
@@ -497,10 +504,10 @@ class _SummaryRow extends StatelessWidget {
     );
 
     return AppCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
+        spacing: 8,
+        runSpacing: 8,
         children: [
           _SummaryStat(
             label: 'Toplam',
@@ -556,7 +563,7 @@ class _SummaryStat extends StatelessWidget {
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(16),
@@ -566,15 +573,15 @@ class _SummaryStat extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 34,
-            height: 34,
+            width: 30,
+            height: 30,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: color, size: 18),
+            child: Icon(icon, color: color, size: 16),
           ),
-          const Gap(10),
+          const Gap(8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -589,7 +596,7 @@ class _SummaryStat extends StatelessWidget {
                 value,
                 style: Theme.of(
                   context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -609,6 +616,7 @@ class _CustomerCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isMobile = MediaQuery.sizeOf(context).width < 720;
     return AppCard(
+      padding: const EdgeInsets.all(14),
       onTap: () => context.go('/musteriler/${customer.id}'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -617,8 +625,8 @@ class _CustomerCard extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
                   color: AppTheme.primary.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(12),
@@ -626,10 +634,10 @@ class _CustomerCard extends ConsumerWidget {
                 child: const Icon(
                   Icons.business_rounded,
                   color: AppTheme.primary,
-                  size: 22,
+                  size: 20,
                 ),
               ),
-              const Gap(12),
+              const Gap(10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -656,8 +664,8 @@ class _CustomerCard extends ConsumerWidget {
                     ),
                     const Gap(6),
                     Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
+                      spacing: 5,
+                      runSpacing: 5,
                       children: [
                         if ((customer.city ?? '').trim().isNotEmpty)
                           _MetaChip(
@@ -796,7 +804,7 @@ class _MetaChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(999),
@@ -805,13 +813,14 @@ class _MetaChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: const Color(0xFF64748B)),
-          const Gap(5),
+          Icon(icon, size: 14, color: const Color(0xFF64748B)),
+          const Gap(4),
           Text(
             label,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF475569)),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: const Color(0xFF475569),
+              fontSize: 12,
+            ),
           ),
         ],
       ),
