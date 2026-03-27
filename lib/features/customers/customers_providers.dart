@@ -62,6 +62,9 @@ class CustomerPageData {
   final int page;
   final bool hasNextPage;
   final int totalCount;
+
+  int get totalPages =>
+      totalCount == 0 ? 1 : (totalCount / customerPageSize).ceil();
 }
 
 final customersProvider = FutureProvider<CustomerPageData>((ref) async {

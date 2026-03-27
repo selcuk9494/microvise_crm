@@ -251,6 +251,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 );
               }
 
+              final totalPages = pageData.totalPages;
+              final startPage = (currentPage - 2).clamp(1, totalPages);
+              final endPage = (startPage + 4).clamp(1, totalPages);
+
               return Column(
                 children: [
                   _SummaryRow(customers: customers),
@@ -259,7 +263,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          'Toplam ${pageData.totalCount} müşteri • Sayfa $currentPage • ${customers.length} kayıt gösteriliyor',
+                          'Toplam ${pageData.totalCount} müşteri • Sayfa $currentPage / $totalPages • ${customers.length} kayıt gösteriliyor',
                           style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(color: const Color(0xFF64748B)),
                         ),
@@ -281,6 +285,24 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                             : null,
                         icon: const Icon(Icons.chevron_right_rounded, size: 18),
                         label: const Text('Sonraki'),
+                      ),
+                      const Gap(8),
+                      Wrap(
+                        spacing: 6,
+                        children: [
+                          for (var page = startPage; page <= endPage; page++)
+                            page == currentPage
+                                ? FilledButton(
+                                    onPressed: null,
+                                    child: Text(page.toString()),
+                                  )
+                                : OutlinedButton(
+                                    onPressed: () => ref
+                                        .read(customerPageProvider.notifier)
+                                        .set(page),
+                                    child: Text(page.toString()),
+                                  ),
+                        ],
                       ),
                       const Gap(8),
                       TextButton.icon(
