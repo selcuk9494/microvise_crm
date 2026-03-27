@@ -743,6 +743,7 @@ class _CustomerCard extends ConsumerWidget {
                           id: customer.id,
                           name: customer.name,
                           city: customer.city,
+                          address: customer.address,
                           email: customer.email,
                           vkn: customer.vkn,
                           tcknMs: customer.tcknMs,
@@ -888,6 +889,7 @@ Future<void> _downloadCustomerImportTemplate(BuildContext context) async {
       excel.TextCellValue('Müşteri ID'),
       excel.TextCellValue('Firma Adı'),
       excel.TextCellValue('Şehir'),
+      excel.TextCellValue('Adres'),
       excel.TextCellValue('E-posta'),
       excel.TextCellValue('VKN'),
       excel.TextCellValue('TCKN-MŞ'),
@@ -905,6 +907,7 @@ Future<void> _downloadCustomerImportTemplate(BuildContext context) async {
       excel.TextCellValue(''),
       excel.TextCellValue('Microvise Teknoloji'),
       excel.TextCellValue('Istanbul'),
+      excel.TextCellValue('Ornek Mah. Ornek Cad. No:1'),
       excel.TextCellValue('info@microvise.com'),
       excel.TextCellValue('1234567890'),
       excel.TextCellValue('MS-1001'),
@@ -999,6 +1002,7 @@ Future<void> _exportCustomersToExcel(
       excel.TextCellValue('Müşteri ID'),
       excel.TextCellValue('Firma Adı'),
       excel.TextCellValue('Şehir'),
+      excel.TextCellValue('Adres'),
       excel.TextCellValue('E-posta'),
       excel.TextCellValue('VKN'),
       excel.TextCellValue('TCKN-MŞ'),
@@ -1017,6 +1021,7 @@ Future<void> _exportCustomersToExcel(
         excel.TextCellValue((c['id'] ?? '').toString()),
         excel.TextCellValue((c['name'] ?? '').toString()),
         excel.TextCellValue((c['city'] ?? '').toString()),
+        excel.TextCellValue((c['address'] ?? '').toString()),
         excel.TextCellValue((c['email'] ?? '').toString()),
         excel.TextCellValue((c['vkn'] ?? '').toString()),
         excel.TextCellValue((c['tckn_ms'] ?? '').toString()),
@@ -1106,6 +1111,7 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
   final nameIndex = columnOf(['firma adı', 'firma', 'name']);
   final idIndex = columnOf(['müşteri id', 'musteri id', 'customer id', 'id']);
   final cityIndex = columnOf(['şehir', 'city']);
+  final addressIndex = columnOf(['adres', 'address']);
   final emailIndex = columnOf(['e-posta', 'email']);
   final vknIndex = columnOf(['vkn']);
   final tcknMsIndex = columnOf(['tckn-mş', 'tckn-ms', 'tckn mş', 'tckn ms']);
@@ -1130,7 +1136,7 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
 
   final existingRows = await client
       .from('customers')
-      .select('id,name,city,email,vkn,tckn_ms');
+      .select('id,name,city,address,email,vkn,tckn_ms');
 
   final existingByVkn = <String, String>{};
   final existingByEmail = <String, String>{};
@@ -1165,12 +1171,14 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
     }
 
     final city = readText(row, cityIndex);
+    final address = readText(row, addressIndex);
     final email = readText(row, emailIndex);
     final vkn = readText(row, vknIndex);
     final tcknMs = readText(row, tcknMsIndex);
     final payload = {
       'name': name,
       'city': city,
+      'address': address,
       'email': email,
       'vkn': vkn,
       'tckn_ms': tcknMs,

@@ -22,7 +22,7 @@ final customerDetailProvider = FutureProvider.family<CustomerDetail, String>((
   final row = await client
       .from('customers')
       .select(
-        'id,name,city,email,vkn,tckn_ms,notes,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,is_active,created_at',
+        'id,name,city,address,email,vkn,tckn_ms,notes,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,is_active,created_at',
       )
       .eq('id', customerId)
       .maybeSingle();
@@ -141,6 +141,7 @@ class CustomerDetailScreen extends ConsumerWidget {
                 id: customerId,
                 name: 'Microvise Teknoloji A.Ş.',
                 city: 'İstanbul',
+                address: 'Örnek Mah. No:1',
                 email: 'ornek@firma.com',
                 vkn: '1234567890',
                 tcknMs: 'MS-1001',
@@ -323,6 +324,8 @@ class _GeneralTab extends ConsumerWidget {
           _InfoRow(label: 'Firma Adı', value: detail.name),
           const Gap(10),
           _InfoRow(label: 'Şehir', value: detail.city ?? '—'),
+          const Gap(10),
+          _InfoRow(label: 'Adres', value: detail.address ?? '—'),
           const Gap(10),
           _InfoRow(label: 'E-posta', value: detail.email ?? '—'),
           const Gap(10),
@@ -2400,6 +2403,7 @@ Future<void> _showEditCustomerDialog(
       id: detail.id,
       name: detail.name,
       city: detail.city,
+      address: detail.address,
       email: detail.email,
       vkn: detail.vkn,
       tcknMs: detail.tcknMs,
@@ -2426,6 +2430,7 @@ class CustomerDetail {
     required this.id,
     required this.name,
     required this.city,
+    required this.address,
     required this.email,
     required this.vkn,
     required this.tcknMs,
@@ -2443,6 +2448,7 @@ class CustomerDetail {
   final String id;
   final String name;
   final String? city;
+  final String? address;
   final String? email;
   final String? vkn;
   final String? tcknMs;
@@ -2461,6 +2467,7 @@ class CustomerDetail {
       id: json['id'].toString(),
       name: (json['name'] ?? '').toString(),
       city: json['city']?.toString(),
+      address: json['address']?.toString(),
       email: json['email']?.toString(),
       vkn: json['vkn']?.toString(),
       tcknMs: json['tckn_ms']?.toString(),

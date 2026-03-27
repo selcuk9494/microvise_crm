@@ -25,7 +25,7 @@ final transferFormCustomersProvider =
       while (true) {
         final rows = await client
             .from('customers')
-            .select('id,name,vkn,city,is_active')
+            .select('id,name,vkn,city,address,is_active,branches(address)')
             .range(from, from + pageSize - 1);
         final batch = (rows as List)
             .map(
@@ -516,10 +516,16 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
         _transferorCustomerId = selected.id;
         _transferorController.text = selected.name;
         _transferorTaxController.text = taxText;
+        if ((selected.address ?? '').trim().isNotEmpty) {
+          _transferorAddressController.text = selected.address!.trim();
+        }
       } else {
         _transfereeCustomerId = selected.id;
         _transfereeController.text = selected.name;
         _transfereeTaxController.text = taxText;
+        if ((selected.address ?? '').trim().isNotEmpty) {
+          _transfereeAddressController.text = selected.address!.trim();
+        }
       }
     });
   }
@@ -748,7 +754,7 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
                         child: TextFormField(
                           controller: _transferorAddressController,
                           decoration: const InputDecoration(
-                            labelText: 'Devreden İşyeri Adresi',
+                            labelText: 'Devreden Adres',
                           ),
                         ),
                       ),
@@ -757,7 +763,7 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
                         child: TextFormField(
                           controller: _transfereeAddressController,
                           decoration: const InputDecoration(
-                            labelText: 'Devralan İşyeri Adresi',
+                            labelText: 'Devralan Adres',
                           ),
                         ),
                       ),
@@ -1059,6 +1065,7 @@ class _TransferCustomerOption {
     required this.name,
     required this.vkn,
     required this.city,
+    required this.address,
     required this.isActive,
   });
 
@@ -1066,14 +1073,31 @@ class _TransferCustomerOption {
   final String name;
   final String? vkn;
   final String? city;
+  final String? address;
   final bool isActive;
 
   factory _TransferCustomerOption.fromJson(Map<String, dynamic> json) {
+    final customerAddress = json['address']?.toString().trim();
+    final branches = (json['branches'] as List?)?.cast<Map<String, dynamic>>();
+    String? address;
+    if (customerAddress != null && customerAddress.isNotEmpty) {
+      address = customerAddress;
+    }
+    if (branches != null) {
+      for (final branch in branches) {
+        final candidate = branch['address']?.toString().trim();
+        if (candidate != null && candidate.isNotEmpty) {
+          address ??= candidate;
+          break;
+        }
+      }
+    }
     return _TransferCustomerOption(
       id: json['id'].toString(),
       name: json['name']?.toString() ?? '',
       vkn: json['vkn']?.toString(),
       city: json['city']?.toString(),
+      address: address,
       isActive: json['is_active'] as bool? ?? true,
     );
   }

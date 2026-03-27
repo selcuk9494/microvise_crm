@@ -26,7 +26,7 @@ final scrapFormCustomersProvider = FutureProvider<List<_ScrapCustomerOption>>((
   while (true) {
     final rows = await client
         .from('customers')
-        .select('id,name,vkn,city,is_active')
+        .select('id,name,vkn,city,address,is_active,branches(address)')
         .range(from, from + pageSize - 1);
     final batch = (rows as List)
         .map(
@@ -555,6 +555,9 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
         if ((selectedCustomer.vkn ?? '').trim().isNotEmpty)
           selectedCustomer.vkn!.trim(),
       ].join(' ');
+      if ((selectedCustomer.address ?? '').trim().isNotEmpty) {
+        _addressController.text = selectedCustomer.address!.trim();
+      }
     });
   }
 
@@ -574,6 +577,9 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
         if ((selected.city ?? '').trim().isNotEmpty) selected.city!.trim(),
         if ((selected.vkn ?? '').trim().isNotEmpty) selected.vkn!.trim(),
       ].join(' ');
+      if ((selected.address ?? '').trim().isNotEmpty) {
+        _addressController.text = selected.address!.trim();
+      }
     });
   }
 
@@ -755,7 +761,7 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                     controller: _addressController,
                     minLines: 2,
                     maxLines: 3,
-                    decoration: const InputDecoration(labelText: 'Adresi'),
+                    decoration: const InputDecoration(labelText: 'Adres'),
                   ),
                   const Gap(12),
                   TextFormField(
@@ -1028,6 +1034,7 @@ class _ScrapCustomerOption {
     required this.name,
     required this.vkn,
     required this.city,
+    required this.address,
     required this.isActive,
   });
 
@@ -1035,14 +1042,31 @@ class _ScrapCustomerOption {
   final String name;
   final String? vkn;
   final String? city;
+  final String? address;
   final bool isActive;
 
   factory _ScrapCustomerOption.fromJson(Map<String, dynamic> json) {
+    final customerAddress = json['address']?.toString().trim();
+    final branches = (json['branches'] as List?)?.cast<Map<String, dynamic>>();
+    String? address;
+    if (customerAddress != null && customerAddress.isNotEmpty) {
+      address = customerAddress;
+    }
+    if (branches != null) {
+      for (final branch in branches) {
+        final candidate = branch['address']?.toString().trim();
+        if (candidate != null && candidate.isNotEmpty) {
+          address ??= candidate;
+          break;
+        }
+      }
+    }
     return _ScrapCustomerOption(
       id: json['id'].toString(),
       name: json['name']?.toString() ?? '',
       vkn: json['vkn']?.toString(),
       city: json['city']?.toString(),
+      address: address,
       isActive: json['is_active'] as bool? ?? true,
     );
   }

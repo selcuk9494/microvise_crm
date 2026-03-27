@@ -26,7 +26,7 @@ final applicationFormCustomersProvider = FutureProvider<List<_CustomerOption>>((
   while (true) {
     final rows = await client
         .from('customers')
-        .select('id,name,vkn,tckn_ms,city,is_active')
+        .select('id,name,vkn,tckn_ms,city,address,is_active')
         .range(from, from + pageSize - 1);
     final batch = (rows as List)
         .map((row) => _CustomerOption.fromJson(row as Map<String, dynamic>))
@@ -637,6 +637,9 @@ class _ApplicationFormDialogState
     setState(() {
       _selectedCustomerId = created.id;
       _customerController.text = created.name;
+      if ((created.address ?? '').trim().isNotEmpty) {
+        _workAddressController.text = created.address!.trim();
+      }
       if (_fileRegistryController.text.trim().isEmpty) {
         _fileRegistryController.text = created.vkn ?? '';
       }
@@ -665,6 +668,9 @@ class _ApplicationFormDialogState
     setState(() {
       _selectedCustomerId = selected.id;
       _customerController.text = selected.name;
+      if ((selected.address ?? '').trim().isNotEmpty) {
+        _workAddressController.text = selected.address!.trim();
+      }
       _fileRegistryController.text = selected.vkn ?? '';
       _customerTcknMsController.text = selected.tcknMs ?? '';
       final city = ref
@@ -1886,6 +1892,7 @@ class _CustomerOption {
     required this.vkn,
     required this.tcknMs,
     required this.city,
+    required this.address,
     required this.isActive,
   });
 
@@ -1894,6 +1901,7 @@ class _CustomerOption {
   final String? vkn;
   final String? tcknMs;
   final String? city;
+  final String? address;
   final bool isActive;
 
   factory _CustomerOption.fromJson(Map<String, dynamic> json) {
@@ -1903,6 +1911,7 @@ class _CustomerOption {
       vkn: json['vkn']?.toString(),
       tcknMs: json['tckn_ms']?.toString(),
       city: json['city']?.toString(),
+      address: json['address']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
     );
   }

@@ -177,7 +177,7 @@ String _buildPrintableHtml(
         padding: 0 4px;
       }
       .blue-value {
-        color: #006cc6;
+        color: #000;
         font-size: 17px;
         font-weight: 700;
       }
