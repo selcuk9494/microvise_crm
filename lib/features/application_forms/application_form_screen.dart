@@ -343,28 +343,30 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
               ),
               const Gap(16),
               if (filtered.isEmpty)
-                const Expanded(
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 48),
                   child: Center(
                     child: Text('Filtreye uygun başvuru bulunamadı.'),
                   ),
                 )
               else
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: filtered.length,
-                    separatorBuilder: (context, index) => const Gap(12),
-                    itemBuilder: (context, index) => _ApplicationRecordCard(
-                      record: filtered[index],
-                      onPrintKdv: () => _print(
-                        filtered[index],
-                        kind: ApplicationPrintKind.kdv,
+                Column(
+                  children: [
+                    for (var index = 0; index < filtered.length; index++) ...[
+                      _ApplicationRecordCard(
+                        record: filtered[index],
+                        onPrintKdv: () => _print(
+                          filtered[index],
+                          kind: ApplicationPrintKind.kdv,
+                        ),
+                        onPrintKdv4a: () => _print(
+                          filtered[index],
+                          kind: ApplicationPrintKind.kdv4a,
+                        ),
                       ),
-                      onPrintKdv4a: () => _print(
-                        filtered[index],
-                        kind: ApplicationPrintKind.kdv4a,
-                      ),
-                    ),
-                  ),
+                      if (index != filtered.length - 1) const Gap(12),
+                    ],
+                  ],
                 ),
             ],
           );
@@ -514,6 +516,31 @@ class _ApplicationFormDialogState
           .asData
           ?.value
           .where((item) => _sortKey(item.name) == _sortKey(created.city ?? ''))
+          .firstOrNull;
+      if (city != null) {
+        _selectedCityId = city.id;
+      }
+    });
+  }
+
+  Future<void> _pickCustomer(List<_CustomerOption> customers) async {
+    final selected = await showDialog<_CustomerOption>(
+      context: context,
+      builder: (context) => _CustomerPickerDialog(
+        customers: customers,
+        initialSelectedId: _selectedCustomerId,
+      ),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _selectedCustomerId = selected.id;
+      _customerController.text = selected.name;
+      _fileRegistryController.text = selected.vkn ?? '';
+      final city = ref
+          .read(cityDefinitionsProvider)
+          .asData
+          ?.value
+          .where((item) => _sortKey(item.name) == _sortKey(selected.city ?? ''))
           .firstOrNull;
       if (city != null) {
         _selectedCityId = city.id;
@@ -684,29 +711,10 @@ class _ApplicationFormDialogState
                   _FormRow(
                     label: 'Adı Soyadı / Ünvanı',
                     child: customersAsync.when(
-                      data: (items) => _CustomerAutocompleteField(
-                        customers: items,
+                      data: (items) => _CustomerPickerField(
                         controller: _customerController,
                         selectedCustomerId: _selectedCustomerId,
-                        onSelected: (customer) {
-                          setState(() {
-                            _selectedCustomerId = customer.id;
-                            _customerController.text = customer.name;
-                            _fileRegistryController.text = customer.vkn ?? '';
-                            final city = citiesAsync.asData?.value
-                                .where(
-                                  (item) =>
-                                      _sortKey(item.name) ==
-                                      _sortKey(customer.city ?? ''),
-                                )
-                                .firstOrNull;
-                            if (city != null) {
-                              _selectedCityId = city.id;
-                            }
-                          });
-                        },
-                        onChanged: () =>
-                            setState(() => _selectedCustomerId = null),
+                        onPickCustomer: () => _pickCustomer(items),
                         onCreateCustomer: _createCustomer,
                       ),
                       loading: () => const _ContentLoading(),
@@ -1415,105 +1423,45 @@ class _DateField extends StatelessWidget {
   }
 }
 
-class _CustomerAutocompleteField extends StatelessWidget {
-  const _CustomerAutocompleteField({
-    required this.customers,
+class _CustomerPickerField extends StatelessWidget {
+  const _CustomerPickerField({
     required this.controller,
     required this.selectedCustomerId,
-    required this.onSelected,
-    required this.onChanged,
+    required this.onPickCustomer,
     required this.onCreateCustomer,
   });
 
-  final List<_CustomerOption> customers;
   final TextEditingController controller;
   final String? selectedCustomerId;
-  final ValueChanged<_CustomerOption> onSelected;
-  final VoidCallback onChanged;
+  final VoidCallback onPickCustomer;
   final VoidCallback onCreateCustomer;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Autocomplete<_CustomerOption>(
-          optionsBuilder: (textEditingValue) {
-            final query = _sortKey(textEditingValue.text);
-            if (query.isEmpty) return customers.take(25);
-            return customers
-                .where((item) {
-                  final haystack = _sortKey(
-                    '${item.name} ${item.vkn ?? ''} ${item.city ?? ''}',
-                  );
-                  return haystack.contains(query);
-                })
-                .take(25);
-          },
-          displayStringForOption: (option) => option.name,
-          onSelected: onSelected,
-          optionsViewBuilder: (context, onSelected, options) {
-            final items = options.toList(growable: false);
-            return Align(
-              alignment: Alignment.topLeft,
-              child: Material(
-                elevation: 6,
-                borderRadius: BorderRadius.circular(14),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: 640,
-                    maxHeight: 320,
-                  ),
-                  child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: items.length,
-                    separatorBuilder: (context, index) =>
-                        const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final item = items[index];
-                      return ListTile(
-                        title: Text(item.name),
-                        subtitle: Text(
-                          [
-                            if (item.vkn?.trim().isNotEmpty ?? false) item.vkn!,
-                            if (item.city?.trim().isNotEmpty ?? false)
-                              item.city!,
-                            item.isActive ? 'Aktif' : 'Pasif',
-                          ].join(' • '),
-                        ),
-                        onTap: () => onSelected(item),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            );
-          },
-          fieldViewBuilder:
-              (context, textController, focusNode, onFieldSubmitted) {
-                textController.text = controller.text;
-                textController.selection = TextSelection.collapsed(
-                  offset: textController.text.length,
-                );
-                return TextFormField(
-                  controller: textController,
-                  focusNode: focusNode,
-                  validator: (_) => (selectedCustomerId ?? '').isEmpty
-                      ? 'Müşteri seçin veya ekleyin.'
-                      : null,
-                  onChanged: (_) => onChanged(),
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: const Color(0xFF111827),
-                    fontWeight: FontWeight.w600,
-                  ),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(),
-                    hintText: 'Eski ya da yeni müşteri ara',
-                  ),
-                );
-              },
+        TextFormField(
+          controller: controller,
+          readOnly: true,
+          validator: (_) => (selectedCustomerId ?? '').isEmpty
+              ? 'Müşteri seçin veya ekleyin.'
+              : null,
+          onTap: onPickCustomer,
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            color: const Color(0xFF111827),
+            fontWeight: FontWeight.w600,
+          ),
+          decoration: InputDecoration(
+            isDense: true,
+            filled: true,
+            fillColor: Colors.white,
+            border: const OutlineInputBorder(),
+            hintText: 'Eski ya da yeni müşteri seçin',
+            suffixIcon: IconButton(
+              onPressed: onPickCustomer,
+              icon: const Icon(Icons.search_rounded),
+            ),
+          ),
         ),
         const Gap(8),
         Align(
@@ -1525,6 +1473,117 @@ class _CustomerAutocompleteField extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CustomerPickerDialog extends StatefulWidget {
+  const _CustomerPickerDialog({
+    required this.customers,
+    required this.initialSelectedId,
+  });
+
+  final List<_CustomerOption> customers;
+  final String? initialSelectedId;
+
+  @override
+  State<_CustomerPickerDialog> createState() => _CustomerPickerDialogState();
+}
+
+class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _sortKey(_searchController.text);
+    final items = widget.customers
+        .where((item) {
+          if (query.isEmpty) return true;
+          final haystack = _sortKey(
+            '${item.name} ${item.vkn ?? ''} ${item.city ?? ''}',
+          );
+          return haystack.contains(query);
+        })
+        .toList(growable: false);
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 680),
+        child: AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Müşteri Seç',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const Gap(12),
+              TextField(
+                controller: _searchController,
+                autofocus: true,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  labelText: 'Ara',
+                  hintText: 'Firma adı, VKN veya şehir',
+                  prefixIcon: Icon(Icons.search_rounded),
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: items.isEmpty
+                    ? const Center(child: Text('Eşleşen müşteri bulunamadı.'))
+                    : ListView.separated(
+                        itemCount: items.length,
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = items[index];
+                          final selected = item.id == widget.initialSelectedId;
+                          return ListTile(
+                            selected: selected,
+                            selectedTileColor: AppTheme.primary.withValues(
+                              alpha: 0.08,
+                            ),
+                            title: Text(item.name),
+                            subtitle: Text(
+                              [
+                                if (item.vkn?.trim().isNotEmpty ?? false)
+                                  item.vkn!,
+                                if (item.city?.trim().isNotEmpty ?? false)
+                                  item.city!,
+                                item.isActive ? 'Aktif' : 'Pasif',
+                              ].join(' • '),
+                            ),
+                            trailing: selected
+                                ? const Icon(Icons.check_circle_rounded)
+                                : null,
+                            onTap: () => Navigator.of(context).pop(item),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
