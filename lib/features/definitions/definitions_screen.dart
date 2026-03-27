@@ -28,14 +28,13 @@ final deviceModelsProvider = FutureProvider<List<DeviceModel>>((ref) async {
       .from('device_models')
       .select('id,name,is_active,brand_id,device_brands(name)')
       .order('name');
-  return (rows as List).map((e) {
-    final map = e as Map<String, dynamic>;
-    final brand = map['device_brands'] as Map<String, dynamic>?;
-    return DeviceModel.fromJson({
-      ...map,
-      'brand_name': brand?['name'],
-    });
-  }).toList(growable: false);
+  return (rows as List)
+      .map((e) {
+        final map = e as Map<String, dynamic>;
+        final brand = map['device_brands'] as Map<String, dynamic>?;
+        return DeviceModel.fromJson({...map, 'brand_name': brand?['name']});
+      })
+      .toList(growable: false);
 });
 
 // İş Emri Tipleri Provider
@@ -73,15 +72,21 @@ class WorkOrderType {
   final String color;
   final bool isActive;
 
-  WorkOrderType({required this.id, required this.name, this.description, this.color = '#6366F1', this.isActive = true});
+  WorkOrderType({
+    required this.id,
+    required this.name,
+    this.description,
+    this.color = '#6366F1',
+    this.isActive = true,
+  });
 
   factory WorkOrderType.fromJson(Map<String, dynamic> json) => WorkOrderType(
-        id: json['id'].toString(),
-        name: json['name']?.toString() ?? '',
-        description: json['description']?.toString(),
-        color: json['color']?.toString() ?? '#6366F1',
-        isActive: json['is_active'] as bool? ?? true,
-      );
+    id: json['id'].toString(),
+    name: json['name']?.toString() ?? '',
+    description: json['description']?.toString(),
+    color: json['color']?.toString() ?? '#6366F1',
+    isActive: json['is_active'] as bool? ?? true,
+  );
 }
 
 class TaxRate {
@@ -91,15 +96,21 @@ class TaxRate {
   final bool isDefault;
   final bool isActive;
 
-  TaxRate({required this.id, required this.name, required this.rate, this.isDefault = false, this.isActive = true});
+  TaxRate({
+    required this.id,
+    required this.name,
+    required this.rate,
+    this.isDefault = false,
+    this.isActive = true,
+  });
 
   factory TaxRate.fromJson(Map<String, dynamic> json) => TaxRate(
-        id: json['id'].toString(),
-        name: json['name']?.toString() ?? '',
-        rate: (json['rate'] as num?)?.toDouble() ?? 0,
-        isDefault: json['is_default'] as bool? ?? false,
-        isActive: json['is_active'] as bool? ?? true,
-      );
+    id: json['id'].toString(),
+    name: json['name']?.toString() ?? '',
+    rate: (json['rate'] as num?)?.toDouble() ?? 0,
+    isDefault: json['is_default'] as bool? ?? false,
+    isActive: json['is_active'] as bool? ?? true,
+  );
 }
 
 class DefinitionsScreen extends ConsumerWidget {
@@ -108,6 +119,10 @@ class DefinitionsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isAdmin = ref.watch(isAdminProvider);
+    final brandsAsync = ref.watch(deviceBrandsProvider);
+    final modelsAsync = ref.watch(deviceModelsProvider);
+    final typesAsync = ref.watch(workOrderTypesProvider);
+    final ratesAsync = ref.watch(taxRatesProvider);
     return DefaultTabController(
       length: 4,
       child: AppPageLayout(
@@ -115,6 +130,42 @@ class DefinitionsScreen extends ConsumerWidget {
         subtitle: 'Sistem tanımları ve ayarları',
         body: Column(
           children: [
+            Row(
+              children: [
+                Expanded(
+                  child: _DefinitionStatCard(
+                    label: 'Markalar',
+                    value: brandsAsync.asData?.value.length.toString() ?? '—',
+                    icon: Icons.copyright_rounded,
+                  ),
+                ),
+                const Gap(12),
+                Expanded(
+                  child: _DefinitionStatCard(
+                    label: 'Modeller',
+                    value: modelsAsync.asData?.value.length.toString() ?? '—',
+                    icon: Icons.memory_rounded,
+                  ),
+                ),
+                const Gap(12),
+                Expanded(
+                  child: _DefinitionStatCard(
+                    label: 'İş Emri Tipi',
+                    value: typesAsync.asData?.value.length.toString() ?? '—',
+                    icon: Icons.widgets_outlined,
+                  ),
+                ),
+                const Gap(12),
+                Expanded(
+                  child: _DefinitionStatCard(
+                    label: 'KDV Oranı',
+                    value: ratesAsync.asData?.value.length.toString() ?? '—',
+                    icon: Icons.percent_rounded,
+                  ),
+                ),
+              ],
+            ),
+            const Gap(16),
             AppCard(
               padding: EdgeInsets.zero,
               child: Column(
@@ -122,7 +173,10 @@ class DefinitionsScreen extends ConsumerWidget {
                   const TabBar(
                     isScrollable: true,
                     tabAlignment: TabAlignment.start,
-                    labelPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    labelPadding: EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     tabs: [
                       Tab(text: 'Markalar'),
                       Tab(text: 'Modeller'),
@@ -167,7 +221,10 @@ class _BrandsTab extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text('Cihaz Markaları', style: Theme.of(context).textTheme.titleMedium),
+                child: Text(
+                  'Cihaz Markaları',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
               FilledButton.icon(
                 onPressed: isAdmin
@@ -188,15 +245,13 @@ class _BrandsTab extends ConsumerWidget {
                 if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
                 return ListView.separated(
                   itemCount: items.length,
-                  separatorBuilder: (_, __) => const Gap(10),
-                  itemBuilder: (context, index) => _BrandRow(
-                    brand: items[index],
-                    isAdmin: isAdmin,
-                  ),
+                  separatorBuilder: (context, index) => const Gap(10),
+                  itemBuilder: (context, index) =>
+                      _BrandRow(brand: items[index], isAdmin: isAdmin),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => const _Empty(text: 'Yüklenemedi.'),
+              error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
             ),
           ),
         ],
@@ -222,13 +277,21 @@ class _ModelsTab extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text('Cihaz Modelleri', style: Theme.of(context).textTheme.titleMedium),
+                child: Text(
+                  'Cihaz Modelleri',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
               FilledButton.icon(
                 onPressed: isAdmin
                     ? () async {
-                        final brands = brandsAsync.value ?? const <DeviceBrand>[];
-                        await _showCreateModelDialog(context, ref, brands: brands);
+                        final brands =
+                            brandsAsync.value ?? const <DeviceBrand>[];
+                        await _showCreateModelDialog(
+                          context,
+                          ref,
+                          brands: brands,
+                        );
                         ref.invalidate(deviceModelsProvider);
                       }
                     : null,
@@ -244,15 +307,13 @@ class _ModelsTab extends ConsumerWidget {
                 if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
                 return ListView.separated(
                   itemCount: items.length,
-                  separatorBuilder: (_, __) => const Gap(10),
-                  itemBuilder: (context, index) => _ModelRow(
-                    model: items[index],
-                    isAdmin: isAdmin,
-                  ),
+                  separatorBuilder: (context, index) => const Gap(10),
+                  itemBuilder: (context, index) =>
+                      _ModelRow(model: items[index], isAdmin: isAdmin),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => const _Empty(text: 'Yüklenemedi.'),
+              error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
             ),
           ),
         ],
@@ -306,9 +367,9 @@ class _BrandRowState extends ConsumerState<_BrandRow> {
             child: Text(
               b.name,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    decoration: b.isActive ? null : TextDecoration.lineThrough,
-                  ),
+                fontWeight: FontWeight.w700,
+                decoration: b.isActive ? null : TextDecoration.lineThrough,
+              ),
             ),
           ),
           AppBadge(
@@ -380,17 +441,16 @@ class _ModelRowState extends ConsumerState<_ModelRow> {
                 Text(
                   m.name,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: m.isActive ? null : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    decoration: m.isActive ? null : TextDecoration.lineThrough,
+                  ),
                 ),
                 const Gap(4),
                 Text(
                   m.brandName ?? '—',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ],
             ),
@@ -446,7 +506,9 @@ Future<void> _showCreateBrandDialog(BuildContext context, WidgetRef ref) async {
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -465,7 +527,9 @@ Future<void> _showCreateBrandDialog(BuildContext context, WidgetRef ref) async {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -550,14 +614,16 @@ Future<void> _showCreateModelDialog(
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
                 ),
                 const Gap(12),
                 DropdownButtonFormField<String?>(
-                  value: brandId,
+                  initialValue: brandId,
                   items: [
                     for (final b in brands)
                       DropdownMenuItem<String?>(
@@ -582,7 +648,9 @@ Future<void> _showCreateModelDialog(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -651,7 +719,10 @@ class _WorkOrderTypesTab extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text('İş Emri Tipleri', style: Theme.of(context).textTheme.titleMedium),
+                child: Text(
+                  'İş Emri Tipleri',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
               FilledButton.icon(
                 onPressed: isAdmin
@@ -672,15 +743,13 @@ class _WorkOrderTypesTab extends ConsumerWidget {
                 if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
                 return ListView.separated(
                   itemCount: items.length,
-                  separatorBuilder: (_, __) => const Gap(10),
-                  itemBuilder: (context, index) => _WorkOrderTypeRow(
-                    type: items[index],
-                    isAdmin: isAdmin,
-                  ),
+                  separatorBuilder: (context, index) => const Gap(10),
+                  itemBuilder: (context, index) =>
+                      _WorkOrderTypeRow(type: items[index], isAdmin: isAdmin),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => const _Empty(text: 'Yüklenemedi.'),
+              error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
             ),
           ),
         ],
@@ -746,15 +815,17 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
                 Text(
                   t.name,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: t.isActive ? null : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    decoration: t.isActive ? null : TextDecoration.lineThrough,
+                  ),
                 ),
                 if (t.description != null && t.description!.isNotEmpty) ...[
                   const Gap(2),
                   Text(
                     t.description!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
                   ),
                 ],
               ],
@@ -769,7 +840,11 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
             OutlinedButton(
               onPressed: _saving ? null : _toggleActive,
               child: _saving
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : Text(t.isActive ? 'Pasif Yap' : 'Aktif Yap'),
             ),
         ],
@@ -793,7 +868,10 @@ class _TaxRatesTab extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text('KDV Oranları', style: Theme.of(context).textTheme.titleMedium),
+                child: Text(
+                  'KDV Oranları',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
               FilledButton.icon(
                 onPressed: isAdmin
@@ -814,15 +892,13 @@ class _TaxRatesTab extends ConsumerWidget {
                 if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
                 return ListView.separated(
                   itemCount: items.length,
-                  separatorBuilder: (_, __) => const Gap(10),
-                  itemBuilder: (context, index) => _TaxRateRow(
-                    rate: items[index],
-                    isAdmin: isAdmin,
-                  ),
+                  separatorBuilder: (context, index) => const Gap(10),
+                  itemBuilder: (context, index) =>
+                      _TaxRateRow(rate: items[index], isAdmin: isAdmin),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => const _Empty(text: 'Yüklenemedi.'),
+              error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
             ),
           ),
         ],
@@ -865,9 +941,15 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
     setState(() => _saving = true);
     try {
       // Clear existing defaults
-      await client.from('tax_rates').update({'is_default': false}).eq('is_default', true);
+      await client
+          .from('tax_rates')
+          .update({'is_default': false})
+          .eq('is_default', true);
       // Set new default
-      await client.from('tax_rates').update({'is_default': true}).eq('id', widget.rate.id);
+      await client
+          .from('tax_rates')
+          .update({'is_default': true})
+          .eq('id', widget.rate.id);
       ref.invalidate(taxRatesProvider);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -882,7 +964,9 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: r.isDefault ? AppTheme.primary : AppTheme.border),
+        border: Border.all(
+          color: r.isDefault ? AppTheme.primary : AppTheme.border,
+        ),
       ),
       child: Row(
         children: [
@@ -897,9 +981,9 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
               child: Text(
                 '%${r.rate.toStringAsFixed(0)}',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.primary,
-                    ),
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.primary,
+                ),
               ),
             ),
           ),
@@ -908,9 +992,9 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
             child: Text(
               r.name,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    decoration: r.isActive ? null : TextDecoration.lineThrough,
-                  ),
+                fontWeight: FontWeight.w700,
+                decoration: r.isActive ? null : TextDecoration.lineThrough,
+              ),
             ),
           ),
           if (r.isDefault) ...[
@@ -927,14 +1011,22 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
               OutlinedButton(
                 onPressed: _saving ? null : _setDefault,
                 child: _saving
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Text('Varsayılan Yap'),
               ),
             const Gap(6),
             OutlinedButton(
               onPressed: _saving ? null : _toggleActive,
               child: _saving
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : Text(r.isActive ? 'Pasif Yap' : 'Aktif Yap'),
             ),
           ],
@@ -944,13 +1036,25 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
   }
 }
 
-Future<void> _showCreateWorkOrderTypeDialog(BuildContext context, WidgetRef ref) async {
+Future<void> _showCreateWorkOrderTypeDialog(
+  BuildContext context,
+  WidgetRef ref,
+) async {
   final nameController = TextEditingController();
   final descController = TextEditingController();
   String selectedColor = '#6366F1';
   bool saving = false;
 
-  final colors = ['#6366F1', '#22C55E', '#F59E0B', '#EF4444', '#3B82F6', '#8B5CF6', '#EC4899', '#14B8A6'];
+  final colors = [
+    '#6366F1',
+    '#22C55E',
+    '#F59E0B',
+    '#EF4444',
+    '#3B82F6',
+    '#8B5CF6',
+    '#EC4899',
+    '#14B8A6',
+  ];
 
   await showDialog<void>(
     context: context,
@@ -969,10 +1073,17 @@ Future<void> _showCreateWorkOrderTypeDialog(BuildContext context, WidgetRef ref)
               children: [
                 Row(
                   children: [
-                    Expanded(child: Text('İş Emri Tipi Ekle', style: Theme.of(context).textTheme.titleMedium)),
+                    Expanded(
+                      child: Text(
+                        'İş Emri Tipi Ekle',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -981,15 +1092,23 @@ Future<void> _showCreateWorkOrderTypeDialog(BuildContext context, WidgetRef ref)
                 TextField(
                   controller: nameController,
                   autofocus: true,
-                  decoration: const InputDecoration(labelText: 'Tip Adı', hintText: 'Örn: Bakım'),
+                  decoration: const InputDecoration(
+                    labelText: 'Tip Adı',
+                    hintText: 'Örn: Bakım',
+                  ),
                 ),
                 const Gap(12),
                 TextField(
                   controller: descController,
-                  decoration: const InputDecoration(labelText: 'Açıklama (opsiyonel)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Açıklama (opsiyonel)',
+                  ),
                 ),
                 const Gap(12),
-                Text('Renk Seçin', style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  'Renk Seçin',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
                 const Gap(8),
                 Wrap(
                   spacing: 8,
@@ -1005,9 +1124,17 @@ Future<void> _showCreateWorkOrderTypeDialog(BuildContext context, WidgetRef ref)
                         decoration: BoxDecoration(
                           color: _parseColor(c),
                           borderRadius: BorderRadius.circular(8),
-                          border: isSelected ? Border.all(color: Colors.black, width: 2) : null,
+                          border: isSelected
+                              ? Border.all(color: Colors.black, width: 2)
+                              : null,
                         ),
-                        child: isSelected ? const Icon(Icons.check, color: Colors.white, size: 18) : null,
+                        child: isSelected
+                            ? const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 18,
+                              )
+                            : null,
                       ),
                     );
                   }).toList(),
@@ -1017,7 +1144,9 @@ Future<void> _showCreateWorkOrderTypeDialog(BuildContext context, WidgetRef ref)
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -1035,7 +1164,10 @@ Future<void> _showCreateWorkOrderTypeDialog(BuildContext context, WidgetRef ref)
                                 try {
                                   await client.from('work_order_types').insert({
                                     'name': name,
-                                    'description': descController.text.trim().isEmpty ? null : descController.text.trim(),
+                                    'description':
+                                        descController.text.trim().isEmpty
+                                        ? null
+                                        : descController.text.trim(),
                                     'color': selectedColor,
                                     'is_active': true,
                                   });
@@ -1046,7 +1178,14 @@ Future<void> _showCreateWorkOrderTypeDialog(BuildContext context, WidgetRef ref)
                                 }
                               },
                         child: saving
-                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
                             : const Text('Ekle'),
                       ),
                     ),
@@ -1064,7 +1203,10 @@ Future<void> _showCreateWorkOrderTypeDialog(BuildContext context, WidgetRef ref)
   descController.dispose();
 }
 
-Future<void> _showCreateTaxRateDialog(BuildContext context, WidgetRef ref) async {
+Future<void> _showCreateTaxRateDialog(
+  BuildContext context,
+  WidgetRef ref,
+) async {
   final nameController = TextEditingController();
   final rateController = TextEditingController();
   bool saving = false;
@@ -1086,10 +1228,17 @@ Future<void> _showCreateTaxRateDialog(BuildContext context, WidgetRef ref) async
               children: [
                 Row(
                   children: [
-                    Expanded(child: Text('KDV Oranı Ekle', style: Theme.of(context).textTheme.titleMedium)),
+                    Expanded(
+                      child: Text(
+                        'KDV Oranı Ekle',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -1098,20 +1247,28 @@ Future<void> _showCreateTaxRateDialog(BuildContext context, WidgetRef ref) async
                 TextField(
                   controller: nameController,
                   autofocus: true,
-                  decoration: const InputDecoration(labelText: 'Oran Adı', hintText: 'Örn: Standart KDV'),
+                  decoration: const InputDecoration(
+                    labelText: 'Oran Adı',
+                    hintText: 'Örn: Standart KDV',
+                  ),
                 ),
                 const Gap(12),
                 TextField(
                   controller: rateController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Oran (%)', hintText: 'Örn: 20'),
+                  decoration: const InputDecoration(
+                    labelText: 'Oran (%)',
+                    hintText: 'Örn: 20',
+                  ),
                 ),
                 const Gap(18),
                 Row(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -1122,7 +1279,9 @@ Future<void> _showCreateTaxRateDialog(BuildContext context, WidgetRef ref) async
                             ? null
                             : () async {
                                 final name = nameController.text.trim();
-                                final rate = double.tryParse(rateController.text.trim());
+                                final rate = double.tryParse(
+                                  rateController.text.trim(),
+                                );
                                 if (name.isEmpty || rate == null) return;
                                 final client = ref.read(supabaseClientProvider);
                                 if (client == null) return;
@@ -1141,7 +1300,14 @@ Future<void> _showCreateTaxRateDialog(BuildContext context, WidgetRef ref) async
                                 }
                               },
                         child: saving
-                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
                             : const Text('Ekle'),
                       ),
                     ),
@@ -1164,6 +1330,58 @@ Color _parseColor(String hex) {
   return Color(int.parse('FF$cleaned', radix: 16));
 }
 
+class _DefinitionStatCard extends StatelessWidget {
+  const _DefinitionStatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: AppTheme.primary, size: 18),
+          ),
+          const Gap(12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+                const Gap(4),
+                Text(
+                  value,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Empty extends StatelessWidget {
   const _Empty({required this.text});
 
@@ -1174,17 +1392,20 @@ class _Empty extends StatelessWidget {
     return Center(
       child: Text(
         text,
-        style: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.copyWith(color: const Color(0xFF64748B)),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
       ),
     );
   }
 }
 
 class DeviceBrand {
-  const DeviceBrand({required this.id, required this.name, required this.isActive});
+  const DeviceBrand({
+    required this.id,
+    required this.name,
+    required this.isActive,
+  });
 
   final String id;
   final String name;
@@ -1224,4 +1445,3 @@ class DeviceModel {
     );
   }
 }
-

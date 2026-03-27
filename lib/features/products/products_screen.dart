@@ -11,10 +11,12 @@ import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../billing/billing_screen.dart';
 
-final productSearchProvider =
-    NotifierProvider<ProductSearchNotifier, String>(ProductSearchNotifier.new);
-final showPassiveProvider =
-    NotifierProvider<ShowPassiveNotifier, bool>(ShowPassiveNotifier.new);
+final productSearchProvider = NotifierProvider<ProductSearchNotifier, String>(
+  ProductSearchNotifier.new,
+);
+final showPassiveProvider = NotifierProvider<ShowPassiveNotifier, bool>(
+  ShowPassiveNotifier.new,
+);
 
 class ProductSearchNotifier extends Notifier<String> {
   @override
@@ -54,16 +56,18 @@ final issuedLinesProvider = FutureProvider<List<IssuedLine>>((ref) async {
 
   final rows = await q.order('ends_at', ascending: true).limit(500);
 
-  return (rows as List).map((e) {
-    final map = e as Map<String, dynamic>;
-    final customer = map['customers'] as Map<String, dynamic>?;
-    final branch = map['branches'] as Map<String, dynamic>?;
-    return IssuedLine.fromJson({
-      ...map,
-      'customer_name': customer?['name'],
-      'branch_name': branch?['name'],
-    });
-  }).toList(growable: false);
+  return (rows as List)
+      .map((e) {
+        final map = e as Map<String, dynamic>;
+        final customer = map['customers'] as Map<String, dynamic>?;
+        final branch = map['branches'] as Map<String, dynamic>?;
+        return IssuedLine.fromJson({
+          ...map,
+          'customer_name': customer?['name'],
+          'branch_name': branch?['name'],
+        });
+      })
+      .toList(growable: false);
 });
 
 final issuedLicensesProvider = FutureProvider<List<IssuedLicense>>((ref) async {
@@ -89,17 +93,21 @@ final issuedLicensesProvider = FutureProvider<List<IssuedLicense>>((ref) async {
   }
 
   final rows = await q.order('ends_at', ascending: true).limit(500);
-  return (rows as List).map((e) {
-    final map = e as Map<String, dynamic>;
-    final customer = map['customers'] as Map<String, dynamic>?;
-    return IssuedLicense.fromJson({
-      ...map,
-      'customer_name': customer?['name'],
-    });
-  }).toList(growable: false);
+  return (rows as List)
+      .map((e) {
+        final map = e as Map<String, dynamic>;
+        final customer = map['customers'] as Map<String, dynamic>?;
+        return IssuedLicense.fromJson({
+          ...map,
+          'customer_name': customer?['name'],
+        });
+      })
+      .toList(growable: false);
 });
 
-final customersLookupProvider = FutureProvider<List<CustomerLookup>>((ref) async {
+final customersLookupProvider = FutureProvider<List<CustomerLookup>>((
+  ref,
+) async {
   final client = ref.watch(supabaseClientProvider);
   if (client == null) return const [];
 
@@ -138,7 +146,8 @@ class ProductsScreen extends ConsumerWidget {
                         hintText: 'Hat numarası / SIM / Lisans adı',
                         prefixIcon: Icon(Icons.search_rounded),
                       ),
-                      onChanged: (v) => ref.read(productSearchProvider.notifier).set(v),
+                      onChanged: (v) =>
+                          ref.read(productSearchProvider.notifier).set(v),
                     ),
                   ),
                   const Gap(12),
@@ -147,14 +156,13 @@ class ProductsScreen extends ConsumerWidget {
                       children: [
                         Switch.adaptive(
                           value: showPassive,
-                          onChanged: (v) => ref.read(showPassiveProvider.notifier).set(v),
+                          onChanged: (v) =>
+                              ref.read(showPassiveProvider.notifier).set(v),
                         ),
                         const Gap(6),
                         Text(
                           'Pasif',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
+                          style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(color: const Color(0xFF475569)),
                         ),
                       ],
@@ -170,7 +178,10 @@ class ProductsScreen extends ConsumerWidget {
                   const TabBar(
                     isScrollable: true,
                     tabAlignment: TabAlignment.start,
-                    labelPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    labelPadding: EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     tabs: [
                       Tab(text: 'Hatlar'),
                       Tab(text: 'Lisanslar (GMP3)'),
@@ -211,15 +222,13 @@ class _LinesTab extends ConsumerWidget {
           if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
           return ListView.separated(
             itemCount: items.length,
-            separatorBuilder: (_, __) => const Gap(10),
-            itemBuilder: (context, index) => _LineRow(
-              item: items[index],
-              isAdmin: isAdmin,
-            ),
+            separatorBuilder: (context, index) => const Gap(10),
+            itemBuilder: (context, index) =>
+                _LineRow(item: items[index], isAdmin: isAdmin),
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, __) => const _Empty(text: 'Hatlar yüklenemedi.'),
+        error: (error, stackTrace) => const _Empty(text: 'Hatlar yüklenemedi.'),
       ),
     );
   }
@@ -241,15 +250,14 @@ class _LicensesTab extends ConsumerWidget {
           if (gmp3.isEmpty) return const _Empty(text: 'Kayıt yok.');
           return ListView.separated(
             itemCount: gmp3.length,
-            separatorBuilder: (_, __) => const Gap(10),
-            itemBuilder: (context, index) => _LicenseRow(
-              item: gmp3[index],
-              isAdmin: isAdmin,
-            ),
+            separatorBuilder: (context, index) => const Gap(10),
+            itemBuilder: (context, index) =>
+                _LicenseRow(item: gmp3[index], isAdmin: isAdmin),
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, __) => const _Empty(text: 'Lisanslar yüklenemedi.'),
+        error: (error, stackTrace) =>
+            const _Empty(text: 'Lisanslar yüklenemedi.'),
       ),
     );
   }
@@ -277,22 +285,22 @@ class _LineRowState extends ConsumerState<_LineRow> {
     final tone = !item.isActive
         ? AppBadgeTone.neutral
         : endsAt == null
-            ? AppBadgeTone.neutral
-            : endsAt.isBefore(now)
-                ? AppBadgeTone.error
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? AppBadgeTone.warning
-                    : AppBadgeTone.success;
+        ? AppBadgeTone.neutral
+        : endsAt.isBefore(now)
+        ? AppBadgeTone.error
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? AppBadgeTone.warning
+        : AppBadgeTone.success;
 
     final statusLabel = !item.isActive
         ? 'Pasif'
         : endsAt == null
-            ? 'Tarihsiz'
-            : endsAt.isBefore(now)
-                ? 'Bitmiş'
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? 'Yaklaşıyor'
-                    : 'Aktif';
+        ? 'Tarihsiz'
+        : endsAt.isBefore(now)
+        ? 'Bitmiş'
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? 'Yaklaşıyor'
+        : 'Aktif';
 
     final dateText = endsAt == null
         ? '—'
@@ -314,29 +322,31 @@ class _LineRowState extends ConsumerState<_LineRow> {
                 Text(
                   item.number ?? 'Hat',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        decoration: item.isActive ? null : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w800,
+                    decoration: item.isActive
+                        ? null
+                        : TextDecoration.lineThrough,
+                  ),
                 ),
                 const Gap(4),
                 Text(
                   [
                     item.customerName ?? '—',
-                    if (item.branchName?.trim().isNotEmpty ?? false) item.branchName!,
-                    if (item.simNumber?.trim().isNotEmpty ?? false) 'SIM: ${item.simNumber}',
+                    if (item.branchName?.trim().isNotEmpty ?? false)
+                      item.branchName!,
+                    if (item.simNumber?.trim().isNotEmpty ?? false)
+                      'SIM: ${item.simNumber}',
                   ].join(' • '),
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
                 const Gap(4),
                 Text(
                   'Bitiş: $dateText',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF94A3B8)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF94A3B8),
+                  ),
                 ),
               ],
             ),
@@ -349,7 +359,9 @@ class _LineRowState extends ConsumerState<_LineRow> {
               builder: (context, controller, _) => OutlinedButton(
                 onPressed: _busy
                     ? null
-                    : () => controller.isOpen ? controller.close() : controller.open(),
+                    : () => controller.isOpen
+                          ? controller.close()
+                          : controller.open(),
                 child: _busy
                     ? const SizedBox(
                         width: 16,
@@ -377,7 +389,11 @@ class _LineRowState extends ConsumerState<_LineRow> {
                     if (_busy) return;
                     setState(() => _busy = true);
                     try {
-                      await _extendLineAndQueueInvoice(context, ref, line: item);
+                      await _extendLineAndQueueInvoice(
+                        context,
+                        ref,
+                        line: item,
+                      );
                       ref.invalidate(issuedLinesProvider);
                       ref.invalidate(invoiceItemsProvider);
                     } finally {
@@ -430,22 +446,22 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
     final tone = !item.isActive
         ? AppBadgeTone.neutral
         : endsAt == null
-            ? AppBadgeTone.neutral
-            : endsAt.isBefore(now)
-                ? AppBadgeTone.error
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? AppBadgeTone.warning
-                    : AppBadgeTone.success;
+        ? AppBadgeTone.neutral
+        : endsAt.isBefore(now)
+        ? AppBadgeTone.error
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? AppBadgeTone.warning
+        : AppBadgeTone.success;
 
     final statusLabel = !item.isActive
         ? 'Pasif'
         : endsAt == null
-            ? 'Tarihsiz'
-            : endsAt.isBefore(now)
-                ? 'Bitmiş'
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? 'Yaklaşıyor'
-                    : 'Aktif';
+        ? 'Tarihsiz'
+        : endsAt.isBefore(now)
+        ? 'Bitmiş'
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? 'Yaklaşıyor'
+        : 'Aktif';
 
     final dateText = endsAt == null
         ? '—'
@@ -467,25 +483,25 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
                 Text(
                   item.name,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        decoration: item.isActive ? null : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w800,
+                    decoration: item.isActive
+                        ? null
+                        : TextDecoration.lineThrough,
+                  ),
                 ),
                 const Gap(4),
                 Text(
                   item.customerName ?? '—',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
                 const Gap(4),
                 Text(
                   'Bitiş: $dateText',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF94A3B8)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF94A3B8),
+                  ),
                 ),
               ],
             ),
@@ -500,7 +516,11 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
                   : () async {
                       setState(() => _busy = true);
                       try {
-                        await _extendLicenseAndQueueInvoice(context, ref, license: item);
+                        await _extendLicenseAndQueueInvoice(
+                          context,
+                          ref,
+                          license: item,
+                        );
                         ref.invalidate(issuedLicensesProvider);
                         ref.invalidate(invoiceItemsProvider);
                       } finally {
@@ -584,7 +604,9 @@ Future<void> _showEditLineDialog(
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -593,23 +615,17 @@ Future<void> _showEditLineDialog(
                 TextField(
                   controller: numberController,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'Hat Numarası',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Hat Numarası'),
                 ),
                 const Gap(12),
                 TextField(
                   controller: simController,
-                  decoration: const InputDecoration(
-                    labelText: 'SIM Numarası',
-                  ),
+                  decoration: const InputDecoration(labelText: 'SIM Numarası'),
                 ),
                 const Gap(12),
                 TextField(
                   controller: labelController,
-                  decoration: const InputDecoration(
-                    labelText: 'Etiket',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Etiket'),
                 ),
                 const Gap(12),
                 Row(
@@ -619,11 +635,16 @@ Future<void> _showEditLineDialog(
                         borderRadius: BorderRadius.circular(12),
                         onTap: saving ? null : () => pickStart(setState),
                         child: InputDecorator(
-                          decoration: const InputDecoration(labelText: 'Başlangıç'),
+                          decoration: const InputDecoration(
+                            labelText: 'Başlangıç',
+                          ),
                           child: Text(
                             startsAt == null
                                 ? '—'
-                                : DateFormat('d MMM y', 'tr_TR').format(startsAt!),
+                                : DateFormat(
+                                    'd MMM y',
+                                    'tr_TR',
+                                  ).format(startsAt!),
                           ),
                         ),
                       ),
@@ -638,7 +659,10 @@ Future<void> _showEditLineDialog(
                           child: Text(
                             endsAt == null
                                 ? '—'
-                                : DateFormat('d MMM y', 'tr_TR').format(endsAt!),
+                                : DateFormat(
+                                    'd MMM y',
+                                    'tr_TR',
+                                  ).format(endsAt!),
                           ),
                         ),
                       ),
@@ -650,7 +674,9 @@ Future<void> _showEditLineDialog(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -664,33 +690,42 @@ Future<void> _showEditLineDialog(
                                 if (number.isEmpty) return;
                                 setState(() => saving = true);
                                 try {
-                                  final endStr = endsAt == null
-                                      ? null
-                                      : endsAt!.toIso8601String().substring(0, 10);
-                                  await client.from('lines').update({
-                                    'number': number,
-                                    'sim_number': simController.text.trim().isEmpty
-                                        ? null
-                                        : simController.text.trim(),
-                                    'label': labelController.text.trim().isEmpty
-                                        ? null
-                                        : labelController.text.trim(),
-                                    'starts_at': startsAt == null
-                                        ? null
-                                        : startsAt!.toIso8601String().substring(0, 10),
-                                    'ends_at': endStr,
-                                    'expires_at': endStr,
-                                  }).eq('id', line.id);
+                                  final endStr = endsAt
+                                      ?.toIso8601String()
+                                      .substring(0, 10);
+                                  await client
+                                      .from('lines')
+                                      .update({
+                                        'number': number,
+                                        'sim_number':
+                                            simController.text.trim().isEmpty
+                                            ? null
+                                            : simController.text.trim(),
+                                        'label':
+                                            labelController.text.trim().isEmpty
+                                            ? null
+                                            : labelController.text.trim(),
+                                        'starts_at': startsAt
+                                            ?.toIso8601String()
+                                            .substring(0, 10),
+                                        'ends_at': endStr,
+                                        'expires_at': endStr,
+                                      })
+                                      .eq('id', line.id);
 
                                   if (!context.mounted) return;
                                   Navigator.of(context).pop();
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Hat güncellendi.')),
+                                    const SnackBar(
+                                      content: Text('Hat güncellendi.'),
+                                    ),
                                   );
                                 } catch (_) {
                                   if (!context.mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Hat güncellenemedi.')),
+                                    const SnackBar(
+                                      content: Text('Hat güncellenemedi.'),
+                                    ),
                                   );
                                 } finally {
                                   setState(() => saving = false);
@@ -732,7 +767,9 @@ Future<void> _extendLineAndQueueInvoice(
   if (client == null) return;
 
   final now = DateTime.now();
-  final baseYear = (line.endsAt != null && line.endsAt!.isAfter(now)) ? line.endsAt!.year : now.year;
+  final baseYear = (line.endsAt != null && line.endsAt!.isAfter(now))
+      ? line.endsAt!.year
+      : now.year;
   final newEnd = DateTime(baseYear + 1, 12, 31);
   final newEndStr = newEnd.toIso8601String().substring(0, 10);
 
@@ -772,15 +809,16 @@ Future<void> _extendLineAndQueueInvoice(
                 const Gap(10),
                 Text(
                   'Yeni bitiş tarihi: ${DateFormat('d MMM y', 'tr_TR').format(newEnd)}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
                 const Gap(12),
                 TextField(
                   controller: amountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(
                     labelText: 'Tutar (opsiyonel)',
                     hintText: '0.00',
@@ -788,7 +826,7 @@ Future<void> _extendLineAndQueueInvoice(
                 ),
                 const Gap(12),
                 DropdownButtonFormField<String>(
-                  value: currency,
+                  initialValue: currency,
                   items: const [
                     DropdownMenuItem(value: 'TRY', child: Text('TRY')),
                     DropdownMenuItem(value: 'USD', child: Text('USD')),
@@ -829,10 +867,10 @@ Future<void> _extendLineAndQueueInvoice(
   }
 
   try {
-    await client.from('lines').update({
-      'ends_at': newEndStr,
-      'expires_at': newEndStr,
-    }).eq('id', line.id);
+    await client
+        .from('lines')
+        .update({'ends_at': newEndStr, 'expires_at': newEndStr})
+        .eq('id', line.id);
 
     final amountRaw = amountController.text.trim().replaceAll(',', '.');
     final amount = amountRaw.isEmpty ? null : double.tryParse(amountRaw);
@@ -842,7 +880,8 @@ Future<void> _extendLineAndQueueInvoice(
       'item_type': 'line_renewal',
       'source_table': 'lines',
       'source_id': line.id,
-      'description': 'Hat uzatma (${line.number ?? ''}) (yeni bitiş: $newEndStr)',
+      'description':
+          'Hat uzatma (${line.number ?? ''}) (yeni bitiş: $newEndStr)',
       'amount': amount,
       'currency': currency,
       'status': 'pending',
@@ -851,14 +890,16 @@ Future<void> _extendLineAndQueueInvoice(
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat uzatıldı ve faturalama listesine eklendi.')),
+        const SnackBar(
+          content: Text('Hat uzatıldı ve faturalama listesine eklendi.'),
+        ),
       );
     }
   } catch (_) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İşlem başarısız.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('İşlem başarısız.')));
     }
   } finally {
     amountController.dispose();
@@ -880,7 +921,9 @@ Future<void> _transferLine(
     context: context,
     barrierDismissible: false,
     builder: (context) => _TransferDialog(
-      customers: customers.where((c) => c.id != line.customerId).toList(growable: false),
+      customers: customers
+          .where((c) => c.id != line.customerId)
+          .toList(growable: false),
     ),
   );
   if (!context.mounted) return;
@@ -894,23 +937,26 @@ Future<void> _transferLine(
       'transferred_by': client.auth.currentUser?.id,
     });
 
-    await client.from('lines').update({
-      'customer_id': selected.id,
-      'branch_id': null,
-      'transferred_at': DateTime.now().toIso8601String(),
-      'transferred_by': client.auth.currentUser?.id,
-    }).eq('id', line.id);
+    await client
+        .from('lines')
+        .update({
+          'customer_id': selected.id,
+          'branch_id': null,
+          'transferred_at': DateTime.now().toIso8601String(),
+          'transferred_by': client.auth.currentUser?.id,
+        })
+        .eq('id', line.id);
 
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat devredildi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hat devredildi.')));
     }
   } catch (_) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat devredilemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hat devredilemedi.')));
     }
   }
 }
@@ -924,8 +970,9 @@ Future<void> _extendLicenseAndQueueInvoice(
   if (client == null) return;
 
   final now = DateTime.now();
-  final baseYear =
-      (license.endsAt != null && license.endsAt!.isAfter(now)) ? license.endsAt!.year : now.year;
+  final baseYear = (license.endsAt != null && license.endsAt!.isAfter(now))
+      ? license.endsAt!.year
+      : now.year;
   final newEnd = DateTime(baseYear + 1, 12, 31);
   final newEndStr = newEnd.toIso8601String().substring(0, 10);
 
@@ -965,15 +1012,16 @@ Future<void> _extendLicenseAndQueueInvoice(
                 const Gap(10),
                 Text(
                   'Yeni bitiş tarihi: ${DateFormat('d MMM y', 'tr_TR').format(newEnd)}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
                 const Gap(12),
                 TextField(
                   controller: amountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(
                     labelText: 'Tutar (opsiyonel)',
                     hintText: '0.00',
@@ -981,7 +1029,7 @@ Future<void> _extendLicenseAndQueueInvoice(
                 ),
                 const Gap(12),
                 DropdownButtonFormField<String>(
-                  value: currency,
+                  initialValue: currency,
                   items: const [
                     DropdownMenuItem(value: 'TRY', child: Text('TRY')),
                     DropdownMenuItem(value: 'USD', child: Text('USD')),
@@ -1022,10 +1070,10 @@ Future<void> _extendLicenseAndQueueInvoice(
   }
 
   try {
-    await client.from('licenses').update({
-      'ends_at': newEndStr,
-      'expires_at': newEndStr,
-    }).eq('id', license.id);
+    await client
+        .from('licenses')
+        .update({'ends_at': newEndStr, 'expires_at': newEndStr})
+        .eq('id', license.id);
 
     final amountRaw = amountController.text.trim().replaceAll(',', '.');
     final amount = amountRaw.isEmpty ? null : double.tryParse(amountRaw);
@@ -1044,14 +1092,16 @@ Future<void> _extendLicenseAndQueueInvoice(
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lisans uzatıldı ve faturalama listesine eklendi.')),
+        const SnackBar(
+          content: Text('Lisans uzatıldı ve faturalama listesine eklendi.'),
+        ),
       );
     }
   } catch (_) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İşlem başarısız.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('İşlem başarısız.')));
     }
   } finally {
     amountController.dispose();
@@ -1102,22 +1152,26 @@ class _TransferDialogState extends State<_TransferDialog> {
               Autocomplete<CustomerLookup>(
                 optionsBuilder: (text) {
                   final q = text.text.trim().toLowerCase();
-                  final list =
-                      widget.customers.where((c) => c.isActive).toList(growable: false);
+                  final list = widget.customers
+                      .where((c) => c.isActive)
+                      .toList(growable: false);
                   if (q.isEmpty) return list.take(20);
-                  return list.where((c) => c.name.toLowerCase().contains(q)).take(20);
+                  return list
+                      .where((c) => c.name.toLowerCase().contains(q))
+                      .take(20);
                 },
                 displayStringForOption: (o) => o.name,
                 onSelected: (o) => setState(() => _selected = o),
-                fieldViewBuilder: (context, controller, focusNode, _) => TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  decoration: const InputDecoration(
-                    labelText: 'Yeni Müşteri',
-                    hintText: 'Firma adı yazın ve seçin',
-                  ),
-                  onChanged: (_) => setState(() => _selected = null),
-                ),
+                fieldViewBuilder: (context, controller, focusNode, _) =>
+                    TextField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      decoration: const InputDecoration(
+                        labelText: 'Yeni Müşteri',
+                        hintText: 'Firma adı yazın ve seçin',
+                      ),
+                      onChanged: (_) => setState(() => _selected = null),
+                    ),
               ),
               const Gap(18),
               Row(
@@ -1157,10 +1211,9 @@ class _Empty extends StatelessWidget {
     return Center(
       child: Text(
         text,
-        style: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.copyWith(color: const Color(0xFF64748B)),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
       ),
     );
   }
@@ -1204,7 +1257,8 @@ class IssuedLine {
       number: json['number']?.toString(),
       simNumber: json['sim_number']?.toString(),
       startsAt: DateTime.tryParse(json['starts_at']?.toString() ?? ''),
-      endsAt: DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
+      endsAt:
+          DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
           DateTime.tryParse(json['expires_at']?.toString() ?? ''),
       isActive: (json['is_active'] as bool?) ?? true,
     );
@@ -1240,7 +1294,8 @@ class IssuedLicense {
       name: (json['name'] ?? '').toString(),
       licenseType: (json['license_type'] ?? 'gmp3').toString(),
       startsAt: DateTime.tryParse(json['starts_at']?.toString() ?? ''),
-      endsAt: DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
+      endsAt:
+          DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
           DateTime.tryParse(json['expires_at']?.toString() ?? ''),
       isActive: (json['is_active'] as bool?) ?? true,
     );
