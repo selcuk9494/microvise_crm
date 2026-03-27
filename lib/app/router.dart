@@ -8,19 +8,16 @@ import '../features/auth/login_screen.dart';
 import '../features/customers/customer_detail_screen.dart';
 import '../features/customers/customers_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
+import '../features/billing/billing_screen.dart';
+import '../features/products/products_screen.dart';
 import '../features/definitions/definitions_screen.dart';
-import '../features/invoices/invoices_screen.dart';
-import '../features/invoices/accounts_screen.dart';
 import '../features/personnel/personnel_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/service/service_screen.dart';
 import '../features/service/service_detail_screen.dart';
 import '../features/setup/setup_required_screen.dart';
 import '../features/shell/app_shell.dart';
-import '../features/work_orders/work_orders_list_screen.dart';
-import '../features/stock/stock_screen.dart';
-import '../features/stock/products_screen.dart';
-import '../features/subscriptions/subscriptions_screen.dart';
+import '../features/work_orders/work_orders_kanban_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final client = ref.watch(supabaseClientProvider);
@@ -71,7 +68,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         GoRoute(
           path: '/is-emirleri',
           pageBuilder: (context, state) => const NoTransitionPage(
-            child: WorkOrdersListScreen(),
+            child: WorkOrdersKanbanScreen(),
           ),
         ),
         GoRoute(
@@ -101,21 +98,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
         ),
         GoRoute(
-          path: '/faturalar',
+          path: '/faturalama',
           pageBuilder: (context, state) => const NoTransitionPage(
-            child: InvoicesScreen(),
-          ),
-        ),
-        GoRoute(
-          path: '/cari-hesaplar',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: AccountsScreen(),
-          ),
-        ),
-        GoRoute(
-          path: '/stok',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: StockScreen(),
+            child: BillingScreen(),
           ),
         ),
         GoRoute(
@@ -128,12 +113,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           path: '/tanimlamalar',
           pageBuilder: (context, state) => const NoTransitionPage(
             child: DefinitionsScreen(),
-          ),
-        ),
-        GoRoute(
-          path: '/hat-lisans',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: SubscriptionsScreen(),
           ),
         ),
       ],

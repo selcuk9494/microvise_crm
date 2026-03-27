@@ -12,6 +12,7 @@ import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import 'work_order_model.dart';
 import 'work_order_close_sheet.dart';
+import 'work_order_detail_sheet.dart';
 import 'work_orders_providers.dart';
 
 class WorkOrdersKanbanScreen extends ConsumerStatefulWidget {
@@ -49,7 +50,7 @@ class _WorkOrdersKanbanScreenState extends ConsumerState<WorkOrdersKanbanScreen>
 
     return AppPageLayout(
       title: 'İş Emirleri',
-      subtitle: 'Kanban akışı: Açık → Devam Ediyor → Tamamlandı',
+      subtitle: 'Açık / Devam Ediyor / Kapalı filtreleri ile tek sayfa.',
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.read(workOrdersBoardProvider.notifier).refresh(),
@@ -67,10 +68,10 @@ class _WorkOrdersKanbanScreenState extends ConsumerState<WorkOrdersKanbanScreen>
         ),
       ],
       body: boardAsync.when(
-        data: (items) => _KanbanBoard(items: items),
+        data: (items) => _WorkOrdersStatusView(items: items),
         loading: () => Skeletonizer(
           enabled: true,
-          child: _KanbanBoard(
+          child: _WorkOrdersStatusView(
             items: const [
               WorkOrder(
                 id: '1',
@@ -118,6 +119,181 @@ class _WorkOrdersKanbanScreenState extends ConsumerState<WorkOrdersKanbanScreen>
                   .bodyMedium
                   ?.copyWith(color: const Color(0xFF64748B)),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkOrdersStatusView extends ConsumerWidget {
+  const _WorkOrdersStatusView({required this.items});
+
+  final List<WorkOrder> items;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final open = items.where((e) => e.status == 'open').toList(growable: false);
+    final inProgress =
+        items.where((e) => e.status == 'in_progress').toList(growable: false);
+    final done = items.where((e) => e.status == 'done').toList(growable: false);
+
+    return DefaultTabController(
+      length: 3,
+      child: AppCard(
+        padding: EdgeInsets.zero,
+        child: Column(
+          children: [
+            const TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              labelPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              tabs: [
+                Tab(text: 'Açık'),
+                Tab(text: 'Devam Ediyor'),
+                Tab(text: 'Kapalı'),
+              ],
+            ),
+            const Divider(height: 1),
+            SizedBox(
+              height: 720,
+              child: TabBarView(
+                children: [
+                  _WorkOrdersList(status: 'open', items: open),
+                  _WorkOrdersList(status: 'in_progress', items: inProgress),
+                  _WorkOrdersList(status: 'done', items: done),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkOrdersList extends ConsumerWidget {
+  const _WorkOrdersList({required this.status, required this.items});
+
+  final String status;
+  final List<WorkOrder> items;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (items.isEmpty) {
+      return Center(
+        child: Text(
+          'Kayıt yok.',
+          style: Theme.of(context)
+              .textTheme
+              .bodyMedium
+              ?.copyWith(color: const Color(0xFF64748B)),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(14),
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const Gap(10),
+      itemBuilder: (context, index) => _WorkOrderListTile(order: items[index]),
+    );
+  }
+}
+
+class _WorkOrderListTile extends ConsumerStatefulWidget {
+  const _WorkOrderListTile({required this.order});
+
+  final WorkOrder order;
+
+  @override
+  ConsumerState<_WorkOrderListTile> createState() => _WorkOrderListTileState();
+}
+
+class _WorkOrderListTileState extends ConsumerState<_WorkOrderListTile> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget.order;
+    final scheduled = w.scheduledDate == null
+        ? null
+        : DateFormat('d MMM y', 'tr_TR').format(w.scheduledDate!);
+
+    final tone = switch (w.status) {
+      'open' => AppBadgeTone.warning,
+      'in_progress' => AppBadgeTone.primary,
+      'done' => AppBadgeTone.success,
+      _ => AppBadgeTone.neutral,
+    };
+
+    final statusLabel = switch (w.status) {
+      'open' => 'Açık',
+      'in_progress' => 'Devam',
+      'done' => 'Kapalı',
+      _ => '—',
+    };
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () async {
+          await showWorkOrderDetailSheet(context, ref, order: w);
+          ref.read(workOrdersBoardProvider.notifier).refresh();
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      w.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            decoration: w.isActive
+                                ? null
+                                : TextDecoration.lineThrough,
+                          ),
+                    ),
+                    const Gap(6),
+                    Text(
+                      [
+                        w.customerName ?? '—',
+                        if (scheduled != null) scheduled,
+                      ].join(' • '),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: const Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
+              ),
+              const Gap(10),
+              AppBadge(label: statusLabel, tone: tone),
+            ],
           ),
         ),
       ),
