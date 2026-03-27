@@ -203,7 +203,18 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         });
       }
       if (paymentRows.isNotEmpty) {
-        await client.from('payments').insert(paymentRows);
+        try {
+          await client.from('payments').insert(paymentRows);
+        } catch (e) {
+          final message = e.toString();
+          if (!message.contains("'description' column")) rethrow;
+          final fallbackRows = paymentRows
+              .map(
+                (row) => Map<String, dynamic>.from(row)..remove('description'),
+              )
+              .toList(growable: false);
+          await client.from('payments').insert(fallbackRows);
+        }
       }
 
       Uint8List? signatureBytes = await _signatureController.toPngBytes();
