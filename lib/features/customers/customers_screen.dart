@@ -629,6 +629,7 @@ Future<void> _downloadCustomerImportTemplate(BuildContext context) async {
     final sheet = file['Müşteri Şablonu'];
 
     sheet.appendRow([
+      excel.TextCellValue('Müşteri ID'),
       excel.TextCellValue('Firma Adı'),
       excel.TextCellValue('Şehir'),
       excel.TextCellValue('E-posta'),
@@ -644,6 +645,7 @@ Future<void> _downloadCustomerImportTemplate(BuildContext context) async {
     ]);
 
     sheet.appendRow([
+      excel.TextCellValue(''),
       excel.TextCellValue('Microvise Teknoloji'),
       excel.TextCellValue('Istanbul'),
       excel.TextCellValue('info@microvise.com'),
@@ -736,6 +738,7 @@ Future<void> _exportCustomersToExcel(
     final sheet = file['Müşteriler'];
 
     sheet.appendRow([
+      excel.TextCellValue('Müşteri ID'),
       excel.TextCellValue('Firma Adı'),
       excel.TextCellValue('Şehir'),
       excel.TextCellValue('E-posta'),
@@ -752,6 +755,7 @@ Future<void> _exportCustomersToExcel(
 
     for (final c in customers) {
       sheet.appendRow([
+        excel.TextCellValue((c['id'] ?? '').toString()),
         excel.TextCellValue((c['name'] ?? '').toString()),
         excel.TextCellValue((c['city'] ?? '').toString()),
         excel.TextCellValue((c['email'] ?? '').toString()),
@@ -840,6 +844,7 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
   }
 
   final nameIndex = columnOf(['firma adı', 'firma', 'name']);
+  final idIndex = columnOf(['müşteri id', 'musteri id', 'customer id', 'id']);
   final cityIndex = columnOf(['şehir', 'city']);
   final emailIndex = columnOf(['e-posta', 'email']);
   final vknIndex = columnOf(['vkn / tckn', 'vkn', 'tckn']);
@@ -873,11 +878,13 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
   final existingByEmail = <String, String>{};
   final existingByNameCity = <String, String>{};
   final existingByName = <String, String>{};
+  final existingIds = <String>{};
 
   for (final row in (existingRows as List)) {
     final map = row as Map<String, dynamic>;
     final id = map['id']?.toString();
     if (id == null || id.isEmpty) continue;
+    existingIds.add(id);
 
     final normalizedVkn = normalize(map['vkn']?.toString());
     final normalizedEmail = normalize(map['email']?.toString());
@@ -895,9 +902,11 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
   var createdCount = 0;
   var updatedCount = 0;
   var skippedCount = 0;
+  final seenImportKeys = <String>{};
 
   for (int i = 1; i < sheet.rows.length; i++) {
     final row = sheet.rows[i];
+    final importedId = readText(row, idIndex);
     final name = readText(row, nameIndex);
     if (name == null) {
       skippedCount++;
@@ -926,8 +935,23 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
     final normalizedCity = normalize(city);
     final normalizedEmail = normalize(email);
     final normalizedVkn = normalize(vkn);
+    final importKey = importedId != null && importedId.isNotEmpty
+        ? 'id:$importedId'
+        : normalizedVkn.isNotEmpty
+        ? 'vkn:$normalizedVkn'
+        : normalizedEmail.isNotEmpty
+        ? 'email:$normalizedEmail'
+        : 'nameCity:${nameCityKey(normalizedName, normalizedCity)}';
+
+    if (!seenImportKeys.add(importKey)) {
+      skippedCount++;
+      continue;
+    }
 
     final existingId =
+        (importedId != null && existingIds.contains(importedId)
+            ? importedId
+            : null) ??
         (normalizedVkn.isNotEmpty ? existingByVkn[normalizedVkn] : null) ??
         (normalizedEmail.isNotEmpty
             ? existingByEmail[normalizedEmail]
@@ -952,6 +976,7 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
       continue;
     }
 
+    existingIds.add(insertedId);
     if (normalizedVkn.isNotEmpty) {
       existingByVkn[normalizedVkn] = insertedId;
     }
