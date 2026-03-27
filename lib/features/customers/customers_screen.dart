@@ -64,12 +64,19 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final filters = ref.watch(customerFiltersProvider);
     final currentPage = ref.watch(customerPageProvider);
     final sort = ref.watch(customerSortProvider);
+    final headerSummary = !isMobile
+        ? customersAsync.whenOrNull(
+            data: (pageData) =>
+                _SummaryRow(customers: pageData.items, compact: true),
+          )
+        : null;
 
     return AppPageLayout(
       title: 'Müşteriler',
       subtitle:
           'Müşteri kayıtlarını yönetin, filtreleyin ve yeni müşteri ekleyin.',
       actions: [
+        ...(headerSummary != null ? [headerSummary] : const <Widget>[]),
         OutlinedButton.icon(
           onPressed: () {
             ref.invalidate(customersProvider);
@@ -320,8 +327,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
 
               return Column(
                 children: [
-                  _SummaryRow(customers: customers),
-                  const Gap(8),
+                  if (isMobile) ...[
+                    _SummaryRow(customers: customers),
+                    const Gap(8),
+                  ],
                   AppCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -490,9 +499,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
 enum _CustomerDataAction { template, export, import }
 
 class _SummaryRow extends StatelessWidget {
-  const _SummaryRow({required this.customers});
+  const _SummaryRow({required this.customers, this.compact = false});
 
   final List<Customer> customers;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -503,38 +513,52 @@ class _SummaryRow extends StatelessWidget {
       (sum, customer) => sum + customer.activeLineCount,
     );
 
+    final stats = [
+      (
+        'Toplam',
+        customers.length.toString(),
+        Icons.groups_2_rounded,
+        AppBadgeTone.primary,
+      ),
+      (
+        'Aktif',
+        active.toString(),
+        Icons.check_circle_outline_rounded,
+        AppBadgeTone.success,
+      ),
+      (
+        'Pasif',
+        passive.toString(),
+        Icons.pause_circle_outline_rounded,
+        AppBadgeTone.neutral,
+      ),
+      (
+        'Aktif Hat',
+        totalLines.toString(),
+        Icons.sim_card_outlined,
+        AppBadgeTone.warning,
+      ),
+    ];
+
+    final content = Wrap(
+      spacing: compact ? 6 : 8,
+      runSpacing: compact ? 6 : 8,
+      children: [
+        for (final stat in stats)
+          _SummaryStat(
+            label: stat.$1,
+            value: stat.$2,
+            icon: stat.$3,
+            tone: stat.$4,
+            compact: compact,
+          ),
+      ],
+    );
+
+    if (compact) return content;
     return AppCard(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          _SummaryStat(
-            label: 'Toplam',
-            value: customers.length.toString(),
-            icon: Icons.groups_2_rounded,
-            tone: AppBadgeTone.primary,
-          ),
-          _SummaryStat(
-            label: 'Aktif',
-            value: active.toString(),
-            icon: Icons.check_circle_outline_rounded,
-            tone: AppBadgeTone.success,
-          ),
-          _SummaryStat(
-            label: 'Pasif',
-            value: passive.toString(),
-            icon: Icons.pause_circle_outline_rounded,
-            tone: AppBadgeTone.neutral,
-          ),
-          _SummaryStat(
-            label: 'Aktif Hat',
-            value: totalLines.toString(),
-            icon: Icons.sim_card_outlined,
-            tone: AppBadgeTone.warning,
-          ),
-        ],
-      ),
+      child: content,
     );
   }
 }
@@ -545,12 +569,14 @@ class _SummaryStat extends StatelessWidget {
     required this.value,
     required this.icon,
     required this.tone,
+    this.compact = false,
   });
 
   final String label;
   final String value;
   final IconData icon;
   final AppBadgeTone tone;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -563,40 +589,45 @@ class _SummaryStat extends StatelessWidget {
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 6 : 8,
+      ),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(compact ? 14 : 16),
         border: Border.all(color: AppTheme.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 30,
-            height: 30,
+            width: compact ? 26 : 30,
+            height: compact ? 26 : 30,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(compact ? 8 : 10),
             ),
-            child: Icon(icon, color: color, size: 16),
+            child: Icon(icon, color: color, size: compact ? 14 : 16),
           ),
-          const Gap(8),
+          Gap(compact ? 6 : 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 label,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF64748B),
+                  fontSize: compact ? 11 : null,
+                ),
               ),
               Text(
                 value,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  fontSize: compact ? 18 : null,
+                ),
               ),
             ],
           ),
