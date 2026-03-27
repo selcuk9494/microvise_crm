@@ -860,18 +860,58 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
     return;
   }
 
-  var importedCount = 0;
+  String normalize(String? value) => (value ?? '').trim().toLowerCase();
+
+  String nameCityKey(String? name, String? city) =>
+      '${normalize(name)}|${normalize(city)}';
+
+  final existingRows = await client
+      .from('customers')
+      .select('id,name,city,email,vkn');
+
+  final existingByVkn = <String, String>{};
+  final existingByEmail = <String, String>{};
+  final existingByNameCity = <String, String>{};
+  final existingByName = <String, String>{};
+
+  for (final row in (existingRows as List)) {
+    final map = row as Map<String, dynamic>;
+    final id = map['id']?.toString();
+    if (id == null || id.isEmpty) continue;
+
+    final normalizedVkn = normalize(map['vkn']?.toString());
+    final normalizedEmail = normalize(map['email']?.toString());
+    final normalizedName = normalize(map['name']?.toString());
+    final normalizedCity = normalize(map['city']?.toString());
+
+    if (normalizedVkn.isNotEmpty) existingByVkn[normalizedVkn] = id;
+    if (normalizedEmail.isNotEmpty) existingByEmail[normalizedEmail] = id;
+    if (normalizedName.isNotEmpty) {
+      existingByName[normalizedName] = id;
+      existingByNameCity[nameCityKey(normalizedName, normalizedCity)] = id;
+    }
+  }
+
+  var createdCount = 0;
+  var updatedCount = 0;
+  var skippedCount = 0;
 
   for (int i = 1; i < sheet.rows.length; i++) {
     final row = sheet.rows[i];
     final name = readText(row, nameIndex);
-    if (name == null) continue;
+    if (name == null) {
+      skippedCount++;
+      continue;
+    }
 
-    await client.from('customers').insert({
+    final city = readText(row, cityIndex);
+    final email = readText(row, emailIndex);
+    final vkn = readText(row, vknIndex);
+    final payload = {
       'name': name,
-      'city': readText(row, cityIndex),
-      'email': readText(row, emailIndex),
-      'vkn': readText(row, vknIndex),
+      'city': city,
+      'email': email,
+      'vkn': vkn,
       'phone_1_title': readText(row, phone1TitleIndex),
       'phone_1': readText(row, phone1Index),
       'phone_2_title': readText(row, phone2TitleIndex),
@@ -880,8 +920,48 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
       'phone_3': readText(row, phone3Index),
       'notes': readText(row, notesIndex),
       'is_active': readBool(row, isActiveIndex),
-    });
-    importedCount++;
+    };
+
+    final normalizedName = normalize(name);
+    final normalizedCity = normalize(city);
+    final normalizedEmail = normalize(email);
+    final normalizedVkn = normalize(vkn);
+
+    final existingId =
+        (normalizedVkn.isNotEmpty ? existingByVkn[normalizedVkn] : null) ??
+        (normalizedEmail.isNotEmpty
+            ? existingByEmail[normalizedEmail]
+            : null) ??
+        existingByNameCity[nameCityKey(normalizedName, normalizedCity)] ??
+        existingByName[normalizedName];
+
+    if (existingId != null) {
+      await client.from('customers').update(payload).eq('id', existingId);
+      updatedCount++;
+      continue;
+    }
+
+    final inserted = await client
+        .from('customers')
+        .insert(payload)
+        .select('id')
+        .single();
+    final insertedId = inserted['id']?.toString();
+    if (insertedId == null || insertedId.isEmpty) {
+      skippedCount++;
+      continue;
+    }
+
+    if (normalizedVkn.isNotEmpty) {
+      existingByVkn[normalizedVkn] = insertedId;
+    }
+    if (normalizedEmail.isNotEmpty) {
+      existingByEmail[normalizedEmail] = insertedId;
+    }
+    existingByName[normalizedName] = insertedId;
+    existingByNameCity[nameCityKey(normalizedName, normalizedCity)] =
+        insertedId;
+    createdCount++;
   }
 
   ref.invalidate(customersProvider);
@@ -890,6 +970,10 @@ Future<void> _importExcel(BuildContext context, WidgetRef ref) async {
   if (!context.mounted) return;
 
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text('$importedCount müşteri içe aktarıldı')),
+    SnackBar(
+      content: Text(
+        '$createdCount yeni, $updatedCount güncellendi, $skippedCount atlandı.',
+      ),
+    ),
   );
 }
