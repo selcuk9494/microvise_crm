@@ -58,19 +58,36 @@ class _DesktopShell extends ConsumerWidget {
                     _BrandHeader(onTap: () => context.go('/panel')),
                     const Gap(16),
                     Expanded(
-                      child: ListView.separated(
-                        itemCount: items.length,
-                        separatorBuilder: (context, index) => const Gap(6),
-                        itemBuilder: (context, index) {
-                          final item = items[index];
-                          final active = _isActive(location, item.path);
-                          return _SidebarItem(
-                            label: item.label,
-                            icon: item.icon,
-                            active: active,
-                            onTap: () => context.go(item.path),
-                          );
-                        },
+                      child: ListView(
+                        children: [
+                          for (final item in items) ...[
+                            _SidebarItem(
+                              label: item.label,
+                              icon: item.icon,
+                              active: _isActive(location, item.path),
+                              onTap: () => context.go(item.path),
+                            ),
+                            if (item.children.isNotEmpty) ...[
+                              const Gap(6),
+                              Padding(
+                                padding: const EdgeInsets.only(left: 20),
+                                child: Column(
+                                  children: [
+                                    for (final child in item.children) ...[
+                                      _SidebarSubItem(
+                                        label: child.label,
+                                        active: _isActive(location, child.path),
+                                        onTap: () => context.go(child.path),
+                                      ),
+                                      const Gap(6),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                            const Gap(6),
+                          ],
+                        ],
                       ),
                     ),
                     const Gap(12),
@@ -435,6 +452,63 @@ class _BottomItem extends StatelessWidget {
   }
 }
 
+class _SidebarSubItem extends StatelessWidget {
+  const _SidebarSubItem({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = active ? AppTheme.primaryDark : AppTheme.textMuted;
+    final bg = active
+        ? AppTheme.primary.withValues(alpha: 0.08)
+        : Colors.transparent;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: active
+                ? AppTheme.primary.withValues(alpha: 0.18)
+                : AppTheme.border.withValues(alpha: 0.5),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
+            ),
+            const Gap(10),
+            Expanded(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: fg,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _AccountCard extends StatelessWidget {
   const _AccountCard({required this.onSignOut});
 
@@ -628,11 +702,24 @@ int _mobileIndexForLocation(String matchedLocation) {
 }
 
 class _NavItem {
-  const _NavItem({required this.path, required this.label, required this.icon});
+  const _NavItem({
+    required this.path,
+    required this.label,
+    required this.icon,
+    this.children = const [],
+  });
 
   final String path;
   final String label;
   final IconData icon;
+  final List<_NavSubItem> children;
+}
+
+class _NavSubItem {
+  const _NavSubItem({required this.path, required this.label});
+
+  final String path;
+  final String label;
 }
 
 final _navItems = <_NavItem>[
@@ -650,6 +737,11 @@ final _navItems = <_NavItem>[
     path: '/formlar',
     label: 'Formlar',
     icon: PhosphorIcons.files(PhosphorIconsStyle.regular),
+    children: const [
+      _NavSubItem(path: '/formlar/basvuru', label: 'Başvuru Formu'),
+      _NavSubItem(path: '/formlar/hurda', label: 'Hurda Formu'),
+      _NavSubItem(path: '/formlar/devir', label: 'Devir Formu'),
+    ],
   ),
   _NavItem(
     path: '/is-emirleri',

@@ -12,12 +12,12 @@ Future<bool> printScrapForm(
     record,
     settings: settings ?? ScrapFormPrintSettings.defaults,
   );
-  final popup = html.window.open('', '_blank');
-  if (popup is! html.Window) return false;
-  popup.document.documentElement?.setInnerHtml(
-    htmlContent,
-    treeSanitizer: html.NodeTreeSanitizer.trusted,
-  );
+  final blob = html.Blob([htmlContent], 'text/html');
+  final url = html.Url.createObjectUrlFromBlob(blob);
+  html.window.open(url, '_blank');
+  Future<void>.delayed(const Duration(seconds: 5), () {
+    html.Url.revokeObjectUrl(url);
+  });
   return true;
 }
 

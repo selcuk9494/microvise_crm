@@ -159,7 +159,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       final rows = await client
           .from('customer_locations')
           .select(
-            'id,customer_id,title,description,address,location_lat,location_lng,is_active,created_at',
+            'id,customer_id,title,description,address,location_link,location_lat,location_lng,is_active,created_at',
           )
           .eq('customer_id', customerId)
           .eq('is_active', true)
@@ -565,6 +565,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
               'title': title ?? address ?? description ?? 'Konum',
               'description': description,
               'address': address,
+              'location_link': _nullIfEmpty(draft.locationLinkController.text),
               'location_lat': double.tryParse(draft.latController.text.trim()),
               'location_lng': double.tryParse(draft.lngController.text.trim()),
               'is_active': true,
@@ -575,6 +576,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                 (row['title'] as String?) != null ||
                 (row['description'] as String?) != null ||
                 (row['address'] as String?) != null ||
+                (row['location_link'] as String?) != null ||
                 row['location_lat'] != null ||
                 row['location_lng'] != null,
           )
@@ -667,11 +669,13 @@ class _CustomerLocationDraft {
     String? title,
     String? description,
     String? address,
+    String? locationLink,
     String? lat,
     String? lng,
   }) : titleController = TextEditingController(text: title ?? ''),
        descriptionController = TextEditingController(text: description ?? ''),
        addressController = TextEditingController(text: address ?? ''),
+       locationLinkController = TextEditingController(text: locationLink ?? ''),
        latController = TextEditingController(text: lat ?? ''),
        lngController = TextEditingController(text: lng ?? '');
 
@@ -681,6 +685,7 @@ class _CustomerLocationDraft {
       title: location.title,
       description: location.description,
       address: location.address,
+      locationLink: location.locationLink,
       lat: location.locationLat?.toString(),
       lng: location.locationLng?.toString(),
     );
@@ -690,6 +695,7 @@ class _CustomerLocationDraft {
   final TextEditingController titleController;
   final TextEditingController descriptionController;
   final TextEditingController addressController;
+  final TextEditingController locationLinkController;
   final TextEditingController latController;
   final TextEditingController lngController;
 
@@ -697,6 +703,7 @@ class _CustomerLocationDraft {
     titleController.dispose();
     descriptionController.dispose();
     addressController.dispose();
+    locationLinkController.dispose();
     latController.dispose();
     lngController.dispose();
   }
@@ -768,6 +775,15 @@ class _CustomerLocationCard extends StatelessWidget {
               hintText: 'Cadde, sokak, no, ilçe...',
               alignLabelWithHint: true,
               prefixIcon: Icon(Icons.home_work_outlined),
+            ),
+          ),
+          const Gap(12),
+          TextFormField(
+            controller: draft.locationLinkController,
+            decoration: const InputDecoration(
+              labelText: 'Konum Linki',
+              hintText: 'Google Maps / Apple Maps linki',
+              prefixIcon: Icon(Icons.link_rounded),
             ),
           ),
           const Gap(12),

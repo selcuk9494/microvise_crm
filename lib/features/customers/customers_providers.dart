@@ -271,7 +271,7 @@ final customerLocationsProvider =
         final rows = await client
             .from('customer_locations')
             .select(
-              'id,customer_id,title,description,address,location_lat,location_lng,is_active,created_at',
+              'id,customer_id,title,description,address,location_link,location_lat,location_lng,is_active,created_at',
             )
             .eq('customer_id', customerId)
             .eq('is_active', true)

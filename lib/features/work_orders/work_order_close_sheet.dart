@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:signature/signature.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/platform/current_position.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
@@ -47,6 +48,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
   final _addressController = TextEditingController();
   final _locationTitleController = TextEditingController();
   final _locationDescriptionController = TextEditingController();
+  final _locationLinkController = TextEditingController();
 
   final SignatureController _signatureController = SignatureController(
     penStrokeWidth: 2.5,
@@ -57,6 +59,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
   bool _addLine = false;
   bool _addGmp3 = false;
   bool _saveAsCustomerLocation = false;
+  bool _fetchingLocation = false;
 
   final _lineNumberController = TextEditingController();
   final _lineSimController = TextEditingController();
@@ -75,6 +78,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     _addressController.dispose();
     _locationTitleController.dispose();
     _locationDescriptionController.dispose();
+    _locationLinkController.dispose();
     _signatureController.dispose();
     _lineNumberController.dispose();
     _lineSimController.dispose();
@@ -92,6 +96,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     setState(() => _saving = true);
     try {
       final now = DateTime.now();
+      final locationLink = _resolvedLocationLink();
 
       final branchId = _selectedBranchId ?? widget.order.branchId;
       if (branchId != null) {
@@ -120,6 +125,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         if (title.isNotEmpty ||
             description.isNotEmpty ||
             address.isNotEmpty ||
+            locationLink != null ||
             lat != null ||
             lng != null) {
           final payload = {
@@ -127,6 +133,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
             'title': title.isEmpty ? 'İş Emri Konumu' : title,
             'description': description.isEmpty ? null : description,
             'address': address.isEmpty ? null : address,
+            'location_link': locationLink,
             'location_lat': lat,
             'location_lng': lng,
             'is_active': true,
@@ -238,6 +245,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           .update({
             'status': 'done',
             'branch_id': branchId,
+            'location_link': locationLink,
             'closed_at': now.toIso8601String(),
             'closed_by': client.auth.currentUser?.id,
             'close_notes': _notesController.text.trim().isEmpty
@@ -278,6 +286,50 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _fetchLocation() async {
+    setState(() => _fetchingLocation = true);
+    try {
+      final result = await fetchCurrentPosition();
+      if (result == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Konum alınamadı. İzin veya tarayıcı desteğini kontrol edin.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final lat = result.latitude.toStringAsFixed(6);
+      final lng = result.longitude.toStringAsFixed(6);
+      _latController.text = lat;
+      _lngController.text = lng;
+      _locationLinkController.text = 'https://maps.google.com/?q=$lat,$lng';
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Konum alındı.')));
+    } finally {
+      if (mounted) setState(() => _fetchingLocation = false);
+    }
+  }
+
+  String? _resolvedLocationLink() {
+    final rawLink = _locationLinkController.text.trim();
+    if (rawLink.isNotEmpty) {
+      return rawLink;
+    }
+    final lat = _latController.text.trim();
+    final lng = _lngController.text.trim();
+    if (lat.isEmpty || lng.isEmpty) {
+      return null;
+    }
+    return 'https://maps.google.com/?q=$lat,$lng';
   }
 
   @override
@@ -335,6 +387,8 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                         _locationDescriptionController.text =
                             selected.description ?? '';
                         _addressController.text = selected.address ?? '';
+                        _locationLinkController.text =
+                            selected.locationLink ?? '';
                         _latController.text =
                             selected.locationLat?.toString() ?? '';
                         _lngController.text =
@@ -345,8 +399,11 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               addressController: _addressController,
               latController: _latController,
               lngController: _lngController,
+              locationLinkController: _locationLinkController,
               locationTitleController: _locationTitleController,
               locationDescriptionController: _locationDescriptionController,
+              fetchingLocation: _fetchingLocation,
+              onFetchLocation: _saving ? null : _fetchLocation,
               saveAsCustomerLocation: _saveAsCustomerLocation,
               onToggleSaveAsCustomerLocation: _saving
                   ? null
@@ -412,8 +469,11 @@ class _SheetBody extends StatelessWidget {
     required this.addressController,
     required this.latController,
     required this.lngController,
+    required this.locationLinkController,
     required this.locationTitleController,
     required this.locationDescriptionController,
+    required this.fetchingLocation,
+    required this.onFetchLocation,
     required this.saveAsCustomerLocation,
     required this.onToggleSaveAsCustomerLocation,
     required this.addLine,
@@ -444,8 +504,11 @@ class _SheetBody extends StatelessWidget {
   final TextEditingController addressController;
   final TextEditingController latController;
   final TextEditingController lngController;
+  final TextEditingController locationLinkController;
   final TextEditingController locationTitleController;
   final TextEditingController locationDescriptionController;
+  final bool fetchingLocation;
+  final VoidCallback? onFetchLocation;
   final bool saveAsCustomerLocation;
   final ValueChanged<bool>? onToggleSaveAsCustomerLocation;
   final bool addLine;
@@ -597,6 +660,34 @@ class _SheetBody extends StatelessWidget {
                         labelText: 'Adres (güncelle)',
                         hintText: 'Cadde, sokak, no, ilçe...',
                       ),
+                    ),
+                    const Gap(12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: locationLinkController,
+                            decoration: const InputDecoration(
+                              labelText: 'Konum Linki',
+                              hintText: 'Google Maps veya paylaşım linki',
+                            ),
+                          ),
+                        ),
+                        const Gap(12),
+                        OutlinedButton.icon(
+                          onPressed: fetchingLocation ? null : onFetchLocation,
+                          icon: fetchingLocation
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.my_location_rounded),
+                          label: const Text('Konum Al'),
+                        ),
+                      ],
                     ),
                     const Gap(12),
                     Row(

@@ -64,6 +64,7 @@ class CustomerLocation {
     required this.title,
     required this.description,
     required this.address,
+    required this.locationLink,
     required this.locationLat,
     required this.locationLng,
     required this.isActive,
@@ -74,6 +75,7 @@ class CustomerLocation {
   final String title;
   final String? description;
   final String? address;
+  final String? locationLink;
   final double? locationLat;
   final double? locationLng;
   final bool isActive;
@@ -85,6 +87,7 @@ class CustomerLocation {
       title: (json['title'] ?? '').toString(),
       description: json['description']?.toString(),
       address: json['address']?.toString(),
+      locationLink: json['location_link']?.toString(),
       locationLat: (json['location_lat'] as num?)?.toDouble(),
       locationLng: (json['location_lng'] as num?)?.toDouble(),
       isActive: (json['is_active'] as bool?) ?? true,
