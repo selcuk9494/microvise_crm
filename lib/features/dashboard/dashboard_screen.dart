@@ -17,11 +17,27 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final metricsAsync = ref.watch(dashboardMetricsProvider);
     final seriesAsync = ref.watch(dashboardRevenueSeriesProvider);
-    final money = NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0);
+    final activitiesAsync = ref.watch(dashboardActivitiesProvider);
+    final money = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: '₺',
+      decimalDigits: 0,
+    );
 
     return AppPageLayout(
       title: 'Panel',
       subtitle: 'Genel görünüm, bugün ve yaklaşan işler.',
+      actions: [
+        OutlinedButton.icon(
+          onPressed: () {
+            ref.invalidate(dashboardMetricsProvider);
+            ref.invalidate(dashboardRevenueSeriesProvider);
+            ref.invalidate(dashboardActivitiesProvider);
+          },
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: const Text('Yenile'),
+        ),
+      ],
       body: Column(
         children: [
           Skeletonizer(
@@ -32,105 +48,131 @@ class DashboardScreen extends ConsumerWidget {
             ),
           ),
           const Gap(16),
+          metricsAsync.when(
+            data: (metrics) =>
+                _DashboardHighlights(metrics: metrics, money: money),
+            loading: () => const AppCard(child: SizedBox(height: 116)),
+            error: (error, stackTrace) => const SizedBox.shrink(),
+          ),
+          const Gap(16),
           LayoutBuilder(
             builder: (context, constraints) {
               final twoCols = constraints.maxWidth >= 980;
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              final sidePanel = Column(
                 children: [
-                  Expanded(
-                    flex: twoCols ? 3 : 1,
-                    child: AppCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Gelir (Son 14 Gün)',
-                            style: Theme.of(context).textTheme.titleMedium,
+                  AppCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'İş Emri Durumu',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const Gap(6),
+                        Text(
+                          'Açık, devam eden ve tamamlanan işler.',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: const Color(0xFF64748B)),
+                        ),
+                        const Gap(16),
+                        SizedBox(
+                          height: 160,
+                          child: metricsAsync.when(
+                            data: (metrics) =>
+                                _WorkOrderPieChart(metrics: metrics),
+                            loading: () => const _ChartSkeleton(),
+                            error: (error, stackTrace) => const _ChartError(),
                           ),
-                          const Gap(6),
-                          Text(
-                            'Ödemeler üzerinden günlük toplam.',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: const Color(0xFF64748B)),
-                          ),
-                          const Gap(16),
-                          SizedBox(
-                            height: 240,
-                            child: seriesAsync.when(
-                              data: (points) => _RevenueChart(points: points),
-                              loading: () => const _ChartSkeleton(),
-                              error: (_, __) => const _ChartError(),
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                  if (twoCols) const Gap(16),
-                  if (twoCols)
-                    Expanded(
-                      flex: 2,
-                      child: Column(
-                        children: [
-                          AppCard(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'İş Emri Durumu',
-                                  style: Theme.of(context).textTheme.titleMedium,
-                                ),
-                                const Gap(6),
-                                Text(
-                                  'Açık, devam eden ve tamamlanan işler.',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(color: const Color(0xFF64748B)),
-                                ),
-                                const Gap(16),
-                                SizedBox(
-                                  height: 160,
-                                  child: metricsAsync.when(
-                                    data: (m) => _WorkOrderPieChart(metrics: m),
-                                    loading: () => const _ChartSkeleton(),
-                                    error: (_, __) => const _ChartError(),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Gap(16),
-                          AppCard(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Son Aktiviteler',
-                                  style: Theme.of(context).textTheme.titleMedium,
-                                ),
-                                const Gap(6),
-                                Text(
-                                  'İş emirleri ve servis kayıtları.',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(color: const Color(0xFF64748B)),
-                                ),
-                                const Gap(14),
-                                const _ActivityTimeline(),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                  const Gap(16),
+                  AppCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Son Aktiviteler',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const Gap(6),
+                        Text(
+                          'İş emirleri ve servis kayıtları.',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: const Color(0xFF64748B)),
+                        ),
+                        const Gap(8),
+                        activitiesAsync.when(
+                          data: (items) => _ActivitySummary(items: items),
+                          loading: () => const SizedBox.shrink(),
+                          error: (error, stackTrace) => const SizedBox.shrink(),
+                        ),
+                        const Gap(14),
+                        const _ActivityTimeline(),
+                      ],
                     ),
+                  ),
                 ],
               );
+
+              return twoCols
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: _RevenuePanel(seriesAsync: seriesAsync),
+                        ),
+                        const Gap(16),
+                        Expanded(flex: 2, child: sidePanel),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        _RevenuePanel(seriesAsync: seriesAsync),
+                        const Gap(16),
+                        sidePanel,
+                      ],
+                    );
             },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RevenuePanel extends StatelessWidget {
+  const _RevenuePanel({required this.seriesAsync});
+
+  final AsyncValue<List<DashboardDailyPoint>> seriesAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Gelir (Son 14 Gün)',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const Gap(6),
+          Text(
+            'Ödemeler üzerinden günlük toplam.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+          ),
+          const Gap(16),
+          SizedBox(
+            height: 240,
+            child: seriesAsync.when(
+              data: (points) => _RevenueChart(points: points),
+              loading: () => const _ChartSkeleton(),
+              error: (error, stackTrace) => const _ChartError(),
+            ),
           ),
         ],
       ),
@@ -147,8 +189,8 @@ class _MetricsGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final revenueChange = metrics.revenueChangePercent;
-    final revenueChangeText = revenueChange >= 0 
-        ? '+${revenueChange.toStringAsFixed(0)}%' 
+    final revenueChangeText = revenueChange >= 0
+        ? '+${revenueChange.toStringAsFixed(0)}%'
         : '${revenueChange.toStringAsFixed(0)}%';
 
     return LayoutBuilder(
@@ -157,10 +199,10 @@ class _MetricsGrid extends StatelessWidget {
         final columns = width >= 1200
             ? 6
             : width >= 980
-                ? 4
-                : width >= 720
-                    ? 3
-                    : 2;
+            ? 4
+            : width >= 720
+            ? 3
+            : 2;
         final spacing = 12.0;
         final itemWidth = (width - (columns - 1) * spacing) / columns;
 
@@ -174,7 +216,9 @@ class _MetricsGrid extends StatelessWidget {
             title: 'Açık İş Emirleri',
             value: metrics.openWorkOrders.toString(),
             icon: Icons.assignment_rounded,
-            tone: metrics.openWorkOrders > 0 ? _MetricTone.warning : _MetricTone.neutral,
+            tone: metrics.openWorkOrders > 0
+                ? _MetricTone.warning
+                : _MetricTone.neutral,
           ),
           _MetricTile(
             title: 'Devam Eden',
@@ -191,7 +235,9 @@ class _MetricsGrid extends StatelessWidget {
             title: 'Süresi Dolanlar',
             value: metrics.expiringSoon.toString(),
             icon: Icons.warning_rounded,
-            tone: metrics.expiringSoon > 0 ? _MetricTone.warning : _MetricTone.neutral,
+            tone: metrics.expiringSoon > 0
+                ? _MetricTone.warning
+                : _MetricTone.neutral,
           ),
           _MetricTile(
             title: 'Gelir (Bu Ay)',
@@ -199,7 +245,9 @@ class _MetricsGrid extends StatelessWidget {
             icon: Icons.payments_rounded,
             tone: _MetricTone.success,
             subtitle: revenueChangeText,
-            subtitleColor: revenueChange >= 0 ? AppTheme.success : AppTheme.error,
+            subtitleColor: revenueChange >= 0
+                ? AppTheme.success
+                : AppTheme.error,
           ),
           _MetricTile(
             title: 'Açık Faturalar',
@@ -211,7 +259,9 @@ class _MetricsGrid extends StatelessWidget {
             title: 'Düşük Stok',
             value: metrics.lowStockProducts.toString(),
             icon: Icons.inventory_2_rounded,
-            tone: metrics.lowStockProducts > 0 ? _MetricTone.warning : _MetricTone.success,
+            tone: metrics.lowStockProducts > 0
+                ? _MetricTone.warning
+                : _MetricTone.success,
           ),
         ];
 
@@ -222,10 +272,7 @@ class _MetricsGrid extends StatelessWidget {
             for (final item in items)
               SizedBox(
                 width: itemWidth,
-                child: AppCard(
-                  padding: const EdgeInsets.all(16),
-                  child: item,
-                ),
+                child: AppCard(padding: const EdgeInsets.all(16), child: item),
               ),
           ],
         );
@@ -268,10 +315,9 @@ class _MetricTile extends StatelessWidget {
             Expanded(
               child: Text(
                 title,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: const Color(0xFF64748B)),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
               ),
             ),
             Container(
@@ -293,18 +339,18 @@ class _MetricTile extends StatelessWidget {
             Text(
               value,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontSize: 22,
-                    letterSpacing: -0.2,
-                  ),
+                fontSize: 22,
+                letterSpacing: -0.2,
+              ),
             ),
             if (subtitle != null) ...[
               const Gap(8),
               Text(
                 subtitle!,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: subtitleColor ?? const Color(0xFF64748B),
-                      fontWeight: FontWeight.w600,
-                    ),
+                  color: subtitleColor ?? const Color(0xFF64748B),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ],
@@ -316,6 +362,151 @@ class _MetricTile extends StatelessWidget {
 
 enum _MetricTone { primary, warning, success, neutral }
 
+class _DashboardHighlights extends StatelessWidget {
+  const _DashboardHighlights({required this.metrics, required this.money});
+
+  final DashboardMetrics metrics;
+  final NumberFormat money;
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = <_HighlightData>[
+      if (metrics.todayWorkOrders > 0)
+        _HighlightData(
+          title: 'Bugün planlı işler var',
+          description:
+              '${metrics.todayWorkOrders} iş emri bugün için planlanmış durumda.',
+          icon: Icons.event_note_rounded,
+          color: AppTheme.primary,
+        ),
+      if (metrics.expiringSoon > 0)
+        _HighlightData(
+          title: 'Yaklaşan yenilemeler',
+          description:
+              '${metrics.expiringSoon} hat/lisans için bitiş tarihi yaklaşıyor.',
+          icon: Icons.schedule_send_rounded,
+          color: AppTheme.warning,
+        ),
+      if (metrics.openInvoices > 0)
+        _HighlightData(
+          title: 'Tahsilat bekleyen faturalar',
+          description:
+              '${metrics.openInvoices} açık fatura toplam ${money.format(metrics.totalInvoiceAmount)} tutuyor.',
+          icon: Icons.receipt_long_rounded,
+          color: AppTheme.error,
+        ),
+      if (metrics.lowStockProducts > 0)
+        _HighlightData(
+          title: 'Düşük stok uyarısı',
+          description:
+              '${metrics.lowStockProducts} ürün minimum stok seviyesinde veya altında.',
+          icon: Icons.inventory_2_rounded,
+          color: AppTheme.success,
+        ),
+    ];
+
+    if (cards.isEmpty) {
+      return AppCard(
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppTheme.success.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(
+                Icons.check_circle_rounded,
+                color: AppTheme.success,
+              ),
+            ),
+            const Gap(12),
+            Expanded(
+              child: Text(
+                'Kritik uyarı görünmüyor. Panel genel olarak sağlıklı.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        for (int i = 0; i < cards.length; i++) ...[
+          _HighlightCard(data: cards[i]),
+          if (i != cards.length - 1) const Gap(12),
+        ],
+      ],
+    );
+  }
+}
+
+class _HighlightData {
+  const _HighlightData({
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.color,
+  });
+
+  final String title;
+  final String description;
+  final IconData icon;
+  final Color color;
+}
+
+class _HighlightCard extends StatelessWidget {
+  const _HighlightCard({required this.data});
+
+  final _HighlightData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: data.color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(data.icon, color: data.color),
+          ),
+          const Gap(12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data.title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const Gap(4),
+                Text(
+                  data.description,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _WorkOrderPieChart extends StatelessWidget {
   const _WorkOrderPieChart({required this.metrics});
 
@@ -323,16 +514,18 @@ class _WorkOrderPieChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = metrics.openWorkOrders + metrics.inProgressWorkOrders + metrics.completedWorkOrders;
-    
+    final total =
+        metrics.openWorkOrders +
+        metrics.inProgressWorkOrders +
+        metrics.completedWorkOrders;
+
     if (total == 0) {
       return Center(
         child: Text(
           'İş emri kaydı yok.',
-          style: Theme.of(context)
-              .textTheme
-              .bodyMedium
-              ?.copyWith(color: const Color(0xFF64748B)),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
         ),
       );
     }
@@ -372,11 +565,23 @@ class _WorkOrderPieChart extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _LegendItem(color: AppTheme.warning, label: 'Açık', value: metrics.openWorkOrders),
+            _LegendItem(
+              color: AppTheme.warning,
+              label: 'Açık',
+              value: metrics.openWorkOrders,
+            ),
             const Gap(8),
-            _LegendItem(color: AppTheme.primary, label: 'Devam', value: metrics.inProgressWorkOrders),
+            _LegendItem(
+              color: AppTheme.primary,
+              label: 'Devam',
+              value: metrics.inProgressWorkOrders,
+            ),
             const Gap(8),
-            _LegendItem(color: AppTheme.success, label: 'Tamamlanan', value: metrics.completedWorkOrders),
+            _LegendItem(
+              color: AppTheme.success,
+              label: 'Tamamlanan',
+              value: metrics.completedWorkOrders,
+            ),
           ],
         ),
       ],
@@ -385,7 +590,11 @@ class _WorkOrderPieChart extends StatelessWidget {
 }
 
 class _LegendItem extends StatelessWidget {
-  const _LegendItem({required this.color, required this.label, required this.value});
+  const _LegendItem({
+    required this.color,
+    required this.label,
+    required this.value,
+  });
 
   final Color color;
   final String label;
@@ -407,9 +616,9 @@ class _LegendItem extends StatelessWidget {
         const Gap(8),
         Text(
           '$label: $value',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w500,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
         ),
       ],
     );
@@ -428,10 +637,9 @@ class _RevenueChart extends StatelessWidget {
       return Center(
         child: Text(
           'Bu aralıkta gelir kaydı yok.',
-          style: Theme.of(context)
-              .textTheme
-              .bodyMedium
-              ?.copyWith(color: const Color(0xFF64748B)),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
         ),
       );
     }
@@ -513,10 +721,70 @@ class _ChartError extends StatelessWidget {
     return Center(
       child: Text(
         'Gelir grafiği yüklenemedi.',
-        style: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.copyWith(color: const Color(0xFF64748B)),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+      ),
+    );
+  }
+}
+
+class _ActivitySummary extends StatelessWidget {
+  const _ActivitySummary({required this.items});
+
+  final List<DashboardActivity> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final workOrders = items
+        .where((item) => item.type == DashboardActivityType.workOrder)
+        .length;
+    final services = items.length - workOrders;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _SummaryChip(
+          label: 'İş Emri',
+          value: '$workOrders',
+          color: AppTheme.primary,
+        ),
+        _SummaryChip(
+          label: 'Servis',
+          value: '$services',
+          color: AppTheme.success,
+        ),
+      ],
+    );
+  }
+}
+
+class _SummaryChip extends StatelessWidget {
+  const _SummaryChip({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Text(
+        '$label: $value',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -534,10 +802,9 @@ class _ActivityTimeline extends ConsumerWidget {
         if (items.isEmpty) {
           return Text(
             'Henüz aktivite kaydı yok.',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: const Color(0xFF64748B)),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
           );
         }
 
@@ -545,7 +812,9 @@ class _ActivityTimeline extends ConsumerWidget {
           children: [
             for (int i = 0; i < items.length; i++)
               Padding(
-                padding: EdgeInsets.only(bottom: i == items.length - 1 ? 0 : 12),
+                padding: EdgeInsets.only(
+                  bottom: i == items.length - 1 ? 0 : 12,
+                ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -574,9 +843,7 @@ class _ActivityTimeline extends ConsumerWidget {
                               items[i].type == DashboardActivityType.workOrder
                                   ? 'İş emri güncellendi'
                                   : 'Servis kaydı güncellendi',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
+                              style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(fontWeight: FontWeight.w600),
                             ),
                             const Gap(2),
@@ -587,9 +854,7 @@ class _ActivityTimeline extends ConsumerWidget {
                                     items[i].customerName ?? items[i].title,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
+                                    style: Theme.of(context).textTheme.bodySmall
                                         ?.copyWith(
                                           color: const Color(0xFF64748B),
                                         ),
@@ -597,10 +862,10 @@ class _ActivityTimeline extends ConsumerWidget {
                                 ),
                                 Text(
                                   _relativeTime(items[i].createdAt),
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(color: const Color(0xFF94A3B8)),
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: const Color(0xFF94A3B8),
+                                      ),
                                 ),
                               ],
                             ),
@@ -647,9 +912,8 @@ class _ActivityTimeline extends ConsumerWidget {
                           children: [
                             Text(
                               'İş emri güncellendi',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w600),
                             ),
                             const Gap(2),
                             const Row(
@@ -668,12 +932,11 @@ class _ActivityTimeline extends ConsumerWidget {
           ],
         ),
       ),
-      error: (_, __) => Text(
+      error: (error, stackTrace) => Text(
         'Aktivite akışı yüklenemedi.',
-        style: Theme.of(context)
-            .textTheme
-            .bodySmall
-            ?.copyWith(color: const Color(0xFF64748B)),
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
       ),
     );
   }
