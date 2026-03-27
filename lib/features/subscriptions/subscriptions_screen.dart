@@ -9,6 +9,46 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 
+final subscriptionsFiltersProvider =
+    NotifierProvider<SubscriptionsFiltersNotifier, SubscriptionsFilters>(
+      SubscriptionsFiltersNotifier.new,
+    );
+
+class SubscriptionsFiltersNotifier extends Notifier<SubscriptionsFilters> {
+  @override
+  SubscriptionsFilters build() => const SubscriptionsFilters();
+
+  void setQuery(String value) {
+    state = state.copyWith(query: value);
+  }
+
+  void setStatus(SubscriptionStatusFilter value) {
+    state = state.copyWith(status: value);
+  }
+}
+
+enum SubscriptionStatusFilter { all, active, expiringSoon, expired }
+
+class SubscriptionsFilters {
+  const SubscriptionsFilters({
+    this.query = '',
+    this.status = SubscriptionStatusFilter.all,
+  });
+
+  final String query;
+  final SubscriptionStatusFilter status;
+
+  SubscriptionsFilters copyWith({
+    String? query,
+    SubscriptionStatusFilter? status,
+  }) {
+    return SubscriptionsFilters(
+      query: query ?? this.query,
+      status: status ?? this.status,
+    );
+  }
+}
+
 // Hat modeli
 class Line {
   final String id;
@@ -35,9 +75,11 @@ class Line {
     this.isActive = true,
   });
 
-  bool get isExpired => expiresAt != null && expiresAt!.isBefore(DateTime.now());
-  bool get isExpiringSoon => expiresAt != null && 
-      expiresAt!.isAfter(DateTime.now()) && 
+  bool get isExpired =>
+      expiresAt != null && expiresAt!.isBefore(DateTime.now());
+  bool get isExpiringSoon =>
+      expiresAt != null &&
+      expiresAt!.isAfter(DateTime.now()) &&
       expiresAt!.isBefore(DateTime.now().add(const Duration(days: 30)));
 
   factory Line.fromJson(Map<String, dynamic> json) {
@@ -80,9 +122,11 @@ class License {
     this.isActive = true,
   });
 
-  bool get isExpired => expiresAt != null && expiresAt!.isBefore(DateTime.now());
-  bool get isExpiringSoon => expiresAt != null && 
-      expiresAt!.isAfter(DateTime.now()) && 
+  bool get isExpired =>
+      expiresAt != null && expiresAt!.isBefore(DateTime.now());
+  bool get isExpiringSoon =>
+      expiresAt != null &&
+      expiresAt!.isAfter(DateTime.now()) &&
       expiresAt!.isBefore(DateTime.now().add(const Duration(days: 30)));
 
   factory License.fromJson(Map<String, dynamic> json) {
@@ -111,7 +155,9 @@ final linesProvider = FutureProvider.autoDispose<List<Line>>((ref) async {
       .eq('is_active', true)
       .order('expires_at', ascending: true);
 
-  return (rows as List).map((e) => Line.fromJson(e as Map<String, dynamic>)).toList();
+  return (rows as List)
+      .map((e) => Line.fromJson(e as Map<String, dynamic>))
+      .toList();
 });
 
 final licensesProvider = FutureProvider.autoDispose<List<License>>((ref) async {
@@ -124,14 +170,17 @@ final licensesProvider = FutureProvider.autoDispose<List<License>>((ref) async {
       .eq('is_active', true)
       .order('expires_at', ascending: true);
 
-  return (rows as List).map((e) => License.fromJson(e as Map<String, dynamic>)).toList();
+  return (rows as List)
+      .map((e) => License.fromJson(e as Map<String, dynamic>))
+      .toList();
 });
 
 class SubscriptionsScreen extends ConsumerStatefulWidget {
   const SubscriptionsScreen({super.key});
 
   @override
-  ConsumerState<SubscriptionsScreen> createState() => _SubscriptionsScreenState();
+  ConsumerState<SubscriptionsScreen> createState() =>
+      _SubscriptionsScreenState();
 }
 
 class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
@@ -153,6 +202,10 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final filters = ref.watch(subscriptionsFiltersProvider);
+    final linesAsync = ref.watch(linesProvider);
+    final licensesAsync = ref.watch(licensesProvider);
+
     return AppPageLayout(
       title: 'Hat & Lisans Takibi',
       subtitle: 'Hat ve GMP3 lisanslarını yönetin',
@@ -168,6 +221,89 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
       ],
       body: Column(
         children: [
+          Row(
+            children: [
+              Expanded(
+                child: _OverviewCard(
+                  label: 'Aktif Hat',
+                  value: linesAsync.asData?.value.length.toString() ?? '—',
+                  icon: Icons.sim_card_rounded,
+                  color: AppTheme.primary,
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: _OverviewCard(
+                  label: 'Aktif Lisans',
+                  value: licensesAsync.asData?.value.length.toString() ?? '—',
+                  icon: Icons.key_rounded,
+                  color: AppTheme.success,
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: _OverviewCard(
+                  label: 'Yaklaşan Bitiş',
+                  value:
+                      '${(linesAsync.asData?.value.where((line) => line.isExpiringSoon).length ?? 0) + (licensesAsync.asData?.value.where((license) => license.isExpiringSoon).length ?? 0)}',
+                  icon: Icons.schedule_rounded,
+                  color: AppTheme.warning,
+                ),
+              ),
+            ],
+          ),
+          const Gap(16),
+          AppCard(
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    onChanged: ref
+                        .read(subscriptionsFiltersProvider.notifier)
+                        .setQuery,
+                    decoration: const InputDecoration(
+                      labelText: 'Ara',
+                      hintText: 'Müşteri, hat numarası veya lisans adı',
+                      prefixIcon: Icon(Icons.search_rounded),
+                    ),
+                  ),
+                ),
+                const Gap(12),
+                SizedBox(
+                  width: 220,
+                  child: DropdownButtonFormField<SubscriptionStatusFilter>(
+                    initialValue: filters.status,
+                    items: const [
+                      DropdownMenuItem(
+                        value: SubscriptionStatusFilter.all,
+                        child: Text('Tüm Durumlar'),
+                      ),
+                      DropdownMenuItem(
+                        value: SubscriptionStatusFilter.active,
+                        child: Text('Aktif'),
+                      ),
+                      DropdownMenuItem(
+                        value: SubscriptionStatusFilter.expiringSoon,
+                        child: Text('Yakında Dolacak'),
+                      ),
+                      DropdownMenuItem(
+                        value: SubscriptionStatusFilter.expired,
+                        child: Text('Süresi Doldu'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      ref
+                          .read(subscriptionsFiltersProvider.notifier)
+                          .setStatus(value);
+                    },
+                    decoration: const InputDecoration(labelText: 'Durum'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Gap(16),
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 2),
             decoration: BoxDecoration(
@@ -209,10 +345,30 @@ class _LinesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final linesAsync = ref.watch(linesProvider);
+    final filters = ref.watch(subscriptionsFiltersProvider);
 
     return linesAsync.when(
       data: (lines) {
-        if (lines.isEmpty) {
+        final filteredLines = lines
+            .where((line) {
+              final query = filters.query.trim().toLowerCase();
+              final matchesQuery =
+                  query.isEmpty ||
+                  line.number.toLowerCase().contains(query) ||
+                  (line.simNumber?.toLowerCase().contains(query) ?? false) ||
+                  (line.customerName?.toLowerCase().contains(query) ?? false);
+              final matchesStatus = switch (filters.status) {
+                SubscriptionStatusFilter.all => true,
+                SubscriptionStatusFilter.active =>
+                  !line.isExpired && !line.isExpiringSoon,
+                SubscriptionStatusFilter.expiringSoon => line.isExpiringSoon,
+                SubscriptionStatusFilter.expired => line.isExpired,
+              };
+              return matchesQuery && matchesStatus;
+            })
+            .toList(growable: false);
+
+        if (filteredLines.isEmpty) {
           return Center(
             child: AppCard(
               child: Padding(
@@ -220,11 +376,19 @@ class _LinesTab extends ConsumerWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.phone_android_rounded, size: 48, color: const Color(0xFF94A3B8)),
+                    Icon(
+                      Icons.phone_android_rounded,
+                      size: 48,
+                      color: const Color(0xFF94A3B8),
+                    ),
                     const Gap(12),
                     Text(
-                      'Hat kaydı bulunmuyor',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+                      lines.isEmpty
+                          ? 'Hat kaydı bulunmuyor'
+                          : 'Filtreye uygun hat bulunamadı',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
                     ),
                   ],
                 ),
@@ -233,9 +397,13 @@ class _LinesTab extends ConsumerWidget {
           );
         }
 
-        final expired = lines.where((l) => l.isExpired).toList();
-        final expiringSoon = lines.where((l) => l.isExpiringSoon).toList();
-        final active = lines.where((l) => !l.isExpired && !l.isExpiringSoon).toList();
+        final expired = filteredLines.where((line) => line.isExpired).toList();
+        final expiringSoon = filteredLines
+            .where((line) => line.isExpiringSoon)
+            .toList();
+        final active = filteredLines
+            .where((line) => !line.isExpired && !line.isExpiringSoon)
+            .toList();
 
         return ListView(
           padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -243,11 +411,29 @@ class _LinesTab extends ConsumerWidget {
             // Summary
             Row(
               children: [
-                Expanded(child: _SummaryCard(title: 'Toplam', value: lines.length.toString(), color: AppTheme.primary)),
+                Expanded(
+                  child: _SummaryCard(
+                    title: 'Toplam',
+                    value: filteredLines.length.toString(),
+                    color: AppTheme.primary,
+                  ),
+                ),
                 const Gap(12),
-                Expanded(child: _SummaryCard(title: 'Süresi Dolan', value: expired.length.toString(), color: AppTheme.error)),
+                Expanded(
+                  child: _SummaryCard(
+                    title: 'Süresi Dolan',
+                    value: expired.length.toString(),
+                    color: AppTheme.error,
+                  ),
+                ),
                 const Gap(12),
-                Expanded(child: _SummaryCard(title: 'Yaklaşan', value: expiringSoon.length.toString(), color: AppTheme.warning)),
+                Expanded(
+                  child: _SummaryCard(
+                    title: 'Yaklaşan',
+                    value: expiringSoon.length.toString(),
+                    color: AppTheme.warning,
+                  ),
+                ),
               ],
             ),
             const Gap(16),
@@ -258,9 +444,14 @@ class _LinesTab extends ConsumerWidget {
               const Gap(16),
             ],
             if (expiringSoon.isNotEmpty) ...[
-              _SectionHeader(title: '30 Gün İçinde Dolacaklar', color: AppTheme.warning),
+              _SectionHeader(
+                title: '30 Gün İçinde Dolacaklar',
+                color: AppTheme.warning,
+              ),
               const Gap(8),
-              ...expiringSoon.map((l) => _LineCard(line: l, dateFormat: dateFormat)),
+              ...expiringSoon.map(
+                (l) => _LineCard(line: l, dateFormat: dateFormat),
+              ),
               const Gap(16),
             ],
             if (active.isNotEmpty) ...[
@@ -272,7 +463,8 @@ class _LinesTab extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, __) => const Center(child: Text('Hatlar yüklenemedi')),
+      error: (error, stackTrace) =>
+          const Center(child: Text('Hatlar yüklenemedi')),
     );
   }
 }
@@ -285,10 +477,31 @@ class _LicensesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final licensesAsync = ref.watch(licensesProvider);
+    final filters = ref.watch(subscriptionsFiltersProvider);
 
     return licensesAsync.when(
       data: (licenses) {
-        if (licenses.isEmpty) {
+        final filteredLicenses = licenses
+            .where((license) {
+              final query = filters.query.trim().toLowerCase();
+              final matchesQuery =
+                  query.isEmpty ||
+                  license.name.toLowerCase().contains(query) ||
+                  license.licenseType.toLowerCase().contains(query) ||
+                  (license.customerName?.toLowerCase().contains(query) ??
+                      false);
+              final matchesStatus = switch (filters.status) {
+                SubscriptionStatusFilter.all => true,
+                SubscriptionStatusFilter.active =>
+                  !license.isExpired && !license.isExpiringSoon,
+                SubscriptionStatusFilter.expiringSoon => license.isExpiringSoon,
+                SubscriptionStatusFilter.expired => license.isExpired,
+              };
+              return matchesQuery && matchesStatus;
+            })
+            .toList(growable: false);
+
+        if (filteredLicenses.isEmpty) {
           return Center(
             child: AppCard(
               child: Padding(
@@ -296,11 +509,19 @@ class _LicensesTab extends ConsumerWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.key_rounded, size: 48, color: const Color(0xFF94A3B8)),
+                    Icon(
+                      Icons.key_rounded,
+                      size: 48,
+                      color: const Color(0xFF94A3B8),
+                    ),
                     const Gap(12),
                     Text(
-                      'Lisans kaydı bulunmuyor',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+                      licenses.isEmpty
+                          ? 'Lisans kaydı bulunmuyor'
+                          : 'Filtreye uygun lisans bulunamadı',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
                     ),
                   ],
                 ),
@@ -309,51 +530,140 @@ class _LicensesTab extends ConsumerWidget {
           );
         }
 
-        final expired = licenses.where((l) => l.isExpired).toList();
-        final expiringSoon = licenses.where((l) => l.isExpiringSoon).toList();
-        final active = licenses.where((l) => !l.isExpired && !l.isExpiringSoon).toList();
+        final expired = filteredLicenses
+            .where((license) => license.isExpired)
+            .toList();
+        final expiringSoon = filteredLicenses
+            .where((license) => license.isExpiringSoon)
+            .toList();
+        final active = filteredLicenses
+            .where((license) => !license.isExpired && !license.isExpiringSoon)
+            .toList();
 
         return ListView(
           padding: const EdgeInsets.symmetric(horizontal: 2),
           children: [
             Row(
               children: [
-                Expanded(child: _SummaryCard(title: 'Toplam', value: licenses.length.toString(), color: AppTheme.primary)),
+                Expanded(
+                  child: _SummaryCard(
+                    title: 'Toplam',
+                    value: filteredLicenses.length.toString(),
+                    color: AppTheme.primary,
+                  ),
+                ),
                 const Gap(12),
-                Expanded(child: _SummaryCard(title: 'Süresi Dolan', value: expired.length.toString(), color: AppTheme.error)),
+                Expanded(
+                  child: _SummaryCard(
+                    title: 'Süresi Dolan',
+                    value: expired.length.toString(),
+                    color: AppTheme.error,
+                  ),
+                ),
                 const Gap(12),
-                Expanded(child: _SummaryCard(title: 'Yaklaşan', value: expiringSoon.length.toString(), color: AppTheme.warning)),
+                Expanded(
+                  child: _SummaryCard(
+                    title: 'Yaklaşan',
+                    value: expiringSoon.length.toString(),
+                    color: AppTheme.warning,
+                  ),
+                ),
               ],
             ),
             const Gap(16),
             if (expired.isNotEmpty) ...[
               _SectionHeader(title: 'Süresi Dolanlar', color: AppTheme.error),
               const Gap(8),
-              ...expired.map((l) => _LicenseCard(license: l, dateFormat: dateFormat)),
+              ...expired.map(
+                (l) => _LicenseCard(license: l, dateFormat: dateFormat),
+              ),
               const Gap(16),
             ],
             if (expiringSoon.isNotEmpty) ...[
-              _SectionHeader(title: '30 Gün İçinde Dolacaklar', color: AppTheme.warning),
+              _SectionHeader(
+                title: '30 Gün İçinde Dolacaklar',
+                color: AppTheme.warning,
+              ),
               const Gap(8),
-              ...expiringSoon.map((l) => _LicenseCard(license: l, dateFormat: dateFormat)),
+              ...expiringSoon.map(
+                (l) => _LicenseCard(license: l, dateFormat: dateFormat),
+              ),
               const Gap(16),
             ],
             if (active.isNotEmpty) ...[
               _SectionHeader(title: 'Aktif Lisanslar', color: AppTheme.success),
               const Gap(8),
-              ...active.map((l) => _LicenseCard(license: l, dateFormat: dateFormat)),
+              ...active.map(
+                (l) => _LicenseCard(license: l, dateFormat: dateFormat),
+              ),
             ],
           ],
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, __) => const Center(child: Text('Lisanslar yüklenemedi')),
+      error: (error, stackTrace) =>
+          const Center(child: Text('Lisanslar yüklenemedi')),
+    );
+  }
+}
+
+class _OverviewCard extends StatelessWidget {
+  const _OverviewCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: color),
+          ),
+          const Gap(12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                value,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.title, required this.value, required this.color});
+  const _SummaryCard({
+    required this.title,
+    required this.value,
+    required this.color,
+  });
 
   final String title;
   final String value;
@@ -365,9 +675,20 @@ class _SummaryCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       child: Column(
         children: [
-          Text(title, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B))),
+          Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+          ),
           const Gap(4),
-          Text(value, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700, color: color)),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
         ],
       ),
     );
@@ -384,9 +705,21 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(width: 4, height: 20, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
+        Container(
+          width: 4,
+          height: 20,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
         const Gap(10),
-        Text(title, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+        Text(
+          title,
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+        ),
       ],
     );
   }
@@ -403,8 +736,8 @@ class _LineCard extends StatelessWidget {
     final (statusLabel, statusTone) = line.isExpired
         ? ('Süresi Doldu', AppBadgeTone.error)
         : line.isExpiringSoon
-            ? ('Yakında Dolacak', AppBadgeTone.warning)
-            : ('Aktif', AppBadgeTone.success);
+        ? ('Yakında Dolacak', AppBadgeTone.warning)
+        : ('Aktif', AppBadgeTone.success);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -416,22 +749,42 @@ class _LineCard extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: (line.isExpired ? AppTheme.error : AppTheme.primary).withValues(alpha: 0.1),
+                color: (line.isExpired ? AppTheme.error : AppTheme.primary)
+                    .withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(Icons.phone_android_rounded, color: line.isExpired ? AppTheme.error : AppTheme.primary, size: 22),
+              child: Icon(
+                Icons.phone_android_rounded,
+                color: line.isExpired ? AppTheme.error : AppTheme.primary,
+                size: 22,
+              ),
             ),
             const Gap(14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(line.number, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(
+                    line.number,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const Gap(2),
-                  Text(line.customerName ?? '-', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B))),
+                  Text(
+                    line.customerName ?? '-',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
                   if (line.expiresAt != null) ...[
                     const Gap(2),
-                    Text('Bitiş: ${dateFormat.format(line.expiresAt!)}', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF94A3B8))),
+                    Text(
+                      'Bitiş: ${dateFormat.format(line.expiresAt!)}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF94A3B8),
+                      ),
+                    ),
                   ],
                 ],
               ),
@@ -455,8 +808,8 @@ class _LicenseCard extends StatelessWidget {
     final (statusLabel, statusTone) = license.isExpired
         ? ('Süresi Doldu', AppBadgeTone.error)
         : license.isExpiringSoon
-            ? ('Yakında Dolacak', AppBadgeTone.warning)
-            : ('Aktif', AppBadgeTone.success);
+        ? ('Yakında Dolacak', AppBadgeTone.warning)
+        : ('Aktif', AppBadgeTone.success);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -468,22 +821,42 @@ class _LicenseCard extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: (license.isExpired ? AppTheme.error : AppTheme.success).withValues(alpha: 0.1),
+                color: (license.isExpired ? AppTheme.error : AppTheme.success)
+                    .withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(Icons.key_rounded, color: license.isExpired ? AppTheme.error : AppTheme.success, size: 22),
+              child: Icon(
+                Icons.key_rounded,
+                color: license.isExpired ? AppTheme.error : AppTheme.success,
+                size: 22,
+              ),
             ),
             const Gap(14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(license.name, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(
+                    license.name,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const Gap(2),
-                  Text(license.customerName ?? '-', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B))),
+                  Text(
+                    license.customerName ?? '-',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
                   if (license.expiresAt != null) ...[
                     const Gap(2),
-                    Text('Bitiş: ${dateFormat.format(license.expiresAt!)}', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF94A3B8))),
+                    Text(
+                      'Bitiş: ${dateFormat.format(license.expiresAt!)}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF94A3B8),
+                      ),
+                    ),
                   ],
                 ],
               ),
