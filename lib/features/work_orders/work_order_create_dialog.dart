@@ -73,18 +73,28 @@ class _CreateWorkOrderDialogState
     if (client == null) return;
 
     try {
-      final rows = await client
-          .from('customers')
-          .select('id,name,city,is_active')
-          .eq('is_active', true)
-          .order('name')
-          .limit(200);
+      final items = <_CustomerOption>[];
+      var from = 0;
+      const pageSize = 500;
 
-      final items =
-          (rows as List)
-              .map((e) => _CustomerOption.fromJson(e as Map<String, dynamic>))
-              .toList(growable: false)
-            ..sort((a, b) => _sortKey(a.name).compareTo(_sortKey(b.name)));
+      while (true) {
+        final rows = await client
+            .from('customers')
+            .select('id,name,city,is_active')
+            .eq('is_active', true)
+            .order('name')
+            .range(from, from + pageSize - 1);
+
+        final page = (rows as List)
+            .map((e) => _CustomerOption.fromJson(e as Map<String, dynamic>))
+            .toList(growable: false);
+        items.addAll(page);
+
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+
+      items.sort((a, b) => _sortKey(a.name).compareTo(_sortKey(b.name)));
 
       if (!mounted) return;
       setState(() => _customers = items);
@@ -346,10 +356,10 @@ class _CreateWorkOrderDialogState
                 else
                   Autocomplete<_CustomerOption>(
                     optionsBuilder: (text) {
-                      final q = text.text.trim().toLowerCase();
+                      final q = _sortKey(text.text.trim());
                       if (q.isEmpty) return _customers.take(20);
                       return _customers
-                          .where((c) => c.name.toLowerCase().contains(q))
+                          .where((c) => _sortKey(c.name).contains(q))
                           .take(20);
                     },
                     displayStringForOption: (o) => o.name,
