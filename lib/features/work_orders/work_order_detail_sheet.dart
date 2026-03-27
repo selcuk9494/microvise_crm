@@ -322,7 +322,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                   child: ListView(
                     shrinkWrap: true,
                     children: [
-                      _buildInfoCard(context, customer),
+                      _buildInfoCard(context, customer, branchesAsync),
                       const Gap(12),
                       if (!isDone && !_isClosing) ...[
                         _buildStatusActions(context),
@@ -387,6 +387,19 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 widget.order.title,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
+              if (widget.order.workOrderTypeName?.trim().isNotEmpty ??
+                  false) ...[
+                const Gap(4),
+                Text(
+                  widget.order.workOrderTypeName!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               const Gap(4),
               Text(
                 customer.name,
@@ -404,10 +417,23 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     );
   }
 
-  Widget _buildInfoCard(BuildContext context, CustomerDetail customer) {
+  Widget _buildInfoCard(
+    BuildContext context,
+    CustomerDetail customer,
+    AsyncValue<List<CustomerBranch>> branchesAsync,
+  ) {
     final dateText = widget.order.scheduledDate != null
         ? DateFormat('d MMMM y', 'tr_TR').format(widget.order.scheduledDate!)
         : 'Tarih belirlenmedi';
+    CustomerBranch? selectedBranch;
+    final selectedBranchId = widget.order.branchId ?? _selectedBranchId;
+    final branchItems = branchesAsync.asData?.value ?? const <CustomerBranch>[];
+    for (final branch in branchItems) {
+      if (branch.id == selectedBranchId) {
+        selectedBranch = branch;
+        break;
+      }
+    }
 
     return AppCard(
       padding: const EdgeInsets.all(16),
@@ -424,12 +450,36 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             label: 'Müşteri',
             value: customer.name,
           ),
+          if (widget.order.workOrderTypeName?.trim().isNotEmpty ?? false) ...[
+            const Gap(8),
+            _InfoRow(
+              icon: Icons.category_rounded,
+              label: 'İş Emri Tipi',
+              value: widget.order.workOrderTypeName!,
+            ),
+          ],
+          if (selectedBranch != null) ...[
+            const Gap(8),
+            _InfoRow(
+              icon: Icons.account_tree_rounded,
+              label: 'Şube',
+              value: selectedBranch.name,
+            ),
+          ],
           const Gap(8),
           _InfoRow(
             icon: Icons.calendar_today_rounded,
             label: 'Planlanan Tarih',
             value: dateText,
           ),
+          if (widget.order.description?.trim().isNotEmpty ?? false) ...[
+            const Gap(8),
+            _InfoRow(
+              icon: Icons.notes_rounded,
+              label: 'Açıklama',
+              value: widget.order.description!,
+            ),
+          ],
           if (customer.email?.isNotEmpty ?? false) ...[
             const Gap(8),
             _InfoRow(
@@ -444,6 +494,46 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
               icon: Icons.phone_rounded,
               label: 'Telefon',
               value: customer.phone1!,
+            ),
+          ],
+          if (widget.order.contactPhone?.trim().isNotEmpty ?? false) ...[
+            const Gap(8),
+            _InfoRow(
+              icon: Icons.support_agent_rounded,
+              label: 'İrtibat Numarası',
+              value: widget.order.contactPhone!,
+            ),
+          ],
+          if (widget.order.locationLink?.trim().isNotEmpty ?? false) ...[
+            const Gap(8),
+            _InfoRow(
+              icon: Icons.link_rounded,
+              label: 'Konum Linki',
+              value: widget.order.locationLink!,
+            ),
+          ],
+          if (selectedBranch?.address?.trim().isNotEmpty ?? false) ...[
+            const Gap(8),
+            _InfoRow(
+              icon: Icons.location_on_rounded,
+              label: 'Şube Adresi',
+              value: selectedBranch!.address!,
+            ),
+          ],
+          if (selectedBranch?.phone?.trim().isNotEmpty ?? false) ...[
+            const Gap(8),
+            _InfoRow(
+              icon: Icons.call_rounded,
+              label: 'Şube Telefonu',
+              value: selectedBranch!.phone!,
+            ),
+          ],
+          if (widget.order.closeNotes?.trim().isNotEmpty ?? false) ...[
+            const Gap(8),
+            _InfoRow(
+              icon: Icons.task_alt_rounded,
+              label: 'Kapanış Açıklaması',
+              value: widget.order.closeNotes!,
             ),
           ],
         ],

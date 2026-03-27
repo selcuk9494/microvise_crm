@@ -40,6 +40,8 @@ class _CreateWorkOrderDialogState
   final _customerController = TextEditingController();
   final _titleController = TextEditingController();
   final _descController = TextEditingController();
+  final _contactPhoneController = TextEditingController();
+  final _locationLinkController = TextEditingController();
   bool _saving = false;
 
   List<_CustomerOption> _customers = const [];
@@ -143,7 +145,9 @@ class _CreateWorkOrderDialogState
     try {
       final rows = await client
           .from('work_order_types')
-          .select('id,name,description')
+          .select(
+            'id,name,description,location_info,contact_name,contact_phone',
+          )
           .eq('is_active', true)
           .order('sort_order')
           .order('name')
@@ -171,6 +175,8 @@ class _CreateWorkOrderDialogState
     _customerController.dispose();
     _titleController.dispose();
     _descController.dispose();
+    _contactPhoneController.dispose();
+    _locationLinkController.dispose();
     super.dispose();
   }
 
@@ -214,6 +220,12 @@ class _CreateWorkOrderDialogState
         'status': 'open',
         'assigned_to': assignedTo,
         'scheduled_date': _scheduledDate?.toIso8601String().substring(0, 10),
+        'contact_phone': _contactPhoneController.text.trim().isEmpty
+            ? null
+            : _contactPhoneController.text.trim(),
+        'location_link': _locationLinkController.text.trim().isEmpty
+            ? null
+            : _locationLinkController.text.trim(),
         'is_active': true,
         'created_by': client.auth.currentUser?.id,
       });
@@ -381,8 +393,30 @@ class _CreateWorkOrderDialogState
                   ],
                   onChanged: _saving
                       ? null
-                      : (value) =>
-                            setState(() => _selectedWorkOrderTypeId = value),
+                      : (value) {
+                          _WorkOrderTypeOption? selected;
+                          for (final type in _workOrderTypes) {
+                            if (type.id == value) {
+                              selected = type;
+                              break;
+                            }
+                          }
+                          setState(() {
+                            _selectedWorkOrderTypeId = value;
+                            if ((_contactPhoneController.text.trim().isEmpty) &&
+                                (selected?.contactPhone?.trim().isNotEmpty ??
+                                    false)) {
+                              _contactPhoneController.text =
+                                  selected!.contactPhone!;
+                            }
+                            if ((_locationLinkController.text.trim().isEmpty) &&
+                                (selected?.locationInfo?.trim().isNotEmpty ??
+                                    false)) {
+                              _locationLinkController.text =
+                                  selected!.locationInfo!;
+                            }
+                          });
+                        },
                   decoration: const InputDecoration(labelText: 'İş Emri Tipi'),
                   validator: (value) {
                     if (_workOrderTypes.isEmpty) return null;
@@ -481,6 +515,31 @@ class _CreateWorkOrderDialogState
                     hintText: 'İsteğe bağlı',
                   ),
                 ),
+                const Gap(12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _contactPhoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'İrtibat Numarası',
+                          hintText: '0 5xx xxx xx xx',
+                        ),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _locationLinkController,
+                        decoration: const InputDecoration(
+                          labelText: 'Konum Linki',
+                          hintText: 'https://maps.google.com/...',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 const Gap(18),
                 Row(
                   children: [
@@ -572,17 +631,26 @@ class _WorkOrderTypeOption {
     required this.id,
     required this.name,
     required this.description,
+    required this.locationInfo,
+    required this.contactName,
+    required this.contactPhone,
   });
 
   final String id;
   final String name;
   final String? description;
+  final String? locationInfo;
+  final String? contactName;
+  final String? contactPhone;
 
   factory _WorkOrderTypeOption.fromJson(Map<String, dynamic> json) {
     return _WorkOrderTypeOption(
       id: json['id'].toString(),
       name: json['name']?.toString() ?? '',
       description: json['description']?.toString(),
+      locationInfo: json['location_info']?.toString(),
+      contactName: json['contact_name']?.toString(),
+      contactPhone: json['contact_phone']?.toString(),
     );
   }
 }

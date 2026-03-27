@@ -6,8 +6,8 @@ import 'work_order_model.dart';
 
 final workOrdersBoardProvider =
     AsyncNotifierProvider<WorkOrdersBoardNotifier, List<WorkOrder>>(
-  WorkOrdersBoardNotifier.new,
-);
+      WorkOrdersBoardNotifier.new,
+    );
 
 class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
   @override
@@ -20,7 +20,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     var q = client
         .from('work_orders')
         .select(
-          'id,title,status,is_active,customer_id,branch_id,assigned_to,scheduled_date,customers(name)',
+          'id,title,description,status,is_active,customer_id,branch_id,assigned_to,scheduled_date,work_order_type_id,contact_phone,location_link,close_notes,customers(name),branches(name),work_order_types(name)',
         )
         .eq('is_active', true);
 
@@ -32,14 +32,21 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
 
     final rows = await q.order('created_at', ascending: false);
 
-    return (rows as List).map((e) {
-      final map = e as Map<String, dynamic>;
-      final customers = map['customers'] as Map<String, dynamic>?;
-      return WorkOrder.fromJson({
-        ...map,
-        'customer_name': customers?['name'],
-      });
-    }).toList(growable: false);
+    return (rows as List)
+        .map((e) {
+          final map = e as Map<String, dynamic>;
+          final customers = map['customers'] as Map<String, dynamic>?;
+          final branches = map['branches'] as Map<String, dynamic>?;
+          final workOrderTypes =
+              map['work_order_types'] as Map<String, dynamic>?;
+          return WorkOrder.fromJson({
+            ...map,
+            'customer_name': customers?['name'],
+            'branch_name': branches?['name'],
+            'work_order_type_name': workOrderTypes?['name'],
+          });
+        })
+        .toList(growable: false);
   }
 
   Future<void> refresh() async {
