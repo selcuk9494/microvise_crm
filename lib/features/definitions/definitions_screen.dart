@@ -8,6 +8,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../application_forms/application_form_model.dart';
 
 final deviceBrandsProvider = FutureProvider<List<DeviceBrand>>((ref) async {
   final client = ref.watch(supabaseClientProvider);
@@ -125,6 +126,25 @@ final businessActivityTypesProvider =
             ),
           )
           .toList(growable: false);
+    });
+
+final applicationFormPrintSettingsProvider =
+    FutureProvider<ApplicationFormPrintSettings>((ref) async {
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return ApplicationFormPrintSettings.defaults;
+      try {
+        final row = await client
+            .from('application_form_settings')
+            .select(
+              'id,office_title,intro_text,optional_power_precaution_text,manual_included_text,service_company_name,service_company_address,applicant_status,office_title_4a,kdv4a_title,kdv4a_serial_number,kdv4a_seller_company_name,kdv4a_seller_address,kdv4a_seller_tax_office_and_registry,kdv4a_seller_license_number,kdv4a_warranty_period,kdv4a_department_count,kdv4a_service_company_name,kdv4a_service_company_address,kdv4a_seal_applicant_name,kdv4a_seal_applicant_title,kdv4a_approval_document_date,kdv4a_approval_document_number,kdv4a_delivery_receiver_name,kdv4a_delivery_receiver_title',
+            )
+            .eq('id', 'default')
+            .maybeSingle();
+        if (row == null) return ApplicationFormPrintSettings.defaults;
+        return ApplicationFormPrintSettings.fromJson(row);
+      } catch (_) {
+        return ApplicationFormPrintSettings.defaults;
+      }
     });
 
 class WorkOrderType {
@@ -259,10 +279,13 @@ class DefinitionsScreen extends ConsumerWidget {
     final citiesAsync = ref.watch(cityDefinitionsProvider);
     final fiscalSymbolsAsync = ref.watch(fiscalSymbolsProvider);
     final businessActivitiesAsync = ref.watch(businessActivityTypesProvider);
+    final applicationFormSettingsAsync = ref.watch(
+      applicationFormPrintSettingsProvider,
+    );
     final width = MediaQuery.sizeOf(context).width;
     final isMobile = width < 720;
     return DefaultTabController(
-      length: 7,
+      length: 8,
       child: AppPageLayout(
         title: 'Tanımlamalar',
         subtitle: 'Sistem tanımları ve ayarları',
@@ -333,6 +356,16 @@ class DefinitionsScreen extends ConsumerWidget {
                     icon: Icons.location_city_rounded,
                   ),
                 ),
+                SizedBox(
+                  width: isMobile ? (width - 44) / 2 : null,
+                  child: _DefinitionStatCard(
+                    label: 'Başvuru Formu',
+                    value: applicationFormSettingsAsync.hasValue
+                        ? 'Hazır'
+                        : '—',
+                    icon: Icons.description_rounded,
+                  ),
+                ),
               ],
             ),
             const Gap(16),
@@ -355,6 +388,7 @@ class DefinitionsScreen extends ConsumerWidget {
                       Tab(text: 'Mali Semboller'),
                       Tab(text: 'Meslek Türleri'),
                       Tab(text: 'Şehirler'),
+                      Tab(text: 'Başvuru Formu'),
                     ],
                   ),
                   const Divider(height: 1),
@@ -369,6 +403,7 @@ class DefinitionsScreen extends ConsumerWidget {
                         _FiscalSymbolsTab(isAdmin: isAdmin),
                         _BusinessActivitiesTab(isAdmin: isAdmin),
                         _CitiesTab(isAdmin: isAdmin),
+                        _ApplicationFormSettingsTab(isAdmin: isAdmin),
                       ],
                     ),
                   ),
@@ -2718,6 +2753,425 @@ class _Empty extends StatelessWidget {
         style: Theme.of(
           context,
         ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+      ),
+    );
+  }
+}
+
+class _ApplicationFormSettingsTab extends ConsumerStatefulWidget {
+  const _ApplicationFormSettingsTab({required this.isAdmin});
+
+  final bool isAdmin;
+
+  @override
+  ConsumerState<_ApplicationFormSettingsTab> createState() =>
+      _ApplicationFormSettingsTabState();
+}
+
+class _ApplicationFormSettingsTabState
+    extends ConsumerState<_ApplicationFormSettingsTab> {
+  final _officeTitleController = TextEditingController();
+  final _introTextController = TextEditingController();
+  final _optionalPowerController = TextEditingController();
+  final _manualIncludedController = TextEditingController();
+  final _serviceCompanyNameController = TextEditingController();
+  final _serviceCompanyAddressController = TextEditingController();
+  final _applicantStatusController = TextEditingController();
+  final _officeTitle4aController = TextEditingController();
+  final _kdv4aTitleController = TextEditingController();
+  final _kdv4aSerialNumberController = TextEditingController();
+  final _kdv4aSellerCompanyNameController = TextEditingController();
+  final _kdv4aSellerAddressController = TextEditingController();
+  final _kdv4aSellerTaxRegistryController = TextEditingController();
+  final _kdv4aSellerLicenseNumberController = TextEditingController();
+  final _kdv4aWarrantyPeriodController = TextEditingController();
+  final _kdv4aDepartmentCountController = TextEditingController();
+  final _kdv4aServiceCompanyNameController = TextEditingController();
+  final _kdv4aServiceCompanyAddressController = TextEditingController();
+  final _kdv4aSealApplicantNameController = TextEditingController();
+  final _kdv4aSealApplicantTitleController = TextEditingController();
+  final _kdv4aApprovalDateController = TextEditingController();
+  final _kdv4aApprovalNumberController = TextEditingController();
+  final _kdv4aDeliveryReceiverNameController = TextEditingController();
+  final _kdv4aDeliveryReceiverTitleController = TextEditingController();
+  bool _initialized = false;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _officeTitleController.dispose();
+    _introTextController.dispose();
+    _optionalPowerController.dispose();
+    _manualIncludedController.dispose();
+    _serviceCompanyNameController.dispose();
+    _serviceCompanyAddressController.dispose();
+    _applicantStatusController.dispose();
+    _officeTitle4aController.dispose();
+    _kdv4aTitleController.dispose();
+    _kdv4aSerialNumberController.dispose();
+    _kdv4aSellerCompanyNameController.dispose();
+    _kdv4aSellerAddressController.dispose();
+    _kdv4aSellerTaxRegistryController.dispose();
+    _kdv4aSellerLicenseNumberController.dispose();
+    _kdv4aWarrantyPeriodController.dispose();
+    _kdv4aDepartmentCountController.dispose();
+    _kdv4aServiceCompanyNameController.dispose();
+    _kdv4aServiceCompanyAddressController.dispose();
+    _kdv4aSealApplicantNameController.dispose();
+    _kdv4aSealApplicantTitleController.dispose();
+    _kdv4aApprovalDateController.dispose();
+    _kdv4aApprovalNumberController.dispose();
+    _kdv4aDeliveryReceiverNameController.dispose();
+    _kdv4aDeliveryReceiverTitleController.dispose();
+    super.dispose();
+  }
+
+  void _apply(ApplicationFormPrintSettings settings) {
+    if (_initialized) return;
+    _officeTitleController.text = settings.officeTitle;
+    _introTextController.text = settings.introText;
+    _optionalPowerController.text = settings.optionalPowerPrecautionText;
+    _manualIncludedController.text = settings.manualIncludedText;
+    _serviceCompanyNameController.text = settings.serviceCompanyName;
+    _serviceCompanyAddressController.text = settings.serviceCompanyAddress;
+    _applicantStatusController.text = settings.applicantStatus;
+    _officeTitle4aController.text = settings.officeTitle4a;
+    _kdv4aTitleController.text = settings.kdv4aTitle;
+    _kdv4aSerialNumberController.text = settings.kdv4aSerialNumber;
+    _kdv4aSellerCompanyNameController.text = settings.kdv4aSellerCompanyName;
+    _kdv4aSellerAddressController.text = settings.kdv4aSellerAddress;
+    _kdv4aSellerTaxRegistryController.text =
+        settings.kdv4aSellerTaxOfficeAndRegistry;
+    _kdv4aSellerLicenseNumberController.text =
+        settings.kdv4aSellerLicenseNumber;
+    _kdv4aWarrantyPeriodController.text = settings.kdv4aWarrantyPeriod;
+    _kdv4aDepartmentCountController.text = settings.kdv4aDepartmentCount;
+    _kdv4aServiceCompanyNameController.text = settings.kdv4aServiceCompanyName;
+    _kdv4aServiceCompanyAddressController.text =
+        settings.kdv4aServiceCompanyAddress;
+    _kdv4aSealApplicantNameController.text = settings.kdv4aSealApplicantName;
+    _kdv4aSealApplicantTitleController.text = settings.kdv4aSealApplicantTitle;
+    _kdv4aApprovalDateController.text = settings.kdv4aApprovalDocumentDate;
+    _kdv4aApprovalNumberController.text = settings.kdv4aApprovalDocumentNumber;
+    _kdv4aDeliveryReceiverNameController.text =
+        settings.kdv4aDeliveryReceiverName;
+    _kdv4aDeliveryReceiverTitleController.text =
+        settings.kdv4aDeliveryReceiverTitle;
+    _initialized = true;
+  }
+
+  Future<void> _save() async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+    setState(() => _saving = true);
+    try {
+      await client.from('application_form_settings').upsert({
+        'id': 'default',
+        'office_title': _officeTitleController.text.trim(),
+        'intro_text': _introTextController.text.trim(),
+        'optional_power_precaution_text': _optionalPowerController.text.trim(),
+        'manual_included_text': _manualIncludedController.text.trim(),
+        'service_company_name': _serviceCompanyNameController.text.trim(),
+        'service_company_address': _serviceCompanyAddressController.text.trim(),
+        'applicant_status': _applicantStatusController.text.trim(),
+        'office_title_4a': _officeTitle4aController.text.trim(),
+        'kdv4a_title': _kdv4aTitleController.text.trim(),
+        'kdv4a_serial_number': _kdv4aSerialNumberController.text.trim(),
+        'kdv4a_seller_company_name': _kdv4aSellerCompanyNameController.text
+            .trim(),
+        'kdv4a_seller_address': _kdv4aSellerAddressController.text.trim(),
+        'kdv4a_seller_tax_office_and_registry':
+            _kdv4aSellerTaxRegistryController.text.trim(),
+        'kdv4a_seller_license_number': _kdv4aSellerLicenseNumberController.text
+            .trim(),
+        'kdv4a_warranty_period': _kdv4aWarrantyPeriodController.text.trim(),
+        'kdv4a_department_count': _kdv4aDepartmentCountController.text.trim(),
+        'kdv4a_service_company_name': _kdv4aServiceCompanyNameController.text
+            .trim(),
+        'kdv4a_service_company_address': _kdv4aServiceCompanyAddressController
+            .text
+            .trim(),
+        'kdv4a_seal_applicant_name': _kdv4aSealApplicantNameController.text
+            .trim(),
+        'kdv4a_seal_applicant_title': _kdv4aSealApplicantTitleController.text
+            .trim(),
+        'kdv4a_approval_document_date': _kdv4aApprovalDateController.text
+            .trim(),
+        'kdv4a_approval_document_number': _kdv4aApprovalNumberController.text
+            .trim(),
+        'kdv4a_delivery_receiver_name': _kdv4aDeliveryReceiverNameController
+            .text
+            .trim(),
+        'kdv4a_delivery_receiver_title': _kdv4aDeliveryReceiverTitleController
+            .text
+            .trim(),
+      });
+      ref.invalidate(applicationFormPrintSettingsProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Başvuru formu sabit alanları kaydedildi.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settingsAsync = ref.watch(applicationFormPrintSettingsProvider);
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: settingsAsync.when(
+        data: (settings) {
+          _apply(settings);
+          return SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Başvuru Formu Sabit Alanları',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const Gap(8),
+                Text(
+                  'KDV4 / KDV4A çıktısında formdan gelmeyen sabit metinleri buradan değiştirebilirsiniz.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
+                ),
+                const Gap(16),
+                TextField(
+                  controller: _officeTitleController,
+                  minLines: 3,
+                  maxLines: 4,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Sol Üst Kurum Başlığı',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _introTextController,
+                  minLines: 3,
+                  maxLines: 5,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Açıklama Paragrafı',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _optionalPowerController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Güç Kaynağı Önlem Sabit Metni',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _manualIncludedController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Genel Kullanım Kılavuzu Sabit Metni',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _serviceCompanyNameController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Bakım Firması Ünvanı',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _serviceCompanyAddressController,
+                  minLines: 2,
+                  maxLines: 3,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Bakım Firması Adresi',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _applicantStatusController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Başvuru Sahibi Statüsü',
+                  ),
+                ),
+                const Gap(24),
+                Text(
+                  'KDV 4A Sabit Alanları',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _officeTitle4aController,
+                  minLines: 3,
+                  maxLines: 4,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'KDV 4A Sol Üst Kurum Başlığı',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aTitleController,
+                  minLines: 3,
+                  maxLines: 4,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(labelText: 'KDV 4A Başlık'),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aSerialNumberController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'KDV 4A Sıra No',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aSellerCompanyNameController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Satan Firma Ünvanı',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aSellerAddressController,
+                  minLines: 2,
+                  maxLines: 3,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Satan Firma Adresi',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aSellerTaxRegistryController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Satan Firma Vergi Dairesi ve Dosya Sicil No',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aSellerLicenseNumberController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(labelText: 'Ruhsatname No'),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aWarrantyPeriodController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Garanti Süresi',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aDepartmentCountController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Departman Sayısı',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aServiceCompanyNameController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Yetkili Bakım Firması Ünvanı',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aServiceCompanyAddressController,
+                  minLines: 2,
+                  maxLines: 3,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Yetkili Bakım Firması Adresi',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aSealApplicantNameController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Mali Mühürü Tatbik Eden Açık İsmi',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aSealApplicantTitleController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Mali Mühürü Tatbik Eden Makamı',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aApprovalDateController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Onay Belgesi Tarihi',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aApprovalNumberController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Onay Belgesi Sayısı',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aDeliveryReceiverNameController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Teslim Alan Açık İsmi',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: _kdv4aDeliveryReceiverTitleController,
+                  enabled: widget.isAdmin && !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Teslim Alan Makamı',
+                  ),
+                ),
+                const Gap(18),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    onPressed: widget.isAdmin && !_saving ? _save : null,
+                    icon: _saving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.save_rounded, size: 18),
+                    label: const Text('Kaydet'),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
       ),
     );
   }

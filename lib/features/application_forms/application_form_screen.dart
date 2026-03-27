@@ -155,7 +155,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Yazdırma Seçenekleri'),
         content: const Text(
-          'Kayıt tamamlandı. İstersen KDV veya KDV4A çıktısını hemen alabilirsin.',
+          'Kayıt tamamlandı. İstersen KDV4 veya KDV4A çıktısını hemen alabilirsin.',
         ),
         actions: [
           TextButton(
@@ -167,7 +167,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
               Navigator.of(context).pop();
               await _print(record, kind: ApplicationPrintKind.kdv);
             },
-            child: const Text('KDV Yazdır'),
+            child: const Text('KDV4 Yazdır'),
           ),
           FilledButton(
             onPressed: () async {
@@ -185,7 +185,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     ApplicationFormRecord record, {
     required ApplicationPrintKind kind,
   }) async {
-    final ok = await printApplicationForm(record, kind: kind);
+    final settings = await ref.read(
+      applicationFormPrintSettingsProvider.future,
+    );
+    final ok = await printApplicationForm(
+      record,
+      kind: kind,
+      settings: settings,
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -801,7 +808,7 @@ class _ApplicationFormDialogState
                             Text(
                               widget.isEdit
                                   ? 'Kaydı güncelleyin.'
-                                  : 'Belge düzeninde formu doldurun. Kayıt sonrası KDV ve KDV4A yazdırma seçenekleri açılır.',
+                                  : 'Belge düzeninde formu doldurun. Kayıt sonrası KDV4 ve KDV4A yazdırma seçenekleri açılır.',
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(color: AppTheme.textMuted),
                             ),
@@ -1194,7 +1201,7 @@ class _ApplicationRecordCard extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onPrintKdv,
                 icon: const Icon(Icons.print_rounded, size: 18),
-                label: const Text('KDV'),
+                label: const Text('KDV4'),
               ),
               FilledButton.icon(
                 onPressed: onPrintKdv4a,
