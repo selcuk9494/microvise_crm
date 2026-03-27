@@ -23,6 +23,54 @@ class WorkOrdersKanbanScreen extends ConsumerStatefulWidget {
       _WorkOrdersKanbanScreenState();
 }
 
+class _WorkOrderMetaChip extends StatelessWidget {
+  const _WorkOrderMetaChip({
+    required this.icon,
+    required this.label,
+    this.emphasize = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: emphasize
+            ? AppTheme.primary.withValues(alpha: 0.08)
+            : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: emphasize
+              ? AppTheme.primary.withValues(alpha: 0.18)
+              : AppTheme.border,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 14,
+            color: emphasize ? AppTheme.primary : const Color(0xFF64748B),
+          ),
+          const Gap(6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: emphasize ? AppTheme.primary : const Color(0xFF475569),
+              fontWeight: emphasize ? FontWeight.w600 : FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _WorkOrdersKanbanScreenState
     extends ConsumerState<WorkOrdersKanbanScreen> {
   bool _handledCreateQuery = false;
@@ -261,6 +309,7 @@ class _WorkOrderListTileState extends ConsumerState<_WorkOrderListTile> {
             ],
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(
@@ -278,12 +327,54 @@ class _WorkOrderListTileState extends ConsumerState<_WorkOrderListTile> {
                       ),
                     ),
                     const Gap(6),
-                    Text(
-                      [w.customerName ?? '—', ?scheduled].join(' • '),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF64748B),
-                      ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _WorkOrderMetaChip(
+                          icon: Icons.business_rounded,
+                          label: w.customerName ?? '—',
+                        ),
+                        if (w.workOrderTypeName?.trim().isNotEmpty ?? false)
+                          _WorkOrderMetaChip(
+                            icon: Icons.category_rounded,
+                            label: w.workOrderTypeName!,
+                            emphasize: true,
+                          ),
+                        if (w.branchName?.trim().isNotEmpty ?? false)
+                          _WorkOrderMetaChip(
+                            icon: Icons.account_tree_rounded,
+                            label: w.branchName!,
+                          ),
+                        if (scheduled != null)
+                          _WorkOrderMetaChip(
+                            icon: Icons.calendar_today_rounded,
+                            label: scheduled,
+                          ),
+                        if (w.contactPhone?.trim().isNotEmpty ?? false)
+                          _WorkOrderMetaChip(
+                            icon: Icons.phone_rounded,
+                            label: w.contactPhone!,
+                          ),
+                        if (w.locationLink?.trim().isNotEmpty ?? false)
+                          _WorkOrderMetaChip(
+                            icon: Icons.link_rounded,
+                            label: 'Konum',
+                          ),
+                      ],
                     ),
+                    if (w.description?.trim().isNotEmpty ?? false) ...[
+                      const Gap(8),
+                      Text(
+                        w.description!,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF64748B),
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

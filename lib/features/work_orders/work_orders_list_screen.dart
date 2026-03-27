@@ -344,6 +344,7 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
   @override
   Widget build(BuildContext context) {
     final order = widget.order;
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
     final dateText = order.scheduledDate != null
         ? DateFormat('d MMM y', 'tr_TR').format(order.scheduledDate!)
         : 'Tarih belirlenmedi';
@@ -383,6 +384,7 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
             ],
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(
@@ -400,41 +402,53 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                       ),
                     ),
                     const Gap(6),
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
-                        Icon(
-                          Icons.business_rounded,
-                          size: 14,
-                          color: const Color(0xFF64748B),
+                        _WorkOrderMetaChip(
+                          icon: Icons.business_rounded,
+                          label: order.customerName ?? '-',
                         ),
-                        const Gap(6),
-                        Expanded(
-                          child: Text(
-                            order.customerName ?? '-',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: const Color(0xFF64748B)),
+                        if (order.workOrderTypeName?.trim().isNotEmpty ?? false)
+                          _WorkOrderMetaChip(
+                            icon: Icons.category_rounded,
+                            label: order.workOrderTypeName!,
+                            emphasize: true,
                           ),
+                        if (order.branchName?.trim().isNotEmpty ?? false)
+                          _WorkOrderMetaChip(
+                            icon: Icons.account_tree_rounded,
+                            label: order.branchName!,
+                          ),
+                        _WorkOrderMetaChip(
+                          icon: Icons.calendar_today_rounded,
+                          label: dateText,
                         ),
+                        if (order.contactPhone?.trim().isNotEmpty ?? false)
+                          _WorkOrderMetaChip(
+                            icon: Icons.phone_rounded,
+                            label: order.contactPhone!,
+                          ),
+                        if (order.locationLink?.trim().isNotEmpty ?? false)
+                          _WorkOrderMetaChip(
+                            icon: Icons.link_rounded,
+                            label: 'Konum',
+                          ),
                       ],
                     ),
-                    const Gap(4),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.calendar_today_rounded,
-                          size: 14,
-                          color: const Color(0xFF94A3B8),
+                    if (order.description?.trim().isNotEmpty ?? false) ...[
+                      const Gap(8),
+                      Text(
+                        order.description!,
+                        maxLines: isMobile ? 3 : 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF64748B),
+                          height: 1.45,
                         ),
-                        const Gap(6),
-                        Text(
-                          dateText,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: const Color(0xFF94A3B8)),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -454,6 +468,54 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _WorkOrderMetaChip extends StatelessWidget {
+  const _WorkOrderMetaChip({
+    required this.icon,
+    required this.label,
+    this.emphasize = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: emphasize
+            ? AppTheme.primary.withValues(alpha: 0.08)
+            : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: emphasize
+              ? AppTheme.primary.withValues(alpha: 0.18)
+              : AppTheme.border,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 14,
+            color: emphasize ? AppTheme.primary : const Color(0xFF64748B),
+          ),
+          const Gap(6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: emphasize ? AppTheme.primary : const Color(0xFF475569),
+              fontWeight: emphasize ? FontWeight.w600 : FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }
