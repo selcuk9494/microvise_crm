@@ -226,6 +226,8 @@ class ProductsScreen extends ConsumerWidget {
     final sort = ref.watch(productSortProvider);
     final quickFilter = ref.watch(productQuickFilterProvider);
     final selectedCustomerId = ref.watch(productCustomerFilterProvider);
+    final linesAsync = ref.watch(issuedLinesProvider);
+    final licensesAsync = ref.watch(issuedLicensesProvider);
 
     return DefaultTabController(
       length: 2,
@@ -365,6 +367,21 @@ class ProductsScreen extends ConsumerWidget {
                     ),
                 ],
               ),
+            ),
+            const Gap(12),
+            linesAsync.when(
+              data: (lines) => licensesAsync.when(
+                data: (licenses) => _ProductsSummarySection(
+                  summary: _buildProductsSummary(
+                    lines: lines,
+                    licenses: licenses,
+                  ),
+                ),
+                loading: () => const _ProductsSummaryLoading(),
+                error: (error, stackTrace) => const SizedBox.shrink(),
+              ),
+              loading: () => const _ProductsSummaryLoading(),
+              error: (error, stackTrace) => const SizedBox.shrink(),
             ),
             const Gap(12),
             AppCard(
@@ -1646,6 +1663,98 @@ class _Empty extends StatelessWidget {
   }
 }
 
+class _ProductsSummarySection extends StatelessWidget {
+  const _ProductsSummarySection({required this.summary});
+
+  final _ProductsSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        SizedBox(
+          width: 220,
+          child: _SummaryMetricCard(
+            title: 'Toplam',
+            value: summary.total.toString(),
+            tone: AppBadgeTone.primary,
+          ),
+        ),
+        SizedBox(
+          width: 220,
+          child: _SummaryMetricCard(
+            title: 'Bu Ay Bitecek',
+            value: summary.endingThisMonth.toString(),
+            tone: AppBadgeTone.warning,
+          ),
+        ),
+        SizedBox(
+          width: 220,
+          child: _SummaryMetricCard(
+            title: 'Süresi Dolmuş',
+            value: summary.expired.toString(),
+            tone: AppBadgeTone.error,
+          ),
+        ),
+        SizedBox(
+          width: 220,
+          child: _SummaryMetricCard(
+            title: 'Tarihsiz',
+            value: summary.noEndDate.toString(),
+            tone: AppBadgeTone.neutral,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProductsSummaryLoading extends StatelessWidget {
+  const _ProductsSummaryLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const AppCard(
+      padding: EdgeInsets.all(16),
+      child: LinearProgressIndicator(minHeight: 2),
+    );
+  }
+}
+
+class _SummaryMetricCard extends StatelessWidget {
+  const _SummaryMetricCard({
+    required this.title,
+    required this.value,
+    required this.tone,
+  });
+
+  final String title;
+  final String value;
+  final AppBadgeTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppBadge(label: title, tone: tone),
+          const Gap(14),
+          Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _RenewalRequest {
   const _RenewalRequest({required this.amount, required this.currency});
 
@@ -1699,6 +1808,20 @@ class _BulkActionBar extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ProductsSummary {
+  const _ProductsSummary({
+    required this.total,
+    required this.endingThisMonth,
+    required this.expired,
+    required this.noEndDate,
+  });
+
+  final int total;
+  final int endingThisMonth;
+  final int expired;
+  final int noEndDate;
 }
 
 List<IssuedLine> _sortLines(List<IssuedLine> items, ProductListSort sort) {
@@ -1756,6 +1879,45 @@ int _compareDates(DateTime? a, DateTime? b) {
   if (a == null) return 1;
   if (b == null) return -1;
   return a.compareTo(b);
+}
+
+_ProductsSummary _buildProductsSummary({
+  required List<IssuedLine> lines,
+  required List<IssuedLicense> licenses,
+}) {
+  final lineOnlyCustomerIds = licenses
+      .where((license) => license.licenseType == 'gmp3')
+      .map((license) => license.customerId)
+      .toSet();
+  final visibleLines = lines
+      .where((line) => !lineOnlyCustomerIds.contains(line.customerId))
+      .toList(growable: false);
+  final visibleLicenses = licenses
+      .where((license) => license.licenseType == 'gmp3')
+      .toList(growable: false);
+  final allDates = [
+    ...visibleLines.map((line) => line.endsAt),
+    ...visibleLicenses.map((license) => license.endsAt),
+  ];
+  final now = DateTime.now();
+  final monthStart = DateTime(now.year, now.month, 1);
+  final nextMonthStart = DateTime(now.year, now.month + 1, 1);
+
+  return _ProductsSummary(
+    total: visibleLines.length + visibleLicenses.length,
+    endingThisMonth: allDates
+        .where(
+          (date) =>
+              date != null &&
+              !date.isBefore(monthStart) &&
+              date.isBefore(nextMonthStart),
+        )
+        .length,
+    expired: allDates
+        .where((date) => date != null && date.isBefore(now))
+        .length,
+    noEndDate: allDates.where((date) => date == null).length,
+  );
 }
 
 List<T> _filterByQuickRule<T>(
