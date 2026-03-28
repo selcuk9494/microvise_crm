@@ -67,22 +67,19 @@ class _DesktopShellState extends ConsumerState<_DesktopShell> {
       body: Row(
         children: [
           Container(
-            width: 280,
+            width: 248,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.white, AppTheme.surfaceMuted],
-              ),
+              color: Colors.white.withValues(alpha: 0.88),
               border: Border(right: BorderSide(color: AppTheme.border)),
+              boxShadow: AppTheme.cardShadow,
             ),
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
                 child: Column(
                   children: [
                     _BrandHeader(onTap: () => context.go('/panel')),
-                    const Gap(16),
+                    const Gap(14),
                     Expanded(
                       child: ListView(
                         children: [
@@ -219,40 +216,36 @@ class _BrandHeader extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: Row(
           children: [
             Container(
-              width: 44,
-              height: 44,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [AppTheme.primary, AppTheme.primaryDark],
                 ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primary.withValues(alpha: 0.25),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                boxShadow: AppTheme.cardShadow,
               ),
               child: const Icon(
                 Icons.grid_view_rounded,
                 color: Colors.white,
-                size: 22,
+                size: 20,
               ),
             ),
-            const Gap(12),
+            const Gap(10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Microvise',
-                  style: Theme.of(context).textTheme.titleMedium,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 Text(
                   'CRM & Servis',
@@ -279,10 +272,10 @@ class _TopBar extends StatelessWidget {
     return SafeArea(
       bottom: false,
       child: Container(
-        height: 64,
-        padding: const EdgeInsets.symmetric(horizontal: 18),
+        height: 58,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.85),
+          color: Colors.white.withValues(alpha: 0.9),
           border: Border(bottom: BorderSide(color: AppTheme.border)),
         ),
         child: Row(
@@ -292,11 +285,11 @@ class _TopBar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 onTap: onSearchTap,
                 child: Container(
-                  height: 44,
+                  height: 40,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
                     color: AppTheme.surfaceMuted,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                     border: Border.all(color: AppTheme.border),
                   ),
                   child: Row(
@@ -352,44 +345,45 @@ class _ProfileButton extends StatelessWidget {
         final roleName = profile?.role == 'admin' ? 'Admin' : 'Personel';
 
         return MenuAnchor(
-      builder: (context, controller, child) => InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => controller.isOpen ? controller.close() : controller.open(),
-        child: Container(
-          height: 44,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceMuted,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.border),
-          ),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 12,
-                backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
-                child: const Icon(
-                  Icons.person_rounded,
-                  size: 16,
-                  color: AppTheme.primary,
-                ),
+          builder: (context, controller, child) => InkWell(
+            borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+            onTap: () =>
+                controller.isOpen ? controller.close() : controller.open(),
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceMuted,
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                border: Border.all(color: AppTheme.border),
               ),
-              const Gap(10),
-              Text(
-                displayName,
-                style: Theme.of(context).textTheme.bodyMedium,
-                overflow: TextOverflow.ellipsis,
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 11,
+                    backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
+                    child: const Icon(
+                      Icons.person_rounded,
+                      size: 14,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                  const Gap(8),
+                  Text(
+                    displayName,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const Gap(6),
+                  const Icon(Icons.expand_more_rounded, size: 18),
+                ],
               ),
-              const Gap(6),
-              const Icon(Icons.expand_more_rounded, size: 18),
-            ],
+            ),
           ),
-        ),
-      ),
-      menuChildren: [
-        MenuItemButton(onPressed: () {}, child: Text(roleName)),
-      ],
-    );
+          menuChildren: [
+            MenuItemButton(onPressed: () {}, child: Text(roleName)),
+          ],
+        );
       },
     );
   }
@@ -412,29 +406,21 @@ class _SidebarItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final bg = active ? Colors.white : Colors.transparent;
     final border = active
-        ? AppTheme.primary.withValues(alpha: 0.24)
+        ? AppTheme.primary.withValues(alpha: 0.22)
         : AppTheme.border;
     final fg = active ? AppTheme.primaryDark : AppTheme.text;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
       onTap: onTap,
       child: Container(
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(16),
+          color: active ? AppTheme.primarySoft.withValues(alpha: 0.5) : bg,
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           border: Border.all(color: border),
-          boxShadow: active
-              ? [
-                  BoxShadow(
-                    color: AppTheme.primary.withValues(alpha: 0.10),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                  ),
-                ]
-              : null,
+          boxShadow: active ? AppTheme.cardShadow : null,
         ),
         child: Row(
           children: [
@@ -475,29 +461,21 @@ class _SidebarExpandableItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final bg = active ? Colors.white : Colors.transparent;
     final border = active
-        ? AppTheme.primary.withValues(alpha: 0.24)
+        ? AppTheme.primary.withValues(alpha: 0.22)
         : AppTheme.border;
     final fg = active ? AppTheme.primaryDark : AppTheme.text;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
       onTap: onTap,
       child: Container(
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(16),
+          color: active ? AppTheme.primarySoft.withValues(alpha: 0.5) : bg,
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           border: Border.all(color: border),
-          boxShadow: active
-              ? [
-                  BoxShadow(
-                    color: AppTheme.primary.withValues(alpha: 0.10),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                  ),
-                ]
-              : null,
+          boxShadow: active ? AppTheme.cardShadow : null,
         ),
         child: Row(
           children: [
@@ -586,14 +564,14 @@ class _SidebarSubItem extends StatelessWidget {
         : Colors.transparent;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
       onTap: onTap,
       child: Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppTheme.radiusSm),
           border: Border.all(
             color: active
                 ? AppTheme.primary.withValues(alpha: 0.18)
@@ -640,52 +618,56 @@ class _AccountCard extends StatelessWidget {
         final roleName = profile?.role == 'admin' ? 'Admin' : 'Personel';
 
         return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
-            child: const Icon(Icons.person_rounded, color: AppTheme.primary),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            border: Border.all(color: AppTheme.border),
+            boxShadow: AppTheme.cardShadow,
           ),
-          const Gap(12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  displayName,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
+                child: const Icon(
+                  Icons.person_rounded,
+                  color: AppTheme.primary,
                 ),
-                Text(
-                  roleName,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+              ),
+              const Gap(12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      displayName,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      roleName,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              IconButton(
+                tooltip: 'Çıkış Yap',
+                onPressed: onSignOut,
+                icon: Icon(
+                  PhosphorIcons.signOut(PhosphorIconsStyle.regular),
+                  size: 18,
+                  color: AppTheme.text,
+                ),
+              ),
+            ],
           ),
-          IconButton(
-            tooltip: 'Çıkış Yap',
-            onPressed: onSignOut,
-            icon: Icon(
-              PhosphorIcons.signOut(PhosphorIconsStyle.regular),
-              size: 18,
-              color: AppTheme.text,
-            ),
-          ),
-        ],
-      ),
-    );
+        );
       },
     );
   }

@@ -7,7 +7,9 @@ import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_section_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/compact_stat_card.dart';
 import 'dashboard_providers.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -51,16 +53,17 @@ class DashboardScreen extends ConsumerWidget {
           metricsAsync.when(
             data: (metrics) =>
                 _DashboardHighlights(metrics: metrics, money: money),
-            loading: () => const AppCard(child: SizedBox(height: 116)),
+            loading: () => const AppSectionCard(child: SizedBox(height: 90)),
             error: (error, stackTrace) => const SizedBox.shrink(),
           ),
-          const Gap(16),
+          const Gap(12),
           LayoutBuilder(
             builder: (context, constraints) {
               final twoCols = constraints.maxWidth >= 980;
               final sidePanel = Column(
                 children: [
                   AppCard(
+                    padding: const EdgeInsets.all(14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -74,7 +77,7 @@ class DashboardScreen extends ConsumerWidget {
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: const Color(0xFF64748B)),
                         ),
-                        const Gap(16),
+                        const Gap(12),
                         SizedBox(
                           height: 160,
                           child: metricsAsync.when(
@@ -89,6 +92,7 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                   const Gap(16),
                   AppCard(
+                    padding: const EdgeInsets.all(14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -108,7 +112,7 @@ class DashboardScreen extends ConsumerWidget {
                           loading: () => const SizedBox.shrink(),
                           error: (error, stackTrace) => const SizedBox.shrink(),
                         ),
-                        const Gap(14),
+                        const Gap(12),
                         const _ActivityTimeline(),
                       ],
                     ),
@@ -165,7 +169,7 @@ class _RevenuePanel extends StatelessWidget {
               context,
             ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
           ),
-          const Gap(16),
+          const Gap(12),
           SizedBox(
             height: 240,
             child: seriesAsync.when(
@@ -203,7 +207,7 @@ class _MetricsGrid extends StatelessWidget {
             : width >= 720
             ? 3
             : 2;
-        final spacing = 12.0;
+        final spacing = 10.0;
         final itemWidth = (width - (columns - 1) * spacing) / columns;
 
         final items = [
@@ -269,11 +273,7 @@ class _MetricsGrid extends StatelessWidget {
           spacing: spacing,
           runSpacing: spacing,
           children: [
-            for (final item in items)
-              SizedBox(
-                width: itemWidth,
-                child: AppCard(padding: const EdgeInsets.all(16), child: item),
-              ),
+            for (final item in items) SizedBox(width: itemWidth, child: item),
           ],
         );
       },
@@ -310,51 +310,20 @@ class _MetricTile extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+        CompactStatCard(label: title, value: value, icon: icon, color: accent),
+        if (subtitle != null) ...[
+          const Gap(4),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text(
+              subtitle!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: subtitleColor ?? AppTheme.textMuted,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: accent.withValues(alpha: 0.18)),
-              ),
-              child: Icon(icon, size: 18, color: accent),
-            ),
-          ],
-        ),
-        const Gap(10),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              value,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontSize: 22,
-                letterSpacing: -0.2,
-              ),
-            ),
-            if (subtitle != null) ...[
-              const Gap(8),
-              Text(
-                subtitle!,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: subtitleColor ?? const Color(0xFF64748B),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ],
-        ),
+          ),
+        ],
       ],
     );
   }
@@ -406,7 +375,7 @@ class _DashboardHighlights extends StatelessWidget {
     ];
 
     if (cards.isEmpty) {
-      return AppCard(
+      return AppSectionCard(
         child: Row(
           children: [
             Container(
@@ -467,7 +436,7 @@ class _HighlightCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
+    return AppSectionCard(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

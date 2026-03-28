@@ -9,6 +9,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/smart_filter_bar.dart';
 import '../billing/billing_screen.dart';
 
 final productSearchProvider = NotifierProvider<ProductSearchNotifier, String>(
@@ -233,140 +234,135 @@ class ProductsScreen extends ConsumerWidget {
       length: 2,
       child: AppPageLayout(
         title: 'Hat & Lisanslar',
-        subtitle: 'Verilen hatlar ve GMP3 lisansları tek listede.',
+        subtitle: 'Hat, lisans, bitiş takibi ve toplu yenileme yönetimi.',
         body: Column(
           children: [
-            AppCard(
-              padding: const EdgeInsets.all(12),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 300,
-                    child: TextField(
-                      decoration: const InputDecoration(
-                        labelText: 'Ara',
-                        hintText: 'Hat numarası / SIM / Lisans adı',
-                        prefixIcon: Icon(Icons.search_rounded),
-                      ),
-                      onChanged: (v) =>
-                          ref.read(productSearchProvider.notifier).set(v),
+            SmartFilterBar(
+              title: 'Filtreler',
+              subtitle: 'Müşteri, bitiş tarihi ve görünürlük filtreleri',
+              children: [
+                SizedBox(
+                  width: 300,
+                  child: TextField(
+                    decoration: const InputDecoration(
+                      labelText: 'Ara',
+                      hintText: 'Hat numarası / SIM / Lisans adı',
+                      prefixIcon: Icon(Icons.search_rounded),
                     ),
+                    onChanged: (v) =>
+                        ref.read(productSearchProvider.notifier).set(v),
                   ),
-                  customersAsync.when(
-                    data: (customers) => SizedBox(
-                      width: 240,
-                      child: DropdownButtonFormField<String?>(
-                        initialValue: selectedCustomerId,
-                        items: [
-                          const DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text('Tüm müşteriler'),
-                          ),
-                          ...customers
-                              .where((customer) => customer.isActive || isAdmin)
-                              .map(
-                                (customer) => DropdownMenuItem<String?>(
-                                  value: customer.id,
-                                  child: Text(customer.name),
-                                ),
+                ),
+                customersAsync.when(
+                  data: (customers) => SizedBox(
+                    width: 240,
+                    child: DropdownButtonFormField<String?>(
+                      initialValue: selectedCustomerId,
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Tüm müşteriler'),
+                        ),
+                        ...customers
+                            .where((customer) => customer.isActive || isAdmin)
+                            .map(
+                              (customer) => DropdownMenuItem<String?>(
+                                value: customer.id,
+                                child: Text(customer.name),
                               ),
-                        ],
-                        onChanged: (value) => ref
-                            .read(productCustomerFilterProvider.notifier)
-                            .set(value),
-                        decoration: const InputDecoration(labelText: 'Müşteri'),
+                            ),
+                      ],
+                      onChanged: (value) => ref
+                          .read(productCustomerFilterProvider.notifier)
+                          .set(value),
+                      decoration: const InputDecoration(labelText: 'Müşteri'),
+                    ),
+                  ),
+                  loading: () => const SizedBox(
+                    width: 280,
+                    child: LinearProgressIndicator(minHeight: 2),
+                  ),
+                  error: (error, stackTrace) => const SizedBox.shrink(),
+                ),
+                SizedBox(
+                  width: 190,
+                  child: DropdownButtonFormField<ProductListSort>(
+                    initialValue: sort,
+                    items: const [
+                      DropdownMenuItem(
+                        value: ProductListSort.nearestEndDate,
+                        child: Text('Bitiş: yakın önce'),
                       ),
-                    ),
-                    loading: () => const SizedBox(
-                      width: 280,
-                      child: LinearProgressIndicator(minHeight: 2),
-                    ),
-                    error: (error, stackTrace) => const SizedBox.shrink(),
-                  ),
-                  SizedBox(
-                    width: 190,
-                    child: DropdownButtonFormField<ProductListSort>(
-                      initialValue: sort,
-                      items: const [
-                        DropdownMenuItem(
-                          value: ProductListSort.nearestEndDate,
-                          child: Text('Bitiş: yakın önce'),
-                        ),
-                        DropdownMenuItem(
-                          value: ProductListSort.latestEndDate,
-                          child: Text('Bitiş: uzak önce'),
-                        ),
-                        DropdownMenuItem(
-                          value: ProductListSort.customerName,
-                          child: Text('Müşteri adına göre'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value == null) return;
-                        ref.read(productSortProvider.notifier).set(value);
-                      },
-                      decoration: const InputDecoration(labelText: 'Listeleme'),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 190,
-                    child: DropdownButtonFormField<ProductQuickFilter>(
-                      initialValue: quickFilter,
-                      items: const [
-                        DropdownMenuItem(
-                          value: ProductQuickFilter.all,
-                          child: Text('Tüm kayıtlar'),
-                        ),
-                        DropdownMenuItem(
-                          value: ProductQuickFilter.expiringSoon,
-                          child: Text('Yakında bitecek'),
-                        ),
-                        DropdownMenuItem(
-                          value: ProductQuickFilter.expired,
-                          child: Text('Bitenler'),
-                        ),
-                        DropdownMenuItem(
-                          value: ProductQuickFilter.endingThisMonth,
-                          child: Text('Bu ay bitecek'),
-                        ),
-                        DropdownMenuItem(
-                          value: ProductQuickFilter.noEndDate,
-                          child: Text('Tarihsiz'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value == null) return;
-                        ref
-                            .read(productQuickFilterProvider.notifier)
-                            .set(value);
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'Hızlı Filtre',
+                      DropdownMenuItem(
+                        value: ProductListSort.latestEndDate,
+                        child: Text('Bitiş: uzak önce'),
                       ),
+                      DropdownMenuItem(
+                        value: ProductListSort.customerName,
+                        child: Text('Müşteri adına göre'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      ref.read(productSortProvider.notifier).set(value);
+                    },
+                    decoration: const InputDecoration(labelText: 'Listeleme'),
+                  ),
+                ),
+                SizedBox(
+                  width: 190,
+                  child: DropdownButtonFormField<ProductQuickFilter>(
+                    initialValue: quickFilter,
+                    items: const [
+                      DropdownMenuItem(
+                        value: ProductQuickFilter.all,
+                        child: Text('Tüm kayıtlar'),
+                      ),
+                      DropdownMenuItem(
+                        value: ProductQuickFilter.expiringSoon,
+                        child: Text('Yakında bitecek'),
+                      ),
+                      DropdownMenuItem(
+                        value: ProductQuickFilter.expired,
+                        child: Text('Bitenler'),
+                      ),
+                      DropdownMenuItem(
+                        value: ProductQuickFilter.endingThisMonth,
+                        child: Text('Bu ay bitecek'),
+                      ),
+                      DropdownMenuItem(
+                        value: ProductQuickFilter.noEndDate,
+                        child: Text('Tarihsiz'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      ref.read(productQuickFilterProvider.notifier).set(value);
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Hızlı Filtre',
                     ),
                   ),
-                  if (isAdmin)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Switch.adaptive(
-                          value: showPassive,
-                          onChanged: (v) =>
-                              ref.read(showPassiveProvider.notifier).set(v),
+                ),
+                if (isAdmin)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Switch.adaptive(
+                        value: showPassive,
+                        onChanged: (v) =>
+                            ref.read(showPassiveProvider.notifier).set(v),
+                      ),
+                      const Gap(6),
+                      Text(
+                        'Pasif',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF475569),
                         ),
-                        const Gap(6),
-                        Text(
-                          'Pasif',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: const Color(0xFF475569)),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
+                      ),
+                    ],
+                  ),
+              ],
             ),
             const Gap(8),
             linesAsync.when(
@@ -702,10 +698,7 @@ class _LineRowState extends ConsumerState<_LineRow> {
             Checkbox.adaptive(
               value: widget.selected,
               onChanged: widget.onSelectedChanged,
-              visualDensity: const VisualDensity(
-                horizontal: -4,
-                vertical: -4,
-              ),
+              visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
             ),
             const Gap(4),
           ],
@@ -894,10 +887,7 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
             Checkbox.adaptive(
               value: widget.selected,
               onChanged: widget.onSelectedChanged,
-              visualDensity: const VisualDensity(
-                horizontal: -4,
-                vertical: -4,
-              ),
+              visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
             ),
             const Gap(4),
           ],

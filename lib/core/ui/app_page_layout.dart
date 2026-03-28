@@ -21,11 +21,11 @@ class AppPageLayout extends StatelessWidget {
     final width = MediaQuery.sizeOf(context).width;
     final isMobile = width < 720;
     final horizontalPadding = width >= 1200
-        ? 24.0
+        ? AppTheme.pagePaddingDesktop.horizontal / 2
         : width >= 720
-        ? 18.0
-        : 12.0;
-    final topPadding = width >= 720 ? 16.0 : 10.0;
+        ? AppTheme.pagePaddingTablet.horizontal / 2
+        : AppTheme.pagePaddingMobile.horizontal / 2;
+    final topPadding = width >= 720 ? 14.0 : 10.0;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -51,17 +51,18 @@ class AppPageLayout extends StatelessWidget {
                     horizontalPadding,
                     topPadding,
                     horizontalPadding,
-                    8,
+                    6,
                   ),
                   child: Container(
                     padding: EdgeInsets.symmetric(
                       horizontal: width >= 720 ? 18 : 14,
-                      vertical: width >= 720 ? 14 : 12,
+                      vertical: width >= 720 ? 12 : 10,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.86),
-                      borderRadius: BorderRadius.circular(20),
+                      color: Colors.white.withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusLg),
                       border: Border.all(color: AppTheme.border),
+                      boxShadow: AppTheme.cardShadow,
                     ),
                     child: isMobile
                         ? Column(
@@ -69,7 +70,8 @@ class AppPageLayout extends StatelessWidget {
                             children: [
                               Text(
                                 title,
-                                style: Theme.of(context).textTheme.titleLarge,
+                                style: Theme.of(context).textTheme.headlineSmall
+                                    ?.copyWith(fontWeight: FontWeight.w800),
                               ),
                               if (subtitle != null)
                                 Padding(
@@ -83,7 +85,7 @@ class AppPageLayout extends StatelessWidget {
                                   ),
                                 ),
                               if (actions != null) ...[
-                                const SizedBox(height: 10),
+                                const SizedBox(height: 8),
                                 Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
@@ -101,9 +103,12 @@ class AppPageLayout extends StatelessWidget {
                                   children: [
                                     Text(
                                       title,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleLarge,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .headlineSmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                          ),
                                     ),
                                     if (subtitle != null)
                                       Padding(
@@ -115,7 +120,7 @@ class AppPageLayout extends StatelessWidget {
                                               .bodyMedium
                                               ?.copyWith(
                                                 color: AppTheme.textMuted,
-                                                fontSize: 14,
+                                                fontSize: 13,
                                               ),
                                         ),
                                       ),
@@ -144,9 +149,9 @@ class AppPageLayout extends StatelessWidget {
               SliverPadding(
                 padding: EdgeInsets.fromLTRB(
                   horizontalPadding,
-                  8,
+                  6,
                   horizontalPadding,
-                  18,
+                  16,
                 ),
                 sliver: SliverToBoxAdapter(child: body),
               ),

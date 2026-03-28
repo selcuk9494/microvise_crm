@@ -10,6 +10,10 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/app_section_card.dart';
+import '../../core/ui/compact_stat_card.dart';
+import '../../core/ui/empty_state_card.dart';
+import '../../core/ui/smart_filter_bar.dart';
 
 final serviceFiltersProvider =
     NotifierProvider<ServiceFiltersNotifier, ServiceFilters>(
@@ -108,80 +112,24 @@ class ServiceScreen extends ConsumerWidget {
               .toList(growable: false);
 
           if (items.isEmpty) {
-            return AppCard(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Text(
-                  'Henüz servis kaydı yok.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-              ),
+            return const EmptyStateCard(
+              icon: Icons.build_circle_outlined,
+              title: 'Henüz servis kaydı yok',
+              message: 'Yeni servis kaydı oluşturarak süreci başlatın.',
             );
           }
 
           return Column(
             children: [
               _ServiceSummary(items: items),
-              const Gap(16),
-              AppCard(
-                child: Column(
-                  children: [
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        SizedBox(
-                          width: isMobile ? double.infinity : width * 0.38,
-                          child: TextField(
-                            onChanged: ref
-                                .read(serviceFiltersProvider.notifier)
-                                .setSearch,
-                            decoration: const InputDecoration(
-                              labelText: 'Servis Ara',
-                              hintText: 'Başlık veya müşteri adı',
-                              prefixIcon: Icon(Icons.search_rounded),
-                            ),
-                          ),
-                        ),
-                        SizedBox(
-                          width: isMobile ? double.infinity : 240,
-                          child: DropdownButtonFormField<String>(
-                            initialValue: filters.status,
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'all',
-                                child: Text('Tüm Durumlar'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'open',
-                                child: Text('Açık'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'in_progress',
-                                child: Text('Devam'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'done',
-                                child: Text('Tamam'),
-                              ),
-                            ],
-                            onChanged: (value) => ref
-                                .read(serviceFiltersProvider.notifier)
-                                .setStatus(value ?? 'all'),
-                            decoration: const InputDecoration(
-                              labelText: 'Durum',
-                              prefixIcon: Icon(Icons.tune_rounded),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (filters.search.isNotEmpty ||
-                        filters.status != 'all') ...[
-                      const Gap(12),
-                      Align(
+              const Gap(12),
+              SmartFilterBar(
+                title: 'Filtreler',
+                subtitle: isMobile
+                    ? null
+                    : 'Başlık, müşteri ve durum filtreleri',
+                footer: filters.search.isNotEmpty || filters.status != 'all'
+                    ? Align(
                         alignment: Alignment.centerLeft,
                         child: Wrap(
                           spacing: 8,
@@ -206,17 +154,55 @@ class ServiceScreen extends ConsumerWidget {
                                     .read(serviceFiltersProvider.notifier)
                                     .setStatus('all');
                               },
-                              icon: const Icon(Icons.clear_rounded, size: 18),
+                              icon: const Icon(Icons.clear_rounded, size: 16),
                               label: const Text('Temizle'),
                             ),
                           ],
                         ),
+                      )
+                    : null,
+                children: [
+                  SizedBox(
+                    width: isMobile ? double.infinity : width * 0.38,
+                    child: TextField(
+                      onChanged: ref
+                          .read(serviceFiltersProvider.notifier)
+                          .setSearch,
+                      decoration: const InputDecoration(
+                        labelText: 'Servis Ara',
+                        hintText: 'Başlık veya müşteri adı',
+                        prefixIcon: Icon(Icons.search_rounded),
                       ),
-                    ],
-                  ],
-                ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: isMobile ? double.infinity : 220,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: filters.status,
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'all',
+                          child: Text('Tüm Durumlar'),
+                        ),
+                        DropdownMenuItem(value: 'open', child: Text('Açık')),
+                        DropdownMenuItem(
+                          value: 'in_progress',
+                          child: Text('Devam'),
+                        ),
+                        DropdownMenuItem(value: 'done', child: Text('Tamam')),
+                      ],
+                      onChanged: (value) => ref
+                          .read(serviceFiltersProvider.notifier)
+                          .setStatus(value ?? 'all'),
+                      decoration: const InputDecoration(
+                        labelText: 'Durum',
+                        prefixIcon: Icon(Icons.tune_rounded),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const Gap(16),
+              const Gap(12),
               LayoutBuilder(
                 builder: (context, constraints) {
                   final twoCols = constraints.maxWidth >= 980;
@@ -228,18 +214,13 @@ class ServiceScreen extends ConsumerWidget {
                         child: AppCard(
                           padding: EdgeInsets.zero,
                           child: filtered.isEmpty
-                              ? Padding(
-                                  padding: const EdgeInsets.all(24),
-                                  child: Center(
-                                    child: Text(
-                                      'Filtrelere uygun servis kaydı bulunamadı.',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyMedium
-                                          ?.copyWith(
-                                            color: const Color(0xFF64748B),
-                                          ),
-                                    ),
+                              ? const Padding(
+                                  padding: EdgeInsets.all(10),
+                                  child: EmptyStateCard(
+                                    icon: Icons.search_off_rounded,
+                                    title: 'Kayıt bulunamadı',
+                                    message:
+                                        'Filtrelere uygun servis kaydı bulunamadı.',
                                   ),
                                 )
                               : ListView.separated(
@@ -257,7 +238,9 @@ class ServiceScreen extends ConsumerWidget {
                       if (twoCols)
                         Expanded(
                           flex: 3,
-                          child: AppCard(
+                          child: AppSectionCard(
+                            title: 'Süreç özeti',
+                            subtitle: 'Seçili kayıtların son durum akışı',
                             child: _ServiceTimelinePreview(items: filtered),
                           ),
                         ),
@@ -371,115 +354,22 @@ class _ServiceSummary extends StatelessWidget {
       ),
     ];
 
-    return AppCard(
-      padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 10 : 14,
-        vertical: isMobile ? 10 : 12,
-      ),
-      child: isMobile
-          ? Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: stats
-                  .map(
-                    (stat) => _ServiceStat(
-                      label: stat.$1,
-                      value: stat.$2,
-                      icon: stat.$3,
-                      color: stat.$4,
-                      compact: true,
-                    ),
-                  )
-                  .toList(growable: false),
-            )
-          : Row(
-              children: [
-                for (int i = 0; i < stats.length; i++) ...[
-                  Expanded(
-                    child: _ServiceStat(
-                      label: stats[i].$1,
-                      value: stats[i].$2,
-                      icon: stats[i].$3,
-                      color: stats[i].$4,
-                      compact: true,
-                    ),
-                  ),
-                  if (i != stats.length - 1) const Gap(10),
-                ],
-              ],
-            ),
-    );
-  }
-}
-
-class _ServiceStat extends StatelessWidget {
-  const _ServiceStat({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    this.compact = false,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final content = Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 10 : 16,
-        vertical: compact ? 8 : 12,
-      ),
-      decoration: BoxDecoration(
-        color: compact ? const Color(0xFFF8FAFC) : Colors.transparent,
-        borderRadius: BorderRadius.circular(compact ? 14 : 18),
-        border: Border.all(
-          color: compact ? AppTheme.border : Colors.transparent,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: compact ? 34 : 42,
-            height: compact ? 34 : 42,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(compact ? 10 : 12),
-            ),
-            child: Icon(icon, color: color, size: compact ? 18 : 20),
-          ),
-          Gap(compact ? 10 : 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-                Gap(compact ? 2 : 4),
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: compact ? 16 : null,
-                  ),
-                ),
-              ],
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        for (final stat in stats)
+          SizedBox(
+            width: isMobile ? (MediaQuery.sizeOf(context).width - 38) / 2 : 180,
+            child: CompactStatCard(
+              label: stat.$1,
+              value: stat.$2,
+              icon: stat.$3,
+              color: stat.$4,
             ),
           ),
-        ],
-      ),
+      ],
     );
-
-    if (compact) return content;
-    return AppCard(child: content);
   }
 }
 

@@ -6,7 +6,7 @@ class AppCard extends StatefulWidget {
   const AppCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(16),
+    this.padding = const EdgeInsets.all(14),
     this.onTap,
   });
 
@@ -30,7 +30,9 @@ class _AppCardState extends State<AppCard> {
         ? Material(
             type: MaterialType.transparency,
             child: InkWell(
-              borderRadius: const BorderRadius.all(Radius.circular(16)),
+              borderRadius: const BorderRadius.all(
+                Radius.circular(AppTheme.radiusMd),
+              ),
               onTap: widget.onTap,
               child: child,
             ),
@@ -46,24 +48,22 @@ class _AppCardState extends State<AppCard> {
         curve: Curves.easeOut,
         transform: Matrix4.translationValues(
           0,
-          clickable && _hovered ? -2 : 0,
+          clickable && _hovered ? -1.5 : 0,
           0,
         ),
         decoration: BoxDecoration(
           color: Theme.of(context).cardTheme.color ?? AppTheme.surface,
-          borderRadius: const BorderRadius.all(Radius.circular(18)),
+          borderRadius: const BorderRadius.all(
+            Radius.circular(AppTheme.radiusMd),
+          ),
           border: Border.all(
             color: clickable && _hovered
-                ? AppTheme.primary.withValues(alpha: 0.24)
+                ? AppTheme.primary.withValues(alpha: 0.22)
                 : AppTheme.border,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.primaryDark.withValues(alpha: 0.05),
-              blurRadius: clickable && _hovered ? 18 : 12,
-              offset: Offset(0, clickable && _hovered ? 10 : 6),
-            ),
-          ],
+          boxShadow: clickable && _hovered
+              ? AppTheme.hoverShadow
+              : AppTheme.cardShadow,
         ),
         child: content,
       ),

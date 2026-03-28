@@ -9,7 +9,10 @@ import '../../app/theme/app_theme.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_section_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/empty_state_card.dart';
+import '../../core/ui/smart_filter_bar.dart';
 import 'customer_form_dialog.dart';
 import 'customer_model.dart';
 import 'customers_providers.dart';
@@ -95,167 +98,55 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       ],
       body: Column(
         children: [
-          AppCard(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (!isMobile) ...[
-                  Row(
-                    children: [
-                      PopupMenuButton<_CustomerDataAction>(
-                        tooltip: 'Veri işlemleri',
-                        onSelected: (action) {
-                          switch (action) {
-                            case _CustomerDataAction.template:
-                              _downloadCustomerImportTemplate(context);
-                            case _CustomerDataAction.export:
-                              _exportCustomersToExcel(context, ref);
-                            case _CustomerDataAction.import:
-                              _importExcel(context, ref);
-                          }
-                        },
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(
-                            value: _CustomerDataAction.template,
-                            child: Text('Şablon İndir'),
-                          ),
-                          PopupMenuItem(
-                            value: _CustomerDataAction.export,
-                            child: Text('Dışa Aktar'),
-                          ),
-                          PopupMenuItem(
-                            value: _CustomerDataAction.import,
-                            child: Text('İçe Aktar'),
-                          ),
-                        ],
-                        child: OutlinedButton.icon(
-                          onPressed: null,
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
-                          ),
-                          icon: const Icon(Icons.more_horiz_rounded, size: 16),
-                          label: const Text('Veri'),
-                        ),
+          SmartFilterBar(
+            title: 'Filtreler',
+            subtitle: isMobile
+                ? null
+                : 'Müşteri arayın, şehir kırılımı seçin ve veri işlemlerine erişin.',
+            trailing: !isMobile
+                ? PopupMenuButton<_CustomerDataAction>(
+                    tooltip: 'Veri işlemleri',
+                    onSelected: (action) {
+                      switch (action) {
+                        case _CustomerDataAction.template:
+                          _downloadCustomerImportTemplate(context);
+                        case _CustomerDataAction.export:
+                          _exportCustomersToExcel(context, ref);
+                        case _CustomerDataAction.import:
+                          _importExcel(context, ref);
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: _CustomerDataAction.template,
+                        child: Text('Şablon İndir'),
                       ),
-                      const Spacer(),
+                      PopupMenuItem(
+                        value: _CustomerDataAction.export,
+                        child: Text('Dışa Aktar'),
+                      ),
+                      PopupMenuItem(
+                        value: _CustomerDataAction.import,
+                        child: Text('İçe Aktar'),
+                      ),
                     ],
-                  ),
-                  const Gap(6),
-                ],
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    SizedBox(
-                      width: isMobile ? double.infinity : width * 0.33,
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: (value) {
-                          ref
-                              .read(customerFiltersProvider.notifier)
-                              .setSearch(value);
-                          ref.read(customerPageProvider.notifier).reset();
-                        },
-                        decoration: const InputDecoration(
-                          labelText: 'Müşteri Ara',
-                          hintText: 'Firma adına göre arayın',
-                          prefixIcon: Icon(Icons.search_rounded),
+                    child: OutlinedButton.icon(
+                      onPressed: null,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 38),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
                         ),
                       ),
+                      icon: const Icon(Icons.unfold_more_rounded, size: 16),
+                      label: const Text('Veri'),
                     ),
-                    SizedBox(
-                      width: isMobile ? double.infinity : width * 0.20,
-                      child: citiesAsync.when(
-                        data: (cities) => DropdownButtonFormField<String?>(
-                          initialValue: filters.city,
-                          items: [
-                            const DropdownMenuItem<String?>(
-                              value: null,
-                              child: Text('Tüm Şehirler'),
-                            ),
-                            ...cities.map(
-                              (city) => DropdownMenuItem<String?>(
-                                value: city,
-                                child: Text(city),
-                              ),
-                            ),
-                          ],
-                          onChanged: (value) {
-                            ref
-                                .read(customerFiltersProvider.notifier)
-                                .setCity(value);
-                            ref.read(customerPageProvider.notifier).reset();
-                          },
-                          decoration: const InputDecoration(
-                            labelText: 'Şehir',
-                            prefixIcon: Icon(Icons.location_city_rounded),
-                          ),
-                        ),
-                        loading: () => const TextField(
-                          enabled: false,
-                          decoration: InputDecoration(
-                            labelText: 'Şehir',
-                            prefixIcon: Icon(Icons.location_city_rounded),
-                          ),
-                        ),
-                        error: (error, stackTrace) => const TextField(
-                          enabled: false,
-                          decoration: InputDecoration(
-                            labelText: 'Şehir yüklenemedi',
-                            prefixIcon: Icon(Icons.error_outline_rounded),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      width: isMobile ? double.infinity : 190,
-                      child: DropdownButtonFormField<CustomerSortOption>(
-                        initialValue: sort,
-                        items: const [
-                          DropdownMenuItem(
-                            value: CustomerSortOption.id,
-                            child: Text('ID Numarası'),
-                          ),
-                          DropdownMenuItem(
-                            value: CustomerSortOption.nameAsc,
-                            child: Text('A - Z'),
-                          ),
-                          DropdownMenuItem(
-                            value: CustomerSortOption.nameDesc,
-                            child: Text('Z - A'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          if (value == null) return;
-                          ref.read(customerSortProvider.notifier).set(value);
-                          ref.read(customerPageProvider.notifier).reset();
-                        },
-                        decoration: const InputDecoration(
-                          labelText: 'Sıralama',
-                          prefixIcon: Icon(Icons.sort_by_alpha_rounded),
-                        ),
-                      ),
-                    ),
-                    FilterChip(
-                      selected: showPassive,
-                      onSelected: (value) {
-                        ref
-                            .read(customerShowPassiveProvider.notifier)
-                            .set(value);
-                        ref.read(customerPageProvider.notifier).reset();
-                      },
-                      label: const Text('Pasifleri Göster'),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ],
-                ),
-                if (filters.search.isNotEmpty || filters.city != null || showPassive) ...[
-                  const Gap(6),
-                  Align(
+                  )
+                : null,
+            footer:
+                filters.search.isNotEmpty || filters.city != null || showPassive
+                ? Align(
                     alignment: Alignment.centerLeft,
                     child: Wrap(
                       spacing: 8,
@@ -290,53 +181,127 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 .set(false);
                             ref.read(customerPageProvider.notifier).reset();
                           },
-                          icon: const Icon(Icons.clear_rounded, size: 18),
-                          label: const Text('Filtreleri Temizle'),
+                          icon: const Icon(Icons.clear_rounded, size: 16),
+                          label: const Text('Temizle'),
                         ),
                       ],
                     ),
+                  )
+                : null,
+            children: [
+              if (!isMobile) ...[const SizedBox.shrink()],
+              SizedBox(
+                width: isMobile ? double.infinity : width * 0.34,
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (value) {
+                    ref.read(customerFiltersProvider.notifier).setSearch(value);
+                    ref.read(customerPageProvider.notifier).reset();
+                  },
+                  decoration: const InputDecoration(
+                    labelText: 'Müşteri Ara',
+                    hintText: 'Firma adına göre arayın',
+                    prefixIcon: Icon(Icons.search_rounded),
                   ),
-                ],
-              ],
-            ),
+                ),
+              ),
+              SizedBox(
+                width: isMobile ? double.infinity : width * 0.19,
+                child: citiesAsync.when(
+                  data: (cities) => DropdownButtonFormField<String?>(
+                    initialValue: filters.city,
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('Tüm Şehirler'),
+                      ),
+                      ...cities.map(
+                        (city) => DropdownMenuItem<String?>(
+                          value: city,
+                          child: Text(city),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      ref.read(customerFiltersProvider.notifier).setCity(value);
+                      ref.read(customerPageProvider.notifier).reset();
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Şehir',
+                      prefixIcon: Icon(Icons.location_city_rounded),
+                    ),
+                  ),
+                  loading: () => const TextField(
+                    enabled: false,
+                    decoration: InputDecoration(
+                      labelText: 'Şehir',
+                      prefixIcon: Icon(Icons.location_city_rounded),
+                    ),
+                  ),
+                  error: (error, stackTrace) => const TextField(
+                    enabled: false,
+                    decoration: InputDecoration(
+                      labelText: 'Şehir yüklenemedi',
+                      prefixIcon: Icon(Icons.error_outline_rounded),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: isMobile ? double.infinity : 178,
+                child: DropdownButtonFormField<CustomerSortOption>(
+                  initialValue: sort,
+                  items: const [
+                    DropdownMenuItem(
+                      value: CustomerSortOption.id,
+                      child: Text('ID Numarası'),
+                    ),
+                    DropdownMenuItem(
+                      value: CustomerSortOption.nameAsc,
+                      child: Text('A - Z'),
+                    ),
+                    DropdownMenuItem(
+                      value: CustomerSortOption.nameDesc,
+                      child: Text('Z - A'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    ref.read(customerSortProvider.notifier).set(value);
+                    ref.read(customerPageProvider.notifier).reset();
+                  },
+                  decoration: const InputDecoration(
+                    labelText: 'Sıralama',
+                    prefixIcon: Icon(Icons.sort_by_alpha_rounded),
+                  ),
+                ),
+              ),
+              FilterChip(
+                selected: showPassive,
+                onSelected: (value) {
+                  ref.read(customerShowPassiveProvider.notifier).set(value);
+                  ref.read(customerPageProvider.notifier).reset();
+                },
+                label: const Text('Pasifleri Göster'),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
           ),
           const Gap(10),
           customersAsync.when(
             data: (pageData) {
               final customers = pageData.items;
               if (customers.isEmpty) {
-                return AppCard(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.groups_2_rounded,
-                          size: 52,
-                          color: Color(0xFF94A3B8),
-                        ),
-                        const Gap(12),
-                        Text(
-                          'Henüz müşteri kaydı yok',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const Gap(8),
-                        Text(
-                          'Yeni müşteri ekleyerek listeyi oluşturmaya başlayın.',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: const Color(0xFF64748B)),
-                        ),
-                        const Gap(16),
-                        FilledButton.icon(
-                          onPressed: () =>
-                              _showCustomerForm(context, ref, openDetail: true),
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('İlk Müşteriyi Ekle'),
-                        ),
-                      ],
-                    ),
+                return EmptyStateCard(
+                  icon: Icons.groups_2_rounded,
+                  title: 'Henüz müşteri kaydı yok',
+                  message:
+                      'Yeni müşteri ekleyerek listeyi oluşturmaya başlayın.',
+                  action: FilledButton.icon(
+                    onPressed: () =>
+                        _showCustomerForm(context, ref, openDetail: true),
+                    icon: const Icon(Icons.add_rounded, size: 16),
+                    label: const Text('İlk Müşteriyi Ekle'),
                   ),
                 );
               }
@@ -351,7 +316,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     _SummaryRow(customers: customers),
                     const Gap(8),
                   ],
-                  AppCard(
+                  AppSectionCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 10,
@@ -439,8 +404,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                     ?.copyWith(color: const Color(0xFF64748B)),
                               ),
                             ),
-                          const Gap(10),
-                          Flexible(
+                            const Gap(10),
+                            Flexible(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
@@ -701,8 +666,9 @@ class _CustomerCard extends ConsumerWidget {
                             customer.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontSize: 15),
+                            style: Theme.of(
+                              context,
+                            ).textTheme.titleMedium?.copyWith(fontSize: 15),
                           ),
                         ),
                         const Gap(6),

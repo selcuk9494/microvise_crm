@@ -9,6 +9,8 @@ import '../../app/theme/app_theme.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/app_section_card.dart';
+import '../../core/ui/empty_state_card.dart';
 import 'work_order_create_dialog.dart';
 import 'work_order_model.dart';
 import 'work_order_detail_sheet.dart';
@@ -126,13 +128,8 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
             ),
           ),
           Gap(isCompact ? 8 : 10),
-          Container(
-            margin: EdgeInsets.symmetric(horizontal: isCompact ? 0 : 2),
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppTheme.border),
-            ),
+          AppSectionCard(
+            padding: const EdgeInsets.all(6),
             child: TabBar(
               controller: _tabController,
               isScrollable: isCompact,
@@ -140,91 +137,34 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
               dividerColor: Colors.transparent,
               tabAlignment: isCompact ? TabAlignment.start : TabAlignment.fill,
               labelPadding: EdgeInsets.symmetric(
-                horizontal: isCompact ? 12 : 24,
+                horizontal: isCompact ? 12 : 18,
               ),
               tabs: [
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.radio_button_unchecked_rounded,
-                        size: 16,
-                      ),
-                      const Gap(8),
-                      const Text('Açık'),
-                      boardAsync.whenOrNull(
-                            data: (items) {
-                              final count = items
-                                  .where((e) => e.status == 'open')
-                                  .length;
-                              return count > 0
-                                  ? Padding(
-                                      padding: const EdgeInsets.only(left: 8),
-                                      child: AppBadge(
-                                        label: count.toString(),
-                                        tone: AppBadgeTone.warning,
-                                      ),
-                                    )
-                                  : const SizedBox.shrink();
-                            },
-                          ) ??
-                          const SizedBox.shrink(),
-                    ],
+                _StatusTab(
+                  label: 'Açık',
+                  icon: Icons.radio_button_unchecked_rounded,
+                  tone: AppBadgeTone.warning,
+                  count: boardAsync.whenOrNull(
+                    data: (items) =>
+                        items.where((e) => e.status == 'open').length,
                   ),
                 ),
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.timelapse_rounded, size: 16),
-                      const Gap(8),
-                      const Text('Devam Ediyor'),
-                      boardAsync.whenOrNull(
-                            data: (items) {
-                              final count = items
-                                  .where((e) => e.status == 'in_progress')
-                                  .length;
-                              return count > 0
-                                  ? Padding(
-                                      padding: const EdgeInsets.only(left: 8),
-                                      child: AppBadge(
-                                        label: count.toString(),
-                                        tone: AppBadgeTone.primary,
-                                      ),
-                                    )
-                                  : const SizedBox.shrink();
-                            },
-                          ) ??
-                          const SizedBox.shrink(),
-                    ],
+                _StatusTab(
+                  label: 'Devam Ediyor',
+                  icon: Icons.timelapse_rounded,
+                  tone: AppBadgeTone.primary,
+                  count: boardAsync.whenOrNull(
+                    data: (items) =>
+                        items.where((e) => e.status == 'in_progress').length,
                   ),
                 ),
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.check_circle_outline_rounded, size: 16),
-                      const Gap(8),
-                      const Text('Kapalı'),
-                      boardAsync.whenOrNull(
-                            data: (items) {
-                              final count = items
-                                  .where((e) => e.status == 'done')
-                                  .length;
-                              return count > 0
-                                  ? Padding(
-                                      padding: const EdgeInsets.only(left: 8),
-                                      child: AppBadge(
-                                        label: count.toString(),
-                                        tone: AppBadgeTone.success,
-                                      ),
-                                    )
-                                  : const SizedBox.shrink();
-                            },
-                          ) ??
-                          const SizedBox.shrink(),
-                    ],
+                _StatusTab(
+                  label: 'Kapalı',
+                  icon: Icons.check_circle_outline_rounded,
+                  tone: AppBadgeTone.success,
+                  count: boardAsync.whenOrNull(
+                    data: (items) =>
+                        items.where((e) => e.status == 'done').length,
                   ),
                 ),
               ],
@@ -365,27 +305,10 @@ class _WorkOrderList extends StatelessWidget {
     final isMobile = MediaQuery.sizeOf(context).width < 720;
     if (items.isEmpty) {
       return Center(
-        child: AppCard(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.inbox_rounded,
-                  size: 48,
-                  color: const Color(0xFF94A3B8),
-                ),
-                const Gap(12),
-                Text(
-                  emptyText,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        child: EmptyStateCard(
+          icon: Icons.inbox_rounded,
+          title: 'Kayıt bulunamadı',
+          message: emptyText,
         ),
       );
     }
@@ -466,6 +389,39 @@ class _WorkOrderList extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _StatusTab extends StatelessWidget {
+  const _StatusTab({
+    required this.label,
+    required this.icon,
+    required this.tone,
+    required this.count,
+  });
+
+  final String label;
+  final IconData icon;
+  final AppBadgeTone tone;
+  final int? count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tab(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15),
+          const Gap(6),
+          Text(label),
+          if ((count ?? 0) > 0)
+            Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: AppBadge(label: count.toString(), tone: tone),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -717,10 +673,7 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                   AppBadge(label: statusLabel, tone: statusTone),
                   if (!order.isActive) ...[
                     const Gap(6),
-                    const AppBadge(
-                      label: 'Pasif',
-                      tone: AppBadgeTone.neutral,
-                    ),
+                    const AppBadge(label: 'Pasif', tone: AppBadgeTone.neutral),
                   ],
                   if (!widget.reorderEnabled) ...[
                     const Gap(8),

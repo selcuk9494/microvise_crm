@@ -3,8 +3,8 @@ import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_theme.dart';
-import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/app_section_card.dart';
 
 class FormsScreen extends StatelessWidget {
   const FormsScreen({super.key});
@@ -19,25 +19,17 @@ class FormsScreen extends StatelessWidget {
       subtitle: 'Başvuru, hurda ve devir formlarını yönetin.',
       body: Column(
         children: [
-          AppCard(
+          AppSectionCard(
+            title: 'Form Merkezi',
+            subtitle:
+                'Resmi form akışlarını tek merkezden yönetin ve yazdırın.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Form Merkezi',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const Gap(8),
-                Text(
-                  'Tüm resmi form akışlarını tek yerden açın. Yeni form türlerini aynı yapı ile bu alana ekleyeceğiz.',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
-                ),
-                const Gap(18),
+                const Gap(4),
                 Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
+                  spacing: 12,
+                  runSpacing: 12,
                   children: [
                     _FormEntryCard(
                       title: 'Başvuru Formu',
@@ -104,44 +96,38 @@ class _FormEntryCard extends StatelessWidget {
     return SizedBox(
       width: width,
       child: Container(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(AppTheme.radiusLg),
           border: Border.all(color: AppTheme.border),
-          boxShadow: [
-            BoxShadow(
-              color: accent.withValues(alpha: 0.08),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          boxShadow: AppTheme.cardShadow,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 52,
-              height: 52,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: accent.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppTheme.radiusSm),
               ),
-              child: Icon(icon, color: accent, size: 24),
+              child: Icon(icon, color: accent, size: 20),
             ),
-            const Gap(14),
+            const Gap(12),
             Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const Gap(8),
+            const Gap(6),
             Text(
               description,
               style: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
             ),
-            const Gap(16),
+            const Gap(12),
             FilledButton.icon(
               onPressed: onTap,
-              icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
               label: Text(buttonLabel),
             ),
           ],
