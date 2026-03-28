@@ -1,5 +1,6 @@
 import 'package:excel/excel.dart' as excel;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -350,59 +351,16 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       }
     }
 
-    final file = excel.Excel.createExcel();
-    final defaultSheet = file.getDefaultSheet();
-    if (defaultSheet != null && defaultSheet != 'Tsm') {
-      file.rename(defaultSheet, 'Tsm');
+    final templateData = await rootBundle.load('assets/templates/tsm_template.xlsx');
+    final file = excel.Excel.decodeBytes(templateData.buffer.asUint8List());
+    const sheetName = 'Tsm';
+    final sheet = file[sheetName];
+    final templateStyles = <int, excel.CellStyle?>{};
+    for (var col = 0; col < 43; col++) {
+      templateStyles[col] = sheet
+          .cell(excel.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: 1))
+          .cellStyle;
     }
-    final sheet = file['Tsm'];
-
-    final headers = [
-      'Desen',
-      'Tip',
-      'OKC_SeriNo',
-      'Kanal',
-      'Model',
-      'Uygulama',
-      'Banka_IsyeriNo',
-      'Banka_TerminalNo',
-      'Banka_SubeNo',
-      'Kurulum_Adres',
-      'Kurulum_Il',
-      'Kurulum_ilce',
-      'IptalDurumu',
-      'Musteri_Adi',
-      'Musteri_Soyadi',
-      'Musteri_Adresi',
-      'Musteri_il',
-      'Musteri_ilce',
-      'Musteri_VergiDairesi',
-      'Musteri_VergiNo',
-      'Musteri_TCKN',
-      'Musteri_MersisNo',
-      'Musteri_TicaretSicilNo',
-      'Musteri_Tel',
-      'Musteri_GSM',
-      'Isyeri_ResmiUnvan',
-      'Isyeri_FaaliyetBaslanicTarihi',
-      'GIB_Onay_Kodu',
-      'Mukellef_Vergi_Dairesi_Kodu',
-      'NACE_Kodu',
-      'Fiyat',
-      'OdemeRefNo',
-      'Kargo Zamani',
-      'FaturaTipi',
-      'Fatura_Numarasi',
-      'Fatura_Tarihi',
-      'Fatura_Sira-Seri_Numarasi',
-      'Stok',
-      'Saha Firmasi',
-      'Operator',
-      'Satis_Kanali_VKN',
-      'Satis_Kanali_Resmi_Unvan',
-      'Teknisyen_TCKN',
-    ];
-    sheet.appendRow(headers.map(excel.TextCellValue.new).toList());
 
     for (final record in records) {
       final customer = record.customerId == null
@@ -426,10 +384,10 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         excel.TextCellValue(serialNumber),
         excel.TextCellValue('MICROVISE'),
         excel.TextCellValue(modelCode),
-        excel.TextCellValue(''),
-        excel.TextCellValue(''),
-        excel.TextCellValue(''),
-        excel.TextCellValue(''),
+        null,
+        null,
+        null,
+        null,
         excel.TextCellValue(address),
         excel.IntCellValue(98),
         excel.TextCellValue(taxOffice),
@@ -440,32 +398,40 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         excel.IntCellValue(98),
         excel.TextCellValue(taxOffice),
         excel.TextCellValue(taxOffice),
-        _excelCellFromRaw(vkn),
-        _excelCellFromRaw(tcknMs),
-        excel.TextCellValue(''),
-        excel.TextCellValue(''),
-        _excelCellFromRaw(phone),
-        _excelCellFromRaw(phone),
+        _excelCellFromRaw(vkn, preferText: false),
+        _excelCellFromRaw(tcknMs, preferText: false),
+        null,
+        null,
+        _excelCellFromRaw(phone, preferText: false),
+        _excelCellFromRaw(phone, preferText: false),
         excel.TextCellValue(record.customerName),
         null,
         null,
         excel.TextCellValue('2'),
         excel.IntCellValue(561101),
-        excel.TextCellValue(''),
-        excel.TextCellValue(''),
-        excel.TextCellValue(''),
+        null,
+        null,
+        null,
         excel.TextCellValue('2'),
         excel.TextCellValue('1111'),
         excel.TextCellValue(invoiceDate),
         excel.TextCellValue('a123'),
         excel.IntCellValue(2),
         excel.TextCellValue('MICROVISE'),
-        excel.TextCellValue(''),
+        null,
         excel.TextCellValue('19660'),
         excel.TextCellValue('Microvise Innovation Ltd. Sti'),
-        _excelCellFromRaw('1210404319'),
+        _excelCellFromRaw('1210404319', preferText: false),
       ];
-      sheet.appendRow(row);
+      final rowIndex = 1 + records.indexOf(record);
+      for (var col = 0; col < row.length; col++) {
+        file.updateCell(
+          sheetName,
+          excel.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: rowIndex),
+          row[col],
+          cellStyle: templateStyles[col],
+        );
+      }
     }
 
     final bytes = file.encode();
@@ -554,10 +520,12 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     return normalized.substring(normalized.length - 10);
   }
 
-  excel.CellValue _excelCellFromRaw(String raw) {
+  excel.CellValue _excelCellFromRaw(String raw, {bool preferText = true}) {
     final text = raw.trim();
     if (text.isEmpty) return excel.TextCellValue('');
-    if (RegExp(r'^[0-9]+$').hasMatch(text) && !text.startsWith('0')) {
+    if (!preferText &&
+        RegExp(r'^[0-9]+$').hasMatch(text) &&
+        !text.startsWith('0')) {
       return excel.IntCellValue(int.parse(text));
     }
     return excel.TextCellValue(text);
