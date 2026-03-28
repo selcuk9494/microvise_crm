@@ -259,20 +259,29 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
           : customerMap[record.customerId!];
       final tcknMs = (customer?['tckn_ms'] ?? record.customerTcknMs ?? '')
           .toString();
-      final vkn = (customer?['vkn'] ?? '').toString();
+      final vkn = _formatVkn((customer?['vkn'] ?? '').toString());
       final taxRegistry = _formatTaxRegistry(tcknMs);
+      final brand = (record.brandName ?? '').trim();
+      final model = (record.modelName ?? '').trim();
+      final companyCode = _resolveCompanyCode(
+        brand: brand,
+        fallback: (record.fiscalSymbolName ?? '').trim(),
+      );
+      final serialNumber = _formatDeviceSerialNumber(
+        record.stockRegistryNumber,
+      );
 
       sheet.appendRow([
         excel.TextCellValue(taxRegistry),
         excel.TextCellValue(record.customerName),
         excel.TextCellValue((record.workAddress ?? '').trim()),
         excel.TextCellValue((record.taxOfficeCityName ?? '').trim()),
-        excel.TextCellValue((record.brandName ?? '').trim()),
-        excel.TextCellValue((record.modelName ?? '').trim()),
+        excel.TextCellValue(brand),
+        excel.TextCellValue(model),
         excel.TextCellValue(''),
         excel.TextCellValue(''),
-        excel.TextCellValue((record.fiscalSymbolName ?? '').trim()),
-        excel.TextCellValue((record.stockRegistryNumber ?? '').trim()),
+        excel.TextCellValue(companyCode),
+        excel.TextCellValue(serialNumber),
         excel.TextCellValue(''),
         excel.TextCellValue(''),
         excel.TextCellValue(
@@ -297,12 +306,227 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     );
   }
 
+  Future<void> _exportForTsm(List<ApplicationFormRecord> records) async {
+    if (records.isEmpty) return;
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null || !mounted) return;
+
+    final customerIds = records
+        .map((record) => record.customerId)
+        .whereType<String>()
+        .toSet()
+        .toList(growable: false);
+
+    final customerMap = <String, Map<String, dynamic>>{};
+    if (customerIds.isNotEmpty) {
+      final rows = await client
+          .from('customers')
+          .select('id,vkn,tckn_ms,phone_1,phone_2,phone_3')
+          .inFilter('id', customerIds);
+      for (final row in rows as List) {
+        final item = row as Map<String, dynamic>;
+        customerMap[item['id'].toString()] = item;
+      }
+    }
+
+    final file = excel.Excel.createExcel();
+    final sheet = file.tables[file.getDefaultSheet()]!;
+
+    final headers = [
+      'Desen',
+      'Tip',
+      'OKC_SeriNo',
+      'Kanal',
+      'Model',
+      'Uygulama',
+      'Banka_IsyeriNo',
+      'Banka_TerminalNo',
+      'Banka_SubeNo',
+      'Kurulum_Adres',
+      'Kurulum_Il',
+      'Kurulum_ilce',
+      'IptalDurumu',
+      'Musteri_Adi',
+      'Musteri_Soyadi',
+      'Musteri_Adresi',
+      'Musteri_il',
+      'Musteri_ilce',
+      'Musteri_VergiDairesi',
+      'Musteri_VergiNo',
+      'Musteri_TCKN',
+      'Musteri_MersisNo',
+      'Musteri_TicaretSicilNo',
+      'Musteri_Tel',
+      'Musteri_GSM',
+      'Isyeri_ResmiUnvan',
+      'Isyeri_FaaliyetBaslanicTarihi',
+      'GIB_Onay_Kodu',
+      'Mukellef_Vergi_Dairesi_Kodu',
+      'NACE_Kodu',
+      'Fiyat',
+      'OdemeRefNo',
+      'Kargo Zamani',
+      'FaturaTipi',
+      'Fatura_Numarasi',
+      'Fatura_Tarihi',
+      'Fatura_Sira-Seri_Numarasi',
+      'Stok',
+      'Saha Firmasi',
+      'Operator',
+      'Satis_Kanali_VKN',
+      'Satis_Kanali_Resmi_Unvan',
+      'Teknisyen_TCKN',
+    ];
+    sheet.appendRow(headers.map(excel.TextCellValue.new).toList());
+
+    for (final record in records) {
+      final customer = record.customerId == null
+          ? null
+          : customerMap[record.customerId!];
+      final splitName = _splitCustomerName(record.customerName);
+      final phone = _pickCustomerPhone(customer);
+      final taxOffice = (record.taxOfficeCityName ?? '').trim();
+      final vkn = _formatVkn((customer?['vkn'] ?? '').toString());
+      final tcknMs = _formatTaxRegistry(
+        (customer?['tckn_ms'] ?? record.customerTcknMs ?? '').toString(),
+      );
+      final serialRaw = (record.stockRegistryNumber ?? '').trim().toUpperCase();
+      final modelCode = _resolveTsmModel(serialRaw);
+      final address = (record.workAddress ?? '').trim();
+      final invoiceDate = record.applicationDate.toIso8601String().split('T').first;
+
+      final row = <excel.CellValue>[
+        excel.TextCellValue('V3'),
+        excel.TextCellValue('3'),
+        excel.TextCellValue(serialRaw),
+        excel.TextCellValue('MICROVISE'),
+        excel.TextCellValue(modelCode),
+        excel.TextCellValue(''),
+        excel.TextCellValue(''),
+        excel.TextCellValue(''),
+        excel.TextCellValue(''),
+        excel.TextCellValue(address),
+        excel.TextCellValue('98'),
+        excel.TextCellValue(taxOffice),
+        excel.TextCellValue('0'),
+        excel.TextCellValue(splitName.$1),
+        excel.TextCellValue(splitName.$2),
+        excel.TextCellValue(address),
+        excel.TextCellValue('98'),
+        excel.TextCellValue(taxOffice),
+        excel.TextCellValue(taxOffice),
+        excel.TextCellValue(vkn),
+        excel.TextCellValue(tcknMs),
+        excel.TextCellValue(''),
+        excel.TextCellValue(''),
+        excel.TextCellValue(phone),
+        excel.TextCellValue(phone),
+        excel.TextCellValue(record.customerName),
+        excel.TextCellValue(''),
+        excel.TextCellValue(''),
+        excel.TextCellValue('2'),
+        excel.TextCellValue('561101'),
+        excel.TextCellValue(''),
+        excel.TextCellValue(''),
+        excel.TextCellValue(''),
+        excel.TextCellValue('2'),
+        excel.TextCellValue('1111'),
+        excel.TextCellValue(invoiceDate),
+        excel.TextCellValue('a123'),
+        excel.TextCellValue('2'),
+        excel.TextCellValue('MICROVISE'),
+        excel.TextCellValue(''),
+        excel.TextCellValue('19660'),
+        excel.TextCellValue('Microvise Innovation Ltd. Sti'),
+        excel.TextCellValue('1210404319'),
+      ];
+      sheet.appendRow(row);
+    }
+
+    final bytes = file.encode();
+    if (bytes == null || !mounted) return;
+    downloadExcelFile(
+      bytes,
+      'tsm_gonder_${DateTime.now().millisecondsSinceEpoch}.xlsx',
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${records.length} kayit icin TSM Excel disa aktarildi.'),
+      ),
+    );
+  }
+
   String _formatTaxRegistry(String raw) {
-    final text = raw.trim();
+    var text = raw.trim().toUpperCase();
     if (text.isEmpty) return '';
-    if (text.toUpperCase().startsWith('MS')) return text;
-    if (text.isNotEmpty && text.length <= 5) return 'MS$text';
+    if (text.startsWith('MŞ')) return text;
+    if (text.startsWith('MS')) {
+      text = 'MŞ${text.substring(2)}';
+    }
+    if (!text.startsWith('MŞ')) {
+      text = text.replaceFirst(RegExp(r'^0+'), '');
+      if (text.length == 5) return 'MŞ$text';
+    }
     return text;
+  }
+
+  (String, String) _splitCustomerName(String raw) {
+    final words = raw
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+    if (words.isEmpty) return ('', '');
+    if (words.length == 1) return (words.first, '');
+    final splitIndex = (words.length / 2).ceil();
+    return (
+      words.take(splitIndex).join(' '),
+      words.skip(splitIndex).join(' '),
+    );
+  }
+
+  String _pickCustomerPhone(Map<String, dynamic>? customer) {
+    if (customer == null) return '';
+    for (final key in ['phone_1', 'phone_2', 'phone_3']) {
+      final value = (customer[key] ?? '').toString().trim();
+      if (value.isNotEmpty) return value;
+    }
+    return '';
+  }
+
+  String _resolveTsmModel(String serialNumber) {
+    final upper = serialNumber.toUpperCase();
+    if (upper.startsWith('2C')) return '4';
+    if (upper.startsWith('2D')) return '6';
+    return '';
+  }
+
+  String _resolveCompanyCode({
+    required String brand,
+    required String fallback,
+  }) {
+    final normalized = _sortKey(brand);
+    if (normalized.contains('pax')) return '2D';
+    if (normalized.contains('ingenico')) return '2C';
+    return fallback;
+  }
+
+  String _formatDeviceSerialNumber(String? raw) {
+    final text = (raw ?? '').trim().toUpperCase();
+    if (text.startsWith('2C') || text.startsWith('2D')) {
+      return text.substring(2);
+    }
+    return text;
+  }
+
+  String _formatVkn(String raw) {
+    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return '';
+    final trimmed = digits.replaceFirst(RegExp(r'^0+'), '');
+    if (trimmed.length <= 9) return trimmed;
+    return trimmed.substring(trimmed.length - 9);
   }
 
   @override
@@ -473,12 +697,23 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                   ),
                   const Gap(8),
                   if (selectedRecords.isNotEmpty)
-                    FilledButton.icon(
-                      onPressed: () => _exportForTaxOffice(selectedRecords),
-                      icon: const Icon(Icons.download_rounded, size: 18),
-                      label: Text(
-                        'Vergi Dairesine Gonder (${selectedRecords.length})',
-                      ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: () => _exportForTaxOffice(selectedRecords),
+                          icon: const Icon(Icons.download_rounded, size: 18),
+                          label: Text(
+                            'Vergi Dairesine Gonder (${selectedRecords.length})',
+                          ),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => _exportForTsm(selectedRecords),
+                          icon: const Icon(Icons.table_chart_rounded, size: 18),
+                          label: Text('TSM\'e Gonder (${selectedRecords.length})'),
+                        ),
+                      ],
                     ),
                 ],
               ),
