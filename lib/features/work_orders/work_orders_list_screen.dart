@@ -70,7 +70,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
       title: 'İş Emirleri',
       subtitle: isCompact
           ? 'Açık işleri sürükleyip sıralayın.'
-          : 'Tüm iş emirlerini yönetin',
+          : 'İş emri akışını sıkı ve temiz görünümde yönetin.',
       actions: [
         if (isCompact) ...[
           OutlinedButton(
@@ -127,7 +127,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
               ],
             ),
           ),
-          Gap(isCompact ? 8 : 10),
+          Gap(isCompact ? 8 : 8),
           AppSectionCard(
             padding: const EdgeInsets.all(6),
             child: TabBar(
@@ -170,7 +170,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
               ],
             ),
           ),
-          Gap(isCompact ? 10 : 16),
+          Gap(isCompact ? 10 : 10),
           Expanded(
             child: boardAsync.when(
               data: (items) {
@@ -321,10 +321,10 @@ class _WorkOrderList extends StatelessWidget {
       return ListView.separated(
         padding: EdgeInsets.symmetric(
           horizontal: isMobile ? 0 : 2,
-          vertical: 4,
+          vertical: 2,
         ),
         itemCount: items.length,
-        separatorBuilder: (context, index) => Gap(isMobile ? 8 : 10),
+        separatorBuilder: (context, index) => Gap(isMobile ? 8 : 6),
         itemBuilder: (context, index) {
           final order = items[index];
           return _WorkOrderCard(
@@ -357,7 +357,7 @@ class _WorkOrderList extends StatelessWidget {
           child: ReorderableListView.builder(
             padding: EdgeInsets.symmetric(
               horizontal: isMobile ? 0 : 2,
-              vertical: 4,
+              vertical: 2,
             ),
             itemCount: items.length,
             buildDefaultDragHandles: false,
@@ -375,7 +375,7 @@ class _WorkOrderList extends StatelessWidget {
               return Padding(
                 key: ValueKey(order.id),
                 padding: EdgeInsets.only(
-                  bottom: index == items.length - 1 ? 0 : (isMobile ? 8 : 10),
+                  bottom: index == items.length - 1 ? 0 : (isMobile ? 8 : 6),
                 ),
                 child: _WorkOrderCard(
                   order: order,
@@ -478,20 +478,20 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
           duration: const Duration(milliseconds: 140),
           curve: Curves.easeOut,
           transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
-          padding: EdgeInsets.all(isMobile ? 12 : 16),
+          padding: EdgeInsets.all(isMobile ? 12 : 12),
           decoration: BoxDecoration(
             color: AppTheme.surface,
             borderRadius: BorderRadius.circular(isMobile ? 12 : 14),
             border: Border.all(
               color: _hovered
-                  ? AppTheme.primary.withValues(alpha: 0.3)
+                  ? AppTheme.primary.withValues(alpha: 0.24)
                   : AppTheme.border,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: _hovered ? 0.08 : 0.04),
-                blurRadius: _hovered ? 20 : 12,
-                offset: const Offset(0, 6),
+                color: Colors.black.withValues(alpha: _hovered ? 0.05 : 0.025),
+                blurRadius: _hovered ? 14 : 10,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -526,14 +526,14 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                               padding: const EdgeInsets.only(left: 8),
                               child: Icon(
                                 Icons.drag_indicator_rounded,
-                                size: isMobile ? 18 : 20,
+                                size: isMobile ? 18 : 18,
                                 color: const Color(0xFF94A3B8),
                               ),
                             ),
                           ),
                       ],
                     ),
-                    Gap(isMobile ? 4 : 6),
+                    Gap(isMobile ? 4 : 4),
                     if (isMobile &&
                         (order.customerName?.trim().isNotEmpty ?? false))
                       Padding(
@@ -550,8 +550,8 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                         ),
                       ),
                     Wrap(
-                      spacing: isMobile ? 6 : 8,
-                      runSpacing: isMobile ? 6 : 8,
+                      spacing: isMobile ? 6 : 6,
+                      runSpacing: isMobile ? 6 : 6,
                       children: [
                         if (!isMobile)
                           _WorkOrderMetaChip(
@@ -635,14 +635,14 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: const Color(0xFF64748B),
-                          height: 1.45,
+                          height: 1.35,
                         ),
                       ),
                     ],
                   ],
                 ),
               ),
-              const Gap(12),
+              const Gap(10),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -717,7 +717,7 @@ class _WorkOrderMetaChip extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 8 : 10,
-        vertical: compact ? 5 : 7,
+        vertical: compact ? 5 : 6,
       ),
       decoration: BoxDecoration(
         color:

@@ -239,7 +239,7 @@ class ProductsScreen extends ConsumerWidget {
           children: [
             SmartFilterBar(
               title: 'Filtreler',
-              subtitle: 'Müşteri, bitiş tarihi ve görünürlük filtreleri',
+              subtitle: null,
               children: [
                 SizedBox(
                   width: 300,
@@ -364,7 +364,7 @@ class ProductsScreen extends ConsumerWidget {
                   ),
               ],
             ),
-            const Gap(8),
+            const Gap(6),
             linesAsync.when(
               data: (lines) => licensesAsync.when(
                 data: (licenses) => _ProductsSummarySection(
@@ -379,7 +379,7 @@ class ProductsScreen extends ConsumerWidget {
               loading: () => const _ProductsSummaryLoading(),
               error: (error, stackTrace) => const SizedBox.shrink(),
             ),
-            const Gap(8),
+            const Gap(6),
             AppCard(
               padding: EdgeInsets.zero,
               child: Column(
@@ -387,10 +387,7 @@ class ProductsScreen extends ConsumerWidget {
                   const TabBar(
                     isScrollable: true,
                     tabAlignment: TabAlignment.start,
-                    labelPadding: EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
+                    labelPadding: EdgeInsets.symmetric(horizontal: 10),
                     tabs: [
                       Tab(text: 'Hatlar'),
                       Tab(text: 'Lisanslar (GMP3)'),
@@ -427,7 +424,7 @@ class _LinesTab extends ConsumerWidget {
     final licensesAsync = ref.watch(issuedLicensesProvider);
     final selectedIds = ref.watch(selectedLineIdsProvider);
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       child: linesAsync.when(
         data: (items) => licensesAsync.when(
           data: (licenses) {
@@ -492,11 +489,11 @@ class _LinesTab extends ConsumerWidget {
                             ref.read(selectedLineIdsProvider.notifier).clear();
                           },
                   ),
-                if (isAdmin) const Gap(8),
+                if (isAdmin) const Gap(6),
                 Expanded(
                   child: ListView.separated(
                     itemCount: filteredItems.length,
-                    separatorBuilder: (context, index) => const Gap(6),
+                    separatorBuilder: (context, index) => const Gap(4),
                     itemBuilder: (context, index) => _LineRow(
                       item: filteredItems[index],
                       isAdmin: isAdmin,
@@ -536,7 +533,7 @@ class _LicensesTab extends ConsumerWidget {
     final linesAsync = ref.watch(issuedLinesProvider);
     final selectedIds = ref.watch(selectedLicenseIdsProvider);
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       child: licensesAsync.when(
         data: (items) => linesAsync.when(
           data: (lines) {
@@ -598,11 +595,11 @@ class _LicensesTab extends ConsumerWidget {
                                 .clear();
                           },
                   ),
-                if (isAdmin) const Gap(8),
+                if (isAdmin) const Gap(6),
                 Expanded(
                   child: ListView.separated(
                     itemCount: filteredLicenses.length,
-                    separatorBuilder: (context, index) => const Gap(6),
+                    separatorBuilder: (context, index) => const Gap(4),
                     itemBuilder: (context, index) => _LicenseRow(
                       item: filteredLicenses[index],
                       isAdmin: isAdmin,
@@ -1717,43 +1714,34 @@ class _ProductsSummarySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        SizedBox(
-          width: 220,
-          child: _SummaryMetricCard(
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _SummaryMetricChip(
             title: 'Toplam',
             value: summary.total.toString(),
             tone: AppBadgeTone.primary,
           ),
-        ),
-        SizedBox(
-          width: 220,
-          child: _SummaryMetricCard(
+          _SummaryMetricChip(
             title: 'Bu Ay Bitecek',
             value: summary.endingThisMonth.toString(),
             tone: AppBadgeTone.warning,
           ),
-        ),
-        SizedBox(
-          width: 220,
-          child: _SummaryMetricCard(
+          _SummaryMetricChip(
             title: 'Süresi Dolmuş',
             value: summary.expired.toString(),
             tone: AppBadgeTone.error,
           ),
-        ),
-        SizedBox(
-          width: 220,
-          child: _SummaryMetricCard(
+          _SummaryMetricChip(
             title: 'Tarihsiz',
             value: summary.noEndDate.toString(),
             tone: AppBadgeTone.neutral,
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -1770,8 +1758,8 @@ class _ProductsSummaryLoading extends StatelessWidget {
   }
 }
 
-class _SummaryMetricCard extends StatelessWidget {
-  const _SummaryMetricCard({
+class _SummaryMetricChip extends StatelessWidget {
+  const _SummaryMetricChip({
     required this.title,
     required this.value,
     required this.tone,
@@ -1783,18 +1771,24 @@ class _SummaryMetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           AppBadge(label: title, tone: tone),
-          const Gap(14),
+          const Gap(8),
           Text(
             value,
-            style: Theme.of(
-              context,
-            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.2,
+            ),
           ),
         ],
       ),
@@ -1825,7 +1819,7 @@ class _BulkActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(14),
@@ -1838,17 +1832,17 @@ class _BulkActionBar extends StatelessWidget {
               selectedCount > 0 ? '$title • $selectedCount seçili' : title,
               style: Theme.of(
                 context,
-              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
           OutlinedButton(
             onPressed: onToggleAll,
             child: Text(selectedCount > 0 ? 'Seçimi Temizle' : 'Tümünü Seç'),
           ),
-          const Gap(10),
+          const Gap(8),
           FilledButton.icon(
             onPressed: onExtend,
-            icon: const Icon(Icons.schedule_rounded),
+            icon: const Icon(Icons.schedule_rounded, size: 16),
             label: const Text('Toplu Süre Uzat'),
           ),
         ],

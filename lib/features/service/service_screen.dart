@@ -11,7 +11,6 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../../core/ui/app_section_card.dart';
-import '../../core/ui/compact_stat_card.dart';
 import '../../core/ui/empty_state_card.dart';
 import '../../core/ui/smart_filter_bar.dart';
 
@@ -82,7 +81,7 @@ class ServiceScreen extends ConsumerWidget {
 
     return AppPageLayout(
       title: 'Servis',
-      subtitle: 'Adım adım süreç, parça + işçilik ayrımı.',
+      subtitle: 'Servis kayıtları, süreç ve durum takibi.',
       actions: [
         FilledButton.icon(
           onPressed: () async {
@@ -122,12 +121,10 @@ class ServiceScreen extends ConsumerWidget {
           return Column(
             children: [
               _ServiceSummary(items: items),
-              const Gap(12),
+              const Gap(8),
               SmartFilterBar(
                 title: 'Filtreler',
-                subtitle: isMobile
-                    ? null
-                    : 'Başlık, müşteri ve durum filtreleri',
+                subtitle: null,
                 footer: filters.search.isNotEmpty || filters.status != 'all'
                     ? Align(
                         alignment: Alignment.centerLeft,
@@ -202,7 +199,7 @@ class ServiceScreen extends ConsumerWidget {
                   ),
                 ],
               ),
-              const Gap(12),
+              const Gap(8),
               LayoutBuilder(
                 builder: (context, constraints) {
                   final twoCols = constraints.maxWidth >= 980;
@@ -273,7 +270,7 @@ class ServiceScreen extends ConsumerWidget {
                   ),
                 ],
               ),
-              const Gap(16),
+              const Gap(10),
               AppCard(
                 padding: EdgeInsets.zero,
                 child: ListView.separated(
@@ -319,56 +316,105 @@ class _ServiceSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final isMobile = width < 720;
     final open = items.where((item) => item.status == 'open').length;
     final inProgress = items
         .where((item) => item.status == 'in_progress')
         .length;
     final done = items.where((item) => item.status == 'done').length;
 
-    final stats = [
-      (
-        'Toplam',
-        items.length.toString(),
-        Icons.build_circle_outlined,
-        AppTheme.primary,
-      ),
-      (
-        'Açık',
-        open.toString(),
-        Icons.radio_button_unchecked_rounded,
-        AppTheme.warning,
-      ),
-      (
-        'Devam',
-        inProgress.toString(),
-        Icons.timelapse_rounded,
-        AppTheme.primary,
-      ),
-      (
-        'Tamam',
-        done.toString(),
-        Icons.check_circle_outline_rounded,
-        AppTheme.success,
-      ),
-    ];
-
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: [
-        for (final stat in stats)
-          SizedBox(
-            width: isMobile ? (MediaQuery.sizeOf(context).width - 38) / 2 : 180,
-            child: CompactStatCard(
-              label: stat.$1,
-              value: stat.$2,
-              icon: stat.$3,
-              color: stat.$4,
-            ),
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _ServiceSummaryPill(
+            label: 'Toplam',
+            value: items.length.toString(),
+            icon: Icons.build_circle_outlined,
+            color: AppTheme.primary,
           ),
-      ],
+          _ServiceSummaryPill(
+            label: 'Açık',
+            value: open.toString(),
+            icon: Icons.radio_button_unchecked_rounded,
+            color: AppTheme.warning,
+          ),
+          _ServiceSummaryPill(
+            label: 'Devam',
+            value: inProgress.toString(),
+            icon: Icons.timelapse_rounded,
+            color: AppTheme.primary,
+          ),
+          _ServiceSummaryPill(
+            label: 'Tamam',
+            value: done.toString(),
+            icon: Icons.check_circle_outline_rounded,
+            color: AppTheme.success,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServiceSummaryPill extends StatelessWidget {
+  const _ServiceSummaryPill({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 15, color: color),
+          ),
+          const Gap(8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF64748B),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                value,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -401,7 +447,7 @@ class _ServiceRow extends StatelessWidget {
         : DateFormat('d MMM', 'tr_TR').format(item.createdAt!);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: () => context.go('/servis/${item.id}'),
@@ -415,7 +461,7 @@ class _ServiceRow extends StatelessWidget {
                   context,
                 ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
-              const Gap(8),
+              const Gap(6),
               AppBadge(label: status.$1, tone: status.$2),
             ] else
               Row(
@@ -432,7 +478,7 @@ class _ServiceRow extends StatelessWidget {
                   AppBadge(label: status.$1, tone: status.$2),
                 ],
               ),
-            const Gap(4),
+            const Gap(2),
             if (isMobile) ...[
               Text(
                 item.customerName ?? '—',
