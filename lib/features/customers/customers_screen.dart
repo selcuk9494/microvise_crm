@@ -64,6 +64,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final filters = ref.watch(customerFiltersProvider);
     final currentPage = ref.watch(customerPageProvider);
     final sort = ref.watch(customerSortProvider);
+    final showPassive = ref.watch(customerShowPassiveProvider);
     final headerSummary = !isMobile
         ? customersAsync.whenOrNull(
             data: (pageData) =>
@@ -95,7 +96,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       body: Column(
         children: [
           AppCard(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -143,11 +144,11 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       const Spacer(),
                     ],
                   ),
-                  const Gap(8),
+                  const Gap(6),
                 ],
                 Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
                     SizedBox(
                       width: isMobile ? double.infinity : width * 0.33,
@@ -239,10 +240,21 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         ),
                       ),
                     ),
+                    FilterChip(
+                      selected: showPassive,
+                      onSelected: (value) {
+                        ref
+                            .read(customerShowPassiveProvider.notifier)
+                            .set(value);
+                        ref.read(customerPageProvider.notifier).reset();
+                      },
+                      label: const Text('Pasifleri Göster'),
+                      visualDensity: VisualDensity.compact,
+                    ),
                   ],
                 ),
-                if (filters.search.isNotEmpty || filters.city != null) ...[
-                  const Gap(8),
+                if (filters.search.isNotEmpty || filters.city != null || showPassive) ...[
+                  const Gap(6),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Wrap(
@@ -259,6 +271,11 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                             label: 'Şehir: ${filters.city}',
                             tone: AppBadgeTone.neutral,
                           ),
+                        if (showPassive)
+                          const AppBadge(
+                            label: 'Pasifler açık',
+                            tone: AppBadgeTone.warning,
+                          ),
                         TextButton.icon(
                           onPressed: () {
                             _searchController.clear();
@@ -268,6 +285,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                             ref
                                 .read(customerFiltersProvider.notifier)
                                 .setCity(null);
+                            ref
+                                .read(customerShowPassiveProvider.notifier)
+                                .set(false);
                             ref.read(customerPageProvider.notifier).reset();
                           },
                           icon: const Icon(Icons.clear_rounded, size: 18),
@@ -280,7 +300,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
               ],
             ),
           ),
-          const Gap(16),
+          const Gap(10),
           customersAsync.when(
             data: (pageData) {
               final customers = pageData.items;
@@ -333,8 +353,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   ],
                   AppCard(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
+                      horizontal: 12,
+                      vertical: 10,
                     ),
                     child: LayoutBuilder(
                       builder: (context, constraints) {
@@ -393,9 +413,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 style: Theme.of(context).textTheme.bodyMedium
                                     ?.copyWith(color: const Color(0xFF64748B)),
                               ),
-                              const Gap(8),
+                              const Gap(6),
                               pageButtons,
-                              const Gap(4),
+                              const Gap(2),
                               TextButton.icon(
                                 onPressed: () => _showCustomerForm(
                                   context,
@@ -419,13 +439,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                     ?.copyWith(color: const Color(0xFF64748B)),
                               ),
                             ),
-                            const Gap(16),
-                            Flexible(
+                          const Gap(10),
+                          Flexible(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   pageButtons,
-                                  const Gap(4),
+                                  const Gap(2),
                                   TextButton.icon(
                                     onPressed: () => _showCustomerForm(
                                       context,
@@ -446,12 +466,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       },
                     ),
                   ),
-                  const Gap(6),
+                  const Gap(4),
                   ListView.separated(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: customers.length,
-                    separatorBuilder: (context, index) => const Gap(8),
+                    separatorBuilder: (context, index) => const Gap(6),
                     itemBuilder: (context, index) {
                       final customer = customers[index];
                       return _CustomerCard(
@@ -590,27 +610,27 @@ class _SummaryStat extends StatelessWidget {
 
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 10,
-        vertical: compact ? 6 : 8,
+        horizontal: compact ? 7 : 8,
+        vertical: compact ? 5 : 6,
       ),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(compact ? 14 : 16),
+        borderRadius: BorderRadius.circular(compact ? 12 : 14),
         border: Border.all(color: AppTheme.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: compact ? 26 : 30,
-            height: compact ? 26 : 30,
+            width: compact ? 22 : 26,
+            height: compact ? 22 : 26,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(compact ? 8 : 10),
+              borderRadius: BorderRadius.circular(compact ? 7 : 8),
             ),
-            child: Icon(icon, color: color, size: compact ? 14 : 16),
+            child: Icon(icon, color: color, size: compact ? 12 : 14),
           ),
-          Gap(compact ? 6 : 8),
+          Gap(compact ? 5 : 6),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -619,14 +639,14 @@ class _SummaryStat extends StatelessWidget {
                 label,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: const Color(0xFF64748B),
-                  fontSize: compact ? 11 : null,
+                  fontSize: compact ? 10 : 11,
                 ),
               ),
               Text(
                 value,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
-                  fontSize: compact ? 18 : null,
+                  fontSize: compact ? 15 : 16,
                 ),
               ),
             ],
@@ -647,7 +667,7 @@ class _CustomerCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isMobile = MediaQuery.sizeOf(context).width < 720;
     return AppCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(10),
       onTap: () => context.go('/musteriler/${customer.id}'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -656,19 +676,19 @@ class _CustomerCard extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 38,
-                height: 38,
+                width: 30,
+                height: 30,
                 decoration: BoxDecoration(
                   color: AppTheme.primary.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
                   Icons.business_rounded,
                   color: AppTheme.primary,
-                  size: 20,
+                  size: 17,
                 ),
               ),
-              const Gap(10),
+              const Gap(8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -679,12 +699,13 @@ class _CustomerCard extends ConsumerWidget {
                         Expanded(
                           child: Text(
                             customer.name,
-                            maxLines: 2,
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleMedium,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontSize: 15),
                           ),
                         ),
-                        const Gap(8),
+                        const Gap(6),
                         AppBadge(
                           label: customer.isActive ? 'Aktif' : 'Pasif',
                           tone: customer.isActive
@@ -693,10 +714,10 @@ class _CustomerCard extends ConsumerWidget {
                         ),
                       ],
                     ),
-                    const Gap(6),
+                    const Gap(4),
                     Wrap(
-                      spacing: 5,
-                      runSpacing: 5,
+                      spacing: 4,
+                      runSpacing: 4,
                       children: [
                         if ((customer.city ?? '').trim().isNotEmpty)
                           _MetaChip(
@@ -784,16 +805,15 @@ class _CustomerCard extends ConsumerWidget {
                   ),
                   PopupMenuItem(
                     value: _CustomerAction.toggleActive,
-                    child: Text(
-                      customer.isActive ? 'Pasife Al' : 'Aktifleştir',
-                    ),
+                    child: Text(customer.isActive ? 'Sil' : 'Aktifleştir'),
                   ),
                 ],
                 child: const Padding(
-                  padding: EdgeInsets.only(left: 4),
+                  padding: EdgeInsets.only(left: 2),
                   child: Icon(
                     Icons.more_vert_rounded,
                     color: Color(0xFF94A3B8),
+                    size: 18,
                   ),
                 ),
               ),
@@ -802,10 +822,10 @@ class _CustomerCard extends ConsumerWidget {
           if (isMobile &&
               (((customer.email ?? '').trim().isNotEmpty) ||
                   ((customer.vkn ?? '').trim().isNotEmpty))) ...[
-            const Gap(8),
+            const Gap(6),
             Wrap(
-              spacing: 6,
-              runSpacing: 6,
+              spacing: 4,
+              runSpacing: 4,
               children: [
                 if ((customer.email ?? '').trim().isNotEmpty)
                   _MetaChip(
@@ -837,7 +857,7 @@ class _MetaChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(999),
@@ -846,13 +866,14 @@ class _MetaChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: const Color(0xFF64748B)),
-          const Gap(4),
+          Icon(icon, size: 12, color: const Color(0xFF64748B)),
+          const Gap(3),
           Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: const Color(0xFF475569),
-              fontSize: 12,
+              fontSize: 10.5,
+              height: 1,
             ),
           ),
         ],

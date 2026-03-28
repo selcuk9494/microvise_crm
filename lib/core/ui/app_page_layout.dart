@@ -21,11 +21,11 @@ class AppPageLayout extends StatelessWidget {
     final width = MediaQuery.sizeOf(context).width;
     final isMobile = width < 720;
     final horizontalPadding = width >= 1200
-        ? 32.0
-        : width >= 720
         ? 24.0
-        : 16.0;
-    final topPadding = width >= 720 ? 24.0 : 16.0;
+        : width >= 720
+        ? 18.0
+        : 12.0;
+    final topPadding = width >= 720 ? 16.0 : 10.0;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -51,16 +51,16 @@ class AppPageLayout extends StatelessWidget {
                     horizontalPadding,
                     topPadding,
                     horizontalPadding,
-                    12,
+                    8,
                   ),
                   child: Container(
                     padding: EdgeInsets.symmetric(
-                      horizontal: width >= 720 ? 22 : 18,
-                      vertical: width >= 720 ? 20 : 16,
+                      horizontal: width >= 720 ? 18 : 14,
+                      vertical: width >= 720 ? 14 : 12,
                     ),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.86),
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: AppTheme.border),
                     ),
                     child: isMobile
@@ -83,10 +83,10 @@ class AppPageLayout extends StatelessWidget {
                                   ),
                                 ),
                               if (actions != null) ...[
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 10),
                                 Wrap(
-                                  spacing: 10,
-                                  runSpacing: 10,
+                                  spacing: 8,
+                                  runSpacing: 8,
                                   children: actions!,
                                 ),
                               ],
@@ -107,7 +107,7 @@ class AppPageLayout extends StatelessWidget {
                                     ),
                                     if (subtitle != null)
                                       Padding(
-                                        padding: const EdgeInsets.only(top: 6),
+                                        padding: const EdgeInsets.only(top: 4),
                                         child: Text(
                                           subtitle!,
                                           style: Theme.of(context)
@@ -115,6 +115,7 @@ class AppPageLayout extends StatelessWidget {
                                               .bodyMedium
                                               ?.copyWith(
                                                 color: AppTheme.textMuted,
+                                                fontSize: 14,
                                               ),
                                         ),
                                       ),
@@ -126,8 +127,8 @@ class AppPageLayout extends StatelessWidget {
                                   child: Align(
                                     alignment: Alignment.topRight,
                                     child: Wrap(
-                                      spacing: 10,
-                                      runSpacing: 10,
+                                      spacing: 8,
+                                      runSpacing: 8,
                                       alignment: WrapAlignment.end,
                                       crossAxisAlignment:
                                           WrapCrossAlignment.center,
@@ -143,9 +144,9 @@ class AppPageLayout extends StatelessWidget {
               SliverPadding(
                 padding: EdgeInsets.fromLTRB(
                   horizontalPadding,
-                  12,
+                  8,
                   horizontalPadding,
-                  24,
+                  18,
                 ),
                 sliver: SliverToBoxAdapter(child: body),
               ),

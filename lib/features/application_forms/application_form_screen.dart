@@ -72,7 +72,7 @@ final applicationFormsProvider = FutureProvider<List<ApplicationFormRecord>>((
   final rows = await client
       .from('application_forms')
       .select(
-        'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,created_at',
+        'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
       )
       .order('created_at', ascending: false)
       .limit(500);
@@ -95,6 +95,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   final _registryFilterController = TextEditingController();
   final _dateFormat = DateFormat('dd.MM.yyyy', 'tr_TR');
   final Set<String> _selectedRecordIds = <String>{};
+  bool _showPassive = false;
   DateTime? _fromDate;
   DateTime? _toDate;
 
@@ -205,6 +206,25 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
               ? '${kind.label} çıktısı hazırlandı.'
               : '${kind.label} çıktısı bu platformda açılamadı.',
         ),
+      ),
+    );
+  }
+
+  Future<void> _setRecordActive(
+    ApplicationFormRecord record,
+    bool active,
+  ) async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+    await client
+        .from('application_forms')
+        .update({'is_active': active})
+        .eq('id', record.id);
+    ref.invalidate(applicationFormsProvider);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(active ? 'Başvuru yeniden aktifleştirildi.' : 'Başvuru pasife alındı.'),
       ),
     );
   }
@@ -564,7 +584,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       ],
       body: recordsAsync.when(
         data: (records) {
-          final filtered = _filterRecords(records);
+          final filtered = _filterRecords(records)
+              .where((item) => _showPassive || item.isActive)
+              .toList(growable: false);
           final selectedRecords = filtered
               .where((record) => _selectedRecordIds.contains(record.id))
               .toList(growable: false);
@@ -714,7 +736,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                     OutlinedButton.icon(
                       onPressed: () {
                         setState(() {
-                          if (allFilteredSelected) {
+                        if (allFilteredSelected) {
                             for (final record in filtered) {
                               _selectedRecordIds.remove(record.id);
                             }
@@ -735,6 +757,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                         allFilteredSelected ? 'Secimi Temizle' : 'Tumunu Sec',
                       ),
                     ),
+                  if (filtered.isNotEmpty) const Gap(8),
+                  FilterChip(
+                    selected: _showPassive,
+                    onSelected: (value) =>
+                        setState(() => _showPassive = value),
+                    label: const Text('Pasifleri Göster'),
+                    visualDensity: VisualDensity.compact,
+                  ),
                   if (filtered.isNotEmpty) const Gap(8),
                   if (selectedRecords.isNotEmpty)
                     Wrap(
@@ -792,6 +822,10 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                         onEdit: () => _openEditDialog(filtered[index]),
                         onDuplicate: () =>
                             _openDuplicateDialog(filtered[index]),
+                        onToggleActive: () => _setRecordActive(
+                          filtered[index],
+                          !filtered[index].isActive,
+                        ),
                       ),
                       if (index != filtered.length - 1) const Gap(12),
                     ],
@@ -1205,7 +1239,7 @@ class _ApplicationFormDialogState
                         .eq('id', widget.initialRecord!.id)
                   : client.from('application_forms').insert(payload))
               .select(
-                'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,created_at',
+                'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
               )
               .single();
 
@@ -1228,16 +1262,232 @@ class _ApplicationFormDialogState
     final stockProductsAsync = ref.watch(applicationFormStockProductsProvider);
     final activitiesAsync = ref.watch(businessActivityTypesProvider);
 
+    final formRows = <Widget>[
+      _FormRow(
+        label: "Satışa Ait faturanın Tarih ve No' su",
+        first: true,
+        child: _ResponsiveFieldGroup(
+          left: _DateField(
+            value: _applicationDate,
+            format: _dateFormat,
+            onTap: () => _pickDate(
+              currentValue: _applicationDate,
+              onSelected: (value) => setState(() => _applicationDate = value),
+            ),
+          ),
+          right: _ApplicationTextField(controller: _invoiceNumberController),
+        ),
+      ),
+      _FormRow(
+        label: 'Adı - Soyadı / Ünvanı',
+        child: customersAsync.when(
+          data: (items) => _CustomerPickerField(
+            controller: _customerController,
+            selectedCustomerId: _selectedCustomerId,
+            onPickCustomer: () => _pickCustomer(items),
+            onCreateCustomer: _createCustomer,
+          ),
+          loading: () => const _ContentLoading(),
+          error: (error, stackTrace) => const _ContentError(),
+        ),
+      ),
+      _FormRow(
+        label: 'İşyeri Adresi',
+        child: _ApplicationTextField(
+          controller: _workAddressController,
+          minLines: 1,
+          maxLines: 2,
+          validator: (value) =>
+              value == null || value.trim().isEmpty
+              ? 'İş adresi zorunlu.'
+              : null,
+        ),
+      ),
+      _FormRow(
+        label: 'Bağlı olduğu Vergi Dairesi',
+        child: _ResponsiveFieldGroup(
+          left: citiesAsync.when(
+            data: (items) => _ApplicationDropdown<String>(
+              value: _selectedCityId,
+              items: items
+                  .where((item) => item.isActive)
+                  .map(
+                    (item) => DropdownMenuItem<String>(
+                      value: item.id,
+                      child: Text(item.name),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (value) => setState(() => _selectedCityId = value),
+              validator: (value) =>
+                  value == null ? 'Vergi dairesi seçin.' : null,
+            ),
+            loading: () => const _ContentLoading(),
+            error: (error, stackTrace) => const _ContentError(),
+          ),
+          right: _ApplicationDropdown<String>(
+            value: _documentType,
+            items: const [
+              DropdownMenuItem(value: 'VKN', child: Text('VKN')),
+            ],
+            onChanged: null,
+          ),
+        ),
+      ),
+      _FormRow(
+        label: 'Dosya Sicil No',
+        child: _ResponsiveFieldGroup(
+          left: _ApplicationTextField(controller: _fileRegistryController),
+          right: _ApplicationTextField(controller: _customerTcknMsController),
+        ),
+      ),
+      _FormRow(
+        label: 'Direktör',
+        child: _ResponsiveFieldGroup(
+          left: _ApplicationTextField(controller: _directorController),
+          right: _ApplicationTextField(controller: _accountingOfficeController),
+        ),
+      ),
+      _FormRow(
+        label: 'Markası ve Modeli',
+        child: modelsAsync.when(
+          data: (items) => fiscalSymbolsAsync.when(
+            data: (fiscalSymbols) => _ApplicationDropdown<String>(
+              value: _selectedModelId,
+              hintText: 'Tanımlamalardan model seçin',
+              items: items
+                  .where((item) => item.isActive)
+                  .map(
+                    (item) => DropdownMenuItem<String>(
+                      value: item.id,
+                      child: Text(
+                        item.brandName?.trim().isNotEmpty ?? false
+                            ? '${item.brandName} / ${item.name}'
+                            : item.name,
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (value) =>
+                  _applyModelSelection(value, items, fiscalSymbols),
+              validator: (value) => value == null ? 'Model seçin.' : null,
+            ),
+            loading: () => const _ContentLoading(),
+            error: (error, stackTrace) => const _ContentError(),
+          ),
+          loading: () => const _ContentLoading(),
+          error: (error, stackTrace) => const _ContentError(),
+        ),
+      ),
+      _FormRow(
+        label: 'Cihaz Sicil No',
+        child: _ResponsiveFieldGroup(
+          left: stockProductsAsync.when(
+            data: (items) => _ApplicationDropdown<String>(
+              value: _selectedStockProductId,
+              hintText: 'Stok listesinden seçin',
+              items: items
+                  .map(
+                    (item) => DropdownMenuItem<String>(
+                      value: item.id,
+                      child: Text(item.label),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (value) {
+                setState(() {
+                  _selectedStockProductId = value;
+                  final selected = items.where((item) => item.id == value).firstOrNull;
+                  if (selected != null) {
+                    _stockRegistryNumberController.text =
+                        selected.code?.trim().isNotEmpty ?? false
+                        ? selected.code!.trim()
+                        : selected.name;
+                  }
+                });
+              },
+            ),
+            loading: () => const _ContentLoading(),
+            error: (error, stackTrace) => const _ContentError(),
+          ),
+          right: _ApplicationTextField(controller: _stockRegistryNumberController),
+        ),
+      ),
+      _FormRow(
+        label: 'Mali Sembol ve Firma Kodu',
+        child: _ResponsiveFieldGroup(
+          left: fiscalSymbolsAsync.when(
+            data: (items) => _ApplicationDropdown<String>(
+              value: _selectedFiscalSymbolId,
+              items: items
+                  .where((item) => item.isActive)
+                  .map(
+                    (item) => DropdownMenuItem<String>(
+                      value: item.id,
+                      child: Text(
+                        item.code?.trim().isNotEmpty ?? false
+                            ? '${item.code} - ${item.name}'
+                            : item.name,
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (value) =>
+                  setState(() => _selectedFiscalSymbolId = value),
+              validator: (value) => value == null ? 'Mali sembol seçin.' : null,
+            ),
+            loading: () => const _ContentLoading(),
+            error: (error, stackTrace) => const _ContentError(),
+          ),
+          right: activitiesAsync.when(
+            data: (items) => _ApplicationDropdown<String>(
+              value: _selectedBusinessActivityId,
+              items: items
+                  .where((item) => item.isActive)
+                  .map(
+                    (item) => DropdownMenuItem<String>(
+                      value: item.id,
+                      child: Text(item.name),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (value) =>
+                  setState(() => _selectedBusinessActivityId = value),
+              validator: (value) => value == null ? 'Meslek türü seçin.' : null,
+            ),
+            loading: () => const _ContentLoading(),
+            error: (error, stackTrace) => const _ContentError(),
+          ),
+        ),
+      ),
+      _FormRow(
+        label: 'Muhasebe Ofisi',
+        last: true,
+        child: _ResponsiveFieldGroup(
+          left: _ApplicationTextField(controller: _accountingOfficeController),
+          right: _DateField(
+            value: _okcStartDate,
+            format: _dateFormat,
+            onTap: () => _pickDate(
+              currentValue: _okcStartDate,
+              onSelected: (value) => setState(() => _okcStartDate = value),
+            ),
+          ),
+        ),
+      ),
+    ];
+    final splitIndex = (formRows.length / 2).ceil();
+
     return Dialog(
       insetPadding: EdgeInsets.all(isMobile ? 12 : 20),
       backgroundColor: Colors.transparent,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: isMobile ? 540 : 600,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.74,
+          maxWidth: isMobile ? 520 : 1160,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.92,
         ),
         child: AppCard(
-          padding: EdgeInsets.all(isMobile ? 10 : 12),
+          padding: EdgeInsets.all(isMobile ? 8 : 10),
           child: Form(
             key: _formKey,
             child: SingleChildScrollView(
@@ -1281,271 +1531,52 @@ class _ApplicationFormDialogState
                       ),
                     ],
                   ),
-                  const Gap(6),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Column(
-                      children: [
-                        _FormRow(
-                          label: "Satışa Ait faturanın Tarih ve No' su",
-                          first: true,
-                          child: _ResponsiveFieldGroup(
-                            left: _DateField(
-                              value: _applicationDate,
-                              format: _dateFormat,
-                              onTap: () => _pickDate(
-                                currentValue: _applicationDate,
-                                onSelected: (value) =>
-                                    setState(() => _applicationDate = value),
-                              ),
-                            ),
-                            right: _ApplicationTextField(
-                              controller: _invoiceNumberController,
-                            ),
+                  const Gap(4),
+                  isMobile
+                      ? Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                        ),
-                        _FormRow(
-                          label: 'Adı - Soyadı / Ünvanı',
-                          child: customersAsync.when(
-                            data: (items) => _CustomerPickerField(
-                              controller: _customerController,
-                              selectedCustomerId: _selectedCustomerId,
-                              onPickCustomer: () => _pickCustomer(items),
-                              onCreateCustomer: _createCustomer,
-                            ),
-                            loading: () => const _ContentLoading(),
-                            error: (error, stackTrace) => const _ContentError(),
-                          ),
-                        ),
-                        _FormRow(
-                          label: 'İşyeri Adresi',
-                          child: _ApplicationTextField(
-                            controller: _workAddressController,
-                            minLines: 1,
-                            maxLines: 2,
-                            validator: (value) =>
-                                value == null || value.trim().isEmpty
-                                ? 'İş adresi zorunlu.'
-                                : null,
-                          ),
-                        ),
-                        _FormRow(
-                          label: 'Bağlı olduğu Vergi Dairesi',
-                          child: citiesAsync.when(
-                            data: (items) => _ApplicationDropdown<String>(
-                              value: _selectedCityId,
-                              items: items
-                                  .where((item) => item.isActive)
-                                  .map(
-                                    (item) => DropdownMenuItem<String>(
-                                      value: item.id,
-                                      child: Text(item.name),
-                                    ),
-                                  )
-                                  .toList(growable: false),
-                              onChanged: (value) =>
-                                  setState(() => _selectedCityId = value),
-                              validator: (value) =>
-                                  value == null ? 'Vergi dairesi seçin.' : null,
-                            ),
-                            loading: () => const _ContentLoading(),
-                            error: (error, stackTrace) => const _ContentError(),
-                          ),
-                        ),
-                        _FormRow(
-                          label: 'Türü',
-                          child: _ApplicationDropdown<String>(
-                            value: _documentType,
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'VKN',
-                                child: Text('VKN'),
-                              ),
-                            ],
-                            onChanged: null,
-                          ),
-                        ),
-                        _FormRow(
-                          label: 'Dosya Sicil No',
-                          child: _ApplicationTextField(
-                            controller: _fileRegistryController,
-                          ),
-                        ),
-                        _FormRow(
-                          label: 'TCKN-MŞ',
-                          child: _ApplicationTextField(
-                            controller: _customerTcknMsController,
-                          ),
-                        ),
-                        _FormRow(
-                          label: 'Direktör',
-                          child: _ApplicationTextField(
-                            controller: _directorController,
-                          ),
-                        ),
-                        _FormRow(
-                          label: 'Markası ve Modeli',
-                          child: modelsAsync.when(
-                            data: (items) => fiscalSymbolsAsync.when(
-                              data: (fiscalSymbols) => _ApplicationDropdown<String>(
-                                value: _selectedModelId,
-                                hintText: 'Tanımlamalardan model seçin',
-                                items: items
-                                    .where((item) => item.isActive)
-                                    .map(
-                                      (item) => DropdownMenuItem<String>(
-                                        value: item.id,
-                                        child: Text(
-                                          item.brandName?.trim().isNotEmpty ??
-                                                  false
-                                              ? '${item.brandName} / ${item.name}'
-                                              : item.name,
-                                        ),
-                                      ),
-                                    )
-                                    .toList(growable: false),
-                                onChanged: (value) => _applyModelSelection(
-                                  value,
-                                  items,
-                                  fiscalSymbols,
+                          clipBehavior: Clip.antiAlias,
+                          child: Column(children: formRows),
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
                                 ),
-                                validator: (value) =>
-                                    value == null ? 'Model seçin.' : null,
+                                clipBehavior: Clip.antiAlias,
+                                child: Column(
+                                  children: formRows
+                                      .sublist(0, splitIndex)
+                                      .map((row) => row)
+                                      .toList(growable: false),
+                                ),
                               ),
-                              loading: () => const _ContentLoading(),
-                              error: (error, stackTrace) =>
-                                  const _ContentError(),
                             ),
-                            loading: () => const _ContentLoading(),
-                            error: (error, stackTrace) => const _ContentError(),
-                          ),
-                        ),
-                        _FormRow(
-                          label: 'Cihaz Sicil No',
-                          child: _ResponsiveFieldGroup(
-                            left: stockProductsAsync.when(
-                              data: (items) => _ApplicationDropdown<String>(
-                                value: _selectedStockProductId,
-                                hintText: 'Stok listesinden seçin',
-                                items: items
-                                    .map(
-                                      (item) => DropdownMenuItem<String>(
-                                        value: item.id,
-                                        child: Text(item.label),
-                                      ),
-                                    )
-                                    .toList(growable: false),
-                                onChanged: (value) {
-                                  setState(() {
-                                    _selectedStockProductId = value;
-                                    final selected = items
-                                        .where((item) => item.id == value)
-                                        .firstOrNull;
-                                    if (selected != null) {
-                                      _stockRegistryNumberController.text =
-                                          selected.code?.trim().isNotEmpty ??
-                                              false
-                                          ? selected.code!.trim()
-                                          : selected.name;
-                                    }
-                                  });
-                                },
+                            const Gap(8),
+                            Expanded(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: Column(
+                                  children: formRows
+                                      .sublist(splitIndex)
+                                      .map((row) => row)
+                                      .toList(growable: false),
+                                ),
                               ),
-                              loading: () => const _ContentLoading(),
-                              error: (error, stackTrace) =>
-                                  const _ContentError(),
                             ),
-                            right: _ApplicationTextField(
-                              controller: _stockRegistryNumberController,
-                            ),
-                          ),
+                          ],
                         ),
-                        _FormRow(
-                          label: 'Mali Sembol ve Firma Kodu',
-                          child: fiscalSymbolsAsync.when(
-                            data: (items) => _ApplicationDropdown<String>(
-                              value: _selectedFiscalSymbolId,
-                              items: items
-                                  .where((item) => item.isActive)
-                                  .map(
-                                    (item) => DropdownMenuItem<String>(
-                                      value: item.id,
-                                      child: Text(
-                                        item.code?.trim().isNotEmpty ?? false
-                                            ? '${item.code} - ${item.name}'
-                                            : item.name,
-                                      ),
-                                    ),
-                                  )
-                                  .toList(growable: false),
-                              onChanged: (value) => setState(
-                                () => _selectedFiscalSymbolId = value,
-                              ),
-                              validator: (value) =>
-                                  value == null ? 'Mali sembol seçin.' : null,
-                            ),
-                            loading: () => const _ContentLoading(),
-                            error: (error, stackTrace) => const _ContentError(),
-                          ),
-                        ),
-                        _FormRow(
-                          label: 'Muhasebe Ofisi',
-                          child: _ApplicationTextField(
-                            controller: _accountingOfficeController,
-                          ),
-                        ),
-                        _FormRow(
-                          label: 'Ökc Kullanmaya başlama Tarihi',
-                          child: _DateField(
-                            value: _okcStartDate,
-                            format: _dateFormat,
-                            onTap: () => _pickDate(
-                              currentValue: _okcStartDate,
-                              onSelected: (value) =>
-                                  setState(() => _okcStartDate = value),
-                            ),
-                          ),
-                        ),
-                        _FormRow(
-                          label: 'Ticari Faaliyet / Meslek Türü',
-                          child: activitiesAsync.when(
-                            data: (items) => _ApplicationDropdown<String>(
-                              value: _selectedBusinessActivityId,
-                              items: items
-                                  .where((item) => item.isActive)
-                                  .map(
-                                    (item) => DropdownMenuItem<String>(
-                                      value: item.id,
-                                      child: Text(item.name),
-                                    ),
-                                  )
-                                  .toList(growable: false),
-                              onChanged: (value) => setState(
-                                () => _selectedBusinessActivityId = value,
-                              ),
-                              validator: (value) =>
-                                  value == null ? 'Meslek türü seçin.' : null,
-                            ),
-                            loading: () => const _ContentLoading(),
-                            error: (error, stackTrace) => const _ContentError(),
-                          ),
-                        ),
-                        _FormRow(
-                          label: 'Fatura No',
-                          last: true,
-                          child: _ReadOnlyMirrorField(
-                            controller: _invoiceNumberController,
-                            placeholder:
-                                'Üst satırdaki fatura no alanından gelir.',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                   const Gap(8),
                   Row(
                     children: [
@@ -1594,6 +1625,7 @@ class _ApplicationRecordCard extends StatelessWidget {
     required this.onPrintKdv4a,
     required this.onEdit,
     required this.onDuplicate,
+    required this.onToggleActive,
   });
 
   final ApplicationFormRecord record;
@@ -1603,6 +1635,7 @@ class _ApplicationRecordCard extends StatelessWidget {
   final VoidCallback onPrintKdv4a;
   final VoidCallback onEdit;
   final VoidCallback onDuplicate;
+  final VoidCallback onToggleActive;
 
   @override
   Widget build(BuildContext context) {
@@ -1645,7 +1678,12 @@ class _ApplicationRecordCard extends StatelessWidget {
                 ),
               ),
               const Gap(4),
-              AppBadge(label: record.documentType, tone: AppBadgeTone.primary),
+              AppBadge(
+                label: record.isActive ? record.documentType : 'Pasif',
+                tone: record.isActive
+                    ? AppBadgeTone.primary
+                    : AppBadgeTone.neutral,
+              ),
               const Gap(6),
               _ActionButton(
                 onPressed: onEdit,
@@ -1670,6 +1708,14 @@ class _ApplicationRecordCard extends StatelessWidget {
                 icon: Icons.picture_as_pdf_rounded,
                 label: 'KDV4A',
                 primary: true,
+              ),
+              const Gap(4),
+              _ActionButton(
+                onPressed: onToggleActive,
+                icon: record.isActive
+                    ? Icons.delete_outline_rounded
+                    : Icons.restore_rounded,
+                label: record.isActive ? 'Sil' : 'Aktifleştir',
               ),
             ],
           ),
@@ -1971,7 +2017,7 @@ class _FormRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             decoration: const BoxDecoration(
               color: Color(0xFFFFF15C),
               border: Border(
@@ -1985,12 +2031,13 @@ class _FormRow extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFF3E3200),
-                fontSize: 11,
+                fontSize: 10.5,
+                height: 1.05,
               ),
             ),
           ),
           Container(
-            padding: const EdgeInsets.all(5),
+            padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border.all(color: const Color(0xFF111827)),
@@ -2005,10 +2052,10 @@ class _FormRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 156,
+          width: 138,
           child: Container(
-            constraints: const BoxConstraints(minHeight: 38),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            constraints: const BoxConstraints(minHeight: 34),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
             decoration: BoxDecoration(
               color: const Color(0xFFFFF15C),
               border: Border(
@@ -2027,8 +2074,8 @@ class _FormRow extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: const Color(0xFF3E3200),
-                  fontSize: 12,
-                  height: 1.1,
+                  fontSize: 10.5,
+                  height: 1.0,
                 ),
               ),
             ),
@@ -2036,8 +2083,8 @@ class _FormRow extends StatelessWidget {
         ),
         Expanded(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 38),
-            padding: const EdgeInsets.all(5),
+            constraints: const BoxConstraints(minHeight: 34),
+            padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border(
@@ -2056,43 +2103,6 @@ class _FormRow extends StatelessWidget {
   }
 }
 
-class _ReadOnlyMirrorField extends StatelessWidget {
-  const _ReadOnlyMirrorField({
-    required this.controller,
-    required this.placeholder,
-  });
-
-  final TextEditingController controller;
-  final String placeholder;
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<TextEditingValue>(
-      valueListenable: controller,
-      builder: (context, value, _) {
-        final text = value.text.trim();
-        final hasValue = text.isNotEmpty;
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF9FAFB),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppTheme.border),
-          ),
-          child: Text(
-            hasValue ? text : placeholder,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: hasValue ? AppTheme.text : AppTheme.textMuted,
-              fontWeight: hasValue ? FontWeight.w600 : FontWeight.w400,
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
 class _ResponsiveFieldGroup extends StatelessWidget {
   const _ResponsiveFieldGroup({required this.left, required this.right});
 
@@ -2103,12 +2113,12 @@ class _ResponsiveFieldGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.sizeOf(context).width < 760;
     if (isMobile) {
-      return Column(children: [left, const Gap(6), right]);
+      return Column(children: [left, const Gap(4), right]);
     }
     return Row(
       children: [
         Expanded(child: left),
-        const Gap(6),
+        const Gap(4),
         Expanded(child: right),
       ],
     );
@@ -2138,14 +2148,14 @@ class _ApplicationTextField extends StatelessWidget {
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
         color: const Color(0xFF111827),
         fontWeight: FontWeight.w600,
-        fontSize: 11.5,
+        fontSize: 10.5,
       ),
       decoration: const InputDecoration(
         isDense: true,
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(),
-        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       ),
     );
   }
@@ -2176,7 +2186,7 @@ class _ApplicationDropdown<T> extends StatelessWidget {
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
         color: const Color(0xFF111827),
         fontWeight: FontWeight.w600,
-        fontSize: 11.5,
+        fontSize: 10.5,
       ),
       decoration: InputDecoration(
         isDense: true,
@@ -2184,7 +2194,7 @@ class _ApplicationDropdown<T> extends StatelessWidget {
         fillColor: Colors.white,
         border: const OutlineInputBorder(),
         hintText: hintText,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       ),
     );
   }
@@ -2212,7 +2222,7 @@ class _DateField extends StatelessWidget {
           filled: true,
           fillColor: Colors.white,
           border: OutlineInputBorder(),
-          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           suffixIcon: Icon(Icons.calendar_today_rounded, size: 16),
         ),
         child: Text(
@@ -2220,7 +2230,7 @@ class _DateField extends StatelessWidget {
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
             color: const Color(0xFF111827),
             fontWeight: FontWeight.w600,
-            fontSize: 11.5,
+            fontSize: 10.5,
           ),
         ),
       ),
@@ -2256,7 +2266,7 @@ class _CustomerPickerField extends StatelessWidget {
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
               color: const Color(0xFF111827),
               fontWeight: FontWeight.w600,
-              fontSize: 11.5,
+              fontSize: 10.5,
             ),
             decoration: InputDecoration(
               isDense: true,
@@ -2266,7 +2276,7 @@ class _CustomerPickerField extends StatelessWidget {
               hintText: 'Eski ya da yeni müşteri seçin',
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 8,
-                vertical: 6,
+                vertical: 4,
               ),
               suffixIcon: IconButton(
                 onPressed: onPickCustomer,

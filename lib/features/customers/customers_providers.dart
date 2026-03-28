@@ -16,6 +16,9 @@ final customerSortProvider =
     NotifierProvider<CustomerSortNotifier, CustomerSortOption>(
       CustomerSortNotifier.new,
     );
+final customerShowPassiveProvider = NotifierProvider<CustomerShowPassiveNotifier, bool>(
+  CustomerShowPassiveNotifier.new,
+);
 
 class CustomerFiltersNotifier extends Notifier<CustomerFilters> {
   @override
@@ -50,6 +53,13 @@ class CustomerSortNotifier extends Notifier<CustomerSortOption> {
   CustomerSortOption build() => CustomerSortOption.id;
 
   void set(CustomerSortOption value) => state = value;
+}
+
+class CustomerShowPassiveNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void set(bool value) => state = value;
 }
 
 class CustomerFilters {
@@ -94,6 +104,7 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
   final filters = ref.watch(customerFiltersProvider);
   final page = ref.watch(customerPageProvider);
   final sort = ref.watch(customerSortProvider);
+  final showPassive = ref.watch(customerShowPassiveProvider);
   final search = filters.search.trim();
   final city = filters.city;
   final start = (page - 1) * customerPageSize;
@@ -102,6 +113,9 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
 
   if (city != null && city.isNotEmpty) {
     sortQuery = sortQuery.eq('city', city);
+  }
+  if (!showPassive) {
+    sortQuery = sortQuery.eq('is_active', true);
   }
   if (search.isNotEmpty) {
     sortQuery = sortQuery.ilike('name', '%$search%');

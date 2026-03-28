@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/auth/auth_providers.dart';
+import '../core/auth/feature_access_gate.dart';
+import '../core/auth/user_profile_provider.dart';
 import '../core/routing/go_router_refresh_stream.dart';
 import '../core/supabase/supabase_providers.dart';
 import '../features/auth/login_screen.dart';
@@ -46,83 +48,158 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         GoRoute(
           path: '/panel',
           pageBuilder: (context, state) =>
-              const NoTransitionPage(child: DashboardScreen()),
+              const NoTransitionPage(
+                child: FeatureAccessGate(
+                  pageKey: kPagePanel,
+                  child: DashboardScreen(),
+                ),
+              ),
         ),
         GoRoute(
           path: '/musteriler',
           pageBuilder: (context, state) =>
-              const NoTransitionPage(child: CustomersScreen()),
+              const NoTransitionPage(
+                child: FeatureAccessGate(
+                  pageKey: kPageCustomers,
+                  child: CustomersScreen(),
+                ),
+              ),
           routes: [
             GoRoute(
               path: ':id',
               builder: (context, state) =>
-                  CustomerDetailScreen(customerId: state.pathParameters['id']!),
+                  FeatureAccessGate(
+                    pageKey: kPageCustomers,
+                    child: CustomerDetailScreen(
+                      customerId: state.pathParameters['id']!,
+                    ),
+                  ),
             ),
           ],
         ),
         GoRoute(
           path: '/formlar',
           pageBuilder: (context, state) =>
-              const NoTransitionPage(child: FormsScreen()),
+              const NoTransitionPage(
+                child: FeatureAccessGate(
+                  pageKey: kPageForms,
+                  child: FormsScreen(),
+                ),
+              ),
           routes: [
             GoRoute(
               path: 'basvuru',
               pageBuilder: (context, state) =>
-                  const NoTransitionPage(child: ApplicationFormScreen()),
+                  const NoTransitionPage(
+                    child: FeatureAccessGate(
+                      pageKey: kPageForms,
+                      child: ApplicationFormScreen(),
+                    ),
+                  ),
             ),
             GoRoute(
               path: 'hurda',
               pageBuilder: (context, state) =>
-                  const NoTransitionPage(child: ScrapFormScreen()),
+                  const NoTransitionPage(
+                    child: FeatureAccessGate(
+                      pageKey: kPageForms,
+                      child: ScrapFormScreen(),
+                    ),
+                  ),
             ),
             GoRoute(
               path: 'devir',
               pageBuilder: (context, state) =>
-                  const NoTransitionPage(child: TransferFormScreen()),
+                  const NoTransitionPage(
+                    child: FeatureAccessGate(
+                      pageKey: kPageForms,
+                      child: TransferFormScreen(),
+                    ),
+                  ),
             ),
           ],
         ),
         GoRoute(
           path: '/is-emirleri',
           pageBuilder: (context, state) =>
-              const NoTransitionPage(child: WorkOrdersKanbanScreen()),
+              const NoTransitionPage(
+                child: FeatureAccessGate(
+                  pageKey: kPageWorkOrders,
+                  child: WorkOrdersKanbanScreen(),
+                ),
+              ),
         ),
         GoRoute(
           path: '/servis',
           pageBuilder: (context, state) =>
-              const NoTransitionPage(child: ServiceScreen()),
+              const NoTransitionPage(
+                child: FeatureAccessGate(
+                  pageKey: kPageService,
+                  child: ServiceScreen(),
+                ),
+              ),
           routes: [
             GoRoute(
               path: ':id',
               builder: (context, state) =>
-                  ServiceDetailScreen(serviceId: state.pathParameters['id']!),
+                  FeatureAccessGate(
+                    pageKey: kPageService,
+                    child: ServiceDetailScreen(
+                      serviceId: state.pathParameters['id']!,
+                    ),
+                  ),
             ),
           ],
         ),
         GoRoute(
           path: '/raporlar',
           pageBuilder: (context, state) =>
-              const NoTransitionPage(child: ReportsScreen()),
+              const NoTransitionPage(
+                child: FeatureAccessGate(
+                  pageKey: kPageReports,
+                  child: ReportsScreen(),
+                ),
+              ),
         ),
         GoRoute(
           path: '/personel',
           pageBuilder: (context, state) =>
-              const NoTransitionPage(child: PersonnelScreen()),
+              const NoTransitionPage(
+                child: FeatureAccessGate(
+                  pageKey: kPagePersonnel,
+                  child: PersonnelScreen(),
+                ),
+              ),
         ),
         GoRoute(
           path: '/faturalama',
           pageBuilder: (context, state) =>
-              const NoTransitionPage(child: BillingScreen()),
+              const NoTransitionPage(
+                child: FeatureAccessGate(
+                  pageKey: kPageBilling,
+                  child: BillingScreen(),
+                ),
+              ),
         ),
         GoRoute(
           path: '/urunler',
           pageBuilder: (context, state) =>
-              const NoTransitionPage(child: ProductsScreen()),
+              const NoTransitionPage(
+                child: FeatureAccessGate(
+                  pageKey: kPageProducts,
+                  child: ProductsScreen(),
+                ),
+              ),
         ),
         GoRoute(
           path: '/tanimlamalar',
           pageBuilder: (context, state) =>
-              const NoTransitionPage(child: DefinitionsScreen()),
+              const NoTransitionPage(
+                child: FeatureAccessGate(
+                  pageKey: kPageDefinitions,
+                  child: DefinitionsScreen(),
+                ),
+              ),
         ),
       ],
     ),

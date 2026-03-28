@@ -21,6 +21,7 @@ class TransferFormRecord {
     required this.departmentCount,
     required this.transferDate,
     required this.transferReason,
+    required this.isActive,
     required this.createdAt,
   });
 
@@ -45,6 +46,7 @@ class TransferFormRecord {
   final String? departmentCount;
   final DateTime transferDate;
   final String? transferReason;
+  final bool isActive;
   final DateTime? createdAt;
 
   factory TransferFormRecord.fromJson(Map<String, dynamic> json) {
@@ -74,6 +76,7 @@ class TransferFormRecord {
           DateTime.tryParse(json['transfer_date']?.toString() ?? '') ??
           DateTime.now(),
       transferReason: json['transfer_reason']?.toString(),
+      isActive: json['is_active'] as bool? ?? true,
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
     );
   }

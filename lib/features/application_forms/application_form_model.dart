@@ -19,6 +19,7 @@ class ApplicationFormRecord {
     required this.okcStartDate,
     required this.businessActivityName,
     required this.invoiceNumber,
+    required this.isActive,
     required this.createdAt,
   });
 
@@ -41,6 +42,7 @@ class ApplicationFormRecord {
   final DateTime? okcStartDate;
   final String? businessActivityName;
   final String? invoiceNumber;
+  final bool isActive;
   final DateTime? createdAt;
 
   String get brandModel {
@@ -74,6 +76,7 @@ class ApplicationFormRecord {
       okcStartDate: DateTime.tryParse(json['okc_start_date']?.toString() ?? ''),
       businessActivityName: json['business_activity_name']?.toString(),
       invoiceNumber: json['invoice_number']?.toString(),
+      isActive: json['is_active'] as bool? ?? true,
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
     );
   }

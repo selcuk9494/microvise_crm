@@ -17,7 +17,7 @@ final personnelUsersProvider = FutureProvider<List<PersonnelUser>>((ref) async {
 
   final rows = await client
       .from('users')
-      .select('id,full_name,role,created_at')
+      .select('id,full_name,role,email,page_permissions,created_at')
       .order('created_at', ascending: false);
 
   return (rows as List)
@@ -68,7 +68,7 @@ class PersonnelScreen extends ConsumerWidget {
 
     return AppPageLayout(
       title: 'Personel',
-      subtitle: 'Kullanıcılar, roller ve erişim.',
+      subtitle: 'Kullanıcılar, şifre akışları ve sayfa yetkileri.',
       actions: [
         FilledButton.icon(
           onPressed: isAdmin ? () => _openCreateDialog(context) : null,
@@ -287,6 +287,7 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 140),
+          const SizedBox(width: 170),
           SizedBox(
             width: 110,
             child: Align(
@@ -431,6 +432,21 @@ class _UserRowState extends ConsumerState<_UserRow> {
           ),
           const Gap(12),
           SizedBox(
+            width: 170,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 4,
+              runSpacing: 4,
+              children: user.pagePermissions.take(2).map((page) {
+                return AppBadge(
+                  label: pagePermissionLabels[page] ?? page,
+                  tone: AppBadgeTone.neutral,
+                );
+              }).toList(growable: false),
+            ),
+          ),
+          const Gap(10),
+          SizedBox(
             width: 110,
             child: Align(
               alignment: Alignment.centerRight,
@@ -508,6 +524,8 @@ class _CreatePersonnelDialogState
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _fullNameController = TextEditingController();
+  String _role = 'personel';
+  late final Set<String> _pagePermissions;
   bool _saving = false;
 
   @override
@@ -544,7 +562,9 @@ class _CreatePersonnelDialogState
       await client.from('users').upsert({
         'id': res.user!.id,
         'full_name': fullName,
-        'role': 'personel',
+        'email': email,
+        'role': _role,
+        'page_permissions': _pagePermissions.toList(growable: false),
       });
 
       if (!mounted) return;
@@ -566,6 +586,12 @@ class _CreatePersonnelDialogState
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _pagePermissions = {...defaultPersonnelPagePermissions};
   }
 
   @override
@@ -634,6 +660,32 @@ class _CreatePersonnelDialogState
                       ? 'Şifre en az 6 karakter.'
                       : null,
                 ),
+                const Gap(12),
+                DropdownButtonFormField<String>(
+                  initialValue: _role,
+                  items: const [
+                    DropdownMenuItem(value: 'personel', child: Text('Personel')),
+                    DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                  ],
+                  onChanged: _saving
+                      ? null
+                      : (value) {
+                          if (value == null) return;
+                          setState(() => _role = value);
+                        },
+                  decoration: const InputDecoration(labelText: 'Rol'),
+                ),
+                const Gap(12),
+                _PermissionsEditor(
+                  selected: _pagePermissions,
+                  onChanged: (value) {
+                    setState(() {
+                      _pagePermissions
+                        ..clear()
+                        ..addAll(value);
+                    });
+                  },
+                ),
                 const Gap(18),
                 Container(
                   padding: const EdgeInsets.all(14),
@@ -700,6 +752,10 @@ class _EditPersonnelDialog extends ConsumerStatefulWidget {
 class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _fullNameController;
+  late final TextEditingController _emailController;
+  final _passwordController = TextEditingController();
+  late Set<String> _pagePermissions;
+  late String _role;
   bool _saving = false;
 
   @override
@@ -708,11 +764,18 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
     _fullNameController = TextEditingController(
       text: widget.user.fullName ?? '',
     );
+    _emailController = TextEditingController(text: widget.user.email ?? '');
+    _pagePermissions = widget.user.pagePermissions.isEmpty
+        ? {...defaultPersonnelPagePermissions}
+        : {...widget.user.pagePermissions};
+    _role = widget.user.role;
   }
 
   @override
   void dispose() {
     _fullNameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -725,15 +788,34 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
     try {
       await client
           .from('users')
-          .update({'full_name': _fullNameController.text.trim()})
+          .update({
+            'full_name': _fullNameController.text.trim(),
+            'role': _role,
+            'page_permissions': _pagePermissions.toList(growable: false),
+          })
           .eq('id', widget.user.id);
 
+      final newPassword = _passwordController.text.trim();
+      final isSelf = client.auth.currentUser?.id == widget.user.id;
+      if (newPassword.isNotEmpty && isSelf) {
+        await client.auth.updateUser(UserAttributes(password: newPassword));
+      } else if (newPassword.isNotEmpty && _emailController.text.trim().isNotEmpty) {
+        await client.auth.resetPasswordForEmail(_emailController.text.trim());
+      }
+
       ref.invalidate(personnelUsersProvider);
+      ref.invalidate(currentUserProfileProvider);
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Personel bilgisi güncellendi.')),
-      );
+      final passwordMessage =
+          newPassword.isEmpty
+              ? 'Personel bilgisi güncellendi.'
+              : isSelf
+              ? 'Bilgiler ve şifre güncellendi.'
+              : 'Bilgiler güncellendi, şifre sıfırlama bağlantısı gönderildi.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(passwordMessage)));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -746,6 +828,7 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final client = ref.read(supabaseClientProvider);
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
       backgroundColor: Colors.transparent,
@@ -765,11 +848,60 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
                 ),
                 const Gap(16),
                 TextFormField(
+                  controller: _emailController,
+                  enabled: false,
+                  decoration: const InputDecoration(labelText: 'E-posta'),
+                ),
+                const Gap(12),
+                TextFormField(
                   controller: _fullNameController,
                   decoration: const InputDecoration(labelText: 'Ad Soyad'),
                   validator: (value) => value == null || value.trim().length < 2
                       ? 'Ad soyad gerekli.'
                       : null,
+                ),
+                const Gap(12),
+                DropdownButtonFormField<String>(
+                  initialValue: _role,
+                  items: const [
+                    DropdownMenuItem(value: 'personel', child: Text('Personel')),
+                    DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                  ],
+                  onChanged: _saving
+                      ? null
+                      : (value) {
+                          if (value == null) return;
+                          setState(() => _role = value);
+                        },
+                  decoration: const InputDecoration(labelText: 'Rol'),
+                ),
+                const Gap(12),
+                _PermissionsEditor(
+                  selected: _pagePermissions,
+                  onChanged: (value) {
+                    setState(() {
+                      _pagePermissions = value;
+                    });
+                  },
+                ),
+                const Gap(12),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: client?.auth.currentUser?.id == widget.user.id
+                        ? 'Yeni Şifre'
+                        : 'Şifre Sıfırlama',
+                    hintText: client?.auth.currentUser?.id == widget.user.id
+                        ? 'Boş bırakırsan değişmez'
+                        : 'Doldurursan sıfırlama bağlantısı gönderilir',
+                  ),
+                  validator: (value) {
+                    if ((value ?? '').isNotEmpty && value!.length < 6) {
+                      return 'Şifre en az 6 karakter.';
+                    }
+                    return null;
+                  },
                 ),
                 const Gap(18),
                 Row(
@@ -814,12 +946,16 @@ class PersonnelUser {
     required this.id,
     required this.fullName,
     required this.role,
+    required this.email,
+    required this.pagePermissions,
     required this.createdAt,
   });
 
   final String id;
   final String? fullName;
   final String role;
+  final String? email;
+  final List<String> pagePermissions;
   final DateTime? createdAt;
 
   factory PersonnelUser.fromJson(Map<String, dynamic> json) {
@@ -827,7 +963,48 @@ class PersonnelUser {
       id: json['id'].toString(),
       fullName: json['full_name']?.toString(),
       role: (json['role'] ?? 'personel').toString(),
+      email: json['email']?.toString(),
+      pagePermissions: ((json['page_permissions'] as List?) ?? const [])
+          .map((item) => item.toString())
+          .toList(growable: false),
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
+    );
+  }
+}
+
+class _PermissionsEditor extends StatelessWidget {
+  const _PermissionsEditor({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final Set<String> selected;
+  final ValueChanged<Set<String>> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return InputDecorator(
+      decoration: const InputDecoration(labelText: 'Sayfa Yetkileri'),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: pagePermissionLabels.entries.map((entry) {
+          final active = selected.contains(entry.key);
+          return FilterChip(
+            selected: active,
+            label: Text(entry.value),
+            onSelected: (value) {
+              final next = {...selected};
+              if (value) {
+                next.add(entry.key);
+              } else {
+                next.remove(entry.key);
+              }
+              onChanged(next);
+            },
+          );
+        }).toList(growable: false),
+      ),
     );
   }
 }

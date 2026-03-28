@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_breakpoints.dart';
 
@@ -41,7 +42,21 @@ class _DesktopShellState extends ConsumerState<_DesktopShell> {
   @override
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
-    final items = _navItems;
+    final allowedPages = ref.watch(currentUserPagePermissionsProvider);
+    final items = _navItems
+        .where((item) => allowedPages.contains(item.permissionKey))
+        .map(
+          (item) => item.copyWith(
+            children: item.children
+                .where(
+                  (child) =>
+                      allowedPages.contains(child.permissionKey) ||
+                      item.permissionKey == child.permissionKey,
+                )
+                .toList(growable: false),
+          ),
+        )
+        .toList(growable: false);
     final hasActiveFormsChild = items
         .where((item) => item.path == '/formlar')
         .expand((item) => item.children)
@@ -143,15 +158,19 @@ class _DesktopShellState extends ConsumerState<_DesktopShell> {
   }
 }
 
-class _MobileShell extends StatelessWidget {
+class _MobileShell extends ConsumerWidget {
   const _MobileShell({required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).matchedLocation;
-    final currentIndex = _mobileIndexForLocation(location);
+    final allowedPages = ref.watch(currentUserPagePermissionsProvider);
+    final mobileItems = _mobileItems
+        .where((item) => allowedPages.contains(item.permissionKey))
+        .toList(growable: false);
+    final currentIndex = _mobileIndexForLocation(location, mobileItems);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -159,7 +178,7 @@ class _MobileShell extends StatelessWidget {
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppTheme.primaryDark,
         foregroundColor: Colors.white,
-        onPressed: () => _showQuickCreateSheet(context),
+        onPressed: () => _showQuickCreateSheet(context, ref),
         child: const Icon(Icons.add_rounded),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
@@ -171,31 +190,16 @@ class _MobileShell extends StatelessWidget {
         child: Row(
           children: [
             const Gap(8),
-            _BottomItem(
-              label: 'Panel',
-              icon: PhosphorIcons.house(PhosphorIconsStyle.regular),
-              active: currentIndex == 0,
-              onTap: () => context.go('/panel'),
-            ),
-            _BottomItem(
-              label: 'Müşteriler',
-              icon: PhosphorIcons.users(PhosphorIconsStyle.regular),
-              active: currentIndex == 1,
-              onTap: () => context.go('/musteriler'),
-            ),
+            for (var i = 0; i < mobileItems.length; i++) ...[
+              if (i == 2) const Spacer(),
+              _BottomItem(
+                label: mobileItems[i].label,
+                icon: mobileItems[i].icon,
+                active: currentIndex == i,
+                onTap: () => context.go(mobileItems[i].path),
+              ),
+            ],
             const Spacer(),
-            _BottomItem(
-              label: 'İş Emirleri',
-              icon: PhosphorIcons.kanban(PhosphorIconsStyle.regular),
-              active: currentIndex == 2,
-              onTap: () => context.go('/is-emirleri'),
-            ),
-            _BottomItem(
-              label: 'Raporlar',
-              icon: PhosphorIcons.chartLineUp(PhosphorIconsStyle.regular),
-              active: currentIndex == 3,
-              onTap: () => context.go('/raporlar'),
-            ),
             const Gap(8),
           ],
         ),
@@ -335,9 +339,19 @@ class _TopBar extends StatelessWidget {
 }
 
 class _ProfileButton extends StatelessWidget {
+  const _ProfileButton();
+
   @override
   Widget build(BuildContext context) {
-    return MenuAnchor(
+    return Consumer(
+      builder: (context, ref, _) {
+        final profile = ref.watch(currentUserProfileProvider).value;
+        final displayName = profile?.fullName?.trim().isNotEmpty == true
+            ? profile!.fullName!.trim()
+            : 'Profil';
+        final roleName = profile?.role == 'admin' ? 'Admin' : 'Personel';
+
+        return MenuAnchor(
       builder: (context, controller, child) => InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => controller.isOpen ? controller.close() : controller.open(),
@@ -361,7 +375,11 @@ class _ProfileButton extends StatelessWidget {
                 ),
               ),
               const Gap(10),
-              Text('Profil', style: Theme.of(context).textTheme.bodyMedium),
+              Text(
+                displayName,
+                style: Theme.of(context).textTheme.bodyMedium,
+                overflow: TextOverflow.ellipsis,
+              ),
               const Gap(6),
               const Icon(Icons.expand_more_rounded, size: 18),
             ],
@@ -369,8 +387,10 @@ class _ProfileButton extends StatelessWidget {
         ),
       ),
       menuChildren: [
-        MenuItemButton(onPressed: () {}, child: const Text('Ayarlar')),
+        MenuItemButton(onPressed: () {}, child: Text(roleName)),
       ],
+    );
+      },
     );
   }
 }
@@ -611,7 +631,15 @@ class _AccountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Consumer(
+      builder: (context, ref, _) {
+        final profile = ref.watch(currentUserProfileProvider).value;
+        final displayName = profile?.fullName?.trim().isNotEmpty == true
+            ? profile!.fullName!.trim()
+            : 'Hesap';
+        final roleName = profile?.role == 'admin' ? 'Admin' : 'Personel';
+
+        return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -632,13 +660,13 @@ class _AccountCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Hesap',
+                  displayName,
                   style: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  'Admin / Personel',
+                  roleName,
                   style: Theme.of(
                     context,
                   ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
@@ -658,10 +686,13 @@ class _AccountCard extends StatelessWidget {
         ],
       ),
     );
+      },
+    );
   }
 }
 
-Future<void> _showQuickCreateSheet(BuildContext context) async {
+Future<void> _showQuickCreateSheet(BuildContext context, WidgetRef ref) async {
+  final allowedPages = ref.read(currentUserPagePermissionsProvider);
   await showModalBottomSheet<void>(
     context: context,
     useSafeArea: true,
@@ -677,30 +708,33 @@ Future<void> _showQuickCreateSheet(BuildContext context) async {
         children: [
           Text('Hızlı Ekle', style: Theme.of(context).textTheme.titleMedium),
           const Gap(10),
-          _SheetItem(
-            title: 'Yeni Müşteri',
-            icon: PhosphorIcons.userPlus(PhosphorIconsStyle.regular),
-            onTap: () {
-              Navigator.of(context).pop();
-              context.go('/musteriler?yeni=1');
-            },
-          ),
-          _SheetItem(
-            title: 'Yeni İş Emri',
-            icon: PhosphorIcons.clipboardText(PhosphorIconsStyle.regular),
-            onTap: () {
-              Navigator.of(context).pop();
-              context.go('/is-emirleri?yeni=1');
-            },
-          ),
-          _SheetItem(
-            title: 'Yeni Servis Kaydı',
-            icon: PhosphorIcons.wrench(PhosphorIconsStyle.regular),
-            onTap: () {
-              Navigator.of(context).pop();
-              context.go('/servis?yeni=1');
-            },
-          ),
+          if (allowedPages.contains(kPageCustomers))
+            _SheetItem(
+              title: 'Yeni Müşteri',
+              icon: PhosphorIcons.userPlus(PhosphorIconsStyle.regular),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.go('/musteriler?yeni=1');
+              },
+            ),
+          if (allowedPages.contains(kPageWorkOrders))
+            _SheetItem(
+              title: 'Yeni İş Emri',
+              icon: PhosphorIcons.clipboardText(PhosphorIconsStyle.regular),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.go('/is-emirleri?yeni=1');
+              },
+            ),
+          if (allowedPages.contains(kPageService))
+            _SheetItem(
+              title: 'Yeni Servis Kaydı',
+              icon: PhosphorIcons.wrench(PhosphorIconsStyle.regular),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.go('/servis?yeni=1');
+              },
+            ),
           const Gap(6),
         ],
       ),
@@ -789,10 +823,10 @@ bool _isActive(String matchedLocation, String path) {
   return matchedLocation == path || matchedLocation.startsWith('$path/');
 }
 
-int _mobileIndexForLocation(String matchedLocation) {
-  if (matchedLocation.startsWith('/musteriler')) return 1;
-  if (matchedLocation.startsWith('/is-emirleri')) return 2;
-  if (matchedLocation.startsWith('/raporlar')) return 3;
+int _mobileIndexForLocation(String matchedLocation, List<_NavItem> items) {
+  for (var i = 0; i < items.length; i++) {
+    if (_isActive(matchedLocation, items[i].path)) return i;
+  }
   return 0;
 }
 
@@ -801,20 +835,37 @@ class _NavItem {
     required this.path,
     required this.label,
     required this.icon,
+    required this.permissionKey,
     this.children = const [],
   });
 
   final String path;
   final String label;
   final IconData icon;
+  final String permissionKey;
   final List<_NavSubItem> children;
+
+  _NavItem copyWith({List<_NavSubItem>? children}) {
+    return _NavItem(
+      path: path,
+      label: label,
+      icon: icon,
+      permissionKey: permissionKey,
+      children: children ?? this.children,
+    );
+  }
 }
 
 class _NavSubItem {
-  const _NavSubItem({required this.path, required this.label});
+  const _NavSubItem({
+    required this.path,
+    required this.label,
+    required this.permissionKey,
+  });
 
   final String path;
   final String label;
+  final String permissionKey;
 }
 
 final _navItems = <_NavItem>[
@@ -822,55 +873,84 @@ final _navItems = <_NavItem>[
     path: '/panel',
     label: 'Panel',
     icon: PhosphorIcons.house(PhosphorIconsStyle.regular),
+    permissionKey: kPagePanel,
   ),
   _NavItem(
     path: '/musteriler',
     label: 'Müşteriler',
     icon: PhosphorIcons.users(PhosphorIconsStyle.regular),
+    permissionKey: kPageCustomers,
   ),
   _NavItem(
     path: '/formlar',
     label: 'Formlar',
     icon: PhosphorIcons.files(PhosphorIconsStyle.regular),
+    permissionKey: kPageForms,
     children: const [
-      _NavSubItem(path: '/formlar/basvuru', label: 'Başvuru Formu'),
-      _NavSubItem(path: '/formlar/hurda', label: 'Hurda Formu'),
-      _NavSubItem(path: '/formlar/devir', label: 'Devir Formu'),
+      _NavSubItem(
+        path: '/formlar/basvuru',
+        label: 'Başvuru Formu',
+        permissionKey: kPageForms,
+      ),
+      _NavSubItem(
+        path: '/formlar/hurda',
+        label: 'Hurda Formu',
+        permissionKey: kPageForms,
+      ),
+      _NavSubItem(
+        path: '/formlar/devir',
+        label: 'Devir Formu',
+        permissionKey: kPageForms,
+      ),
     ],
   ),
   _NavItem(
     path: '/is-emirleri',
     label: 'İş Emirleri',
     icon: PhosphorIcons.kanban(PhosphorIconsStyle.regular),
+    permissionKey: kPageWorkOrders,
   ),
   _NavItem(
     path: '/servis',
     label: 'Servis',
     icon: PhosphorIcons.wrench(PhosphorIconsStyle.regular),
+    permissionKey: kPageService,
   ),
   _NavItem(
     path: '/raporlar',
     label: 'Raporlar',
     icon: PhosphorIcons.chartBar(PhosphorIconsStyle.regular),
+    permissionKey: kPageReports,
   ),
   _NavItem(
     path: '/urunler',
     label: 'Hat & Lisans',
     icon: PhosphorIcons.simCard(PhosphorIconsStyle.regular),
+    permissionKey: kPageProducts,
   ),
   _NavItem(
     path: '/faturalama',
     label: 'Faturalama',
     icon: PhosphorIcons.receipt(PhosphorIconsStyle.regular),
+    permissionKey: kPageBilling,
   ),
   _NavItem(
     path: '/tanimlamalar',
     label: 'Tanımlamalar',
     icon: PhosphorIcons.sliders(PhosphorIconsStyle.regular),
+    permissionKey: kPageDefinitions,
   ),
   _NavItem(
     path: '/personel',
     label: 'Personel',
     icon: PhosphorIcons.identificationCard(PhosphorIconsStyle.regular),
+    permissionKey: kPagePersonnel,
   ),
+];
+
+final _mobileItems = <_NavItem>[
+  _navItems[0],
+  _navItems[1],
+  _navItems[3],
+  _navItems[5],
 ];

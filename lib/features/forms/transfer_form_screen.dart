@@ -52,7 +52,7 @@ final transferFormsProvider = FutureProvider<List<TransferFormRecord>>((
     final rows = await client
         .from('transfer_forms')
         .select(
-          'id,row_number,transferor_name,transferor_address,transferor_tax_office_and_registry,transferor_approval_date_no,transferee_name,transferee_address,transferee_tax_office_and_registry,transferee_approval_date_no,total_sales_receipt,vat_collected,last_receipt_date_no,z_report_count,other_device_info,brand_model,device_serial_no,fiscal_symbol_company_code,department_count,transfer_date,transfer_reason,created_at',
+          'id,row_number,transferor_name,transferor_address,transferor_tax_office_and_registry,transferor_approval_date_no,transferee_name,transferee_address,transferee_tax_office_and_registry,transferee_approval_date_no,total_sales_receipt,vat_collected,last_receipt_date_no,z_report_count,other_device_info,brand_model,device_serial_no,fiscal_symbol_company_code,department_count,transfer_date,transfer_reason,is_active,created_at',
         )
         .order('created_at', ascending: false)
         .limit(500);
@@ -75,6 +75,7 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
   final _customerFilterController = TextEditingController();
   final _deviceFilterController = TextEditingController();
   final _dateFormat = DateFormat('dd.MM.yyyy', 'tr_TR');
+  bool _showPassive = false;
   DateTime? _fromDate;
   DateTime? _toDate;
 
@@ -148,6 +149,25 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
     );
   }
 
+  Future<void> _setRecordActive(
+    TransferFormRecord record,
+    bool active,
+  ) async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+    await client
+        .from('transfer_forms')
+        .update({'is_active': active})
+        .eq('id', record.id);
+    ref.invalidate(transferFormsProvider);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(active ? 'Devir formu aktifleştirildi.' : 'Devir formu pasife alındı.'),
+      ),
+    );
+  }
+
   List<TransferFormRecord> _filter(List<TransferFormRecord> records) {
     final customerQuery = _sortKey(_customerFilterController.text);
     final deviceQuery = _sortKey(_deviceFilterController.text);
@@ -207,7 +227,9 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
       ],
       body: recordsAsync.when(
         data: (records) {
-          final filtered = _filter(records);
+          final filtered = _filter(records)
+              .where((item) => _showPassive || item.isActive)
+              .toList(growable: false);
           return Column(
             children: [
               AppCard(
@@ -276,6 +298,13 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
                           prefixIcon: Icon(Icons.event_rounded),
                         ),
                       ),
+                    ),
+                    FilterChip(
+                      selected: _showPassive,
+                      onSelected: (value) =>
+                          setState(() => _showPassive = value),
+                      label: const Text('Pasifleri Göster'),
+                      visualDensity: VisualDensity.compact,
                     ),
                   ],
                 ),
@@ -358,6 +387,16 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
                                     label: 'Yazdır',
                                     primary: true,
                                   ),
+                                  _TransferMiniActionButton(
+                                    onPressed: () => _setRecordActive(
+                                      record,
+                                      !record.isActive,
+                                    ),
+                                    icon: record.isActive
+                                        ? Icons.delete_outline_rounded
+                                        : Icons.restore_rounded,
+                                    label: record.isActive ? 'Sil' : 'Aktif',
+                                  ),
                                 ],
                               ),
                             ],
@@ -380,6 +419,11 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
                                 _TransferTinyBadge(
                                   label: record.brandModel!,
                                   tone: AppBadgeTone.warning,
+                                ),
+                              if (!record.isActive)
+                                const _TransferTinyBadge(
+                                  label: 'Pasif',
+                                  tone: AppBadgeTone.neutral,
                                 ),
                             ],
                           ),
@@ -714,7 +758,7 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
                         .eq('id', widget.initialRecord!.id)
                   : client.from('transfer_forms').insert(payload))
               .select(
-                'id,row_number,transferor_name,transferor_address,transferor_tax_office_and_registry,transferor_approval_date_no,transferee_name,transferee_address,transferee_tax_office_and_registry,transferee_approval_date_no,total_sales_receipt,vat_collected,last_receipt_date_no,z_report_count,other_device_info,brand_model,device_serial_no,fiscal_symbol_company_code,department_count,transfer_date,transfer_reason,created_at',
+                'id,row_number,transferor_name,transferor_address,transferor_tax_office_and_registry,transferor_approval_date_no,transferee_name,transferee_address,transferee_tax_office_and_registry,transferee_approval_date_no,total_sales_receipt,vat_collected,last_receipt_date_no,z_report_count,other_device_info,brand_model,device_serial_no,fiscal_symbol_company_code,department_count,transfer_date,transfer_reason,is_active,created_at',
               )
               .single();
       if (!mounted) return;

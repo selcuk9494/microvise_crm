@@ -50,7 +50,7 @@ final scrapFormsProvider = FutureProvider<List<ScrapFormRecord>>((ref) async {
     final rows = await client
         .from('scrap_forms')
         .select(
-          'id,form_date,row_number,customer_id,customer_name,customer_address,customer_tax_office_and_number,device_brand_model_registry,okc_start_date,last_used_date,z_report_count,total_vat_collection,total_collection,intervention_purpose,other_findings,created_at',
+          'id,form_date,row_number,customer_id,customer_name,customer_address,customer_tax_office_and_number,device_brand_model_registry,okc_start_date,last_used_date,z_report_count,total_vat_collection,total_collection,intervention_purpose,other_findings,is_active,created_at',
         )
         .order('created_at', ascending: false)
         .limit(500);
@@ -73,6 +73,7 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
   final _customerFilterController = TextEditingController();
   final _deviceFilterController = TextEditingController();
   final _dateFormat = DateFormat('dd.MM.yyyy', 'tr_TR');
+  bool _showPassive = false;
   DateTime? _fromDate;
   DateTime? _toDate;
 
@@ -146,6 +147,22 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
     );
   }
 
+  Future<void> _setRecordActive(ScrapFormRecord record, bool active) async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+    await client
+        .from('scrap_forms')
+        .update({'is_active': active})
+        .eq('id', record.id);
+    ref.invalidate(scrapFormsProvider);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(active ? 'Hurda formu aktifleştirildi.' : 'Hurda formu pasife alındı.'),
+      ),
+    );
+  }
+
   List<ScrapFormRecord> _filter(List<ScrapFormRecord> records) {
     final customerQuery = _sortKey(_customerFilterController.text);
     final deviceQuery = _sortKey(_deviceFilterController.text);
@@ -205,7 +222,9 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
       ],
       body: recordsAsync.when(
         data: (records) {
-          final filtered = _filter(records);
+          final filtered = _filter(records)
+              .where((item) => _showPassive || item.isActive)
+              .toList(growable: false);
           return Column(
             children: [
               AppCard(
@@ -290,6 +309,13 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                       },
                       icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
                       label: const Text('Temizle'),
+                    ),
+                    FilterChip(
+                      selected: _showPassive,
+                      onSelected: (value) =>
+                          setState(() => _showPassive = value),
+                      label: const Text('Pasifleri Göster'),
+                      visualDensity: VisualDensity.compact,
                     ),
                   ],
                 ),
@@ -378,6 +404,16 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                                     label: 'Yazdır',
                                     primary: true,
                                   ),
+                                  _MiniActionButton(
+                                    onPressed: () => _setRecordActive(
+                                      record,
+                                      !record.isActive,
+                                    ),
+                                    icon: record.isActive
+                                        ? Icons.delete_outline_rounded
+                                        : Icons.restore_rounded,
+                                    label: record.isActive ? 'Sil' : 'Aktif',
+                                  ),
                                 ],
                               ),
                             ],
@@ -407,6 +443,11 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                                 _TinyBadge(
                                   label: record.interventionPurpose!,
                                   tone: AppBadgeTone.success,
+                                ),
+                              if (!record.isActive)
+                                const _TinyBadge(
+                                  label: 'Pasif',
+                                  tone: AppBadgeTone.neutral,
                                 ),
                             ],
                           ),
@@ -690,7 +731,7 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                         .eq('id', widget.initialRecord!.id)
                   : client.from('scrap_forms').insert(payload))
               .select(
-                'id,form_date,row_number,customer_id,customer_name,customer_address,customer_tax_office_and_number,device_brand_model_registry,okc_start_date,last_used_date,z_report_count,total_vat_collection,total_collection,intervention_purpose,other_findings,created_at',
+                'id,form_date,row_number,customer_id,customer_name,customer_address,customer_tax_office_and_number,device_brand_model_registry,okc_start_date,last_used_date,z_report_count,total_vat_collection,total_collection,intervention_purpose,other_findings,is_active,created_at',
               )
               .single();
 

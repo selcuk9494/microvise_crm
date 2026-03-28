@@ -15,6 +15,7 @@ class ScrapFormRecord {
     required this.totalCollection,
     required this.interventionPurpose,
     required this.otherFindings,
+    required this.isActive,
     required this.createdAt,
   });
 
@@ -33,6 +34,7 @@ class ScrapFormRecord {
   final String? totalCollection;
   final String? interventionPurpose;
   final String? otherFindings;
+  final bool isActive;
   final DateTime? createdAt;
 
   factory ScrapFormRecord.fromJson(Map<String, dynamic> json) {
@@ -55,6 +57,7 @@ class ScrapFormRecord {
       totalCollection: json['total_collection']?.toString(),
       interventionPurpose: json['intervention_purpose']?.toString(),
       otherFindings: json['other_findings']?.toString(),
+      isActive: json['is_active'] as bool? ?? true,
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
     );
   }

@@ -237,14 +237,14 @@ class ProductsScreen extends ConsumerWidget {
         body: Column(
           children: [
             AppCard(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               child: Wrap(
-                spacing: 12,
-                runSpacing: 12,
+                spacing: 8,
+                runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   SizedBox(
-                    width: 360,
+                    width: 300,
                     child: TextField(
                       decoration: const InputDecoration(
                         labelText: 'Ara',
@@ -257,7 +257,7 @@ class ProductsScreen extends ConsumerWidget {
                   ),
                   customersAsync.when(
                     data: (customers) => SizedBox(
-                      width: 280,
+                      width: 240,
                       child: DropdownButtonFormField<String?>(
                         initialValue: selectedCustomerId,
                         items: [
@@ -287,7 +287,7 @@ class ProductsScreen extends ConsumerWidget {
                     error: (error, stackTrace) => const SizedBox.shrink(),
                   ),
                   SizedBox(
-                    width: 220,
+                    width: 190,
                     child: DropdownButtonFormField<ProductListSort>(
                       initialValue: sort,
                       items: const [
@@ -312,7 +312,7 @@ class ProductsScreen extends ConsumerWidget {
                     ),
                   ),
                   SizedBox(
-                    width: 220,
+                    width: 190,
                     child: DropdownButtonFormField<ProductQuickFilter>(
                       initialValue: quickFilter,
                       items: const [
@@ -368,7 +368,7 @@ class ProductsScreen extends ConsumerWidget {
                 ],
               ),
             ),
-            const Gap(12),
+            const Gap(8),
             linesAsync.when(
               data: (lines) => licensesAsync.when(
                 data: (licenses) => _ProductsSummarySection(
@@ -383,7 +383,7 @@ class ProductsScreen extends ConsumerWidget {
               loading: () => const _ProductsSummaryLoading(),
               error: (error, stackTrace) => const SizedBox.shrink(),
             ),
-            const Gap(12),
+            const Gap(8),
             AppCard(
               padding: EdgeInsets.zero,
               child: Column(
@@ -392,8 +392,8 @@ class ProductsScreen extends ConsumerWidget {
                     isScrollable: true,
                     tabAlignment: TabAlignment.start,
                     labelPadding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
+                      horizontal: 12,
+                      vertical: 8,
                     ),
                     tabs: [
                       Tab(text: 'Hatlar'),
@@ -402,7 +402,7 @@ class ProductsScreen extends ConsumerWidget {
                   ),
                   const Divider(height: 1),
                   SizedBox(
-                    height: 740,
+                    height: 680,
                     child: TabBarView(
                       children: [
                         _LinesTab(isAdmin: isAdmin),
@@ -431,7 +431,7 @@ class _LinesTab extends ConsumerWidget {
     final licensesAsync = ref.watch(issuedLicensesProvider);
     final selectedIds = ref.watch(selectedLineIdsProvider);
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       child: linesAsync.when(
         data: (items) => licensesAsync.when(
           data: (licenses) {
@@ -496,11 +496,11 @@ class _LinesTab extends ConsumerWidget {
                             ref.read(selectedLineIdsProvider.notifier).clear();
                           },
                   ),
-                if (isAdmin) const Gap(12),
+                if (isAdmin) const Gap(8),
                 Expanded(
                   child: ListView.separated(
                     itemCount: filteredItems.length,
-                    separatorBuilder: (context, index) => const Gap(10),
+                    separatorBuilder: (context, index) => const Gap(6),
                     itemBuilder: (context, index) => _LineRow(
                       item: filteredItems[index],
                       isAdmin: isAdmin,
@@ -540,7 +540,7 @@ class _LicensesTab extends ConsumerWidget {
     final linesAsync = ref.watch(issuedLinesProvider);
     final selectedIds = ref.watch(selectedLicenseIdsProvider);
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       child: licensesAsync.when(
         data: (items) => linesAsync.when(
           data: (lines) {
@@ -602,11 +602,11 @@ class _LicensesTab extends ConsumerWidget {
                                 .clear();
                           },
                   ),
-                if (isAdmin) const Gap(12),
+                if (isAdmin) const Gap(8),
                 Expanded(
                   child: ListView.separated(
                     itemCount: filteredLicenses.length,
-                    separatorBuilder: (context, index) => const Gap(10),
+                    separatorBuilder: (context, index) => const Gap(6),
                     itemBuilder: (context, index) => _LicenseRow(
                       item: filteredLicenses[index],
                       isAdmin: isAdmin,
@@ -690,10 +690,10 @@ class _LineRowState extends ConsumerState<_LineRow> {
         : DateFormat('d MMM y', 'tr_TR').format(endsAt);
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.border),
       ),
       child: Row(
@@ -702,8 +702,12 @@ class _LineRowState extends ConsumerState<_LineRow> {
             Checkbox.adaptive(
               value: widget.selected,
               onChanged: widget.onSelectedChanged,
+              visualDensity: const VisualDensity(
+                horizontal: -4,
+                vertical: -4,
+              ),
             ),
-            const Gap(6),
+            const Gap(4),
           ],
           Expanded(
             child: Column(
@@ -713,12 +717,13 @@ class _LineRowState extends ConsumerState<_LineRow> {
                   item.number ?? 'Hat',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w800,
+                    fontSize: 13,
                     decoration: item.isActive
                         ? null
                         : TextDecoration.lineThrough,
                   ),
                 ),
-                const Gap(4),
+                const Gap(2),
                 Text(
                   [
                     item.customerName ?? '—',
@@ -729,24 +734,34 @@ class _LineRowState extends ConsumerState<_LineRow> {
                   ].join(' • '),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF64748B),
+                    fontSize: 11,
                   ),
                 ),
-                const Gap(4),
+                const Gap(2),
                 Text(
                   'Bitiş: $dateText',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF94A3B8),
+                    fontSize: 10.5,
                   ),
                 ),
               ],
             ),
           ),
-          const Gap(10),
+          const Gap(8),
           AppBadge(label: statusLabel, tone: tone),
           if (widget.isAdmin) ...[
-            const Gap(10),
+            const Gap(8),
             MenuAnchor(
               builder: (context, controller, _) => OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 34),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 onPressed: _busy
                     ? null
                     : () => controller.isOpen
@@ -867,10 +882,10 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
         : DateFormat('d MMM y', 'tr_TR').format(endsAt);
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.border),
       ),
       child: Row(
@@ -879,8 +894,12 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
             Checkbox.adaptive(
               value: widget.selected,
               onChanged: widget.onSelectedChanged,
+              visualDensity: const VisualDensity(
+                horizontal: -4,
+                vertical: -4,
+              ),
             ),
-            const Gap(6),
+            const Gap(4),
           ],
           Expanded(
             child: Column(
@@ -890,12 +909,13 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
                   widget.hasLine ? 'GMP + Hat' : item.name,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w800,
+                    fontSize: 13,
                     decoration: item.isActive
                         ? null
                         : TextDecoration.lineThrough,
                   ),
                 ),
-                const Gap(4),
+                const Gap(2),
                 Text(
                   [
                     if (widget.hasLine) item.name,
@@ -903,27 +923,37 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
                   ].join(' • '),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF64748B),
+                    fontSize: 11,
                   ),
                 ),
-                const Gap(4),
+                const Gap(2),
                 Text(
                   'Bitiş: $dateText',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF94A3B8),
+                    fontSize: 10.5,
                   ),
                 ),
               ],
             ),
           ),
-          const Gap(10),
+          const Gap(8),
           if (widget.hasLine) ...[
             const AppBadge(label: 'Hatlı', tone: AppBadgeTone.primary),
-            const Gap(10),
+            const Gap(8),
           ],
           AppBadge(label: statusLabel, tone: tone),
           if (widget.isAdmin) ...[
-            const Gap(10),
+            const Gap(8),
             OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 34),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               onPressed: _busy
                   ? null
                   : () async {
