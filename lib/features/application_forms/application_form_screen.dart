@@ -413,7 +413,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       );
       final tcknDigits = _formatTcknForTsm(tcknMs);
       final serialRaw = (record.stockRegistryNumber ?? '').trim().toUpperCase();
-      final serialNumber = _formatDeviceSerialNumber(serialRaw);
+      final serialNumber = serialRaw;
       final modelCode = _resolveTsmModel(serialRaw);
       final address = (record.workAddress ?? '').trim();
       final invoiceDate = record.applicationDate.toIso8601String().split('T').first;
@@ -1484,10 +1484,10 @@ class _ApplicationFormDialogState
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: isMobile ? 520 : 1160,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.92,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.96,
         ),
         child: AppCard(
-          padding: EdgeInsets.all(isMobile ? 8 : 10),
+          padding: EdgeInsets.all(isMobile ? 10 : 12),
           child: Form(
             key: _formKey,
             child: SingleChildScrollView(
@@ -1531,7 +1531,7 @@ class _ApplicationFormDialogState
                       ),
                     ],
                   ),
-                  const Gap(4),
+                  const Gap(8),
                   isMobile
                       ? Container(
                           decoration: BoxDecoration(
@@ -1559,7 +1559,7 @@ class _ApplicationFormDialogState
                                 ),
                               ),
                             ),
-                            const Gap(8),
+                            const Gap(12),
                             Expanded(
                               child: Container(
                                 decoration: BoxDecoration(
@@ -1577,7 +1577,7 @@ class _ApplicationFormDialogState
                             ),
                           ],
                         ),
-                  const Gap(8),
+                  const Gap(12),
                   Row(
                     children: [
                       Expanded(

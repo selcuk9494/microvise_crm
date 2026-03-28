@@ -4,6 +4,7 @@ import 'package:gap/gap.dart';
 
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_card.dart';
+import '../definitions/definitions_screen.dart';
 import 'customer_model.dart';
 import 'customers_providers.dart';
 
@@ -195,6 +196,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final citiesAsync = ref.watch(cityDefinitionsProvider);
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
       backgroundColor: Colors.transparent,
@@ -262,13 +264,49 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                       ),
                       const Gap(12),
                       Expanded(
-                        child: TextFormField(
-                          controller: _cityController,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            labelText: 'Şehir',
-                            hintText: 'Örn. İstanbul',
-                            prefixIcon: Icon(Icons.location_city_rounded),
+                        child: citiesAsync.when(
+                          data: (cities) => DropdownButtonFormField<String?>(
+                            initialValue: _cityController.text.trim().isEmpty
+                                ? null
+                                : _cityController.text.trim(),
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('Şehir seç'),
+                              ),
+                              ...cities
+                                  .where((city) => city.isActive)
+                                  .map(
+                                    (city) => DropdownMenuItem<String?>(
+                                      value: city.name,
+                                      child: Text(city.name),
+                                    ),
+                                  ),
+                            ],
+                            onChanged: (value) =>
+                                setState(() => _cityController.text = value ?? ''),
+                            decoration: const InputDecoration(
+                              labelText: 'Şehir',
+                              prefixIcon: Icon(Icons.location_city_rounded),
+                            ),
+                          ),
+                          loading: () => TextFormField(
+                            controller: _cityController,
+                            enabled: false,
+                            decoration: const InputDecoration(
+                              labelText: 'Şehir',
+                              hintText: 'Şehirler yükleniyor',
+                              prefixIcon: Icon(Icons.location_city_rounded),
+                            ),
+                          ),
+                          error: (error, stackTrace) => TextFormField(
+                            controller: _cityController,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: 'Şehir',
+                              hintText: 'Şehir bulunamadı',
+                              prefixIcon: Icon(Icons.location_city_rounded),
+                            ),
                           ),
                         ),
                       ),
