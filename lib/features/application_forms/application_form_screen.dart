@@ -393,6 +393,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       );
       final tcknDigits = _formatTcknForTsm(tcknMs);
       final serialRaw = (record.stockRegistryNumber ?? '').trim().toUpperCase();
+      final serialNumber = _formatDeviceSerialNumber(serialRaw);
       final modelCode = _resolveTsmModel(serialRaw);
       final address = (record.workAddress ?? '').trim();
       final invoiceDate = record.applicationDate.toIso8601String().split('T').first;
@@ -400,7 +401,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       final row = <excel.CellValue>[
         excel.TextCellValue('V3'),
         excel.TextCellValue('3'),
-        excel.TextCellValue(serialRaw),
+        excel.TextCellValue(serialNumber),
         excel.TextCellValue('MICROVISE'),
         excel.TextCellValue(modelCode),
         excel.TextCellValue(''),
@@ -1232,11 +1233,11 @@ class _ApplicationFormDialogState
       backgroundColor: Colors.transparent,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: isMobile ? 680 : 760,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.88,
+          maxWidth: isMobile ? 540 : 600,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.74,
         ),
         child: AppCard(
-          padding: EdgeInsets.all(isMobile ? 14 : 16),
+          padding: EdgeInsets.all(isMobile ? 10 : 12),
           child: Form(
             key: _formKey,
             child: SingleChildScrollView(
@@ -1256,7 +1257,7 @@ class _ApplicationFormDialogState
                                   ? 'Başvuru Kopyası Oluştur'
                                   : 'Yeni Başvuru',
                               style: Theme.of(context).textTheme.titleLarge
-                                  ?.copyWith(fontSize: isMobile ? 26 : 28),
+                                  ?.copyWith(fontSize: isMobile ? 19 : 21),
                             ),
                             const Gap(4),
                             Text(
@@ -1266,7 +1267,7 @@ class _ApplicationFormDialogState
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     color: AppTheme.textMuted,
-                                    fontSize: 13,
+                                    fontSize: 11,
                                   ),
                             ),
                           ],
@@ -1280,7 +1281,7 @@ class _ApplicationFormDialogState
                       ),
                     ],
                   ),
-                  const Gap(12),
+                  const Gap(6),
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -1324,8 +1325,8 @@ class _ApplicationFormDialogState
                           label: 'İşyeri Adresi',
                           child: _ApplicationTextField(
                             controller: _workAddressController,
-                            minLines: 2,
-                            maxLines: 3,
+                            minLines: 1,
+                            maxLines: 2,
                             validator: (value) =>
                                 value == null || value.trim().isEmpty
                                 ? 'İş adresi zorunlu.'
@@ -1545,7 +1546,7 @@ class _ApplicationFormDialogState
                       ],
                     ),
                   ),
-                  const Gap(12),
+                  const Gap(8),
                   Row(
                     children: [
                       Expanded(
@@ -1612,103 +1613,95 @@ class _ApplicationRecordCard extends StatelessWidget {
     final isMobile = MediaQuery.sizeOf(context).width < 900;
     return AppCard(
       padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 10 : 12,
-        vertical: isMobile ? 10 : 9,
+        horizontal: isMobile ? 8 : 10,
+        vertical: isMobile ? 7 : 6,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Padding(
-                padding: const EdgeInsets.only(right: 6, top: 0),
+                padding: const EdgeInsets.only(right: 4),
                 child: Checkbox(
                   value: selected,
-                  visualDensity: const VisualDensity(
-                    horizontal: -4,
-                    vertical: -4,
+                  visualDensity: VisualDensity(
+                    horizontal: -4.5,
+                    vertical: -4.5,
                   ),
                   onChanged: (value) => onSelectionChanged(value ?? false),
                 ),
               ),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      record.customerName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        fontSize: isMobile ? 15 : 16,
-                      ),
-                    ),
-                    const Gap(4),
-                    Wrap(
-                      spacing: 5,
-                      runSpacing: 5,
-                      children: [
-                        _InfoChip(
-                          icon: Icons.calendar_today_rounded,
-                          text: dateText,
-                        ),
-                        if (record.fileRegistryNumber?.trim().isNotEmpty ?? false)
-                          _InfoChip(
-                            icon: Icons.folder_open_rounded,
-                            text: 'Dosya: ${record.fileRegistryNumber}',
-                          ),
-                        if (record.stockRegistryNumber?.trim().isNotEmpty ?? false)
-                          _InfoChip(
-                            icon: Icons.memory_rounded,
-                            text: 'Cihaz: ${record.stockRegistryNumber}',
-                          ),
-                        if (record.brandModel.isNotEmpty)
-                          _InfoChip(
-                            icon: Icons.developer_board_rounded,
-                            text: record.brandModel,
-                          ),
-                        if (record.businessActivityName?.trim().isNotEmpty ?? false)
-                          _InfoChip(
-                            icon: Icons.storefront_rounded,
-                            text: record.businessActivityName!,
-                          ),
-                      ],
-                    ),
-                  ],
+                child: Text(
+                  record.customerName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    fontSize: isMobile ? 14 : 15,
+                  ),
                 ),
               ),
-              const Gap(6),
+              const Gap(4),
               AppBadge(label: record.documentType, tone: AppBadgeTone.primary),
-            ],
-          ),
-          const Gap(8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
+              const Gap(6),
               _ActionButton(
                 onPressed: onEdit,
                 icon: Icons.edit_rounded,
                 label: 'Düzenle',
               ),
+              const Gap(4),
               _ActionButton(
                 onPressed: onDuplicate,
                 icon: Icons.content_copy_rounded,
                 label: 'Kopya',
               ),
+              const Gap(4),
               _ActionButton(
                 onPressed: onPrintKdv,
                 icon: Icons.print_rounded,
                 label: 'KDV4',
               ),
+              const Gap(4),
               _ActionButton(
                 onPressed: onPrintKdv4a,
                 icon: Icons.picture_as_pdf_rounded,
                 label: 'KDV4A',
                 primary: true,
               ),
+            ],
+          ),
+          const Gap(5),
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: [
+              _InfoChip(
+                icon: Icons.calendar_today_rounded,
+                text: dateText,
+              ),
+              if (record.fileRegistryNumber?.trim().isNotEmpty ?? false)
+                _InfoChip(
+                  icon: Icons.folder_open_rounded,
+                  text: 'Dosya: ${record.fileRegistryNumber}',
+                ),
+              if (record.stockRegistryNumber?.trim().isNotEmpty ?? false)
+                _InfoChip(
+                  icon: Icons.memory_rounded,
+                  text: 'Cihaz: ${record.stockRegistryNumber}',
+                ),
+              if (record.brandModel.isNotEmpty)
+                _InfoChip(
+                  icon: Icons.developer_board_rounded,
+                  text: record.brandModel,
+                ),
+              if (record.businessActivityName?.trim().isNotEmpty ?? false)
+                _InfoChip(
+                  icon: Icons.storefront_rounded,
+                  text: record.businessActivityName!,
+                ),
             ],
           ),
         ],
@@ -1889,7 +1882,7 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(999),
@@ -1898,15 +1891,16 @@ class _InfoChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: AppTheme.textMuted),
-          const Gap(4),
+          Icon(icon, size: 10, color: AppTheme.textMuted),
+          const Gap(3),
           Text(
             text,
             style: Theme.of(
               context,
             ).textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w600,
-              fontSize: 12,
+              fontSize: 10.5,
+              height: 1.0,
             ),
           ),
         ],
@@ -1930,41 +1924,29 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final child = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 16),
-        const Gap(6),
-        Text(label),
-      ],
-    );
-
     final style =
         (primary ? FilledButton.styleFrom : OutlinedButton.styleFrom).call(
-          minimumSize: const Size(0, 36),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          minimumSize: const Size(34, 28),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
           textStyle: Theme.of(
             context,
           ).textTheme.bodySmall?.copyWith(
             fontWeight: FontWeight.w700,
-            fontSize: 12,
+            fontSize: 10,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
           ),
         );
 
+    final child = Tooltip(
+      message: label,
+      child: Icon(icon, size: 14),
+    );
+
     return primary
-        ? FilledButton(
-            onPressed: onPressed,
-            style: style,
-            child: child,
-          )
-        : OutlinedButton(
-            onPressed: onPressed,
-            style: style,
-            child: child,
-          );
+        ? FilledButton(onPressed: onPressed, style: style, child: child)
+        : OutlinedButton(onPressed: onPressed, style: style, child: child);
   }
 }
 
@@ -1989,7 +1971,7 @@ class _FormRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: const BoxDecoration(
               color: Color(0xFFFFF15C),
               border: Border(
@@ -2003,11 +1985,12 @@ class _FormRow extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFF3E3200),
+                fontSize: 11,
               ),
             ),
           ),
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(5),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border.all(color: const Color(0xFF111827)),
@@ -2022,10 +2005,10 @@ class _FormRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 228,
+          width: 156,
           child: Container(
-            constraints: const BoxConstraints(minHeight: 56),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            constraints: const BoxConstraints(minHeight: 38),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             decoration: BoxDecoration(
               color: const Color(0xFFFFF15C),
               border: Border(
@@ -2044,6 +2027,8 @@ class _FormRow extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: const Color(0xFF3E3200),
+                  fontSize: 12,
+                  height: 1.1,
                 ),
               ),
             ),
@@ -2051,8 +2036,8 @@ class _FormRow extends StatelessWidget {
         ),
         Expanded(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 56),
-            padding: const EdgeInsets.all(8),
+            constraints: const BoxConstraints(minHeight: 38),
+            padding: const EdgeInsets.all(5),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border(
@@ -2089,7 +2074,7 @@ class _ReadOnlyMirrorField extends StatelessWidget {
         final hasValue = text.isNotEmpty;
         return Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           decoration: BoxDecoration(
             color: const Color(0xFFF9FAFB),
             borderRadius: BorderRadius.circular(10),
@@ -2118,12 +2103,12 @@ class _ResponsiveFieldGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.sizeOf(context).width < 760;
     if (isMobile) {
-      return Column(children: [left, const Gap(8), right]);
+      return Column(children: [left, const Gap(6), right]);
     }
     return Row(
       children: [
         Expanded(child: left),
-        const Gap(8),
+        const Gap(6),
         Expanded(child: right),
       ],
     );
@@ -2153,14 +2138,14 @@ class _ApplicationTextField extends StatelessWidget {
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
         color: const Color(0xFF111827),
         fontWeight: FontWeight.w600,
-        fontSize: 14,
+        fontSize: 11.5,
       ),
       decoration: const InputDecoration(
         isDense: true,
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(),
-        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       ),
     );
   }
@@ -2191,7 +2176,7 @@ class _ApplicationDropdown<T> extends StatelessWidget {
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
         color: const Color(0xFF111827),
         fontWeight: FontWeight.w600,
-        fontSize: 14,
+        fontSize: 11.5,
       ),
       decoration: InputDecoration(
         isDense: true,
@@ -2199,7 +2184,7 @@ class _ApplicationDropdown<T> extends StatelessWidget {
         fillColor: Colors.white,
         border: const OutlineInputBorder(),
         hintText: hintText,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       ),
     );
   }
@@ -2227,14 +2212,15 @@ class _DateField extends StatelessWidget {
           filled: true,
           fillColor: Colors.white,
           border: OutlineInputBorder(),
-          suffixIcon: Icon(Icons.calendar_today_rounded, size: 18),
+          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          suffixIcon: Icon(Icons.calendar_today_rounded, size: 16),
         ),
         child: Text(
           format.format(value),
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
             color: const Color(0xFF111827),
             fontWeight: FontWeight.w600,
-            fontSize: 14,
+            fontSize: 11.5,
           ),
         ),
       ),
@@ -2257,39 +2243,51 @@ class _CustomerPickerField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Row(
       children: [
-        TextFormField(
-          controller: controller,
-          readOnly: true,
-          validator: (_) => (selectedCustomerId ?? '').isEmpty
-              ? 'Müşteri seçin veya ekleyin.'
-              : null,
-          onTap: onPickCustomer,
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-            color: const Color(0xFF111827),
-            fontWeight: FontWeight.w600,
-          ),
-          decoration: InputDecoration(
-            isDense: true,
-            filled: true,
-            fillColor: Colors.white,
-            border: const OutlineInputBorder(),
-            hintText: 'Eski ya da yeni müşteri seçin',
-            suffixIcon: IconButton(
-              onPressed: onPickCustomer,
-              icon: const Icon(Icons.search_rounded),
+        Expanded(
+          child: TextFormField(
+            controller: controller,
+            readOnly: true,
+            validator: (_) => (selectedCustomerId ?? '').isEmpty
+                ? 'Müşteri seçin veya ekleyin.'
+                : null,
+            onTap: onPickCustomer,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              color: const Color(0xFF111827),
+              fontWeight: FontWeight.w600,
+              fontSize: 11.5,
+            ),
+            decoration: InputDecoration(
+              isDense: true,
+              filled: true,
+              fillColor: Colors.white,
+              border: const OutlineInputBorder(),
+              hintText: 'Eski ya da yeni müşteri seçin',
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 6,
+              ),
+              suffixIcon: IconButton(
+                onPressed: onPickCustomer,
+                icon: const Icon(Icons.search_rounded, size: 16),
+              ),
             ),
           ),
         ),
-        const Gap(8),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: onCreateCustomer,
-            icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
-            label: const Text('Yeni müşteri ekle'),
+        const Gap(6),
+        OutlinedButton.icon(
+          onPressed: onCreateCustomer,
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(0, 34),
+            padding: const EdgeInsets.symmetric(horizontal: 7),
+            textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: 10.5,
+            ),
           ),
+          icon: const Icon(Icons.person_add_alt_1_rounded, size: 14),
+          label: const Text('Yeni'),
         ),
       ],
     );

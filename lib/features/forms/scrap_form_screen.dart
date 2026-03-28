@@ -297,8 +297,8 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
               const Gap(14),
               AppCard(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 14,
+                  horizontal: 12,
+                  vertical: 10,
                 ),
                 child: Wrap(
                   spacing: 10,
@@ -331,104 +331,83 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
               else
                 ...filtered.map(
                   (record) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.only(bottom: 8),
                     child: AppCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      record.customerName,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleMedium,
-                                    ),
-                                    const Gap(10),
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children: [
-                                        AppBadge(
-                                          label: _dateFormat.format(
-                                            record.formDate,
-                                          ),
-                                          tone: AppBadgeTone.primary,
-                                        ),
-                                        if (record.rowNumber
-                                                ?.trim()
-                                                .isNotEmpty ??
-                                            false)
-                                          AppBadge(
-                                            label: 'Sıra: ${record.rowNumber}',
-                                            tone: AppBadgeTone.neutral,
-                                          ),
-                                        if (record.deviceBrandModelRegistry
-                                                ?.trim()
-                                                .isNotEmpty ??
-                                            false)
-                                          AppBadge(
-                                            label: record
-                                                .deviceBrandModelRegistry!,
-                                            tone: AppBadgeTone.warning,
-                                          ),
-                                      ],
-                                    ),
-                                    if (record.interventionPurpose
-                                            ?.trim()
-                                            .isNotEmpty ??
-                                        false) ...[
-                                      const Gap(10),
-                                      Text(
-                                        record.interventionPurpose!,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.copyWith(
-                                              color: AppTheme.textMuted,
-                                            ),
-                                      ),
-                                    ],
-                                  ],
+                                child: Text(
+                                  record.customerName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                  ),
                                 ),
                               ),
-                              const Gap(12),
+                              const Gap(6),
                               Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
+                                spacing: 4,
+                                runSpacing: 4,
                                 children: [
-                                  OutlinedButton.icon(
+                                  _MiniActionButton(
                                     onPressed: () => _openEditDialog(record),
-                                    icon: const Icon(
-                                      Icons.edit_rounded,
-                                      size: 18,
-                                    ),
-                                    label: const Text('Düzenle'),
+                                    icon: Icons.edit_rounded,
+                                    label: 'Düzenle',
                                   ),
-                                  OutlinedButton.icon(
+                                  _MiniActionButton(
                                     onPressed: () =>
                                         _openDuplicateDialog(record),
-                                    icon: const Icon(
-                                      Icons.copy_rounded,
-                                      size: 18,
-                                    ),
-                                    label: const Text('Kopya'),
+                                    icon: Icons.copy_rounded,
+                                    label: 'Kopya',
                                   ),
-                                  FilledButton.icon(
+                                  _MiniActionButton(
                                     onPressed: () => _print(record),
-                                    icon: const Icon(
-                                      Icons.print_rounded,
-                                      size: 18,
-                                    ),
-                                    label: const Text('Yazdır'),
+                                    icon: Icons.print_rounded,
+                                    label: 'Yazdır',
+                                    primary: true,
                                   ),
                                 ],
                               ),
+                            ],
+                          ),
+                          const Gap(4),
+                          Wrap(
+                            spacing: 4,
+                            runSpacing: 4,
+                            children: [
+                              _TinyBadge(
+                                label: _dateFormat.format(record.formDate),
+                                tone: AppBadgeTone.primary,
+                              ),
+                              if (record.rowNumber?.trim().isNotEmpty ?? false)
+                                _TinyBadge(
+                                  label: 'Sıra: ${record.rowNumber}',
+                                  tone: AppBadgeTone.neutral,
+                                ),
+                              if (record.deviceBrandModelRegistry?.trim().isNotEmpty ??
+                                  false)
+                                _TinyBadge(
+                                  label: record.deviceBrandModelRegistry!,
+                                  tone: AppBadgeTone.warning,
+                                ),
+                              if (record.interventionPurpose?.trim().isNotEmpty ??
+                                  false)
+                                _TinyBadge(
+                                  label: record.interventionPurpose!,
+                                  tone: AppBadgeTone.success,
+                                ),
                             ],
                           ),
                         ],
@@ -456,6 +435,59 @@ class _ScrapFormDialog extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<_ScrapFormDialog> createState() => _ScrapFormDialogState();
+}
+
+class _TinyBadge extends StatelessWidget {
+  const _TinyBadge({required this.label, required this.tone});
+
+  final String label;
+  final AppBadgeTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTextStyle.merge(
+      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+      child: AppBadge(label: label, tone: tone),
+    );
+  }
+}
+
+class _MiniActionButton extends StatelessWidget {
+  const _MiniActionButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+    this.primary = false,
+  });
+
+  final VoidCallback onPressed;
+  final IconData icon;
+  final String label;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final style =
+        (primary ? FilledButton.styleFrom : OutlinedButton.styleFrom).call(
+          minimumSize: const Size(28, 24),
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          textStyle: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(fontSize: 10, fontWeight: FontWeight.w700),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        );
+
+    final child = Tooltip(
+      message: label,
+      child: Icon(icon, size: 12),
+    );
+
+    return primary
+        ? FilledButton(onPressed: onPressed, style: style, child: child)
+        : OutlinedButton(onPressed: onPressed, style: style, child: child);
+  }
 }
 
 class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
