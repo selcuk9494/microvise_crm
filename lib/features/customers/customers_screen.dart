@@ -28,6 +28,7 @@ class CustomersScreen extends ConsumerStatefulWidget {
 
 class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   bool _handledCreateQuery = false;
+  bool _compactDesktopList = true;
   late final TextEditingController _searchController;
 
   @override
@@ -104,44 +105,69 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 ? null
                 : 'Müşteri arayın, şehir kırılımı seçin ve veri işlemlerine erişin.',
             trailing: !isMobile
-                ? PopupMenuButton<_CustomerDataAction>(
-                    tooltip: 'Veri işlemleri',
-                    onSelected: (action) {
-                      switch (action) {
-                        case _CustomerDataAction.template:
-                          _downloadCustomerImportTemplate(context);
-                        case _CustomerDataAction.export:
-                          _exportCustomersToExcel(context, ref);
-                        case _CustomerDataAction.import:
-                          _importExcel(context, ref);
-                      }
-                    },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
-                        value: _CustomerDataAction.template,
-                        child: Text('Şablon İndir'),
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SegmentedButton<bool>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment<bool>(
+                            value: true,
+                            icon: Icon(Icons.view_headline_rounded, size: 16),
+                            label: Text('Kompakt'),
+                          ),
+                          ButtonSegment<bool>(
+                            value: false,
+                            icon: Icon(Icons.grid_view_rounded, size: 16),
+                            label: Text('Normal'),
+                          ),
+                        ],
+                        selected: {_compactDesktopList},
+                        onSelectionChanged: (value) {
+                          setState(() => _compactDesktopList = value.first);
+                        },
                       ),
-                      PopupMenuItem(
-                        value: _CustomerDataAction.export,
-                        child: Text('Dışa Aktar'),
-                      ),
-                      PopupMenuItem(
-                        value: _CustomerDataAction.import,
-                        child: Text('İçe Aktar'),
-                      ),
-                    ],
-                    child: OutlinedButton.icon(
-                      onPressed: null,
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(0, 38),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
+                      const Gap(8),
+                      PopupMenuButton<_CustomerDataAction>(
+                        tooltip: 'Veri işlemleri',
+                        onSelected: (action) {
+                          switch (action) {
+                            case _CustomerDataAction.template:
+                              _downloadCustomerImportTemplate(context);
+                            case _CustomerDataAction.export:
+                              _exportCustomersToExcel(context, ref);
+                            case _CustomerDataAction.import:
+                              _importExcel(context, ref);
+                          }
+                        },
+                        itemBuilder: (context) => const [
+                          PopupMenuItem(
+                            value: _CustomerDataAction.template,
+                            child: Text('Şablon İndir'),
+                          ),
+                          PopupMenuItem(
+                            value: _CustomerDataAction.export,
+                            child: Text('Dışa Aktar'),
+                          ),
+                          PopupMenuItem(
+                            value: _CustomerDataAction.import,
+                            child: Text('İçe Aktar'),
+                          ),
+                        ],
+                        child: OutlinedButton.icon(
+                          onPressed: null,
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 38),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                          ),
+                          icon: const Icon(Icons.unfold_more_rounded, size: 16),
+                          label: const Text('Veri'),
                         ),
                       ),
-                      icon: const Icon(Icons.unfold_more_rounded, size: 16),
-                      label: const Text('Veri'),
-                    ),
+                    ],
                   )
                 : null,
             footer:
@@ -316,134 +342,25 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     _SummaryRow(customers: customers),
                     const Gap(8),
                   ],
-                  AppSectionCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final isCompact = constraints.maxWidth < 980;
-                        final summaryText =
-                            'Toplam ${pageData.totalCount} müşteri • Sayfa $currentPage / $totalPages • ${customers.length} kayıt gösteriliyor';
-                        final pageButtons = Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            OutlinedButton.icon(
-                              onPressed: currentPage > 1
-                                  ? () => ref
-                                        .read(customerPageProvider.notifier)
-                                        .previous()
-                                  : null,
-                              icon: const Icon(
-                                Icons.chevron_left_rounded,
-                                size: 18,
-                              ),
-                              label: const Text('Önceki'),
-                            ),
-                            for (var page = startPage; page <= endPage; page++)
-                              page == currentPage
-                                  ? FilledButton(
-                                      onPressed: null,
-                                      child: Text(page.toString()),
-                                    )
-                                  : OutlinedButton(
-                                      onPressed: () => ref
-                                          .read(customerPageProvider.notifier)
-                                          .set(page),
-                                      child: Text(page.toString()),
-                                    ),
-                            OutlinedButton.icon(
-                              onPressed: pageData.hasNextPage
-                                  ? () => ref
-                                        .read(customerPageProvider.notifier)
-                                        .next()
-                                  : null,
-                              icon: const Icon(
-                                Icons.chevron_right_rounded,
-                                size: 18,
-                              ),
-                              label: const Text('Sonraki'),
-                            ),
-                          ],
-                        );
-
-                        if (isCompact) {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                summaryText,
-                                style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(color: const Color(0xFF64748B)),
-                              ),
-                              const Gap(6),
-                              pageButtons,
-                              const Gap(2),
-                              TextButton.icon(
-                                onPressed: () => _showCustomerForm(
-                                  context,
-                                  ref,
-                                  openDetail: false,
-                                ),
-                                icon: const Icon(Icons.add_rounded, size: 18),
-                                label: const Text('Hızlı Ekle'),
-                              ),
-                            ],
-                          );
-                        }
-
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                summaryText,
-                                style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(color: const Color(0xFF64748B)),
-                              ),
-                            ),
-                            const Gap(10),
-                            Flexible(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  pageButtons,
-                                  const Gap(2),
-                                  TextButton.icon(
-                                    onPressed: () => _showCustomerForm(
-                                      context,
-                                      ref,
-                                      openDetail: false,
-                                    ),
-                                    icon: const Icon(
-                                      Icons.add_rounded,
-                                      size: 18,
-                                    ),
-                                    label: const Text('Hızlı Ekle'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                  const Gap(4),
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: customers.length,
-                    separatorBuilder: (context, index) => const Gap(6),
-                    itemBuilder: (context, index) {
-                      final customer = customers[index];
-                      return _CustomerCard(
-                        customer: customer,
-                        onChanged: () => _refreshCustomerData(ref),
-                      );
-                    },
+                  _CustomerListSection(
+                    customers: customers,
+                    totalCount: pageData.totalCount,
+                    currentPage: currentPage,
+                    totalPages: totalPages,
+                    startPage: startPage,
+                    endPage: endPage,
+                    hasNextPage: pageData.hasNextPage,
+                    compactDesktopList: _compactDesktopList,
+                    isMobile: isMobile,
+                    onQuickAdd: () =>
+                        _showCustomerForm(context, ref, openDetail: false),
+                    onChanged: () => _refreshCustomerData(ref),
+                    onPrevious: () =>
+                        ref.read(customerPageProvider.notifier).previous(),
+                    onNext: () =>
+                        ref.read(customerPageProvider.notifier).next(),
+                    onSetPage: (page) =>
+                        ref.read(customerPageProvider.notifier).set(page),
                   ),
                 ],
               );
@@ -482,6 +399,201 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
 }
 
 enum _CustomerDataAction { template, export, import }
+
+class _CustomerListSection extends StatelessWidget {
+  const _CustomerListSection({
+    required this.customers,
+    required this.totalCount,
+    required this.currentPage,
+    required this.totalPages,
+    required this.startPage,
+    required this.endPage,
+    required this.hasNextPage,
+    required this.compactDesktopList,
+    required this.isMobile,
+    required this.onQuickAdd,
+    required this.onChanged,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onSetPage,
+  });
+
+  final List<Customer> customers;
+  final int totalCount;
+  final int currentPage;
+  final int totalPages;
+  final int startPage;
+  final int endPage;
+  final bool hasNextPage;
+  final bool compactDesktopList;
+  final bool isMobile;
+  final VoidCallback onQuickAdd;
+  final Future<void> Function() onChanged;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final ValueChanged<int> onSetPage;
+
+  @override
+  Widget build(BuildContext context) {
+    final summaryText =
+        'Toplam $totalCount müşteri • Sayfa $currentPage / $totalPages • ${customers.length} kayıt gösteriliyor';
+    final pageButtons = Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        OutlinedButton.icon(
+          onPressed: currentPage > 1 ? onPrevious : null,
+          icon: const Icon(Icons.chevron_left_rounded, size: 18),
+          label: const Text('Önceki'),
+        ),
+        for (var page = startPage; page <= endPage; page++)
+          page == currentPage
+              ? FilledButton(onPressed: null, child: Text(page.toString()))
+              : OutlinedButton(
+                  onPressed: () => onSetPage(page),
+                  child: Text(page.toString()),
+                ),
+        OutlinedButton.icon(
+          onPressed: hasNextPage ? onNext : null,
+          icon: const Icon(Icons.chevron_right_rounded, size: 18),
+          label: const Text('Sonraki'),
+        ),
+      ],
+    );
+
+    return AppSectionCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final stacked = constraints.maxWidth < 980;
+                if (stacked) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        summaryText,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.textMuted,
+                        ),
+                      ),
+                      const Gap(8),
+                      pageButtons,
+                      const Gap(4),
+                      TextButton.icon(
+                        onPressed: onQuickAdd,
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: const Text('Hızlı Ekle'),
+                      ),
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        summaryText,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.textMuted,
+                        ),
+                      ),
+                    ),
+                    const Gap(12),
+                    pageButtons,
+                    const Gap(8),
+                    TextButton.icon(
+                      onPressed: onQuickAdd,
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('Hızlı Ekle'),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          if (!isMobile) const _CustomerTableHeader(),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: customers.length,
+            separatorBuilder: (context, index) => Divider(
+              height: 1,
+              color: AppTheme.border.withValues(alpha: 0.75),
+            ),
+            itemBuilder: (context, index) {
+              final customer = customers[index];
+              return isMobile
+                  ? Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: _CustomerCard(
+                        customer: customer,
+                        onChanged: onChanged,
+                      ),
+                    )
+                  : _CustomerTableRow(
+                      customer: customer,
+                      compact: compactDesktopList,
+                      onChanged: onChanged,
+                    );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomerTableHeader extends StatelessWidget {
+  const _CustomerTableHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 42,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceSoft,
+        border: Border(
+          top: BorderSide(color: AppTheme.border),
+          bottom: BorderSide(color: AppTheme.border),
+        ),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 40),
+          const Expanded(flex: 34, child: _HeaderText('Müşteri')),
+          const Expanded(flex: 13, child: _HeaderText('Şehir')),
+          const Expanded(flex: 14, child: _HeaderText('Hat/Lisans')),
+          const Expanded(flex: 14, child: _HeaderText('GMP3')),
+          const Expanded(flex: 15, child: _HeaderText('VKN / ID')),
+          const Expanded(flex: 10, child: _HeaderText('Durum')),
+          const SizedBox(width: 52),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderText extends StatelessWidget {
+  const _HeaderText(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+        color: AppTheme.textMuted,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+}
 
 class _SummaryRow extends StatelessWidget {
   const _SummaryRow({required this.customers, this.compact = false});
@@ -617,6 +729,215 @@ class _SummaryStat extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CustomerTableRow extends ConsumerWidget {
+  const _CustomerTableRow({
+    required this.customer,
+    required this.onChanged,
+    required this.compact,
+  });
+
+  final Customer customer;
+  final Future<void> Function() onChanged;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final nameStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+      fontWeight: FontWeight.w800,
+      color: AppTheme.text,
+      fontSize: compact ? 13 : 14,
+    );
+    final subStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+      color: AppTheme.textMuted,
+      fontSize: compact ? 10 : 11,
+    );
+
+    return InkWell(
+      onTap: () => context.go('/musteriler/${customer.id}'),
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: compact ? 10 : 12,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: AppTheme.primarySoft,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.business_rounded,
+                size: 18,
+                color: AppTheme.primary,
+              ),
+            ),
+            const Gap(10),
+            Expanded(
+              flex: 34,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    customer.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: nameStyle,
+                  ),
+                  const Gap(4),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      if ((customer.city ?? '').trim().isNotEmpty)
+                        _TablePill(label: customer.city!),
+                      if ((customer.vkn ?? '').trim().isNotEmpty)
+                        _TablePill(label: '#${customer.vkn}'),
+                      _TablePill(label: '${customer.activeLineCount} hat'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              flex: 13,
+              child: Text(customer.city ?? '—', style: subStyle),
+            ),
+            Expanded(
+              flex: 14,
+              child: Text(
+                '${customer.activeLineCount} aktif hat',
+                style: subStyle?.copyWith(color: AppTheme.textSoft),
+              ),
+            ),
+            Expanded(
+              flex: 14,
+              child: Text(
+                '${customer.activeGmp3Count} GMP3',
+                style: subStyle?.copyWith(color: AppTheme.textSoft),
+              ),
+            ),
+            Expanded(
+              flex: 15,
+              child: Text(
+                (customer.vkn ?? customer.id).toString(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: subStyle?.copyWith(
+                  color: AppTheme.text,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 10,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: AppBadge(
+                  label: customer.isActive ? 'Aktif' : 'Pasif',
+                  tone: customer.isActive
+                      ? AppBadgeTone.success
+                      : AppBadgeTone.neutral,
+                ),
+              ),
+            ),
+            PopupMenuButton<_CustomerAction>(
+              tooltip: 'Müşteri işlemleri',
+              onSelected: (action) async {
+                switch (action) {
+                  case _CustomerAction.open:
+                    context.go('/musteriler/${customer.id}');
+                  case _CustomerAction.edit:
+                    final updated = await showEditCustomerDialog(
+                      context,
+                      initialData: CustomerFormData(
+                        id: customer.id,
+                        name: customer.name,
+                        city: customer.city,
+                        address: customer.address,
+                        directorName: customer.directorName,
+                        email: customer.email,
+                        vkn: customer.vkn,
+                        tcknMs: customer.tcknMs,
+                        phone1Title: customer.phone1Title,
+                        phone1: customer.phone1,
+                        phone2Title: customer.phone2Title,
+                        phone2: customer.phone2,
+                        phone3Title: customer.phone3Title,
+                        phone3: customer.phone3,
+                        notes: customer.notes,
+                        isActive: customer.isActive,
+                      ),
+                    );
+                    if (updated) await onChanged();
+                  case _CustomerAction.toggleActive:
+                    await _toggleCustomerActive(
+                      context,
+                      ref,
+                      customer: customer,
+                    );
+                    await onChanged();
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: _CustomerAction.open,
+                  child: Text('Detaya Git'),
+                ),
+                const PopupMenuItem(
+                  value: _CustomerAction.edit,
+                  child: Text('Düzenle'),
+                ),
+                PopupMenuItem(
+                  value: _CustomerAction.toggleActive,
+                  child: Text(customer.isActive ? 'Sil' : 'Aktifleştir'),
+                ),
+              ],
+              child: const Padding(
+                padding: EdgeInsets.only(left: 6),
+                child: Icon(
+                  Icons.more_vert_rounded,
+                  size: 18,
+                  color: AppTheme.textMuted,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TablePill extends StatelessWidget {
+  const _TablePill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: AppTheme.textMuted,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          height: 1,
+        ),
       ),
     );
   }

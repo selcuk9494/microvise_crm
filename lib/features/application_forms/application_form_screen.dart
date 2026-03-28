@@ -28,12 +28,23 @@ final applicationFormCustomersProvider = FutureProvider<List<_CustomerOption>>((
   final items = <_CustomerOption>[];
 
   while (true) {
-    final rows = await client
-        .from('customers')
-        .select('id,name,vkn,tckn_ms,city,address,director_name,is_active')
-        .range(from, from + pageSize - 1);
-    final batch = (rows as List)
-        .map((row) => _CustomerOption.fromJson(row as Map<String, dynamic>))
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = await client
+          .from('customers')
+          .select('id,name,vkn,tckn_ms,city,address,director_name,is_active')
+          .range(from, from + pageSize - 1);
+    } catch (_) {
+      final fallbackRows = await client
+          .from('customers')
+          .select('id,name,vkn,tckn_ms,city,address,is_active')
+          .range(from, from + pageSize - 1);
+      rows = (fallbackRows as List)
+          .map((row) => {...row as Map<String, dynamic>, 'director_name': null})
+          .toList(growable: false);
+    }
+    final batch = rows
+        .map((row) => _CustomerOption.fromJson(row))
         .toList(growable: false);
     items.addAll(batch);
     if (batch.length < pageSize) break;
@@ -225,7 +236,11 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(active ? 'Başvuru yeniden aktifleştirildi.' : 'Başvuru pasife alındı.'),
+        content: Text(
+          active
+              ? 'Başvuru yeniden aktifleştirildi.'
+              : 'Başvuru pasife alındı.',
+        ),
       ),
     );
   }
@@ -351,7 +366,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       }
     }
 
-    final templateData = await rootBundle.load('assets/templates/tsm_template.xlsx');
+    final templateData = await rootBundle.load(
+      'assets/templates/tsm_template.xlsx',
+    );
     final file = excel.Excel.decodeBytes(templateData.buffer.asUint8List());
     const sheetName = 'Tsm';
     final sheet = file[sheetName];
@@ -373,13 +390,17 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       final phone = _pickCustomerPhone(customer);
       final taxOffice = (record.taxOfficeCityName ?? '').trim();
       final vkn = (customer?['vkn'] ?? '').toString().trim();
-      final tcknMs =
-          (customer?['tckn_ms'] ?? record.customerTcknMs ?? '').toString().trim();
+      final tcknMs = (customer?['tckn_ms'] ?? record.customerTcknMs ?? '')
+          .toString()
+          .trim();
       final serialRaw = (record.stockRegistryNumber ?? '').trim().toUpperCase();
       final serialNumber = serialRaw;
       final modelCode = _resolveTsmModel(serialRaw);
       final address = (record.workAddress ?? '').trim();
-      final invoiceDate = record.applicationDate.toIso8601String().split('T').first;
+      final invoiceDate = record.applicationDate
+          .toIso8601String()
+          .split('T')
+          .first;
 
       final overrides = <int, excel.CellValue?>{
         0: excel.TextCellValue('V3'),
@@ -418,7 +439,10 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       for (var col = 0; col < 43; col++) {
         file.updateCell(
           sheetName,
-          excel.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: rowIndex),
+          excel.CellIndex.indexByColumnRow(
+            columnIndex: col,
+            rowIndex: rowIndex,
+          ),
           overrides.containsKey(col) ? overrides[col] : templateValues[col],
           cellStyle: templateStyles[col],
         );
@@ -462,10 +486,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     if (words.isEmpty) return ('', '');
     if (words.length == 1) return (words.first, '');
     final splitIndex = (words.length / 2).ceil();
-    return (
-      words.take(splitIndex).join(' '),
-      words.skip(splitIndex).join(' '),
-    );
+    return (words.take(splitIndex).join(' '), words.skip(splitIndex).join(' '));
   }
 
   String _pickCustomerPhone(Map<String, dynamic>? customer) {
@@ -551,8 +572,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
           final selectedRecords = filtered
               .where((record) => _selectedRecordIds.contains(record.id))
               .toList(growable: false);
-          final allFilteredSelected = filtered.isNotEmpty &&
-              selectedRecords.length == filtered.length;
+          final allFilteredSelected =
+              filtered.isNotEmpty && selectedRecords.length == filtered.length;
           return Column(
             children: [
               AppCard(
@@ -697,7 +718,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                     OutlinedButton.icon(
                       onPressed: () {
                         setState(() {
-                        if (allFilteredSelected) {
+                          if (allFilteredSelected) {
                             for (final record in filtered) {
                               _selectedRecordIds.remove(record.id);
                             }
@@ -721,8 +742,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                   if (filtered.isNotEmpty) const Gap(8),
                   FilterChip(
                     selected: _showPassive,
-                    onSelected: (value) =>
-                        setState(() => _showPassive = value),
+                    onSelected: (value) => setState(() => _showPassive = value),
                     label: const Text('Pasifleri Göster'),
                     visualDensity: VisualDensity.compact,
                   ),
@@ -742,7 +762,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                         OutlinedButton.icon(
                           onPressed: () => _exportForTsm(selectedRecords),
                           icon: const Icon(Icons.table_chart_rounded, size: 18),
-                          label: Text('TSM\'e Gonder (${selectedRecords.length})'),
+                          label: Text(
+                            'TSM\'e Gonder (${selectedRecords.length})',
+                          ),
                         ),
                       ],
                     ),
@@ -762,7 +784,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                     for (var index = 0; index < filtered.length; index++) ...[
                       _ApplicationRecordCard(
                         record: filtered[index],
-                        selected: _selectedRecordIds.contains(filtered[index].id),
+                        selected: _selectedRecordIds.contains(
+                          filtered[index].id,
+                        ),
                         onSelectionChanged: (selected) {
                           setState(() {
                             if (selected) {
@@ -1149,9 +1173,10 @@ class _ApplicationFormDialogState
     final stockProduct = stockProducts
         ?.where((item) => item.id == _selectedStockProductId)
         .firstOrNull;
-    final selectedActivities = (activities ?? const <BusinessActivityTypeDefinition>[])
-        .where((item) => _selectedBusinessActivityIds.contains(item.id))
-        .toList(growable: false);
+    final selectedActivities =
+        (activities ?? const <BusinessActivityTypeDefinition>[])
+            .where((item) => _selectedBusinessActivityIds.contains(item.id))
+            .toList(growable: false);
 
     setState(() => _saving = true);
     try {
@@ -1266,8 +1291,7 @@ class _ApplicationFormDialogState
           controller: _workAddressController,
           minLines: 1,
           maxLines: 2,
-          validator: (value) =>
-              value == null || value.trim().isEmpty
+          validator: (value) => value == null || value.trim().isEmpty
               ? 'İş adresi zorunlu.'
               : null,
         ),
@@ -1296,9 +1320,7 @@ class _ApplicationFormDialogState
           ),
           right: _ApplicationDropdown<String>(
             value: _documentType,
-            items: const [
-              DropdownMenuItem(value: 'VKN', child: Text('VKN')),
-            ],
+            items: const [DropdownMenuItem(value: 'VKN', child: Text('VKN'))],
             onChanged: null,
           ),
         ),
@@ -1363,7 +1385,9 @@ class _ApplicationFormDialogState
               onChanged: (value) {
                 setState(() {
                   _selectedStockProductId = value;
-                  final selected = items.where((item) => item.id == value).firstOrNull;
+                  final selected = items
+                      .where((item) => item.id == value)
+                      .firstOrNull;
                   if (selected != null) {
                     _stockRegistryNumberController.text =
                         selected.code?.trim().isNotEmpty ?? false
@@ -1376,7 +1400,9 @@ class _ApplicationFormDialogState
             loading: () => const _ContentLoading(),
             error: (error, stackTrace) => const _ContentError(),
           ),
-          right: _ApplicationTextField(controller: _stockRegistryNumberController),
+          right: _ApplicationTextField(
+            controller: _stockRegistryNumberController,
+          ),
         ),
       ),
       _FormRow(
@@ -1407,7 +1433,9 @@ class _ApplicationFormDialogState
           ),
           right: activitiesAsync.when(
             data: (items) => _BusinessActivityMultiSelectField(
-              items: items.where((item) => item.isActive).toList(growable: false),
+              items: items
+                  .where((item) => item.isActive)
+                  .toList(growable: false),
               selectedIds: _selectedBusinessActivityIds,
               onChanged: (value) =>
                   setState(() => _selectedBusinessActivityIds = value),
@@ -1681,10 +1709,7 @@ class _ApplicationRecordCard extends StatelessWidget {
             spacing: 4,
             runSpacing: 4,
             children: [
-              _InfoChip(
-                icon: Icons.calendar_today_rounded,
-                text: dateText,
-              ),
+              _InfoChip(icon: Icons.calendar_today_rounded, text: dateText),
               if (record.fileRegistryNumber?.trim().isNotEmpty ?? false)
                 _InfoChip(
                   icon: Icons.folder_open_rounded,
@@ -1898,9 +1923,7 @@ class _InfoChip extends StatelessWidget {
           const Gap(3),
           Text(
             text,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w600,
               fontSize: 10.5,
               height: 1.0,
@@ -1927,13 +1950,11 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style =
-        (primary ? FilledButton.styleFrom : OutlinedButton.styleFrom).call(
+    final style = (primary ? FilledButton.styleFrom : OutlinedButton.styleFrom)
+        .call(
           minimumSize: const Size(34, 28),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-          textStyle: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(
+          textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
             fontWeight: FontWeight.w700,
             fontSize: 10,
           ),
@@ -1942,10 +1963,7 @@ class _ActionButton extends StatelessWidget {
           ),
         );
 
-    final child = Tooltip(
-      message: label,
-      child: Icon(icon, size: 14),
-    );
+    final child = Tooltip(message: label, child: Icon(icon, size: 14));
 
     return primary
         ? FilledButton(onPressed: onPressed, style: style, child: child)
@@ -2310,7 +2328,8 @@ class _BusinessActivityPickerDialogState
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: widget.items.length,
-                  separatorBuilder: (context, index) => const Divider(height: 1),
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final item = widget.items[index];
                     return CheckboxListTile(

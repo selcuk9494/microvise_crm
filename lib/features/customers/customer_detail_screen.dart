@@ -19,13 +19,25 @@ final customerDetailProvider = FutureProvider.family<CustomerDetail, String>((
   final client = ref.watch(supabaseClientProvider);
   if (client == null) throw Exception('Supabase yapılandırılmamış.');
 
-  final row = await client
-      .from('customers')
-      .select(
-        'id,name,city,address,director_name,email,vkn,tckn_ms,notes,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,is_active,created_at',
-      )
-      .eq('id', customerId)
-      .maybeSingle();
+  Map<String, dynamic>? row;
+  try {
+    row = await client
+        .from('customers')
+        .select(
+          'id,name,city,address,director_name,email,vkn,tckn_ms,notes,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,is_active,created_at',
+        )
+        .eq('id', customerId)
+        .maybeSingle();
+  } catch (_) {
+    final fallbackRow = await client
+        .from('customers')
+        .select(
+          'id,name,city,address,email,vkn,tckn_ms,notes,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,is_active,created_at',
+        )
+        .eq('id', customerId)
+        .maybeSingle();
+    row = fallbackRow == null ? null : {...fallbackRow, 'director_name': null};
+  }
 
   if (row == null) throw Exception('Müşteri bulunamadı.');
   return CustomerDetail.fromJson(row);
@@ -330,7 +342,10 @@ class _GeneralTab extends ConsumerWidget {
           const Gap(10),
           _InfoRow(label: 'E-posta', value: detail.email ?? '—'),
           const Gap(10),
-          _InfoRow(label: 'Direktör Ad Soyad', value: detail.directorName ?? '—'),
+          _InfoRow(
+            label: 'Direktör Ad Soyad',
+            value: detail.directorName ?? '—',
+          ),
           const Gap(10),
           _InfoRow(label: 'VKN', value: detail.vkn ?? '—'),
           const Gap(10),

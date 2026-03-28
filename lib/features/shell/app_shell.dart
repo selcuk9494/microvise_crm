@@ -67,19 +67,19 @@ class _DesktopShellState extends ConsumerState<_DesktopShell> {
       body: Row(
         children: [
           Container(
-            width: 248,
+            width: 236,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.88),
+              color: Colors.white,
               border: Border(right: BorderSide(color: AppTheme.border)),
               boxShadow: AppTheme.cardShadow,
             ),
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                 child: Column(
                   children: [
                     _BrandHeader(onTap: () => context.go('/panel')),
-                    const Gap(14),
+                    const Gap(10),
                     Expanded(
                       child: ListView(
                         children: [
@@ -272,8 +272,8 @@ class _TopBar extends StatelessWidget {
     return SafeArea(
       bottom: false,
       child: Container(
-        height: 58,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        height: 56,
+        padding: const EdgeInsets.symmetric(horizontal: 18),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.9),
           border: Border(bottom: BorderSide(color: AppTheme.border)),
@@ -282,13 +282,13 @@ class _TopBar extends StatelessWidget {
           children: [
             Expanded(
               child: InkWell(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
                 onTap: onSearchTap,
                 child: Container(
-                  height: 40,
+                  height: 42,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
-                    color: AppTheme.surfaceMuted,
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                     border: Border.all(color: AppTheme.border),
                   ),
@@ -322,7 +322,7 @@ class _TopBar extends StatelessWidget {
                 color: AppTheme.text,
               ),
             ),
-            const Gap(6),
+            const Gap(10),
             _ProfileButton(),
           ],
         ),
@@ -404,23 +404,22 @@ class _SidebarItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = active ? Colors.white : Colors.transparent;
-    final border = active
-        ? AppTheme.primary.withValues(alpha: 0.22)
-        : AppTheme.border;
+    final bg = active
+        ? AppTheme.primarySoft.withValues(alpha: 0.85)
+        : Colors.transparent;
+    final border = active ? Colors.transparent : Colors.transparent;
     final fg = active ? AppTheme.primaryDark : AppTheme.text;
 
     return InkWell(
       borderRadius: BorderRadius.circular(AppTheme.radiusSm),
       onTap: onTap,
       child: Container(
-        height: 44,
+        height: 42,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: active ? AppTheme.primarySoft.withValues(alpha: 0.5) : bg,
-          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          color: bg,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: border),
-          boxShadow: active ? AppTheme.cardShadow : null,
         ),
         child: Row(
           children: [
@@ -430,7 +429,7 @@ class _SidebarItem extends StatelessWidget {
               child: Text(
                 label,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                   color: fg,
                 ),
               ),
@@ -459,23 +458,22 @@ class _SidebarExpandableItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = active ? Colors.white : Colors.transparent;
-    final border = active
-        ? AppTheme.primary.withValues(alpha: 0.22)
-        : AppTheme.border;
+    final bg = active
+        ? AppTheme.primarySoft.withValues(alpha: 0.85)
+        : Colors.transparent;
+    final border = Colors.transparent;
     final fg = active ? AppTheme.primaryDark : AppTheme.text;
 
     return InkWell(
       borderRadius: BorderRadius.circular(AppTheme.radiusSm),
       onTap: onTap,
       child: Container(
-        height: 44,
+        height: 42,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: active ? AppTheme.primarySoft.withValues(alpha: 0.5) : bg,
-          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          color: bg,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: border),
-          boxShadow: active ? AppTheme.cardShadow : null,
         ),
         child: Row(
           children: [
@@ -485,7 +483,7 @@ class _SidebarExpandableItem extends StatelessWidget {
               child: Text(
                 label,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                   color: fg,
                 ),
               ),
@@ -560,22 +558,22 @@ class _SidebarSubItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final fg = active ? AppTheme.primaryDark : AppTheme.textMuted;
     final bg = active
-        ? AppTheme.primary.withValues(alpha: 0.08)
+        ? AppTheme.primarySoft.withValues(alpha: 0.72)
         : Colors.transparent;
 
     return InkWell(
       borderRadius: BorderRadius.circular(AppTheme.radiusSm),
       onTap: onTap,
       child: Container(
-        height: 34,
+        height: 32,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: active
-                ? AppTheme.primary.withValues(alpha: 0.18)
-                : AppTheme.border.withValues(alpha: 0.5),
+                ? AppTheme.primary.withValues(alpha: 0.14)
+                : Colors.transparent,
           ),
         ),
         child: Row(

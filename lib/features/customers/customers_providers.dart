@@ -4,6 +4,9 @@ import '../../core/supabase/supabase_providers.dart';
 import 'customer_model.dart';
 
 const customerPageSize = 50;
+const _customerBaseSelect =
+    'id,name,city,address,email,vkn,tckn_ms,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,notes,is_active,created_at';
+const _customerDirectorSelect = '$_customerBaseSelect,director_name';
 
 final customerFiltersProvider =
     NotifierProvider<CustomerFiltersNotifier, CustomerFilters>(
@@ -16,9 +19,10 @@ final customerSortProvider =
     NotifierProvider<CustomerSortNotifier, CustomerSortOption>(
       CustomerSortNotifier.new,
     );
-final customerShowPassiveProvider = NotifierProvider<CustomerShowPassiveNotifier, bool>(
-  CustomerShowPassiveNotifier.new,
-);
+final customerShowPassiveProvider =
+    NotifierProvider<CustomerShowPassiveNotifier, bool>(
+      CustomerShowPassiveNotifier.new,
+    );
 
 class CustomerFiltersNotifier extends Notifier<CustomerFilters> {
   @override
@@ -159,12 +163,7 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
     );
   }
 
-  final rows = await client
-      .from('customers')
-      .select(
-        'id,name,city,address,director_name,email,vkn,tckn_ms,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,notes,is_active,created_at',
-      )
-      .inFilter('id', currentPageIds);
+  final rows = await _selectCustomersWithFallback(client, ids: currentPageIds);
   final rowById = {
     for (final row in (rows as List).cast<Map<String, dynamic>>())
       row['id']?.toString() ?? '': row,
@@ -300,3 +299,25 @@ final customerLocationsProvider =
         return const [];
       }
     });
+
+Future<List<Map<String, dynamic>>> _selectCustomersWithFallback(
+  dynamic client, {
+  required List<String> ids,
+}) async {
+  try {
+    final rows = await client
+        .from('customers')
+        .select(_customerDirectorSelect)
+        .inFilter('id', ids);
+    return (rows as List).cast<Map<String, dynamic>>();
+  } catch (_) {
+    final rows = await client
+        .from('customers')
+        .select(_customerBaseSelect)
+        .inFilter('id', ids);
+    return (rows as List)
+        .cast<Map<String, dynamic>>()
+        .map((row) => {...row, 'director_name': null})
+        .toList(growable: false);
+  }
+}
