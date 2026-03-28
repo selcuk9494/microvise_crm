@@ -391,6 +391,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       final tcknMs = _formatTaxRegistry(
         (customer?['tckn_ms'] ?? record.customerTcknMs ?? '').toString(),
       );
+      final tcknDigits = _formatTcknForTsm(tcknMs);
       final serialRaw = (record.stockRegistryNumber ?? '').trim().toUpperCase();
       final modelCode = _resolveTsmModel(serialRaw);
       final address = (record.workAddress ?? '').trim();
@@ -417,7 +418,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         excel.TextCellValue(taxOffice),
         excel.TextCellValue(taxOffice),
         excel.TextCellValue(vkn),
-        excel.TextCellValue(tcknMs),
+        excel.TextCellValue(tcknDigits),
         excel.TextCellValue(''),
         excel.TextCellValue(''),
         excel.TextCellValue(phone),
@@ -525,8 +526,18 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return '';
     final trimmed = digits.replaceFirst(RegExp(r'^0+'), '');
-    if (trimmed.length <= 9) return trimmed;
-    return trimmed.substring(trimmed.length - 9);
+    final normalized = trimmed.isEmpty ? '0' : trimmed;
+    if (normalized.length <= 10) return normalized.padLeft(10, '0');
+    return normalized.substring(normalized.length - 10);
+  }
+
+  String _formatTcknForTsm(String raw) {
+    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return '';
+    final normalized = digits.replaceFirst(RegExp(r'^0+'), '');
+    final safe = normalized.isEmpty ? '0' : normalized;
+    if (safe.length <= 11) return safe.padLeft(11, '0');
+    return safe.substring(safe.length - 11);
   }
 
   @override
@@ -556,6 +567,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
           final selectedRecords = filtered
               .where((record) => _selectedRecordIds.contains(record.id))
               .toList(growable: false);
+          final allFilteredSelected = filtered.isNotEmpty &&
+              selectedRecords.length == filtered.length;
           return Column(
             children: [
               AppCard(
@@ -696,6 +709,32 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                     ),
                   ),
                   const Gap(8),
+                  if (filtered.isNotEmpty)
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          if (allFilteredSelected) {
+                            for (final record in filtered) {
+                              _selectedRecordIds.remove(record.id);
+                            }
+                          } else {
+                            for (final record in filtered) {
+                              _selectedRecordIds.add(record.id);
+                            }
+                          }
+                        });
+                      },
+                      icon: Icon(
+                        allFilteredSelected
+                            ? Icons.deselect_rounded
+                            : Icons.select_all_rounded,
+                        size: 18,
+                      ),
+                      label: Text(
+                        allFilteredSelected ? 'Secimi Temizle' : 'Tumunu Sec',
+                      ),
+                    ),
+                  if (filtered.isNotEmpty) const Gap(8),
                   if (selectedRecords.isNotEmpty)
                     Wrap(
                       spacing: 8,
@@ -994,9 +1033,7 @@ class _ApplicationFormDialogState
     setState(() {
       _selectedCustomerId = created.id;
       _customerController.text = created.name;
-      if ((created.address ?? '').trim().isNotEmpty) {
-        _workAddressController.text = created.address!.trim();
-      }
+      _workAddressController.text = (created.address ?? '').trim();
       if (_fileRegistryController.text.trim().isEmpty) {
         _fileRegistryController.text = created.vkn ?? '';
       }
@@ -1025,9 +1062,7 @@ class _ApplicationFormDialogState
     setState(() {
       _selectedCustomerId = selected.id;
       _customerController.text = selected.name;
-      if ((selected.address ?? '').trim().isNotEmpty) {
-        _workAddressController.text = selected.address!.trim();
-      }
+      _workAddressController.text = (selected.address ?? '').trim();
       _fileRegistryController.text = selected.vkn ?? '';
       _customerTcknMsController.text = selected.tcknMs ?? '';
       final city = ref
@@ -1038,6 +1073,47 @@ class _ApplicationFormDialogState
           .firstOrNull;
       if (city != null) {
         _selectedCityId = city.id;
+      }
+    });
+  }
+
+  void _applyModelSelection(
+    String? value,
+    List<DeviceModel> models,
+    List<FiscalSymbolDefinition> fiscalSymbols,
+  ) {
+    final model = models.where((item) => item.id == value).firstOrNull;
+    final brand = _sortKey(model?.brandName ?? '');
+
+    String? matchingFiscalId;
+    if (brand.contains('ingenico')) {
+      matchingFiscalId = fiscalSymbols
+          .where(
+            (item) =>
+                _sortKey(item.code ?? '') == _sortKey('MF 2C') ||
+                _sortKey(item.code ?? '') == _sortKey('MF-2C') ||
+                _sortKey(item.name) == _sortKey('MF 2C') ||
+                _sortKey(item.name) == _sortKey('MF-2C'),
+          )
+          .firstOrNull
+          ?.id;
+    } else if (brand.contains('pax')) {
+      matchingFiscalId = fiscalSymbols
+          .where(
+            (item) =>
+                _sortKey(item.code ?? '') == _sortKey('MF 2D') ||
+                _sortKey(item.code ?? '') == _sortKey('MF-2D') ||
+                _sortKey(item.name) == _sortKey('MF 2D') ||
+                _sortKey(item.name) == _sortKey('MF-2D'),
+          )
+          .firstOrNull
+          ?.id;
+    }
+
+    setState(() {
+      _selectedModelId = value;
+      if (matchingFiscalId != null) {
+        _selectedFiscalSymbolId = matchingFiscalId;
       }
     });
   }
@@ -1152,11 +1228,15 @@ class _ApplicationFormDialogState
     final activitiesAsync = ref.watch(businessActivityTypesProvider);
 
     return Dialog(
-      insetPadding: EdgeInsets.all(isMobile ? 16 : 24),
+      insetPadding: EdgeInsets.all(isMobile ? 12 : 20),
       backgroundColor: Colors.transparent,
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: isMobile ? 720 : 860),
+        constraints: BoxConstraints(
+          maxWidth: isMobile ? 680 : 760,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.88,
+        ),
         child: AppCard(
+          padding: EdgeInsets.all(isMobile ? 14 : 16),
           child: Form(
             key: _formKey,
             child: SingleChildScrollView(
@@ -1175,15 +1255,19 @@ class _ApplicationFormDialogState
                                   : widget.duplicateMode
                                   ? 'Başvuru Kopyası Oluştur'
                                   : 'Yeni Başvuru',
-                              style: Theme.of(context).textTheme.titleLarge,
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontSize: isMobile ? 26 : 28),
                             ),
-                            const Gap(6),
+                            const Gap(4),
                             Text(
                               widget.isEdit
                                   ? 'Kaydı güncelleyin.'
                                   : 'Belge düzeninde formu doldurun. Kayıt sonrası KDV4 ve KDV4A yazdırma seçenekleri açılır.',
                               style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: AppTheme.textMuted),
+                                  ?.copyWith(
+                                    color: AppTheme.textMuted,
+                                    fontSize: 13,
+                                  ),
                             ),
                           ],
                         ),
@@ -1196,11 +1280,11 @@ class _ApplicationFormDialogState
                       ),
                     ],
                   ),
-                  const Gap(16),
+                  const Gap(12),
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(16),
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: Column(
@@ -1305,27 +1389,35 @@ class _ApplicationFormDialogState
                         _FormRow(
                           label: 'Markası ve Modeli',
                           child: modelsAsync.when(
-                            data: (items) => _ApplicationDropdown<String>(
-                              value: _selectedModelId,
-                              hintText: 'Tanımlamalardan model seçin',
-                              items: items
-                                  .where((item) => item.isActive)
-                                  .map(
-                                    (item) => DropdownMenuItem<String>(
-                                      value: item.id,
-                                      child: Text(
-                                        item.brandName?.trim().isNotEmpty ??
-                                                false
-                                            ? '${item.brandName} / ${item.name}'
-                                            : item.name,
+                            data: (items) => fiscalSymbolsAsync.when(
+                              data: (fiscalSymbols) => _ApplicationDropdown<String>(
+                                value: _selectedModelId,
+                                hintText: 'Tanımlamalardan model seçin',
+                                items: items
+                                    .where((item) => item.isActive)
+                                    .map(
+                                      (item) => DropdownMenuItem<String>(
+                                        value: item.id,
+                                        child: Text(
+                                          item.brandName?.trim().isNotEmpty ??
+                                                  false
+                                              ? '${item.brandName} / ${item.name}'
+                                              : item.name,
+                                        ),
                                       ),
-                                    ),
-                                  )
-                                  .toList(growable: false),
-                              onChanged: (value) =>
-                                  setState(() => _selectedModelId = value),
-                              validator: (value) =>
-                                  value == null ? 'Model seçin.' : null,
+                                    )
+                                    .toList(growable: false),
+                                onChanged: (value) => _applyModelSelection(
+                                  value,
+                                  items,
+                                  fiscalSymbols,
+                                ),
+                                validator: (value) =>
+                                    value == null ? 'Model seçin.' : null,
+                              ),
+                              loading: () => const _ContentLoading(),
+                              error: (error, stackTrace) =>
+                                  const _ContentError(),
                             ),
                             loading: () => const _ContentLoading(),
                             error: (error, stackTrace) => const _ContentError(),
@@ -1453,7 +1545,7 @@ class _ApplicationFormDialogState
                       ],
                     ),
                   ),
-                  const Gap(18),
+                  const Gap(12),
                   Row(
                     children: [
                       Expanded(
@@ -1520,8 +1612,8 @@ class _ApplicationRecordCard extends StatelessWidget {
     final isMobile = MediaQuery.sizeOf(context).width < 900;
     return AppCard(
       padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 14 : 16,
-        vertical: isMobile ? 14 : 12,
+        horizontal: isMobile ? 10 : 12,
+        vertical: isMobile ? 10 : 9,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1530,10 +1622,13 @@ class _ApplicationRecordCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.only(right: 8, top: 2),
+                padding: const EdgeInsets.only(right: 6, top: 0),
                 child: Checkbox(
                   value: selected,
-                  visualDensity: VisualDensity.compact,
+                  visualDensity: const VisualDensity(
+                    horizontal: -4,
+                    vertical: -4,
+                  ),
                   onChanged: (value) => onSelectionChanged(value ?? false),
                 ),
               ),
@@ -1547,13 +1642,13 @@ class _ApplicationRecordCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
-                        fontSize: isMobile ? 17 : 18,
+                        fontSize: isMobile ? 15 : 16,
                       ),
                     ),
-                    const Gap(6),
+                    const Gap(4),
                     Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
+                      spacing: 5,
+                      runSpacing: 5,
                       children: [
                         _InfoChip(
                           icon: Icons.calendar_today_rounded,
@@ -1584,14 +1679,14 @@ class _ApplicationRecordCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const Gap(10),
+              const Gap(6),
               AppBadge(label: record.documentType, tone: AppBadgeTone.primary),
             ],
           ),
-          const Gap(10),
+          const Gap(8),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 6,
+            runSpacing: 6,
             children: [
               _ActionButton(
                 onPressed: onEdit,
@@ -1794,7 +1889,7 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(999),
@@ -1803,13 +1898,16 @@ class _InfoChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: AppTheme.textMuted),
-          const Gap(5),
+          Icon(icon, size: 12, color: AppTheme.textMuted),
+          const Gap(4),
           Text(
             text,
             style: Theme.of(
               context,
-            ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+            ).textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
           ),
         ],
       ),
@@ -1844,12 +1942,15 @@ class _ActionButton extends StatelessWidget {
     final style =
         (primary ? FilledButton.styleFrom : OutlinedButton.styleFrom).call(
           minimumSize: const Size(0, 36),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
           textStyle: Theme.of(
             context,
-          ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+          ).textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+          ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
         );
 
@@ -1888,7 +1989,7 @@ class _FormRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: const BoxDecoration(
               color: Color(0xFFFFF15C),
               border: Border(
@@ -1906,7 +2007,7 @@ class _FormRow extends StatelessWidget {
             ),
           ),
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border.all(color: const Color(0xFF111827)),
@@ -1921,10 +2022,10 @@ class _FormRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 260,
+          width: 228,
           child: Container(
-            constraints: const BoxConstraints(minHeight: 64),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            constraints: const BoxConstraints(minHeight: 56),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: const Color(0xFFFFF15C),
               border: Border(
@@ -1950,8 +2051,8 @@ class _FormRow extends StatelessWidget {
         ),
         Expanded(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 64),
-            padding: const EdgeInsets.all(10),
+            constraints: const BoxConstraints(minHeight: 56),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border(
@@ -2052,12 +2153,14 @@ class _ApplicationTextField extends StatelessWidget {
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
         color: const Color(0xFF111827),
         fontWeight: FontWeight.w600,
+        fontSize: 14,
       ),
       decoration: const InputDecoration(
         isDense: true,
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(),
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       ),
     );
   }
@@ -2088,6 +2191,7 @@ class _ApplicationDropdown<T> extends StatelessWidget {
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
         color: const Color(0xFF111827),
         fontWeight: FontWeight.w600,
+        fontSize: 14,
       ),
       decoration: InputDecoration(
         isDense: true,
@@ -2095,6 +2199,7 @@ class _ApplicationDropdown<T> extends StatelessWidget {
         fillColor: Colors.white,
         border: const OutlineInputBorder(),
         hintText: hintText,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       ),
     );
   }
@@ -2129,6 +2234,7 @@ class _DateField extends StatelessWidget {
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
             color: const Color(0xFF111827),
             fontWeight: FontWeight.w600,
+            fontSize: 14,
           ),
         ),
       ),
