@@ -351,7 +351,11 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     }
 
     final file = excel.Excel.createExcel();
-    final sheet = file.tables[file.getDefaultSheet()]!;
+    final defaultSheet = file.getDefaultSheet();
+    if (defaultSheet != null && defaultSheet != 'Tsm') {
+      file.rename(defaultSheet, 'Tsm');
+    }
+    final sheet = file['Tsm'];
 
     final headers = [
       'Desen',
@@ -407,11 +411,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       final splitName = _splitCustomerName(record.customerName);
       final phone = _pickCustomerPhone(customer);
       final taxOffice = (record.taxOfficeCityName ?? '').trim();
-      final vkn = _formatVkn((customer?['vkn'] ?? '').toString());
-      final tcknMs = _formatTaxRegistry(
-        (customer?['tckn_ms'] ?? record.customerTcknMs ?? '').toString(),
-      );
-      final tcknDigits = _formatTcknForTsm(tcknMs);
+      final vkn = (customer?['vkn'] ?? '').toString().trim();
+      final tcknMs =
+          (customer?['tckn_ms'] ?? record.customerTcknMs ?? '').toString().trim();
       final serialRaw = (record.stockRegistryNumber ?? '').trim().toUpperCase();
       final serialNumber = serialRaw;
       final modelCode = _resolveTsmModel(serialRaw);
@@ -429,26 +431,26 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         excel.TextCellValue(''),
         excel.TextCellValue(''),
         excel.TextCellValue(address),
-        excel.TextCellValue('98'),
+        excel.IntCellValue(98),
         excel.TextCellValue(taxOffice),
         excel.TextCellValue('0'),
         excel.TextCellValue(splitName.$1),
         excel.TextCellValue(splitName.$2),
         excel.TextCellValue(address),
-        excel.TextCellValue('98'),
+        excel.IntCellValue(98),
         excel.TextCellValue(taxOffice),
         excel.TextCellValue(taxOffice),
-        excel.TextCellValue(vkn),
-        excel.TextCellValue(tcknDigits),
+        _excelCellFromRaw(vkn),
+        _excelCellFromRaw(tcknMs),
         excel.TextCellValue(''),
         excel.TextCellValue(''),
-        excel.TextCellValue(phone),
-        excel.TextCellValue(phone),
+        _excelCellFromRaw(phone),
+        _excelCellFromRaw(phone),
         excel.TextCellValue(record.customerName),
         excel.TextCellValue(''),
         excel.TextCellValue(''),
         excel.TextCellValue('2'),
-        excel.TextCellValue('561101'),
+        excel.IntCellValue(561101),
         excel.TextCellValue(''),
         excel.TextCellValue(''),
         excel.TextCellValue(''),
@@ -456,12 +458,12 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         excel.TextCellValue('1111'),
         excel.TextCellValue(invoiceDate),
         excel.TextCellValue('a123'),
-        excel.TextCellValue('2'),
+        excel.IntCellValue(2),
         excel.TextCellValue('MICROVISE'),
         excel.TextCellValue(''),
         excel.TextCellValue('19660'),
         excel.TextCellValue('Microvise Innovation Ltd. Sti'),
-        excel.TextCellValue('1210404319'),
+        _excelCellFromRaw('1210404319'),
       ];
       sheet.appendRow(row);
     }
@@ -552,13 +554,13 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     return normalized.substring(normalized.length - 10);
   }
 
-  String _formatTcknForTsm(String raw) {
-    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.isEmpty) return '';
-    final normalized = digits.replaceFirst(RegExp(r'^0+'), '');
-    final safe = normalized.isEmpty ? '0' : normalized;
-    if (safe.length <= 11) return safe.padLeft(11, '0');
-    return safe.substring(safe.length - 11);
+  excel.CellValue _excelCellFromRaw(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return excel.TextCellValue('');
+    if (RegExp(r'^[0-9]+$').hasMatch(text) && !text.startsWith('0')) {
+      return excel.IntCellValue(int.parse(text));
+    }
+    return excel.TextCellValue(text);
   }
 
   @override

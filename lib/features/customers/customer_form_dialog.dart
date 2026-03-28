@@ -592,6 +592,11 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     final client = ref.read(supabaseClientProvider);
     if (client == null) return;
 
+    final normalizedVkn = _normalizeDigits(_vknController.text, 10);
+    final normalizedTcknMs = _normalizeDigits(_tcknMsController.text, 11);
+    _vknController.text = normalizedVkn ?? '';
+    _tcknMsController.text = normalizedTcknMs ?? '';
+
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
     final payload = {
@@ -599,8 +604,8 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       'city': _nullIfEmpty(_cityController.text),
       'address': _nullIfEmpty(_addressController.text),
       'email': _nullIfEmpty(_emailController.text),
-      'vkn': _nullIfEmpty(_vknController.text),
-      'tckn_ms': _nullIfEmpty(_tcknMsController.text),
+      'vkn': normalizedVkn,
+      'tckn_ms': normalizedTcknMs,
       'phone_1_title': _nullIfEmpty(_phone1TitleController.text),
       'phone_1': _nullIfEmpty(_phone1Controller.text),
       'phone_2_title': _nullIfEmpty(_phone2TitleController.text),
@@ -697,6 +702,15 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   String? _nullIfEmpty(String value) {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  String? _normalizeDigits(String value, int length) {
+    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return null;
+    if (digits.length >= length) {
+      return digits.substring(digits.length - length);
+    }
+    return digits.padLeft(length, '0');
   }
 
   Future<void> _saveCustomerLocations(
