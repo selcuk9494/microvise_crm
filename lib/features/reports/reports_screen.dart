@@ -9,6 +9,10 @@ import '../../app/theme/app_theme.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/app_section_card.dart';
+import '../../core/ui/compact_stat_card.dart';
+import '../../core/ui/empty_state_card.dart';
+import '../../core/ui/smart_filter_bar.dart';
 
 final reportsFiltersProvider =
     NotifierProvider<ReportsFiltersNotifier, ReportsFilters>(
@@ -199,88 +203,20 @@ class ReportsScreen extends ConsumerWidget {
 
     return AppPageLayout(
       title: 'Raporlar',
-      subtitle: 'Gelir ve iş emri performansı.',
+      subtitle: 'Gelir, operasyon ve ödeme akışlarını tek bakışta izleyin.',
       body: Column(
         children: [
-          AppCard(
-            padding: const EdgeInsets.all(16),
-            child: Row(
+          SmartFilterBar(
+            title: 'Rapor Filtreleri',
+            subtitle: 'Tarih aralığı ve personel bazlı görünümü daraltın.',
+            trailing: Wrap(
+              spacing: 8,
               children: [
-                SizedBox(
-                  width: 220,
-                  child: DropdownButtonFormField<ReportsPreset>(
-                    initialValue: filters.preset,
-                    items: const [
-                      DropdownMenuItem(
-                        value: ReportsPreset.last7Days,
-                        child: Text('Son 7 Gün'),
-                      ),
-                      DropdownMenuItem(
-                        value: ReportsPreset.last30Days,
-                        child: Text('Son 30 Gün'),
-                      ),
-                      DropdownMenuItem(
-                        value: ReportsPreset.thisMonth,
-                        child: Text('Bu Ay'),
-                      ),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      ref.read(reportsFiltersProvider.notifier).setPreset(v);
-                    },
-                    decoration: const InputDecoration(labelText: 'Tarih'),
-                  ),
-                ),
-                const Gap(12),
-                SizedBox(
-                  width: 260,
-                  child: usersAsync.when(
-                    data: (users) => DropdownButtonFormField<String>(
-                      initialValue: filters.userId,
-                      items: [
-                        const DropdownMenuItem<String>(
-                          value: null,
-                          child: Text('Tüm Personel'),
-                        ),
-                        ...users
-                            .where((u) => u.role != 'admin')
-                            .map(
-                              (u) => DropdownMenuItem<String>(
-                                value: u.id,
-                                child: Text(u.fullName ?? 'Personel'),
-                              ),
-                            ),
-                      ],
-                      onChanged: (v) =>
-                          ref.read(reportsFiltersProvider.notifier).setUser(v),
-                      decoration: const InputDecoration(labelText: 'Personel'),
-                    ),
-                    loading: () => const _DropdownLoading(),
-                    error: (error, stackTrace) =>
-                        DropdownButtonFormField<String>(
-                          initialValue: filters.userId,
-                          items: const [
-                            DropdownMenuItem<String>(
-                              value: null,
-                              child: Text('Tüm Personel'),
-                            ),
-                          ],
-                          onChanged: (v) => ref
-                              .read(reportsFiltersProvider.notifier)
-                              .setUser(v),
-                          decoration: const InputDecoration(
-                            labelText: 'Personel',
-                          ),
-                        ),
-                  ),
-                ),
-                const Spacer(),
                 OutlinedButton.icon(
                   onPressed: () => ref.invalidate(reportsDataProvider),
                   icon: const Icon(Icons.refresh_rounded, size: 18),
                   label: const Text('Yenile'),
                 ),
-                const Gap(8),
                 TextButton(
                   onPressed: () =>
                       ref.read(reportsFiltersProvider.notifier).clear(),
@@ -288,6 +224,80 @@ class ReportsScreen extends ConsumerWidget {
                 ),
               ],
             ),
+            children: [
+              SizedBox(
+                width: 220,
+                child: DropdownButtonFormField<ReportsPreset>(
+                  initialValue: filters.preset,
+                  items: const [
+                    DropdownMenuItem(
+                      value: ReportsPreset.last7Days,
+                      child: Text('Son 7 Gün'),
+                    ),
+                    DropdownMenuItem(
+                      value: ReportsPreset.last30Days,
+                      child: Text('Son 30 Gün'),
+                    ),
+                    DropdownMenuItem(
+                      value: ReportsPreset.thisMonth,
+                      child: Text('Bu Ay'),
+                    ),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    ref.read(reportsFiltersProvider.notifier).setPreset(v);
+                  },
+                  decoration: const InputDecoration(
+                    hintText: 'Tarih aralığı',
+                    prefixIcon: Icon(Icons.date_range_rounded),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 260,
+                child: usersAsync.when(
+                  data: (users) => DropdownButtonFormField<String>(
+                    initialValue: filters.userId,
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('Tüm Personel'),
+                      ),
+                      ...users
+                          .where((u) => u.role != 'admin')
+                          .map(
+                            (u) => DropdownMenuItem<String>(
+                              value: u.id,
+                              child: Text(u.fullName ?? 'Personel'),
+                            ),
+                          ),
+                    ],
+                    onChanged: (v) =>
+                        ref.read(reportsFiltersProvider.notifier).setUser(v),
+                    decoration: const InputDecoration(
+                      hintText: 'Personel',
+                      prefixIcon: Icon(Icons.person_search_rounded),
+                    ),
+                  ),
+                  loading: () => const _DropdownLoading(),
+                  error: (error, stackTrace) => DropdownButtonFormField<String>(
+                    initialValue: filters.userId,
+                    items: const [
+                      DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('Tüm Personel'),
+                      ),
+                    ],
+                    onChanged: (v) =>
+                        ref.read(reportsFiltersProvider.notifier).setUser(v),
+                    decoration: const InputDecoration(
+                      hintText: 'Personel',
+                      prefixIcon: Icon(Icons.person_search_rounded),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
           const Gap(14),
           dataAsync.when(
@@ -296,28 +306,19 @@ class ReportsScreen extends ConsumerWidget {
                 final twoCols = constraints.maxWidth >= 980;
                 final sidePanel = Column(
                   children: [
-                    AppCard(
+                    AppSectionCard(
+                      title: 'İş Emri Durumu',
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'İş Emri Durumu',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const Gap(12),
-                          _StatusBars(status: data.workOrderStatus),
-                        ],
+                        children: [_StatusBars(status: data.workOrderStatus)],
                       ),
                     ),
                     const Gap(16),
-                    AppCard(
+                    AppSectionCard(
+                      title: 'Günlük Ödeme Raporu',
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Günlük Ödeme Raporu',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
                           const Gap(12),
                           if (data.dailyPayments.isEmpty)
                             Text(
@@ -392,14 +393,11 @@ class ReportsScreen extends ConsumerWidget {
                       ),
                     ),
                     const Gap(16),
-                    AppCard(
+                    AppSectionCard(
+                      title: 'En Çok Gelir Getirenler',
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'En Çok Gelir Getirenler',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
                           const Gap(12),
                           if (data.topCustomers.isEmpty)
                             Text(
@@ -449,7 +447,7 @@ class ReportsScreen extends ConsumerWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: _ReportStatCard(
+                          child: CompactStatCard(
                             label: 'Toplam Gelir',
                             value: money.format(data.totalRevenue),
                             icon: Icons.payments_rounded,
@@ -458,7 +456,7 @@ class ReportsScreen extends ConsumerWidget {
                         ),
                         const Gap(12),
                         Expanded(
-                          child: _ReportStatCard(
+                          child: CompactStatCard(
                             label: 'İş Emirleri',
                             value: '${data.totalWorkOrders}',
                             icon: Icons.assignment_turned_in_rounded,
@@ -467,7 +465,7 @@ class ReportsScreen extends ConsumerWidget {
                         ),
                         const Gap(12),
                         Expanded(
-                          child: _ReportStatCard(
+                          child: CompactStatCard(
                             label: 'Tamamlanma',
                             value: '%${(data.completedRate * 100).round()}',
                             icon: Icons.insights_rounded,
@@ -483,25 +481,14 @@ class ReportsScreen extends ConsumerWidget {
                         children: [
                           Expanded(
                             flex: 3,
-                            child: AppCard(
+                            child: AppSectionCard(
+                              title: 'Gelir Trend',
+                              subtitle:
+                                  'Seçilen tarih aralığında günlük toplam.',
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    'Gelir Trend',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleMedium,
-                                  ),
-                                  const Gap(6),
-                                  Text(
-                                    'Seçilen tarih aralığında günlük toplam.',
-                                    style: Theme.of(context).textTheme.bodySmall
-                                        ?.copyWith(
-                                          color: const Color(0xFF64748B),
-                                        ),
-                                  ),
-                                  const Gap(16),
+                                  const Gap(4),
                                   SizedBox(
                                     height: 260,
                                     child: _TrendChart(
@@ -519,25 +506,13 @@ class ReportsScreen extends ConsumerWidget {
                     else
                       Column(
                         children: [
-                          AppCard(
+                          AppSectionCard(
+                            title: 'Gelir Trend',
+                            subtitle: 'Seçilen tarih aralığında günlük toplam.',
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  'Gelir Trend',
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
-                                ),
-                                const Gap(6),
-                                Text(
-                                  'Seçilen tarih aralığında günlük toplam.',
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(
-                                        color: const Color(0xFF64748B),
-                                      ),
-                                ),
-                                const Gap(16),
+                                const Gap(4),
                                 SizedBox(
                                   height: 260,
                                   child: _TrendChart(points: data.revenueTrend),
@@ -557,71 +532,10 @@ class ReportsScreen extends ConsumerWidget {
               enabled: true,
               child: AppCard(child: SizedBox(height: 320)),
             ),
-            error: (error, stackTrace) => AppCard(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Text(
-                  'Raporlar yüklenemedi.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ReportStatCard extends StatelessWidget {
-  const _ReportStatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: color),
-          ),
-          const Gap(12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-              ],
+            error: (error, stackTrace) => const EmptyStateCard(
+              icon: Icons.bar_chart_rounded,
+              title: 'Raporlar yüklenemedi',
+              message: 'Veri kaynağına ulaşılamadı. Lütfen tekrar deneyin.',
             ),
           ),
         ],

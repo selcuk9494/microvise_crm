@@ -9,6 +9,10 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/app_section_card.dart';
+import '../../core/ui/compact_stat_card.dart';
+import '../../core/ui/empty_state_card.dart';
+import '../../core/ui/smart_filter_bar.dart';
 
 final billingFiltersProvider =
     NotifierProvider<BillingFiltersNotifier, BillingFilters>(
@@ -80,7 +84,7 @@ class BillingScreen extends ConsumerWidget {
 
     return AppPageLayout(
       title: 'Faturalama',
-      subtitle: 'Uzatmalar için fatura kesilecekler listesi.',
+      subtitle: 'Uzatma ve hizmet kalemlerini daha sıkı bir listede izleyin.',
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(invoiceItemsProvider),
@@ -122,16 +126,10 @@ class BillingScreen extends ConsumerWidget {
                     .toList(growable: false);
 
                 if (items.isEmpty) {
-                  return AppCard(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        'Fatura listesi boş.',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
+                  return const EmptyStateCard(
+                    icon: Icons.receipt_long_rounded,
+                    title: 'Fatura kalemi yok',
+                    message: 'Henüz görüntülenecek fatura kalemi oluşmadı.',
                   );
                 }
 
@@ -153,158 +151,147 @@ class BillingScreen extends ConsumerWidget {
                       children: [
                         SizedBox(
                           width: isMobile ? (width - 44) / 2 : null,
-                          child: _BillingStatCard(
+                          child: CompactStatCard(
                             label: 'Toplam Kalem',
                             value: items.length.toString(),
                             icon: Icons.receipt_long_rounded,
-                            tone: AppBadgeTone.primary,
+                            color: AppTheme.primary,
                           ),
                         ),
                         SizedBox(
                           width: isMobile ? (width - 44) / 2 : null,
-                          child: _BillingStatCard(
+                          child: CompactStatCard(
                             label: 'Bekleyen',
                             value: pendingCount.toString(),
                             icon: Icons.hourglass_top_rounded,
-                            tone: AppBadgeTone.warning,
+                            color: AppTheme.warning,
                           ),
                         ),
                         SizedBox(
                           width: isMobile ? (width - 44) / 2 : null,
-                          child: _BillingStatCard(
+                          child: CompactStatCard(
                             label: 'Kesilen',
                             value: invoicedCount.toString(),
                             icon: Icons.check_circle_outline_rounded,
-                            tone: AppBadgeTone.success,
+                            color: AppTheme.success,
                           ),
                         ),
                         SizedBox(
                           width: isMobile ? (width - 44) / 2 : null,
-                          child: _BillingStatCard(
+                          child: CompactStatCard(
                             label: 'Bekleyen Tutar',
                             value: money.format(pendingAmount),
                             icon: Icons.payments_outlined,
-                            tone: AppBadgeTone.neutral,
+                            color: AppTheme.textMuted,
                           ),
                         ),
                       ],
                     ),
                     const Gap(16),
-                    AppCard(
-                      child: Column(
-                        children: [
-                          Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
-                            children: [
-                              SizedBox(
-                                width: isMobile
-                                    ? double.infinity
-                                    : width * 0.38,
-                                child: TextField(
-                                  onChanged: ref
-                                      .read(billingFiltersProvider.notifier)
-                                      .setSearch,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Kalem Ara',
-                                    hintText: 'Açıklama veya müşteri adı',
-                                    prefixIcon: Icon(Icons.search_rounded),
+                    SmartFilterBar(
+                      title: 'Filtreler',
+                      subtitle: 'Kalemleri müşteri ve durum bazında daraltın.',
+                      footer:
+                          (filters.search.isNotEmpty || filters.status != 'all')
+                          ? Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                if (filters.search.isNotEmpty)
+                                  AppBadge(
+                                    label: 'Arama: ${filters.search}',
+                                    tone: AppBadgeTone.primary,
                                   ),
+                                if (filters.status != 'all')
+                                  AppBadge(
+                                    label:
+                                        'Durum: ${filters.status == 'pending' ? 'Bekliyor' : 'Kesildi'}',
+                                    tone: AppBadgeTone.neutral,
+                                  ),
+                                TextButton.icon(
+                                  onPressed: () {
+                                    ref
+                                        .read(billingFiltersProvider.notifier)
+                                        .setSearch('');
+                                    ref
+                                        .read(billingFiltersProvider.notifier)
+                                        .setStatus('all');
+                                  },
+                                  icon: const Icon(
+                                    Icons.clear_rounded,
+                                    size: 16,
+                                  ),
+                                  label: const Text('Temizle'),
                                 ),
+                              ],
+                            )
+                          : null,
+                      children: [
+                        SizedBox(
+                          width: isMobile ? double.infinity : width * 0.38,
+                          child: TextField(
+                            onChanged: ref
+                                .read(billingFiltersProvider.notifier)
+                                .setSearch,
+                            decoration: const InputDecoration(
+                              hintText: 'Kalem veya müşteri ara',
+                              prefixIcon: Icon(Icons.search_rounded),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: isMobile ? double.infinity : 220,
+                          child: DropdownButtonFormField<String>(
+                            initialValue: filters.status,
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'all',
+                                child: Text('Tüm Durumlar'),
                               ),
-                              SizedBox(
-                                width: isMobile ? double.infinity : 240,
-                                child: DropdownButtonFormField<String>(
-                                  initialValue: filters.status,
-                                  items: const [
-                                    DropdownMenuItem(
-                                      value: 'all',
-                                      child: Text('Tüm Durumlar'),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'pending',
-                                      child: Text('Bekliyor'),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'invoiced',
-                                      child: Text('Kesildi'),
-                                    ),
-                                  ],
-                                  onChanged: (value) => ref
-                                      .read(billingFiltersProvider.notifier)
-                                      .setStatus(value ?? 'all'),
-                                  decoration: const InputDecoration(
-                                    labelText: 'Durum',
-                                    prefixIcon: Icon(Icons.tune_rounded),
-                                  ),
-                                ),
+                              DropdownMenuItem(
+                                value: 'pending',
+                                child: Text('Bekliyor'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'invoiced',
+                                child: Text('Kesildi'),
                               ),
                             ],
-                          ),
-                          if (filters.search.isNotEmpty ||
-                              filters.status != 'all') ...[
-                            const Gap(12),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  if (filters.search.isNotEmpty)
-                                    AppBadge(
-                                      label: 'Arama: ${filters.search}',
-                                      tone: AppBadgeTone.primary,
-                                    ),
-                                  if (filters.status != 'all')
-                                    AppBadge(
-                                      label:
-                                          'Durum: ${filters.status == 'pending' ? 'Bekliyor' : 'Kesildi'}',
-                                      tone: AppBadgeTone.neutral,
-                                    ),
-                                  TextButton.icon(
-                                    onPressed: () {
-                                      ref
-                                          .read(billingFiltersProvider.notifier)
-                                          .setSearch('');
-                                      ref
-                                          .read(billingFiltersProvider.notifier)
-                                          .setStatus('all');
-                                    },
-                                    icon: const Icon(
-                                      Icons.clear_rounded,
-                                      size: 18,
-                                    ),
-                                    label: const Text('Temizle'),
-                                  ),
-                                ],
-                              ),
+                            onChanged: (value) => ref
+                                .read(billingFiltersProvider.notifier)
+                                .setStatus(value ?? 'all'),
+                            decoration: const InputDecoration(
+                              hintText: 'Durum',
+                              prefixIcon: Icon(Icons.tune_rounded),
                             ),
-                          ],
-                        ],
-                      ),
+                          ),
+                        ),
+                      ],
                     ),
                     const Gap(16),
-                    AppCard(
+                    AppSectionCard(
+                      title: 'Fatura Kalemleri',
+                      subtitle: '${filtered.length} kayıt gösteriliyor',
                       padding: EdgeInsets.zero,
                       child: Column(
                         children: [
                           Container(
-                            height: isMobile ? null : 44,
+                            height: isMobile ? null : 42,
                             padding: const EdgeInsets.symmetric(horizontal: 16),
-                            color: const Color(0xFFF8FAFC),
+                            color: AppTheme.surfaceSoft,
                             child: isMobile
                                 ? Padding(
                                     padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
+                                      vertical: 10,
                                     ),
                                     child: Text(
-                                      'Fatura Kalemleri',
+                                      'Liste',
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall
                                           ?.copyWith(
-                                            fontWeight: FontWeight.w600,
-                                            color: const Color(0xFF475569),
+                                            fontWeight: FontWeight.w700,
+                                            color: AppTheme.textMuted,
                                           ),
                                     ),
                                   )
@@ -317,8 +304,8 @@ class BillingScreen extends ConsumerWidget {
                                               .textTheme
                                               .bodySmall
                                               ?.copyWith(
-                                                fontWeight: FontWeight.w600,
-                                                color: const Color(0xFF475569),
+                                                fontWeight: FontWeight.w700,
+                                                color: AppTheme.textMuted,
                                               ),
                                         ),
                                       ),
@@ -330,11 +317,11 @@ class BillingScreen extends ConsumerWidget {
                           const Divider(height: 1),
                           if (filtered.isEmpty)
                             Padding(
-                              padding: const EdgeInsets.all(24),
+                              padding: const EdgeInsets.all(20),
                               child: Text(
                                 'Filtrelere uygun kalem bulunamadı.',
                                 style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(color: const Color(0xFF64748B)),
+                                    ?.copyWith(color: AppTheme.textMuted),
                               ),
                             )
                           else
@@ -515,68 +502,6 @@ class InvoiceItem {
       currency: (json['currency'] ?? 'TRY').toString(),
       status: (json['status'] ?? 'pending').toString(),
       customerLabel: json['customer_label']?.toString(),
-    );
-  }
-}
-
-class _BillingStatCard extends StatelessWidget {
-  const _BillingStatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.tone,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final AppBadgeTone tone;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = switch (tone) {
-      AppBadgeTone.primary => AppTheme.primary,
-      AppBadgeTone.success => AppTheme.success,
-      AppBadgeTone.warning => AppTheme.warning,
-      AppBadgeTone.error => AppTheme.error,
-      AppBadgeTone.neutral => const Color(0xFF64748B),
-    };
-
-    return AppCard(
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 18),
-          ),
-          const Gap(12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-                const Gap(4),
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -10,6 +10,10 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/app_section_card.dart';
+import '../../core/ui/compact_stat_card.dart';
+import '../../core/ui/empty_state_card.dart';
+import '../../core/ui/smart_filter_bar.dart';
 
 final personnelUsersProvider = FutureProvider<List<PersonnelUser>>((ref) async {
   final client = ref.watch(supabaseClientProvider);
@@ -68,7 +72,7 @@ class PersonnelScreen extends ConsumerWidget {
 
     return AppPageLayout(
       title: 'Personel',
-      subtitle: 'Kullanıcılar, şifre akışları ve sayfa yetkileri.',
+      subtitle: 'Kullanıcılar, rol yapısı ve erişim yetkilerini yönetin.',
       actions: [
         FilledButton.icon(
           onPressed: isAdmin ? () => _openCreateDialog(context) : null,
@@ -115,110 +119,92 @@ class PersonnelScreen extends ConsumerWidget {
 
                 return Column(
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
                       children: [
-                        Expanded(
-                          child: _PersonnelStatCard(
-                            label: 'Toplam Kullanıcı',
-                            value: users.length.toString(),
-                            icon: Icons.groups_2_rounded,
-                            color: AppTheme.primary,
+                        CompactStatCard(
+                          label: 'Toplam Kullanıcı',
+                          value: users.length.toString(),
+                          icon: Icons.groups_2_rounded,
+                          color: AppTheme.primary,
+                        ),
+                        CompactStatCard(
+                          label: 'Admin',
+                          value: adminCount.toString(),
+                          icon: Icons.verified_user_rounded,
+                          color: AppTheme.warning,
+                        ),
+                        CompactStatCard(
+                          label: 'Personel',
+                          value: personnelCount.toString(),
+                          icon: Icons.badge_rounded,
+                          color: AppTheme.success,
+                        ),
+                      ],
+                    ),
+                    const Gap(16),
+                    SmartFilterBar(
+                      title: 'Filtreler',
+                      subtitle: 'Kullanıcıları ad ve role göre daraltın.',
+                      children: [
+                        SizedBox(
+                          width: 420,
+                          child: TextField(
+                            onChanged: ref
+                                .read(personnelFiltersProvider.notifier)
+                                .setQuery,
+                            decoration: const InputDecoration(
+                              hintText: 'Ad soyad veya kullanıcı ID',
+                              prefixIcon: Icon(Icons.search_rounded),
+                            ),
                           ),
                         ),
-                        const Gap(12),
-                        Expanded(
-                          child: _PersonnelStatCard(
-                            label: 'Admin',
-                            value: adminCount.toString(),
-                            icon: Icons.verified_user_rounded,
-                            color: AppTheme.warning,
-                          ),
-                        ),
-                        const Gap(12),
-                        Expanded(
-                          child: _PersonnelStatCard(
-                            label: 'Personel',
-                            value: personnelCount.toString(),
-                            icon: Icons.badge_rounded,
-                            color: AppTheme.success,
+                        SizedBox(
+                          width: 220,
+                          child: DropdownButtonFormField<String>(
+                            initialValue: filters.role,
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'all',
+                                child: Text('Tüm Roller'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'admin',
+                                child: Text('Admin'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'personel',
+                                child: Text('Personel'),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              if (value == null) return;
+                              ref
+                                  .read(personnelFiltersProvider.notifier)
+                                  .setRole(value);
+                            },
+                            decoration: const InputDecoration(
+                              hintText: 'Rol',
+                              prefixIcon: Icon(
+                                Icons.admin_panel_settings_rounded,
+                              ),
+                            ),
                           ),
                         ),
                       ],
                     ),
                     const Gap(16),
-                    AppCard(
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              onChanged: ref
-                                  .read(personnelFiltersProvider.notifier)
-                                  .setQuery,
-                              decoration: const InputDecoration(
-                                labelText: 'Ara',
-                                hintText: 'Ad soyad veya kullanıcı ID',
-                                prefixIcon: Icon(Icons.search_rounded),
-                              ),
-                            ),
-                          ),
-                          const Gap(12),
-                          SizedBox(
-                            width: 220,
-                            child: DropdownButtonFormField<String>(
-                              initialValue: filters.role,
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'all',
-                                  child: Text('Tüm Roller'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'admin',
-                                  child: Text('Admin'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'personel',
-                                  child: Text('Personel'),
-                                ),
-                              ],
-                              onChanged: (value) {
-                                if (value == null) return;
-                                ref
-                                    .read(personnelFiltersProvider.notifier)
-                                    .setRole(value);
-                              },
-                              decoration: const InputDecoration(
-                                labelText: 'Rol',
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Gap(16),
                     if (filteredUsers.isEmpty)
-                      AppCard(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.person_search_rounded,
-                                size: 40,
-                                color: Color(0xFF94A3B8),
-                              ),
-                              const Gap(12),
-                              Text(
-                                'Filtreye uygun personel bulunamadı.',
-                                style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(color: const Color(0xFF64748B)),
-                              ),
-                            ],
-                          ),
-                        ),
+                      const EmptyStateCard(
+                        icon: Icons.person_search_rounded,
+                        title: 'Personel bulunamadı',
+                        message: 'Filtreye uyan kullanıcı kaydı görünmüyor.',
                       )
                     else
-                      AppCard(
+                      AppSectionCard(
+                        title: 'Kullanıcı Listesi',
+                        subtitle: '${filteredUsers.length} kayıt gösteriliyor',
                         padding: EdgeInsets.zero,
                         child: Column(
                           children: [
@@ -437,12 +423,15 @@ class _UserRowState extends ConsumerState<_UserRow> {
               alignment: WrapAlignment.end,
               spacing: 4,
               runSpacing: 4,
-              children: user.pagePermissions.take(2).map((page) {
-                return AppBadge(
-                  label: pagePermissionLabels[page] ?? page,
-                  tone: AppBadgeTone.neutral,
-                );
-              }).toList(growable: false),
+              children: user.pagePermissions
+                  .take(2)
+                  .map((page) {
+                    return AppBadge(
+                      label: pagePermissionLabels[page] ?? page,
+                      tone: AppBadgeTone.neutral,
+                    );
+                  })
+                  .toList(growable: false),
             ),
           ),
           const Gap(10),
@@ -452,57 +441,6 @@ class _UserRowState extends ConsumerState<_UserRow> {
               alignment: Alignment.centerRight,
               child: AppBadge(label: label, tone: tone),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PersonnelStatCard extends StatelessWidget {
-  const _PersonnelStatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: color),
-          ),
-          const Gap(12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              Text(
-                label,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
-              ),
-            ],
           ),
         ],
       ),
@@ -664,7 +602,10 @@ class _CreatePersonnelDialogState
                 DropdownButtonFormField<String>(
                   initialValue: _role,
                   items: const [
-                    DropdownMenuItem(value: 'personel', child: Text('Personel')),
+                    DropdownMenuItem(
+                      value: 'personel',
+                      child: Text('Personel'),
+                    ),
                     DropdownMenuItem(value: 'admin', child: Text('Admin')),
                   ],
                   onChanged: _saving
@@ -807,10 +748,10 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
           passwordMessage =
               'Bilgiler güncellendi, şifre değiştirilemedi: ${e.message}';
         } catch (e) {
-          passwordMessage =
-              'Bilgiler güncellendi, şifre değiştirilemedi: $e';
+          passwordMessage = 'Bilgiler güncellendi, şifre değiştirilemedi: $e';
         }
-      } else if (newPassword.isNotEmpty && _emailController.text.trim().isNotEmpty) {
+      } else if (newPassword.isNotEmpty &&
+          _emailController.text.trim().isNotEmpty) {
         try {
           await client.auth.resetPasswordForEmail(_emailController.text.trim());
           passwordMessage =
@@ -828,13 +769,9 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
       ref.invalidate(currentUserProfileProvider);
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            passwordMessage ?? 'Personel bilgisi güncellendi.',
-          ),
+          content: Text(passwordMessage ?? 'Personel bilgisi güncellendi.'),
         ),
       );
     } catch (e) {
@@ -885,7 +822,10 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
                 DropdownButtonFormField<String>(
                   initialValue: _role,
                   items: const [
-                    DropdownMenuItem(value: 'personel', child: Text('Personel')),
+                    DropdownMenuItem(
+                      value: 'personel',
+                      child: Text('Personel'),
+                    ),
                     DropdownMenuItem(value: 'admin', child: Text('Admin')),
                   ],
                   onChanged: _saving
@@ -994,10 +934,7 @@ class PersonnelUser {
 }
 
 class _PermissionsEditor extends StatelessWidget {
-  const _PermissionsEditor({
-    required this.selected,
-    required this.onChanged,
-  });
+  const _PermissionsEditor({required this.selected, required this.onChanged});
 
   final Set<String> selected;
   final ValueChanged<Set<String>> onChanged;
@@ -1009,22 +946,24 @@ class _PermissionsEditor extends StatelessWidget {
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: pagePermissionLabels.entries.map((entry) {
-          final active = selected.contains(entry.key);
-          return FilterChip(
-            selected: active,
-            label: Text(entry.value),
-            onSelected: (value) {
-              final next = {...selected};
-              if (value) {
-                next.add(entry.key);
-              } else {
-                next.remove(entry.key);
-              }
-              onChanged(next);
-            },
-          );
-        }).toList(growable: false),
+        children: pagePermissionLabels.entries
+            .map((entry) {
+              final active = selected.contains(entry.key);
+              return FilterChip(
+                selected: active,
+                label: Text(entry.value),
+                onSelected: (value) {
+                  final next = {...selected};
+                  if (value) {
+                    next.add(entry.key);
+                  } else {
+                    next.remove(entry.key);
+                  }
+                  onChanged(next);
+                },
+              );
+            })
+            .toList(growable: false),
       ),
     );
   }
