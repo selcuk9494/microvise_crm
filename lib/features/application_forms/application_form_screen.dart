@@ -1,3 +1,4 @@
+import 'package:excel/excel.dart' as excel;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -8,6 +9,8 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../customers/web_download_helper.dart'
+    if (dart.library.io) '../customers/io_download_helper.dart';
 import 'application_form_model.dart';
 import '../customers/customer_form_dialog.dart';
 import '../definitions/definitions_screen.dart';
@@ -91,6 +94,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   final _customerFilterController = TextEditingController();
   final _registryFilterController = TextEditingController();
   final _dateFormat = DateFormat('dd.MM.yyyy', 'tr_TR');
+  final Set<String> _selectedRecordIds = <String>{};
   DateTime? _fromDate;
   DateTime? _toDate;
 
@@ -205,6 +209,102 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     );
   }
 
+  Future<void> _exportForTaxOffice(List<ApplicationFormRecord> records) async {
+    if (records.isEmpty) return;
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null || !mounted) return;
+
+    final customerIds = records
+        .map((record) => record.customerId)
+        .whereType<String>()
+        .toSet()
+        .toList(growable: false);
+
+    final customerMap = <String, Map<String, dynamic>>{};
+    if (customerIds.isNotEmpty) {
+      final rows = await client
+          .from('customers')
+          .select('id,vkn,tckn_ms')
+          .inFilter('id', customerIds);
+      for (final row in rows as List) {
+        final item = row as Map<String, dynamic>;
+        customerMap[item['id'].toString()] = item;
+      }
+    }
+
+    final file = excel.Excel.createExcel();
+    final sheet = file.tables[file.getDefaultSheet()]!;
+
+    sheet.appendRow([
+      excel.TextCellValue('VERGI SICIL NO'),
+      excel.TextCellValue('UNVAN / AD'),
+      excel.TextCellValue('ADRES'),
+      excel.TextCellValue('BAGLI OLD. VERGI DAIRESI'),
+      excel.TextCellValue('MARKA'),
+      excel.TextCellValue('MODEL'),
+      excel.TextCellValue(''),
+      excel.TextCellValue(''),
+      excel.TextCellValue('FIRMA KODU'),
+      excel.TextCellValue('SICIL NOSU'),
+      excel.TextCellValue(''),
+      excel.TextCellValue(''),
+      excel.TextCellValue('BAKIM ONARIM YAPAN FIRMA'),
+      excel.TextCellValue('VKN'),
+    ]);
+
+    for (final record in records) {
+      final customer = record.customerId == null
+          ? null
+          : customerMap[record.customerId!];
+      final tcknMs = (customer?['tckn_ms'] ?? record.customerTcknMs ?? '')
+          .toString();
+      final vkn = (customer?['vkn'] ?? '').toString();
+      final taxRegistry = _formatTaxRegistry(tcknMs);
+
+      sheet.appendRow([
+        excel.TextCellValue(taxRegistry),
+        excel.TextCellValue(record.customerName),
+        excel.TextCellValue((record.workAddress ?? '').trim()),
+        excel.TextCellValue((record.taxOfficeCityName ?? '').trim()),
+        excel.TextCellValue((record.brandName ?? '').trim()),
+        excel.TextCellValue((record.modelName ?? '').trim()),
+        excel.TextCellValue(''),
+        excel.TextCellValue(''),
+        excel.TextCellValue((record.fiscalSymbolName ?? '').trim()),
+        excel.TextCellValue((record.stockRegistryNumber ?? '').trim()),
+        excel.TextCellValue(''),
+        excel.TextCellValue(''),
+        excel.TextCellValue(
+          ApplicationFormPrintSettings.defaults.serviceCompanyName,
+        ),
+        excel.TextCellValue(vkn),
+      ]);
+    }
+
+    final bytes = file.encode();
+    if (bytes == null || !mounted) return;
+
+    downloadExcelFile(
+      bytes,
+      'vergi_dairesine_gonder_${DateTime.now().millisecondsSinceEpoch}.xlsx',
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${records.length} kayit icin Excel disa aktarildi.'),
+      ),
+    );
+  }
+
+  String _formatTaxRegistry(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return '';
+    if (text.toUpperCase().startsWith('MS')) return text;
+    if (text.isNotEmpty && text.length <= 5) return 'MS$text';
+    return text;
+  }
+
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
@@ -229,6 +329,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       body: recordsAsync.when(
         data: (records) {
           final filtered = _filterRecords(records);
+          final selectedRecords = filtered
+              .where((record) => _selectedRecordIds.contains(record.id))
+              .toList(growable: false);
           return Column(
             children: [
               AppCard(
@@ -334,13 +437,13 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                   ],
                 ),
               ),
-              const Gap(16),
-              AppCard(
-                child: Column(
-                  children: [
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
+              const Gap(12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
                         _CompactStat(
                           label: 'Toplam',
@@ -367,10 +470,19 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                  const Gap(8),
+                  if (selectedRecords.isNotEmpty)
+                    FilledButton.icon(
+                      onPressed: () => _exportForTaxOffice(selectedRecords),
+                      icon: const Icon(Icons.download_rounded, size: 18),
+                      label: Text(
+                        'Vergi Dairesine Gonder (${selectedRecords.length})',
+                      ),
+                    ),
+                ],
               ),
-              const Gap(16),
+              const Gap(12),
               if (filtered.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 48),
@@ -384,6 +496,16 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                     for (var index = 0; index < filtered.length; index++) ...[
                       _ApplicationRecordCard(
                         record: filtered[index],
+                        selected: _selectedRecordIds.contains(filtered[index].id),
+                        onSelectionChanged: (selected) {
+                          setState(() {
+                            if (selected) {
+                              _selectedRecordIds.add(filtered[index].id);
+                            } else {
+                              _selectedRecordIds.remove(filtered[index].id);
+                            }
+                          });
+                        },
                         onPrintKdv: () => _print(
                           filtered[index],
                           kind: ApplicationPrintKind.kdv,
@@ -1138,6 +1260,8 @@ class _ApplicationFormDialogState
 class _ApplicationRecordCard extends StatelessWidget {
   const _ApplicationRecordCard({
     required this.record,
+    required this.selected,
+    required this.onSelectionChanged,
     required this.onPrintKdv,
     required this.onPrintKdv4a,
     required this.onEdit,
@@ -1145,6 +1269,8 @@ class _ApplicationRecordCard extends StatelessWidget {
   });
 
   final ApplicationFormRecord record;
+  final bool selected;
+  final ValueChanged<bool> onSelectionChanged;
   final VoidCallback onPrintKdv;
   final VoidCallback onPrintKdv4a;
   final VoidCallback onEdit;
@@ -1156,79 +1282,102 @@ class _ApplicationRecordCard extends StatelessWidget {
       'd MMM y',
       'tr_TR',
     ).format(record.applicationDate);
+    final isMobile = MediaQuery.sizeOf(context).width < 900;
     return AppCard(
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 14 : 16,
+        vertical: isMobile ? 14 : 12,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  record.customerName,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              Padding(
+                padding: const EdgeInsets.only(right: 8, top: 2),
+                child: Checkbox(
+                  value: selected,
+                  visualDensity: VisualDensity.compact,
+                  onChanged: (value) => onSelectionChanged(value ?? false),
                 ),
               ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      record.customerName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        fontSize: isMobile ? 17 : 18,
+                      ),
+                    ),
+                    const Gap(6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _InfoChip(
+                          icon: Icons.calendar_today_rounded,
+                          text: dateText,
+                        ),
+                        if (record.fileRegistryNumber?.trim().isNotEmpty ?? false)
+                          _InfoChip(
+                            icon: Icons.folder_open_rounded,
+                            text: 'Dosya: ${record.fileRegistryNumber}',
+                          ),
+                        if (record.stockRegistryNumber?.trim().isNotEmpty ?? false)
+                          _InfoChip(
+                            icon: Icons.memory_rounded,
+                            text: 'Cihaz: ${record.stockRegistryNumber}',
+                          ),
+                        if (record.brandModel.isNotEmpty)
+                          _InfoChip(
+                            icon: Icons.developer_board_rounded,
+                            text: record.brandModel,
+                          ),
+                        if (record.businessActivityName?.trim().isNotEmpty ?? false)
+                          _InfoChip(
+                            icon: Icons.storefront_rounded,
+                            text: record.businessActivityName!,
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Gap(10),
               AppBadge(label: record.documentType, tone: AppBadgeTone.primary),
             ],
           ),
-          const Gap(8),
+          const Gap(10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              _InfoChip(icon: Icons.calendar_today_rounded, text: dateText),
-              if (record.fileRegistryNumber?.trim().isNotEmpty ?? false)
-                _InfoChip(
-                  icon: Icons.folder_open_rounded,
-                  text: 'Dosya: ${record.fileRegistryNumber}',
-                ),
-              if (record.stockRegistryNumber?.trim().isNotEmpty ?? false)
-                _InfoChip(
-                  icon: Icons.memory_rounded,
-                  text: 'Cihaz: ${record.stockRegistryNumber}',
-                ),
-              if (record.brandModel.isNotEmpty)
-                _InfoChip(
-                  icon: Icons.developer_board_rounded,
-                  text: record.brandModel,
-                ),
-            ],
-          ),
-          if (record.businessActivityName?.trim().isNotEmpty ?? false) ...[
-            const Gap(8),
-            Text(
-              record.businessActivityName!,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
-            ),
-          ],
-          const Gap(12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              OutlinedButton.icon(
+              _ActionButton(
                 onPressed: onEdit,
-                icon: const Icon(Icons.edit_rounded, size: 18),
-                label: const Text('Düzenle'),
+                icon: Icons.edit_rounded,
+                label: 'Düzenle',
               ),
-              OutlinedButton.icon(
+              _ActionButton(
                 onPressed: onDuplicate,
-                icon: const Icon(Icons.content_copy_rounded, size: 18),
-                label: const Text('Kopya'),
+                icon: Icons.content_copy_rounded,
+                label: 'Kopya',
               ),
-              OutlinedButton.icon(
+              _ActionButton(
                 onPressed: onPrintKdv,
-                icon: const Icon(Icons.print_rounded, size: 18),
-                label: const Text('KDV4'),
+                icon: Icons.print_rounded,
+                label: 'KDV4',
               ),
-              FilledButton.icon(
+              _ActionButton(
                 onPressed: onPrintKdv4a,
-                icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
-                label: const Text('KDV4A'),
+                icon: Icons.picture_as_pdf_rounded,
+                label: 'KDV4A',
+                primary: true,
               ),
             ],
           ),
@@ -1378,22 +1527,22 @@ class _CompactStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(999),
         border: Border.all(color: AppTheme.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 18, color: AppTheme.primary),
-          const Gap(8),
+          Icon(icon, size: 16, color: AppTheme.primary),
+          const Gap(6),
           Text(
             '$label: $value',
             style: Theme.of(
               context,
-            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+            ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800),
           ),
         ],
       ),
@@ -1410,7 +1559,7 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(999),
@@ -1419,12 +1568,67 @@ class _InfoChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 15, color: AppTheme.textMuted),
-          const Gap(6),
-          Text(text, style: Theme.of(context).textTheme.bodySmall),
+          Icon(icon, size: 14, color: AppTheme.textMuted),
+          const Gap(5),
+          Text(
+            text,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+    this.primary = false,
+  });
+
+  final VoidCallback onPressed;
+  final IconData icon;
+  final String label;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16),
+        const Gap(6),
+        Text(label),
+      ],
+    );
+
+    final style =
+        (primary ? FilledButton.styleFrom : OutlinedButton.styleFrom).call(
+          minimumSize: const Size(0, 36),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+          textStyle: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        );
+
+    return primary
+        ? FilledButton(
+            onPressed: onPressed,
+            style: style,
+            child: child,
+          )
+        : OutlinedButton(
+            onPressed: onPressed,
+            style: style,
+            child: child,
+          );
   }
 }
 
