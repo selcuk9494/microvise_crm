@@ -26,6 +26,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _handledCreateQuery = false;
+  bool _showPassive = false;
 
   @override
   void initState() {
@@ -102,6 +103,29 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
       ],
       body: Column(
         children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                FilterChip(
+                  selected: _showPassive,
+                  label: const Text('Pasifleri Göster'),
+                  avatar: Icon(
+                    _showPassive
+                        ? Icons.visibility_rounded
+                        : Icons.visibility_off_rounded,
+                    size: 16,
+                  ),
+                  onSelected: (value) {
+                    setState(() => _showPassive = value);
+                  },
+                ),
+              ],
+            ),
+          ),
+          Gap(isCompact ? 8 : 10),
           Container(
             margin: EdgeInsets.symmetric(horizontal: isCompact ? 0 : 2),
             decoration: BoxDecoration(
@@ -210,25 +234,41 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
           Expanded(
             child: boardAsync.when(
               data: (items) {
+                final visibleItems = items
+                    .where((e) => _showPassive || e.isActive)
+                    .toList(growable: false);
                 return TabBarView(
                   controller: _tabController,
                   children: [
                     _WorkOrderList(
-                      items: items.where((e) => e.status == 'open').toList(),
-                      emptyText: 'Açık iş emri bulunmuyor.',
+                      items: visibleItems
+                          .where((e) => e.status == 'open')
+                          .toList(),
+                      emptyText: _showPassive
+                          ? 'Açık veya pasif iş emri bulunmuyor.'
+                          : 'Açık iş emri bulunmuyor.',
                       onTap: (order) => _openWorkOrderDetail(order),
+                      onToggleActive: _setWorkOrderActive,
                     ),
                     _WorkOrderList(
-                      items: items
+                      items: visibleItems
                           .where((e) => e.status == 'in_progress')
                           .toList(),
-                      emptyText: 'Devam eden iş emri bulunmuyor.',
+                      emptyText: _showPassive
+                          ? 'Devam eden veya pasif iş emri bulunmuyor.'
+                          : 'Devam eden iş emri bulunmuyor.',
                       onTap: (order) => _openWorkOrderDetail(order),
+                      onToggleActive: _setWorkOrderActive,
                     ),
                     _WorkOrderList(
-                      items: items.where((e) => e.status == 'done').toList(),
-                      emptyText: 'Kapatılmış iş emri bulunmuyor.',
+                      items: visibleItems
+                          .where((e) => e.status == 'done')
+                          .toList(),
+                      emptyText: _showPassive
+                          ? 'Kapalı veya pasif iş emri bulunmuyor.'
+                          : 'Kapatılmış iş emri bulunmuyor.',
                       onTap: (order) => _openWorkOrderDetail(order),
+                      onToggleActive: _setWorkOrderActive,
                     ),
                   ],
                 );
@@ -262,6 +302,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
                   ],
                   emptyText: '',
                   onTap: (_) {},
+                  onToggleActive: (order, active) async {},
                 ),
               ),
               error: (error, stackTrace) => Center(
@@ -288,6 +329,22 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
     await showWorkOrderDetailSheet(context, ref, order: order);
     ref.read(workOrdersBoardProvider.notifier).refresh();
   }
+
+  Future<void> _setWorkOrderActive(WorkOrder order, bool active) async {
+    await ref
+        .read(workOrdersBoardProvider.notifier)
+        .setActive(workOrderId: order.id, isActive: active);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          active
+              ? 'İş emri yeniden aktifleştirildi.'
+              : 'İş emri pasife alındı.',
+        ),
+      ),
+    );
+  }
 }
 
 class _WorkOrderList extends StatelessWidget {
@@ -295,11 +352,13 @@ class _WorkOrderList extends StatelessWidget {
     required this.items,
     required this.emptyText,
     required this.onTap,
+    required this.onToggleActive,
   });
 
   final List<WorkOrder> items;
   final String emptyText;
   final ValueChanged<WorkOrder> onTap;
+  final Future<void> Function(WorkOrder order, bool active) onToggleActive;
 
   @override
   Widget build(BuildContext context) {
@@ -332,7 +391,9 @@ class _WorkOrderList extends StatelessWidget {
     }
 
     final ref = ProviderScope.containerOf(context);
-    final canReorder = items.every((item) => item.status == 'open');
+    final canReorder = items.every(
+      (item) => item.status == 'open' && item.isActive,
+    );
     if (!canReorder) {
       return ListView.separated(
         padding: EdgeInsets.symmetric(
@@ -348,6 +409,7 @@ class _WorkOrderList extends StatelessWidget {
             onTap: () => onTap(order),
             reorderEnabled: false,
             reorderIndex: index,
+            onToggleActive: (active) => onToggleActive(order, active),
           );
         },
       );
@@ -397,6 +459,7 @@ class _WorkOrderList extends StatelessWidget {
                   onTap: () => onTap(order),
                   reorderEnabled: true,
                   reorderIndex: index,
+                  onToggleActive: (active) => onToggleActive(order, active),
                 ),
               );
             },
@@ -413,12 +476,14 @@ class _WorkOrderCard extends StatefulWidget {
     required this.onTap,
     required this.reorderEnabled,
     required this.reorderIndex,
+    required this.onToggleActive,
   });
 
   final WorkOrder order;
   final VoidCallback onTap;
   final bool reorderEnabled;
   final int reorderIndex;
+  final ValueChanged<bool> onToggleActive;
 
   @override
   State<_WorkOrderCard> createState() => _WorkOrderCardState();
@@ -625,7 +690,38 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  PopupMenuButton<String>(
+                    tooltip: 'İşlemler',
+                    onSelected: (value) {
+                      if (value == 'toggle_active') {
+                        widget.onToggleActive(!order.isActive);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem<String>(
+                        value: 'toggle_active',
+                        child: Text(
+                          order.isActive ? 'Pasife Al' : 'Aktifleştir',
+                        ),
+                      ),
+                    ],
+                    child: const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Icon(
+                        Icons.more_vert_rounded,
+                        size: 18,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ),
                   AppBadge(label: statusLabel, tone: statusTone),
+                  if (!order.isActive) ...[
+                    const Gap(6),
+                    const AppBadge(
+                      label: 'Pasif',
+                      tone: AppBadgeTone.neutral,
+                    ),
+                  ],
                   if (!widget.reorderEnabled) ...[
                     const Gap(8),
                     Icon(

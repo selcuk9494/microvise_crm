@@ -13,6 +13,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../customers/customer_detail_screen.dart';
+import 'work_order_create_dialog.dart';
 import 'work_order_model.dart';
 import 'currency_service.dart';
 
@@ -70,6 +71,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   @override
   void initState() {
     super.initState();
+    _addressController.text = widget.order.address ?? '';
     _loadExchangeRates();
   }
 
@@ -471,6 +473,14 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
               value: widget.order.workOrderTypeName!,
             ),
           ],
+          if (widget.order.address?.trim().isNotEmpty ?? false) ...[
+            const Gap(8),
+            _InfoRow(
+              icon: Icons.place_rounded,
+              label: 'Adres',
+              value: widget.order.address!,
+            ),
+          ],
           if (selectedBranch != null) ...[
             const Gap(8),
             _InfoRow(
@@ -599,6 +609,19 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     );
   }
 
+  Future<void> _editWorkOrder() async {
+    await showCreateWorkOrderDialog(
+      context,
+      ref,
+      initialOrder: widget.order,
+    );
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('İş emri güncellendi.')));
+  }
+
   Widget _buildStatusActions(BuildContext context) {
     return AppCard(
       padding: const EdgeInsets.all(16),
@@ -607,6 +630,17 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         children: [
           Text('Durum Değiştir', style: Theme.of(context).textTheme.titleSmall),
           const Gap(12),
+          if (widget.order.status == 'open') ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _saving ? null : _editWorkOrder,
+                icon: const Icon(Icons.edit_rounded, size: 18),
+                label: const Text('Düzenle'),
+              ),
+            ),
+            const Gap(12),
+          ],
           Row(
             children: [
               if (widget.order.status == 'open')

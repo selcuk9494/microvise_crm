@@ -6,10 +6,12 @@ import '../../app/theme/app_theme.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_card.dart';
+import 'work_order_model.dart';
 
 Future<void> showCreateWorkOrderDialog(
   BuildContext context,
   WidgetRef ref,
+  {WorkOrder? initialOrder}
 ) async {
   final client = ref.read(supabaseClientProvider);
   if (client == null) {
@@ -22,12 +24,14 @@ Future<void> showCreateWorkOrderDialog(
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (context) => const _CreateWorkOrderDialog(),
+    builder: (context) => _CreateWorkOrderDialog(initialOrder: initialOrder),
   );
 }
 
 class _CreateWorkOrderDialog extends ConsumerStatefulWidget {
-  const _CreateWorkOrderDialog();
+  const _CreateWorkOrderDialog({this.initialOrder});
+
+  final WorkOrder? initialOrder;
 
   @override
   ConsumerState<_CreateWorkOrderDialog> createState() =>
@@ -38,7 +42,7 @@ class _CreateWorkOrderDialogState
     extends ConsumerState<_CreateWorkOrderDialog> {
   final _formKey = GlobalKey<FormState>();
   final _customerController = TextEditingController();
-  final _titleController = TextEditingController();
+  final _addressController = TextEditingController();
   final _descController = TextEditingController();
   final _contactPhoneController = TextEditingController();
   final _locationLinkController = TextEditingController();
@@ -61,10 +65,27 @@ class _CreateWorkOrderDialogState
   @override
   void initState() {
     super.initState();
+    final initialOrder = widget.initialOrder;
+    if (initialOrder != null) {
+      _selectedCustomerId = initialOrder.customerId;
+      _customerController.text = initialOrder.customerName ?? '';
+      _addressController.text = initialOrder.address ?? '';
+      _descController.text = initialOrder.description ?? '';
+      _contactPhoneController.text = initialOrder.contactPhone ?? '';
+      _locationLinkController.text = initialOrder.locationLink ?? '';
+      _selectedCity = initialOrder.city;
+      _selectedBranchId = initialOrder.branchId;
+      _selectedWorkOrderTypeId = initialOrder.workOrderTypeId;
+      _scheduledDate = initialOrder.scheduledDate;
+      _assignedTo = initialOrder.assignedTo;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadCustomers();
       _loadCities();
       _loadWorkOrderTypes();
+      if ((widget.initialOrder?.customerId ?? '').isNotEmpty) {
+        _loadBranches(widget.initialOrder!.customerId);
+      }
     });
   }
 
@@ -80,7 +101,7 @@ class _CreateWorkOrderDialogState
       while (true) {
         final rows = await client
             .from('customers')
-            .select('id,name,city,is_active')
+            .select('id,name,city,address,is_active')
             .eq('is_active', true)
             .order('name')
             .range(from, from + pageSize - 1);
@@ -210,10 +231,19 @@ class _CreateWorkOrderDialogState
     }
   }
 
+  void _applyCustomerSelection(_CustomerOption customer) {
+    _selectedCustomerId = customer.id;
+    _customerController.text = customer.name;
+    _selectedCity = customer.city ?? _selectedCity;
+    _addressController.text = (customer.address ?? '').trim();
+    _selectedBranchId = null;
+    _branches = const [];
+  }
+
   @override
   void dispose() {
     _customerController.dispose();
-    _titleController.dispose();
+    _addressController.dispose();
     _descController.dispose();
     _contactPhoneController.dispose();
     _locationLinkController.dispose();
@@ -247,17 +277,25 @@ class _CreateWorkOrderDialogState
       return;
     }
 
+    final selectedType = _workOrderTypes
+        .where((type) => type.id == _selectedWorkOrderTypeId)
+        .firstOrNull;
+    final fallbackTitle = (selectedType?.name ?? _customerController.text).trim();
+    final workOrderTitle = fallbackTitle.isEmpty ? 'İş Emri' : fallbackTitle;
+
     setState(() => _saving = true);
     try {
-      await client.from('work_orders').insert({
+      final payload = {
         'customer_id': customerId,
         'branch_id': _selectedBranchId,
         'work_order_type_id': _selectedWorkOrderTypeId,
-        'title': _titleController.text.trim(),
+        'title': workOrderTitle,
         'description': _descController.text.trim().isEmpty
             ? null
             : _descController.text.trim(),
-        'status': 'open',
+        'address': _addressController.text.trim().isEmpty
+            ? null
+            : _addressController.text.trim(),
         'assigned_to': assignedTo,
         'scheduled_date': _scheduledDate?.toIso8601String().substring(0, 10),
         'city': _selectedCity,
@@ -267,15 +305,35 @@ class _CreateWorkOrderDialogState
         'location_link': _locationLinkController.text.trim().isEmpty
             ? null
             : _locationLinkController.text.trim(),
-        'is_active': true,
-        'created_by': client.auth.currentUser?.id,
-      });
+      };
+
+      if (widget.initialOrder == null) {
+        await client.from('work_orders').insert({
+          ...payload,
+          'status': 'open',
+          'is_active': true,
+          'created_by': client.auth.currentUser?.id,
+        });
+      } else {
+        await client
+            .from('work_orders')
+            .update(payload)
+            .eq('id', widget.initialOrder!.id);
+      }
 
       if (!mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('İş emri oluşturuldu.')));
+      ).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.initialOrder == null
+                ? 'İş emri oluşturuldu.'
+                : 'İş emri güncellendi.',
+          ),
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -313,7 +371,9 @@ class _CreateWorkOrderDialogState
                   children: [
                     Expanded(
                       child: Text(
-                        'Yeni İş Emri',
+                        widget.initialOrder == null
+                            ? 'Yeni İş Emri'
+                            : 'İş Emrini Düzenle',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
@@ -365,11 +425,7 @@ class _CreateWorkOrderDialogState
                     displayStringForOption: (o) => o.name,
                     onSelected: (o) {
                       setState(() {
-                        _selectedCustomerId = o.id;
-                        _customerController.text = o.name;
-                        _selectedCity = o.city ?? _selectedCity;
-                        _selectedBranchId = null;
-                        _branches = const [];
+                        _applyCustomerSelection(o);
                       });
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         _loadBranches(o.id);
@@ -421,6 +477,16 @@ class _CreateWorkOrderDialogState
                   ),
                   const Gap(12),
                 ],
+                TextFormField(
+                  controller: _addressController,
+                  minLines: 2,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Adres',
+                    hintText: 'Müşteri adresi otomatik gelir, istersen düzenle',
+                  ),
+                ),
+                const Gap(12),
                 DropdownButtonFormField<String?>(
                   initialValue: _selectedCity,
                   items: [
@@ -557,20 +623,6 @@ class _CreateWorkOrderDialogState
                 ),
                 const Gap(12),
                 TextFormField(
-                  controller: _titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Başlık',
-                    hintText: 'Örn: Hat yenileme',
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().length < 2) {
-                      return 'Başlık gerekli.';
-                    }
-                    return null;
-                  },
-                ),
-                const Gap(12),
-                TextFormField(
                   controller: _descController,
                   minLines: 2,
                   maxLines: 4,
@@ -628,7 +680,11 @@ class _CreateWorkOrderDialogState
                                   color: Colors.white,
                                 ),
                               )
-                            : const Text('Kaydet'),
+                            : Text(
+                                widget.initialOrder == null
+                                    ? 'Kaydet'
+                                    : 'Güncelle',
+                              ),
                       ),
                     ),
                   ],
@@ -660,17 +716,20 @@ class _CustomerOption {
     required this.id,
     required this.name,
     required this.city,
+    required this.address,
   });
 
   final String id;
   final String name;
   final String? city;
+  final String? address;
 
   factory _CustomerOption.fromJson(Map<String, dynamic> json) {
     return _CustomerOption(
       id: json['id'].toString(),
       name: (json['name'] ?? '').toString(),
       city: json['city']?.toString(),
+      address: json['address']?.toString(),
     );
   }
 }

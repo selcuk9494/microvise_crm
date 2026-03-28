@@ -5,6 +5,7 @@ class WorkOrder {
     required this.customerId,
     required this.customerName,
     this.description,
+    this.address,
     this.city,
     required this.status,
     required this.branchId,
@@ -26,6 +27,7 @@ class WorkOrder {
   final String customerId;
   final String? customerName;
   final String? description;
+  final String? address;
   final String? city;
   final String status;
   final String? branchId;
@@ -48,6 +50,7 @@ class WorkOrder {
       customerId: json['customer_id'].toString(),
       customerName: json['customer_name']?.toString(),
       description: json['description']?.toString(),
+      address: json['address']?.toString(),
       city: json['city']?.toString(),
       status: (json['status'] ?? 'open').toString(),
       branchId: json['branch_id']?.toString(),
@@ -76,6 +79,7 @@ class WorkOrder {
     String? branchId,
     String? branchName,
     int? sortOrder,
+    bool? isActive,
   }) {
     return WorkOrder(
       id: id,
@@ -83,6 +87,7 @@ class WorkOrder {
       customerId: customerId,
       customerName: customerName,
       description: description,
+      address: address,
       city: city,
       status: status ?? this.status,
       branchId: branchId ?? this.branchId,
@@ -96,7 +101,7 @@ class WorkOrder {
       closeNotes: closeNotes,
       sortOrder: sortOrder ?? this.sortOrder,
       payments: payments,
-      isActive: isActive,
+      isActive: isActive ?? this.isActive,
     );
   }
 }

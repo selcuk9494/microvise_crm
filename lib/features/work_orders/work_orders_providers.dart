@@ -20,9 +20,8 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     var q = client
         .from('work_orders')
         .select(
-          'id,title,description,city,status,is_active,customer_id,branch_id,assigned_to,scheduled_date,work_order_type_id,contact_phone,location_link,close_notes,sort_order,customers(name),branches(name),work_order_types(name),payments(amount,currency,description,paid_at,payment_method,is_active)',
-        )
-        .eq('is_active', true);
+          'id,title,description,address,city,status,is_active,customer_id,branch_id,assigned_to,scheduled_date,work_order_type_id,contact_phone,location_link,close_notes,sort_order,customers(name),branches(name),work_order_types(name),payments(amount,currency,description,paid_at,payment_method,is_active)',
+        );
 
     if (!isAdmin) {
       final userId = client.auth.currentUser?.id;
@@ -120,6 +119,32 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
             .update({'sort_order': i})
             .eq('id', reorderedOpenOrders[i].id);
       }
+    } catch (_) {
+      state = AsyncData(current);
+    }
+  }
+
+  Future<void> setActive({
+    required String workOrderId,
+    required bool isActive,
+  }) async {
+    final current = state.asData?.value;
+    if (current == null) return;
+
+    final next = [
+      for (final w in current)
+        if (w.id == workOrderId) w.copyWith(isActive: isActive) else w,
+    ];
+    state = AsyncData(next);
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      await client
+          .from('work_orders')
+          .update({'is_active': isActive})
+          .eq('id', workOrderId);
     } catch (_) {
       state = AsyncData(current);
     }

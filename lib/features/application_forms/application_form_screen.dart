@@ -356,10 +356,13 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     const sheetName = 'Tsm';
     final sheet = file[sheetName];
     final templateStyles = <int, excel.CellStyle?>{};
+    final templateValues = <int, excel.CellValue?>{};
     for (var col = 0; col < 43; col++) {
-      templateStyles[col] = sheet
-          .cell(excel.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: 1))
-          .cellStyle;
+      final templateCell = sheet.cell(
+        excel.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: 1),
+      );
+      templateStyles[col] = templateCell.cellStyle;
+      templateValues[col] = templateCell.value;
     }
 
     for (final record in records) {
@@ -378,57 +381,45 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       final address = (record.workAddress ?? '').trim();
       final invoiceDate = record.applicationDate.toIso8601String().split('T').first;
 
-      final row = <excel.CellValue?>[
-        excel.TextCellValue('V3'),
-        excel.TextCellValue('3'),
-        excel.TextCellValue(serialNumber),
-        excel.TextCellValue('MICROVISE'),
-        excel.TextCellValue(modelCode),
-        null,
-        null,
-        null,
-        null,
-        excel.TextCellValue(address),
-        excel.IntCellValue(98),
-        excel.TextCellValue(taxOffice),
-        excel.TextCellValue('0'),
-        excel.TextCellValue(splitName.$1),
-        excel.TextCellValue(splitName.$2),
-        excel.TextCellValue(address),
-        excel.IntCellValue(98),
-        excel.TextCellValue(taxOffice),
-        excel.TextCellValue(taxOffice),
-        _excelCellFromRaw(vkn, preferText: false),
-        _excelCellFromRaw(tcknMs, preferText: false),
-        null,
-        null,
-        _excelCellFromRaw(phone, preferText: false),
-        _excelCellFromRaw(phone, preferText: false),
-        excel.TextCellValue(record.customerName),
-        null,
-        null,
-        excel.TextCellValue('2'),
-        excel.IntCellValue(561101),
-        null,
-        null,
-        null,
-        excel.TextCellValue('2'),
-        excel.TextCellValue('1111'),
-        excel.TextCellValue(invoiceDate),
-        excel.TextCellValue('a123'),
-        excel.IntCellValue(2),
-        excel.TextCellValue('MICROVISE'),
-        null,
-        excel.TextCellValue('19660'),
-        excel.TextCellValue('Microvise Innovation Ltd. Sti'),
-        _excelCellFromRaw('1210404319', preferText: false),
-      ];
+      final overrides = <int, excel.CellValue?>{
+        0: excel.TextCellValue('V3'),
+        1: excel.TextCellValue('3'),
+        2: excel.TextCellValue(serialNumber),
+        3: excel.TextCellValue('MICROVISE'),
+        4: excel.TextCellValue(modelCode),
+        9: excel.TextCellValue(address),
+        10: excel.IntCellValue(98),
+        11: excel.TextCellValue(taxOffice),
+        12: excel.TextCellValue('0'),
+        13: excel.TextCellValue(splitName.$1),
+        14: excel.TextCellValue(splitName.$2),
+        15: excel.TextCellValue(address),
+        16: excel.IntCellValue(98),
+        17: excel.TextCellValue(taxOffice),
+        18: excel.TextCellValue(taxOffice),
+        19: _excelCellFromRaw(vkn, preferText: false),
+        20: _excelCellFromRaw(tcknMs, preferText: false),
+        23: _excelCellFromRaw(phone, preferText: false),
+        24: _excelCellFromRaw(phone, preferText: false),
+        25: excel.TextCellValue(record.customerName),
+        28: excel.TextCellValue('2'),
+        29: excel.IntCellValue(561101),
+        33: excel.TextCellValue('2'),
+        34: excel.TextCellValue('1111'),
+        35: excel.TextCellValue(invoiceDate),
+        36: excel.TextCellValue('a123'),
+        37: excel.IntCellValue(2),
+        38: excel.TextCellValue('MICROVISE'),
+        40: excel.TextCellValue('19660'),
+        41: excel.TextCellValue('Microvise Innovation Ltd. Sti'),
+        42: _excelCellFromRaw('1210404319', preferText: false),
+      };
       final rowIndex = 1 + records.indexOf(record);
-      for (var col = 0; col < row.length; col++) {
+      for (var col = 0; col < 43; col++) {
         file.updateCell(
           sheetName,
           excel.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: rowIndex),
-          row[col],
+          overrides.containsKey(col) ? overrides[col] : templateValues[col],
           cellStyle: templateStyles[col],
         );
       }
