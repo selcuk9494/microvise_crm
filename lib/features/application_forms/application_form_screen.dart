@@ -420,7 +420,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       final address = (record.workAddress ?? '').trim();
       final invoiceDate = record.applicationDate.toIso8601String().split('T').first;
 
-      final row = <excel.CellValue>[
+      final row = <excel.CellValue?>[
         excel.TextCellValue('V3'),
         excel.TextCellValue('3'),
         excel.TextCellValue(serialNumber),
@@ -447,8 +447,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         _excelCellFromRaw(phone),
         _excelCellFromRaw(phone),
         excel.TextCellValue(record.customerName),
-        excel.TextCellValue(''),
-        excel.TextCellValue(''),
+        null,
+        null,
         excel.TextCellValue('2'),
         excel.IntCellValue(561101),
         excel.TextCellValue(''),
