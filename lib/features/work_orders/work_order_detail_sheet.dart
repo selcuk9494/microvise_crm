@@ -12,6 +12,7 @@ import '../../core/platform/open_external_url.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_section_card.dart';
 import '../customers/customer_detail_screen.dart';
 import 'work_order_create_dialog.dart';
 import 'work_order_model.dart';
@@ -302,20 +303,20 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
 
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.92,
+        maxHeight: MediaQuery.of(context).size.height * 0.94,
       ),
       decoration: const BoxDecoration(
         color: AppTheme.background,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
       child: SafeArea(
         top: false,
         child: Padding(
           padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 14,
-            bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+            left: 14,
+            right: 14,
+            top: 12,
+            bottom: MediaQuery.viewInsetsOf(context).bottom + 14,
           ),
           child: customerAsync.when(
             data: (customer) => Column(
@@ -329,31 +330,31 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
-                const Gap(14),
+                const Gap(12),
                 _buildHeader(context, customer),
-                const Gap(14),
+                const Gap(10),
                 Flexible(
                   child: ListView(
                     shrinkWrap: true,
                     children: [
                       _buildInfoCard(context, customer, branchesAsync),
-                      const Gap(12),
+                      const Gap(10),
                       if (!isDone && !_isClosing) ...[
                         _buildStatusActions(context),
-                        const Gap(12),
+                        const Gap(10),
                       ],
                       if (_isClosing || isDone) ...[
                         _buildPaymentsCard(context),
-                        const Gap(12),
+                        const Gap(10),
                         if (!isDone) ...[
                           _buildSignatureCard(context, customer),
-                          const Gap(12),
+                          const Gap(10),
                           _buildBranchLocationCard(context, branchesAsync),
-                          const Gap(12),
+                          const Gap(10),
                           _buildAdditionalSalesCard(context),
-                          const Gap(12),
+                          const Gap(10),
                           _buildNotesCard(context),
-                          const Gap(12),
+                          const Gap(10),
                         ],
                       ],
                     ],
@@ -391,43 +392,46 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       _ => ('Bilinmiyor', AppBadgeTone.neutral),
     };
 
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.order.title,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              if (widget.order.workOrderTypeName?.trim().isNotEmpty ??
-                  false) ...[
+    return AppSectionCard(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.order.title,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                if (widget.order.workOrderTypeName?.trim().isNotEmpty ??
+                    false) ...[
+                  const Gap(4),
+                  Text(
+                    widget.order.workOrderTypeName!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
                 const Gap(4),
                 Text(
-                  widget.order.workOrderTypeName!,
+                  customer.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.primary,
-                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF64748B),
                   ),
                 ),
               ],
-              const Gap(4),
-              Text(
-                customer.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
-              ),
-            ],
+            ),
           ),
-        ),
-        AppBadge(label: statusLabel, tone: statusTone),
-      ],
+          AppBadge(label: statusLabel, tone: statusTone),
+        ],
+      ),
     );
   }
 
@@ -450,16 +454,13 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     }
     final directionsUrl = _buildDirectionsUrl(selectedBranch);
 
-    return AppCard(
-      padding: const EdgeInsets.all(16),
+    return AppSectionCard(
+      title: 'İş Emri Detayları',
+      subtitle: 'Operasyon ve iletişim bilgileri',
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'İş Emri Detayları',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-          const Gap(12),
           _InfoRow(
             icon: Icons.business_rounded,
             label: 'Müşteri',
@@ -564,7 +565,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             ),
           ],
           if (directionsUrl != null) ...[
-            const Gap(14),
+            const Gap(12),
             Align(
               alignment: Alignment.centerLeft,
               child: OutlinedButton.icon(
@@ -610,11 +611,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   }
 
   Future<void> _editWorkOrder() async {
-    await showCreateWorkOrderDialog(
-      context,
-      ref,
-      initialOrder: widget.order,
-    );
+    await showCreateWorkOrderDialog(context, ref, initialOrder: widget.order);
     if (!mounted) return;
     Navigator.of(context).pop();
     ScaffoldMessenger.of(
@@ -623,13 +620,13 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   }
 
   Widget _buildStatusActions(BuildContext context) {
-    return AppCard(
-      padding: const EdgeInsets.all(16),
+    return AppSectionCard(
+      title: 'Durum Değiştir',
+      subtitle: 'Açık iş emrini yönet ve kapat',
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Durum Değiştir', style: Theme.of(context).textTheme.titleSmall),
-          const Gap(12),
           if (widget.order.status == 'open') ...[
             Align(
               alignment: Alignment.centerLeft,
@@ -690,19 +687,18 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       decimalDigits: 2,
     );
 
-    return AppCard(
-      padding: const EdgeInsets.all(16),
+    return AppSectionCard(
+      title: 'Ödemeler',
+      subtitle: isDone
+          ? 'Kaydedilmiş tahsilat bilgileri'
+          : 'Kapanış sırasında işlenecek ödeme satırları',
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  'Ödemeler',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-              ),
+              const Spacer(),
               if (!isDone)
                 OutlinedButton.icon(
                   onPressed: _saving
@@ -1086,6 +1082,7 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(icon, size: 16, color: const Color(0xFF64748B)),
         const Gap(10),

@@ -6,13 +6,14 @@ import '../../app/theme/app_theme.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_section_card.dart';
 import 'work_order_model.dart';
 
 Future<void> showCreateWorkOrderDialog(
   BuildContext context,
-  WidgetRef ref,
-  {WorkOrder? initialOrder}
-) async {
+  WidgetRef ref, {
+  WorkOrder? initialOrder,
+}) async {
   final client = ref.read(supabaseClientProvider);
   if (client == null) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -280,7 +281,8 @@ class _CreateWorkOrderDialogState
     final selectedType = _workOrderTypes
         .where((type) => type.id == _selectedWorkOrderTypeId)
         .firstOrNull;
-    final fallbackTitle = (selectedType?.name ?? _customerController.text).trim();
+    final fallbackTitle = (selectedType?.name ?? _customerController.text)
+        .trim();
     final workOrderTitle = fallbackTitle.isEmpty ? 'İş Emri' : fallbackTitle;
 
     setState(() => _saving = true);
@@ -311,10 +313,10 @@ class _CreateWorkOrderDialogState
         await _saveWorkOrderPayload(
           client,
           payload: {
-          ...payload,
-          'status': 'open',
-          'is_active': true,
-          'created_by': client.auth.currentUser?.id,
+            ...payload,
+            'status': 'open',
+            'is_active': true,
+            'created_by': client.auth.currentUser?.id,
           },
         );
       } else {
@@ -327,9 +329,7 @@ class _CreateWorkOrderDialogState
 
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             widget.initialOrder == null
@@ -342,9 +342,7 @@ class _CreateWorkOrderDialogState
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(
-        SnackBar(content: Text('İş emri oluşturulamadı: $e')),
-      );
+      ).showSnackBar(SnackBar(content: Text('İş emri oluşturulamadı: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -403,341 +401,364 @@ class _CreateWorkOrderDialogState
     }
 
     return Dialog(
-      insetPadding: const EdgeInsets.all(24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       backgroundColor: Colors.transparent,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 640),
+        constraints: const BoxConstraints(maxWidth: 860),
         child: AppCard(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(18),
           child: Form(
             key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        widget.initialOrder == null
-                            ? 'Yeni İş Emri'
-                            : 'İş Emrini Düzenle',
-                        style: Theme.of(context).textTheme.titleMedium,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          widget.initialOrder == null
+                              ? 'Yeni İş Emri'
+                              : 'İş Emrini Düzenle',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Kapat',
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  const Gap(12),
+                  if (loadingCustomers)
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.border),
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const Gap(10),
+                          Expanded(
+                            child: Text(
+                              'Müşteriler yükleniyor…',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: const Color(0xFF64748B)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    AppSectionCard(
+                      title: 'Operasyon Bilgileri',
+                      subtitle: 'Müşteri, lokasyon ve iş emri tipini seçin.',
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        children: [
+                          Autocomplete<_CustomerOption>(
+                            optionsBuilder: (text) {
+                              final q = _sortKey(text.text.trim());
+                              if (q.isEmpty) return _customers.take(20);
+                              return _customers
+                                  .where((c) => _sortKey(c.name).contains(q))
+                                  .take(20);
+                            },
+                            displayStringForOption: (o) => o.name,
+                            onSelected: (o) {
+                              setState(() {
+                                _applyCustomerSelection(o);
+                              });
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                _loadBranches(o.id);
+                              });
+                            },
+                            fieldViewBuilder:
+                                (context, controller, focusNode, onSubmit) {
+                                  controller.text = _customerController.text;
+                                  controller.selection =
+                                      TextSelection.collapsed(
+                                        offset: controller.text.length,
+                                      );
+                                  return TextFormField(
+                                    controller: controller,
+                                    focusNode: focusNode,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Müşteri',
+                                      hintText: 'Firma adı yazın ve seçin',
+                                    ),
+                                    validator: (value) {
+                                      if ((_selectedCustomerId ?? '').isEmpty) {
+                                        return 'Müşteri seçin.';
+                                      }
+                                      return null;
+                                    },
+                                    onChanged: (value) =>
+                                        _selectedCustomerId = null,
+                                  );
+                                },
+                          ),
+                          if (_branches.isNotEmpty) ...[
+                            const Gap(12),
+                            DropdownButtonFormField<String?>(
+                              initialValue: _selectedBranchId,
+                              items: [
+                                const DropdownMenuItem<String?>(
+                                  value: null,
+                                  child: Text('Şube seç (opsiyonel)'),
+                                ),
+                                ..._branches.map(
+                                  (b) => DropdownMenuItem<String?>(
+                                    value: b.id,
+                                    child: Text(b.name),
+                                  ),
+                                ),
+                              ],
+                              onChanged: _saving
+                                  ? null
+                                  : (v) =>
+                                        setState(() => _selectedBranchId = v),
+                              decoration: const InputDecoration(
+                                labelText: 'Şube',
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'Kapat',
-                      onPressed: _saving
-                          ? null
-                          : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                  const Gap(12),
+                  TextFormField(
+                    controller: _addressController,
+                    minLines: 2,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Adres',
+                      hintText:
+                          'Müşteri adresi otomatik gelir, istersen düzenle',
                     ),
-                  ],
-                ),
-                const Gap(12),
-                if (loadingCustomers)
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: Row(
-                      children: [
-                        const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        const Gap(10),
-                        Expanded(
-                          child: Text(
-                            'Müşteriler yükleniyor…',
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(color: const Color(0xFF64748B)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  Autocomplete<_CustomerOption>(
-                    optionsBuilder: (text) {
-                      final q = _sortKey(text.text.trim());
-                      if (q.isEmpty) return _customers.take(20);
-                      return _customers
-                          .where((c) => _sortKey(c.name).contains(q))
-                          .take(20);
-                    },
-                    displayStringForOption: (o) => o.name,
-                    onSelected: (o) {
-                      setState(() {
-                        _applyCustomerSelection(o);
-                      });
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        _loadBranches(o.id);
-                      });
-                    },
-                    fieldViewBuilder:
-                        (context, controller, focusNode, onSubmit) {
-                          controller.text = _customerController.text;
-                          controller.selection = TextSelection.collapsed(
-                            offset: controller.text.length,
-                          );
-                          return TextFormField(
-                            controller: controller,
-                            focusNode: focusNode,
-                            decoration: const InputDecoration(
-                              labelText: 'Müşteri',
-                              hintText: 'Firma adı yazın ve seçin',
-                            ),
-                            validator: (value) {
-                              if ((_selectedCustomerId ?? '').isEmpty) {
-                                return 'Müşteri seçin.';
-                              }
-                              return null;
-                            },
-                            onChanged: (value) => _selectedCustomerId = null,
-                          );
-                        },
                   ),
-                const Gap(12),
-                if (_branches.isNotEmpty) ...[
+                  const Gap(12),
                   DropdownButtonFormField<String?>(
-                    initialValue: _selectedBranchId,
+                    initialValue: _selectedCity,
                     items: [
                       const DropdownMenuItem<String?>(
                         value: null,
-                        child: Text('Şube seç (opsiyonel)'),
+                        child: Text('Şehir seç'),
                       ),
-                      ..._branches.map(
-                        (b) => DropdownMenuItem<String?>(
-                          value: b.id,
-                          child: Text(b.name),
+                      ..._cities.map(
+                        (city) => DropdownMenuItem<String?>(
+                          value: city,
+                          child: Text(city),
                         ),
                       ),
                     ],
                     onChanged: _saving
                         ? null
-                        : (v) => setState(() => _selectedBranchId = v),
-                    decoration: const InputDecoration(labelText: 'Şube'),
+                        : (value) => setState(() => _selectedCity = value),
+                    decoration: const InputDecoration(labelText: 'Şehir'),
                   ),
                   const Gap(12),
-                ],
-                TextFormField(
-                  controller: _addressController,
-                  minLines: 2,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Adres',
-                    hintText: 'Müşteri adresi otomatik gelir, istersen düzenle',
-                  ),
-                ),
-                const Gap(12),
-                DropdownButtonFormField<String?>(
-                  initialValue: _selectedCity,
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('Şehir seç'),
-                    ),
-                    ..._cities.map(
-                      (city) => DropdownMenuItem<String?>(
-                        value: city,
-                        child: Text(city),
+                  DropdownButtonFormField<String?>(
+                    initialValue: _selectedWorkOrderTypeId,
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('İş emri tipi seç'),
                       ),
-                    ),
-                  ],
-                  onChanged: _saving
-                      ? null
-                      : (value) => setState(() => _selectedCity = value),
-                  decoration: const InputDecoration(labelText: 'Şehir'),
-                ),
-                const Gap(12),
-                DropdownButtonFormField<String?>(
-                  initialValue: _selectedWorkOrderTypeId,
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('İş emri tipi seç'),
-                    ),
-                    ..._workOrderTypes.map(
-                      (type) => DropdownMenuItem<String?>(
-                        value: type.id,
-                        child: Text(type.name),
-                      ),
-                    ),
-                  ],
-                  onChanged: _saving
-                      ? null
-                      : (value) {
-                          _WorkOrderTypeOption? selected;
-                          for (final type in _workOrderTypes) {
-                            if (type.id == value) {
-                              selected = type;
-                              break;
-                            }
-                          }
-                          setState(() {
-                            _selectedWorkOrderTypeId = value;
-                            if ((_contactPhoneController.text.trim().isEmpty) &&
-                                (selected?.contactPhone?.trim().isNotEmpty ??
-                                    false)) {
-                              _contactPhoneController.text =
-                                  selected!.contactPhone!;
-                            }
-                            if ((_locationLinkController.text.trim().isEmpty) &&
-                                (selected?.locationInfo?.trim().isNotEmpty ??
-                                    false)) {
-                              _locationLinkController.text =
-                                  selected!.locationInfo!;
-                            }
-                          });
-                        },
-                  decoration: const InputDecoration(labelText: 'İş Emri Tipi'),
-                  validator: (value) {
-                    if (_workOrderTypes.isEmpty) return null;
-                    if ((value ?? '').isEmpty) {
-                      return 'İş emri tipi seçin.';
-                    }
-                    return null;
-                  },
-                ),
-                const Gap(12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: _saving
-                            ? null
-                            : () async {
-                                final initial =
-                                    _scheduledDate ?? DateTime.now();
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate: initial,
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime(DateTime.now().year + 5),
-                                );
-                                if (picked == null) return;
-                                setState(() => _scheduledDate = picked);
-                              },
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'Planlanan Tarih',
-                          ),
-                          child: Text(
-                            _scheduledDate == null
-                                ? 'Seçilmedi'
-                                : '${_scheduledDate!.day}.${_scheduledDate!.month}.${_scheduledDate!.year}',
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (isAdmin) ...[
-                      const Gap(12),
-                      Expanded(
-                        child: DropdownButtonFormField<String?>(
-                          initialValue: _assignedTo,
-                          items: [
-                            const DropdownMenuItem<String?>(
-                              value: null,
-                              child: Text('Personel seç'),
-                            ),
-                            ..._users.map(
-                              (u) => DropdownMenuItem<String?>(
-                                value: u.id,
-                                child: Text(u.fullName ?? 'Personel'),
-                              ),
-                            ),
-                          ],
-                          onChanged: _saving
-                              ? null
-                              : (v) => setState(() => _assignedTo = v),
-                          decoration: const InputDecoration(
-                            labelText: 'Atanan Personel',
-                          ),
-                          validator: (v) {
-                            if (!isAdmin) return null;
-                            if ((v ?? '').isEmpty) return 'Personel gerekli.';
-                            return null;
-                          },
+                      ..._workOrderTypes.map(
+                        (type) => DropdownMenuItem<String?>(
+                          value: type.id,
+                          child: Text(type.name),
                         ),
                       ),
                     ],
-                  ],
-                ),
-                const Gap(12),
-                TextFormField(
-                  controller: _descController,
-                  minLines: 2,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'Açıklama',
-                    hintText: 'İsteğe bağlı',
+                    onChanged: _saving
+                        ? null
+                        : (value) {
+                            _WorkOrderTypeOption? selected;
+                            for (final type in _workOrderTypes) {
+                              if (type.id == value) {
+                                selected = type;
+                                break;
+                              }
+                            }
+                            setState(() {
+                              _selectedWorkOrderTypeId = value;
+                              if ((_contactPhoneController.text
+                                      .trim()
+                                      .isEmpty) &&
+                                  (selected?.contactPhone?.trim().isNotEmpty ??
+                                      false)) {
+                                _contactPhoneController.text =
+                                    selected!.contactPhone!;
+                              }
+                              if ((_locationLinkController.text
+                                      .trim()
+                                      .isEmpty) &&
+                                  (selected?.locationInfo?.trim().isNotEmpty ??
+                                      false)) {
+                                _locationLinkController.text =
+                                    selected!.locationInfo!;
+                              }
+                            });
+                          },
+                    decoration: const InputDecoration(
+                      labelText: 'İş Emri Tipi',
+                    ),
+                    validator: (value) {
+                      if (_workOrderTypes.isEmpty) return null;
+                      if ((value ?? '').isEmpty) {
+                        return 'İş emri tipi seçin.';
+                      }
+                      return null;
+                    },
                   ),
-                ),
-                const Gap(12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _contactPhoneController,
-                        keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(
-                          labelText: 'İrtibat Numarası',
-                          hintText: '0 5xx xxx xx xx',
+                  const Gap(12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: _saving
+                              ? null
+                              : () async {
+                                  final initial =
+                                      _scheduledDate ?? DateTime.now();
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: initial,
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(DateTime.now().year + 5),
+                                  );
+                                  if (picked == null) return;
+                                  setState(() => _scheduledDate = picked);
+                                },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Planlanan Tarih',
+                            ),
+                            child: Text(
+                              _scheduledDate == null
+                                  ? 'Seçilmedi'
+                                  : '${_scheduledDate!.day}.${_scheduledDate!.month}.${_scheduledDate!.year}',
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                    const Gap(12),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _locationLinkController,
-                        decoration: const InputDecoration(
-                          labelText: 'Konum Linki',
-                          hintText: 'https://maps.google.com/...',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const Gap(18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _saving
-                            ? null
-                            : () => Navigator.of(context).pop(),
-                        child: const Text('Vazgeç'),
-                      ),
-                    ),
-                    const Gap(12),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: _saving ? null : _save,
-                        child: _saving
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Text(
-                                widget.initialOrder == null
-                                    ? 'Kaydet'
-                                    : 'Güncelle',
+                      if (isAdmin) ...[
+                        const Gap(12),
+                        Expanded(
+                          child: DropdownButtonFormField<String?>(
+                            initialValue: _assignedTo,
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('Personel seç'),
                               ),
-                      ),
+                              ..._users.map(
+                                (u) => DropdownMenuItem<String?>(
+                                  value: u.id,
+                                  child: Text(u.fullName ?? 'Personel'),
+                                ),
+                              ),
+                            ],
+                            onChanged: _saving
+                                ? null
+                                : (v) => setState(() => _assignedTo = v),
+                            decoration: const InputDecoration(
+                              labelText: 'Atanan Personel',
+                            ),
+                            validator: (v) {
+                              if (!isAdmin) return null;
+                              if ((v ?? '').isEmpty) return 'Personel gerekli.';
+                              return null;
+                            },
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const Gap(12),
+                  TextFormField(
+                    controller: _descController,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Açıklama',
+                      hintText: 'İsteğe bağlı',
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                  const Gap(12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _contactPhoneController,
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(
+                            labelText: 'İrtibat Numarası',
+                            hintText: '0 5xx xxx xx xx',
+                          ),
+                        ),
+                      ),
+                      const Gap(12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _locationLinkController,
+                          decoration: const InputDecoration(
+                            labelText: 'Konum Linki',
+                            hintText: 'https://maps.google.com/...',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Gap(18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _saving
+                              ? null
+                              : () => Navigator.of(context).pop(),
+                          child: const Text('Vazgeç'),
+                        ),
+                      ),
+                      const Gap(12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _saving ? null : _save,
+                          child: _saving
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Text(
+                                  widget.initialOrder == null
+                                      ? 'Kaydet'
+                                      : 'Güncelle',
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),

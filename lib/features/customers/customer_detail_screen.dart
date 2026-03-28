@@ -9,6 +9,9 @@ import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_section_card.dart';
+import '../../core/ui/compact_stat_card.dart';
+import 'customer_model.dart';
 import 'customers_providers.dart';
 import 'customer_form_dialog.dart';
 
@@ -208,68 +211,123 @@ class _Content extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final linesAsync = ref.watch(customerLinesProvider(detail.id));
+    final licensesAsync = ref.watch(customerLicensesProvider(detail.id));
+    final workOrdersAsync = ref.watch(customerWorkOrdersProvider(detail.id));
+    final activeLines =
+        linesAsync.asData?.value.where((line) => line.isActive).length ?? 0;
+    final activeLicenses =
+        licensesAsync.asData?.value
+            .where((license) => license.isActive)
+            .length ??
+        0;
+    final activeWorkOrders =
+        workOrdersAsync.asData?.value
+            .where((order) => order.isActive && order.status != 'done')
+            .length ??
+        0;
+
     return DefaultTabController(
       length: 5,
       child: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-              child: Row(
-                children: [
-                  IconButton(
-                    tooltip: 'Geri',
-                    onPressed: () => Navigator.of(context).maybePop(),
-                    icon: const Icon(Icons.arrow_back_rounded),
-                  ),
-                  const Gap(8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+              child: AppCard(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                child: Column(
+                  children: [
+                    Row(
                       children: [
-                        Text(
-                          detail.name,
-                          style: Theme.of(context).textTheme.titleLarge,
+                        IconButton(
+                          tooltip: 'Geri',
+                          onPressed: () => Navigator.of(context).maybePop(),
+                          icon: const Icon(Icons.arrow_back_rounded),
                         ),
-                        const Gap(4),
-                        Row(
-                          children: [
-                            AppBadge(
-                              label: detail.isActive ? 'Aktif' : 'Pasif',
-                              tone: detail.isActive
-                                  ? AppBadgeTone.success
-                                  : AppBadgeTone.neutral,
-                            ),
-                            if (detail.city != null) ...[
-                              const Gap(10),
+                        const Gap(6),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                detail.city!,
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: const Color(0xFF64748B)),
+                                detail.name,
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              const Gap(4),
+                              Row(
+                                children: [
+                                  AppBadge(
+                                    label: detail.isActive ? 'Aktif' : 'Pasif',
+                                    tone: detail.isActive
+                                        ? AppBadgeTone.success
+                                        : AppBadgeTone.neutral,
+                                  ),
+                                  if (detail.city != null) ...[
+                                    const Gap(8),
+                                    Text(
+                                      detail.city!,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: const Color(0xFF64748B),
+                                          ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ],
-                          ],
+                          ),
+                        ),
+                        FilledButton.icon(
+                          onPressed: () async {
+                            await _showEditCustomerDialog(
+                              context,
+                              ref,
+                              detail: detail,
+                            );
+                          },
+                          icon: const Icon(Icons.edit_rounded, size: 18),
+                          label: const Text('Düzenle'),
                         ),
                       ],
                     ),
-                  ),
-                  FilledButton.icon(
-                    onPressed: () async {
-                      await _showEditCustomerDialog(
-                        context,
-                        ref,
-                        detail: detail,
-                      );
-                    },
-                    icon: const Icon(Icons.edit_rounded, size: 18),
-                    label: const Text('Düzenle'),
-                  ),
-                ],
+                    const Gap(12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          CompactStatCard(
+                            label: 'Hat',
+                            value: '$activeLines',
+                            icon: Icons.sim_card_rounded,
+                            color: AppTheme.primary,
+                          ),
+                          CompactStatCard(
+                            label: 'Lisans',
+                            value: '$activeLicenses',
+                            icon: Icons.verified_rounded,
+                            color: const Color(0xFFF59E0B),
+                          ),
+                          CompactStatCard(
+                            label: 'Açık İş',
+                            value: '$activeWorkOrders',
+                            icon: Icons.assignment_turned_in_rounded,
+                            color: const Color(0xFF22C55E),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 14),
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
             sliver: SliverToBoxAdapter(
               child: AppCard(
                 padding: EdgeInsets.zero,
@@ -279,8 +337,8 @@ class _Content extends ConsumerWidget {
                       isScrollable: true,
                       tabAlignment: TabAlignment.start,
                       labelPadding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
+                        horizontal: 14,
+                        vertical: 10,
                       ),
                       tabs: [
                         Tab(text: 'Genel'),
@@ -292,7 +350,7 @@ class _Content extends ConsumerWidget {
                     ),
                     const Divider(height: 1),
                     SizedBox(
-                      height: 620,
+                      height: MediaQuery.sizeOf(context).height * 0.68,
                       child: TabBarView(
                         children: [
                           _GeneralTab(detail: detail),
@@ -324,196 +382,239 @@ class _GeneralTab extends ConsumerWidget {
     final date = DateFormat('d MMMM y', 'tr_TR').format(detail.createdAt);
     final locationsAsync = ref.watch(customerLocationsProvider(detail.id));
 
-    return Padding(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Genel Bilgiler',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const Gap(14),
-          _InfoRow(label: 'Firma Adı', value: detail.name),
-          const Gap(10),
-          _InfoRow(label: 'Şehir', value: detail.city ?? '—'),
-          const Gap(10),
-          _InfoRow(label: 'Adres', value: detail.address ?? '—'),
-          const Gap(10),
-          _InfoRow(label: 'E-posta', value: detail.email ?? '—'),
-          const Gap(10),
-          _InfoRow(
-            label: 'Direktör Ad Soyad',
-            value: detail.directorName ?? '—',
-          ),
-          const Gap(10),
-          _InfoRow(label: 'VKN', value: detail.vkn ?? '—'),
-          const Gap(10),
-          _InfoRow(label: 'TCKN-MŞ', value: detail.tcknMs ?? '—'),
-          const Gap(10),
-          _InfoRow(
-            label: detail.phone1Title ?? 'Telefon 1',
-            value: detail.phone1 ?? '—',
-          ),
-          const Gap(10),
-          _InfoRow(
-            label: detail.phone2Title ?? 'Telefon 2',
-            value: detail.phone2 ?? '—',
-          ),
-          const Gap(10),
-          _InfoRow(
-            label: detail.phone3Title ?? 'Telefon 3',
-            value: detail.phone3 ?? '—',
-          ),
-          const Gap(10),
-          _InfoRow(label: 'Kayıt Tarihi', value: date),
-          const Gap(16),
-          Text('Konumlar', style: Theme.of(context).textTheme.titleSmall),
-          const Gap(10),
-          locationsAsync.when(
-            data: (locations) {
-              if (locations.isEmpty) {
-                return Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppTheme.border),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= 900;
+
+        Widget buildLocationCard(CustomerLocation location) {
+          return Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  location.title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                if (location.description?.trim().isNotEmpty ?? false) ...[
+                  const Gap(6),
+                  Text(
+                    location.description!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF475569),
+                    ),
                   ),
-                  child: Text(
-                    'Henüz müşteri konumu eklenmemiş.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                ],
+                if (location.address?.trim().isNotEmpty ?? false) ...[
+                  const Gap(8),
+                  Text(
+                    location.address!,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+                if (location.locationLat != null ||
+                    location.locationLng != null) ...[
+                  const Gap(8),
+                  Text(
+                    'Konum: ${location.locationLat?.toStringAsFixed(5) ?? '-'}, ${location.locationLng?.toStringAsFixed(5) ?? '-'}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: const Color(0xFF64748B),
                     ),
                   ),
-                );
-              }
+                ],
+              ],
+            ),
+          );
+        }
 
-              return Column(
+        return ListView(
+          padding: const EdgeInsets.all(14),
+          children: [
+            if (isWide)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (final location in locations) ...[
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppTheme.border),
-                      ),
+                  Expanded(
+                    child: AppSectionCard(
+                      title: 'Firma Özeti',
+                      subtitle: 'Temel cari ve kimlik bilgileri',
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            location.title,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w700),
+                          _InfoRow(label: 'Firma Adı', value: detail.name),
+                          const Gap(10),
+                          _InfoRow(label: 'Şehir', value: detail.city ?? '—'),
+                          const Gap(10),
+                          _InfoRow(
+                            label: 'Adres',
+                            value: detail.address ?? '—',
                           ),
-                          if (location.description?.trim().isNotEmpty ?? false)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Text(
-                                location.description!,
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: const Color(0xFF475569)),
-                              ),
-                            ),
-                          if (location.address?.trim().isNotEmpty ?? false)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                location.address!,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ),
-                          if (location.locationLat != null ||
-                              location.locationLng != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                'Konum: ${location.locationLat?.toStringAsFixed(5) ?? '-'}, ${location.locationLng?.toStringAsFixed(5) ?? '-'}',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: const Color(0xFF64748B)),
-                              ),
-                            ),
+                          const Gap(10),
+                          _InfoRow(
+                            label: 'Direktör Ad Soyad',
+                            value: detail.directorName ?? '—',
+                          ),
+                          const Gap(10),
+                          _InfoRow(label: 'Kayıt Tarihi', value: date),
                         ],
                       ),
                     ),
-                    const Gap(10),
-                  ],
+                  ),
+                  const Gap(12),
+                  Expanded(
+                    child: AppSectionCard(
+                      title: 'İletişim ve Vergi',
+                      subtitle: 'Telefon, mail ve müşteri sicil alanları',
+                      child: Column(
+                        children: [
+                          _InfoRow(
+                            label: 'E-posta',
+                            value: detail.email ?? '—',
+                          ),
+                          const Gap(10),
+                          _InfoRow(label: 'VKN', value: detail.vkn ?? '—'),
+                          const Gap(10),
+                          _InfoRow(
+                            label: 'TCKN-MŞ',
+                            value: detail.tcknMs ?? '—',
+                          ),
+                          const Gap(10),
+                          _InfoRow(
+                            label: detail.phone1Title ?? 'Telefon 1',
+                            value: detail.phone1 ?? '—',
+                          ),
+                          const Gap(10),
+                          _InfoRow(
+                            label: detail.phone2Title ?? 'Telefon 2',
+                            value: detail.phone2 ?? '—',
+                          ),
+                          const Gap(10),
+                          _InfoRow(
+                            label: detail.phone3Title ?? 'Telefon 3',
+                            value: detail.phone3 ?? '—',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
-              );
-            },
-            loading: () => const LinearProgressIndicator(minHeight: 2),
-            error: (error, stackTrace) => const SizedBox.shrink(),
-          ),
-          if (detail.notes?.trim().isNotEmpty ?? false) ...[
-            const Gap(16),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.border),
-              ),
-              child: Text(
-                detail.notes!,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF0F172A),
+              )
+            else ...[
+              AppSectionCard(
+                title: 'Firma Özeti',
+                child: Column(
+                  children: [
+                    _InfoRow(label: 'Firma Adı', value: detail.name),
+                    const Gap(10),
+                    _InfoRow(label: 'Şehir', value: detail.city ?? '—'),
+                    const Gap(10),
+                    _InfoRow(label: 'Adres', value: detail.address ?? '—'),
+                    const Gap(10),
+                    _InfoRow(
+                      label: 'Direktör Ad Soyad',
+                      value: detail.directorName ?? '—',
+                    ),
+                  ],
                 ),
+              ),
+              const Gap(12),
+              AppSectionCard(
+                title: 'İletişim ve Vergi',
+                child: Column(
+                  children: [
+                    _InfoRow(label: 'E-posta', value: detail.email ?? '—'),
+                    const Gap(10),
+                    _InfoRow(label: 'VKN', value: detail.vkn ?? '—'),
+                    const Gap(10),
+                    _InfoRow(label: 'TCKN-MŞ', value: detail.tcknMs ?? '—'),
+                  ],
+                ),
+              ),
+            ],
+            const Gap(12),
+            AppSectionCard(
+              title: 'Konumlar',
+              subtitle: 'Kayıtlı operasyon noktaları ve açıklamaları',
+              child: locationsAsync.when(
+                data: (locations) {
+                  if (locations.isEmpty) {
+                    return Text(
+                      'Henüz müşteri konumu eklenmemiş.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
+                    );
+                  }
+                  return Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      for (final location in locations)
+                        SizedBox(
+                          width: isWide
+                              ? (constraints.maxWidth - 38) / 2
+                              : double.infinity,
+                          child: buildLocationCard(location),
+                        ),
+                    ],
+                  );
+                },
+                loading: () => const LinearProgressIndicator(minHeight: 2),
+                error: (error, stackTrace) => const SizedBox.shrink(),
+              ),
+            ),
+            if (detail.notes?.trim().isNotEmpty ?? false) ...[
+              const Gap(12),
+              AppSectionCard(
+                title: 'Notlar',
+                child: Text(
+                  detail.notes!,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+            ],
+            const Gap(12),
+            AppSectionCard(
+              title: 'Hızlı Aksiyonlar',
+              subtitle:
+                  'İş emri, hat, lisans ve servis süreçlerini müşteri bazında başlatın.',
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: const Icon(
+                      Icons.flash_on_rounded,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                  const Gap(12),
+                  Expanded(
+                    child: Text(
+                      'Bu müşteri için operasyon başlatmak, adres ve iletişim bilgisini yeniden kullanmak için ana merkez ekranı kullanın.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
-          const Gap(18),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppTheme.border),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppTheme.primary.withValues(alpha: 0.18),
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.flash_on_rounded,
-                    color: AppTheme.primary,
-                  ),
-                ),
-                const Gap(12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hızlı Aksiyonlar',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const Gap(2),
-                      Text(
-                        'Yeni iş emri açın, hat/ lisans ekleyin veya servis kaydı başlatın.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -2329,9 +2430,10 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 140,
+          width: 132,
           child: Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(

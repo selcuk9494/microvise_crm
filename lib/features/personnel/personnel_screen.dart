@@ -486,24 +486,16 @@ class _CreatePersonnelDialogState
       final email = _emailController.text.trim();
       final password = _passwordController.text;
       final fullName = _fullNameController.text.trim();
-
-      final res = await client.auth.signUp(
-        email: email,
-        password: password,
-        data: {'full_name': fullName},
+      await client.rpc(
+        'admin_create_personnel',
+        params: {
+          'p_email': email,
+          'p_password': password,
+          'p_full_name': fullName,
+          'p_role': _role,
+          'p_page_permissions': _pagePermissions.toList(growable: false),
+        },
       );
-
-      if (res.user == null) {
-        throw const AuthException('Kullanıcı oluşturulamadı.');
-      }
-
-      await client.from('users').upsert({
-        'id': res.user!.id,
-        'full_name': fullName,
-        'email': email,
-        'role': _role,
-        'page_permissions': _pagePermissions.toList(growable: false),
-      });
 
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -636,7 +628,7 @@ class _CreatePersonnelDialogState
                     border: Border.all(color: AppTheme.border),
                   ),
                   child: Text(
-                    'Not: Supabase ayarlarında e-posta doğrulama açıksa, kullanıcı ilk girişte doğrulama gerektirebilir.',
+                    'Yeni kullanıcı admin yetkili güvenli akış ile oluşturulur; mevcut oturum etkilenmez.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: const Color(0xFF64748B),
                     ),
@@ -753,15 +745,20 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
       } else if (newPassword.isNotEmpty &&
           _emailController.text.trim().isNotEmpty) {
         try {
-          await client.auth.resetPasswordForEmail(_emailController.text.trim());
-          passwordMessage =
-              'Bilgiler güncellendi, şifre sıfırlama bağlantısı gönderildi.';
+          await client.rpc(
+            'admin_update_personnel_password',
+            params: {
+              'p_user_id': widget.user.id,
+              'p_password': newPassword,
+            },
+          );
+          passwordMessage = 'Bilgiler ve şifre güncellendi.';
         } on AuthException catch (e) {
           passwordMessage =
-              'Bilgiler güncellendi, şifre bağlantısı gönderilemedi: ${e.message}';
+              'Bilgiler güncellendi, şifre değiştirilemedi: ${e.message}';
         } catch (e) {
           passwordMessage =
-              'Bilgiler güncellendi, şifre bağlantısı gönderilemedi: $e';
+              'Bilgiler güncellendi, şifre değiştirilemedi: $e';
         }
       }
 
@@ -852,10 +849,10 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
                   decoration: InputDecoration(
                     labelText: client?.auth.currentUser?.id == widget.user.id
                         ? 'Yeni Şifre'
-                        : 'Şifre Sıfırlama',
+                        : 'Yeni Şifre',
                     hintText: client?.auth.currentUser?.id == widget.user.id
                         ? 'Boş bırakırsan değişmez'
-                        : 'Doldurursan sıfırlama bağlantısı gönderilir',
+                        : 'Boş bırakırsan değişmez',
                   ),
                   validator: (value) {
                     if ((value ?? '').isNotEmpty && value!.length < 6) {

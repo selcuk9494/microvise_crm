@@ -4,6 +4,7 @@ import 'package:gap/gap.dart';
 
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_section_card.dart';
 import '../definitions/definitions_screen.dart';
 import 'customer_model.dart';
 import 'customers_providers.dart';
@@ -205,11 +206,12 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   Widget build(BuildContext context) {
     final citiesAsync = ref.watch(cityDefinitionsProvider);
     return Dialog(
-      insetPadding: const EdgeInsets.all(24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       backgroundColor: Colors.transparent,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
+        constraints: const BoxConstraints(maxWidth: 900),
         child: AppCard(
+          padding: const EdgeInsets.all(18),
           child: Form(
             key: _formKey,
             child: SingleChildScrollView(
@@ -248,7 +250,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                       ),
                     ],
                   ),
-                  const Gap(20),
+                  const Gap(18),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -290,8 +292,9 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                     ),
                                   ),
                             ],
-                            onChanged: (value) =>
-                                setState(() => _cityController.text = value ?? ''),
+                            onChanged: (value) => setState(
+                              () => _cityController.text = value ?? '',
+                            ),
                             decoration: const InputDecoration(
                               labelText: 'Şehir',
                               prefixIcon: Icon(Icons.location_city_rounded),
@@ -319,7 +322,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                       ),
                     ],
                   ),
-                  const Gap(12),
+                  const Gap(14),
                   TextFormField(
                     controller: _addressController,
                     textInputAction: TextInputAction.next,
@@ -332,7 +335,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                       prefixIcon: Icon(Icons.location_on_outlined),
                     ),
                   ),
-                  const Gap(12),
+                  const Gap(14),
                   TextFormField(
                     controller: _directorNameController,
                     textInputAction: TextInputAction.next,
@@ -342,7 +345,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                       prefixIcon: Icon(Icons.person_pin_rounded),
                     ),
                   ),
-                  const Gap(12),
+                  const Gap(14),
                   Row(
                     children: [
                       Expanded(
@@ -391,7 +394,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                       ),
                     ],
                   ),
-                  const Gap(12),
+                  const Gap(14),
                   Row(
                     children: [
                       Expanded(
@@ -419,7 +422,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                       ),
                     ],
                   ),
-                  const Gap(12),
+                  const Gap(14),
                   Row(
                     children: [
                       Expanded(
@@ -447,7 +450,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                       ),
                     ],
                   ),
-                  const Gap(12),
+                  const Gap(14),
                   Row(
                     children: [
                       Expanded(
@@ -474,7 +477,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                       ),
                     ],
                   ),
-                  const Gap(12),
+                  const Gap(14),
                   SwitchListTile.adaptive(
                     value: _isActive,
                     contentPadding: EdgeInsets.zero,
@@ -488,19 +491,24 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                           : 'Pasif kayıtlar listede ayrı görünür.',
                     ),
                   ),
-                  const Gap(8),
-                  TextFormField(
-                    controller: _notesController,
-                    minLines: 3,
-                    maxLines: 5,
-                    decoration: const InputDecoration(
-                      labelText: 'Notlar',
-                      hintText: 'Müşteri ile ilgili kısa notlar',
-                      alignLabelWithHint: true,
-                      prefixIcon: Icon(Icons.notes_rounded),
+                  const Gap(10),
+                  AppSectionCard(
+                    title: 'İç Notlar',
+                    subtitle: 'Müşteriyle ilgili dahili notları burada tutun.',
+                    padding: const EdgeInsets.all(12),
+                    child: TextFormField(
+                      controller: _notesController,
+                      minLines: 3,
+                      maxLines: 5,
+                      decoration: const InputDecoration(
+                        labelText: 'Notlar',
+                        hintText: 'Müşteri ile ilgili kısa notlar',
+                        alignLabelWithHint: true,
+                        prefixIcon: Icon(Icons.notes_rounded),
+                      ),
                     ),
                   ),
-                  const Gap(16),
+                  const Gap(14),
                   Row(
                     children: [
                       Expanded(
@@ -550,7 +558,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                       ),
                     );
                   }),
-                  const Gap(20),
+                  const Gap(18),
                   Row(
                     children: [
                       Expanded(
@@ -837,13 +845,8 @@ class _CustomerLocationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
+    return AppSectionCard(
+      padding: const EdgeInsets.all(12),
       child: Column(
         children: [
           Row(
