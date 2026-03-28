@@ -134,6 +134,9 @@ class _DesktopShellState extends ConsumerState<_DesktopShell> {
                       onSignOut: () async {
                         final client = ref.read(supabaseClientProvider);
                         await client?.auth.signOut();
+                        if (context.mounted) {
+                          context.go('/giris');
+                        }
                       },
                     ),
                   ],
