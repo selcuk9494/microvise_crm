@@ -132,6 +132,10 @@ String _buildPrintableHtml(
         margin: 0 auto;
         padding: 2px 2px 8px;
       }
+      .sheet.kdv {
+        width: 760px;
+        padding: 6px 8px 12px;
+      }
       .top-code {
         text-align: right;
         font-size: 12px;
@@ -265,10 +269,55 @@ String _buildPrintableHtml(
       .page {
         position: relative;
       }
+      .sheet.kdv .top-code {
+        margin-bottom: 10px;
+      }
+      .sheet.kdv .title {
+        font-size: 20px;
+        margin: 4px 0 12px;
+      }
+      .sheet.kdv .office {
+        font-size: 16px;
+        line-height: 1.25;
+        margin-bottom: 10px;
+      }
+      .sheet.kdv .intro {
+        font-size: 14px;
+        line-height: 1.38;
+        margin-bottom: 12px;
+        max-width: 95%;
+      }
+      .sheet.kdv .line {
+        gap: 7px;
+        font-size: 14px;
+        line-height: 1.24;
+        margin: 3px 0;
+      }
+      .sheet.kdv .indent-1 { padding-left: 18px; }
+      .sheet.kdv .indent-2 { padding-left: 42px; }
+      .sheet.kdv .dotted {
+        min-width: 120px;
+        padding: 0 5px 2px;
+      }
+      .sheet.kdv .wide { min-width: 520px; }
+      .sheet.kdv .medium { min-width: 340px; }
+      .sheet.kdv .short { min-width: 170px; }
+      .sheet.kdv .signature-block {
+        width: 340px;
+        margin-top: 30px;
+      }
+      .sheet.kdv .signature-title {
+        font-size: 15px;
+        margin-bottom: 10px;
+      }
+      .sheet.kdv .signature-line {
+        font-size: 14px;
+        margin: 7px 0;
+      }
     </style>
   </head>
   <body>
-    <div class="sheet page">
+    <div class="sheet page ${kind == ApplicationPrintKind.kdv ? 'kdv' : 'kdv4a'}">
       <div class="top-code">$formCode</div>
       <div class="title">${escape(kind == ApplicationPrintKind.kdv ? 'ÖDEME KAYDEDİCİ CİHAZ ONAY TALEP FORMU' : settings.kdv4aTitle)}</div>
       $bodyHtml

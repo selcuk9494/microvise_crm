@@ -22,7 +22,7 @@ final customerDetailProvider = FutureProvider.family<CustomerDetail, String>((
   final row = await client
       .from('customers')
       .select(
-        'id,name,city,address,email,vkn,tckn_ms,notes,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,is_active,created_at',
+        'id,name,city,address,director_name,email,vkn,tckn_ms,notes,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,is_active,created_at',
       )
       .eq('id', customerId)
       .maybeSingle();
@@ -142,6 +142,7 @@ class CustomerDetailScreen extends ConsumerWidget {
                 name: 'Microvise Teknoloji A.Ş.',
                 city: 'İstanbul',
                 address: 'Örnek Mah. No:1',
+                directorName: 'Ahmet Yılmaz',
                 email: 'ornek@firma.com',
                 vkn: '1234567890',
                 tcknMs: 'MS-1001',
@@ -328,6 +329,8 @@ class _GeneralTab extends ConsumerWidget {
           _InfoRow(label: 'Adres', value: detail.address ?? '—'),
           const Gap(10),
           _InfoRow(label: 'E-posta', value: detail.email ?? '—'),
+          const Gap(10),
+          _InfoRow(label: 'Direktör Ad Soyad', value: detail.directorName ?? '—'),
           const Gap(10),
           _InfoRow(label: 'VKN', value: detail.vkn ?? '—'),
           const Gap(10),
@@ -2404,6 +2407,7 @@ Future<void> _showEditCustomerDialog(
       name: detail.name,
       city: detail.city,
       address: detail.address,
+      directorName: detail.directorName,
       email: detail.email,
       vkn: detail.vkn,
       tcknMs: detail.tcknMs,
@@ -2431,6 +2435,7 @@ class CustomerDetail {
     required this.name,
     required this.city,
     required this.address,
+    required this.directorName,
     required this.email,
     required this.vkn,
     required this.tcknMs,
@@ -2449,6 +2454,7 @@ class CustomerDetail {
   final String name;
   final String? city;
   final String? address;
+  final String? directorName;
   final String? email;
   final String? vkn;
   final String? tcknMs;
@@ -2468,6 +2474,7 @@ class CustomerDetail {
       name: (json['name'] ?? '').toString(),
       city: json['city']?.toString(),
       address: json['address']?.toString(),
+      directorName: json['director_name']?.toString(),
       email: json['email']?.toString(),
       vkn: json['vkn']?.toString(),
       tcknMs: json['tckn_ms']?.toString(),

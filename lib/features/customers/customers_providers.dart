@@ -162,7 +162,7 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
   final rows = await client
       .from('customers')
       .select(
-        'id,name,city,address,email,vkn,tckn_ms,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,notes,is_active,created_at',
+        'id,name,city,address,director_name,email,vkn,tckn_ms,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,notes,is_active,created_at',
       )
       .inFilter('id', currentPageIds);
   final rowById = {

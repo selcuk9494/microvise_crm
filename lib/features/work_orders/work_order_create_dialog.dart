@@ -285,7 +285,7 @@ class _CreateWorkOrderDialogState
 
     setState(() => _saving = true);
     try {
-      final payload = {
+      final payload = <String, dynamic>{
         'customer_id': customerId,
         'branch_id': _selectedBranchId,
         'work_order_type_id': _selectedWorkOrderTypeId,
@@ -308,17 +308,21 @@ class _CreateWorkOrderDialogState
       };
 
       if (widget.initialOrder == null) {
-        await client.from('work_orders').insert({
+        await _saveWorkOrderPayload(
+          client,
+          payload: {
           ...payload,
           'status': 'open',
           'is_active': true,
           'created_by': client.auth.currentUser?.id,
-        });
+          },
+        );
       } else {
-        await client
-            .from('work_orders')
-            .update(payload)
-            .eq('id', widget.initialOrder!.id);
+        await _saveWorkOrderPayload(
+          client,
+          payload: payload,
+          workOrderId: widget.initialOrder!.id,
+        );
       }
 
       if (!mounted) return;
@@ -334,13 +338,57 @@ class _CreateWorkOrderDialogState
           ),
         ),
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('İş emri oluşturulamadı.')));
+      ).showSnackBar(
+        SnackBar(content: Text('İş emri oluşturulamadı: $e')),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _saveWorkOrderPayload(
+    dynamic client, {
+    required Map<String, dynamic> payload,
+    String? workOrderId,
+  }) async {
+    final safePayload = Map<String, dynamic>.from(payload);
+    const fallbackColumns = {
+      'address',
+      'city',
+      'contact_phone',
+      'location_link',
+      'work_order_type_id',
+    };
+
+    while (true) {
+      try {
+        if (workOrderId == null) {
+          await client.from('work_orders').insert(safePayload);
+        } else {
+          await client
+              .from('work_orders')
+              .update(safePayload)
+              .eq('id', workOrderId);
+        }
+        return;
+      } catch (e) {
+        final message = e.toString();
+        final matchedColumn = fallbackColumns.firstWhere(
+          (column) =>
+              message.contains("'$column' column") ||
+              message.contains('column "$column"') ||
+              message.contains("Could not find the '$column' column"),
+          orElse: () => '',
+        );
+        if (matchedColumn.isEmpty || !safePayload.containsKey(matchedColumn)) {
+          rethrow;
+        }
+        safePayload.remove(matchedColumn);
+      }
     }
   }
 

@@ -14,6 +14,7 @@ class CustomerFormData {
     required this.name,
     this.city,
     this.address,
+    this.directorName,
     this.email,
     this.vkn,
     this.tcknMs,
@@ -32,6 +33,7 @@ class CustomerFormData {
   final String name;
   final String? city;
   final String? address;
+  final String? directorName;
   final String? email;
   final String? vkn;
   final String? tcknMs;
@@ -83,6 +85,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _cityController;
   late final TextEditingController _addressController;
+  late final TextEditingController _directorNameController;
   late final TextEditingController _emailController;
   late final TextEditingController _vknController;
   late final TextEditingController _tcknMsController;
@@ -105,6 +108,9 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     _nameController = TextEditingController(text: initial?.name ?? '');
     _cityController = TextEditingController(text: initial?.city ?? '');
     _addressController = TextEditingController(text: initial?.address ?? '');
+    _directorNameController = TextEditingController(
+      text: initial?.directorName ?? '',
+    );
     _emailController = TextEditingController(text: initial?.email ?? '');
     _vknController = TextEditingController(text: initial?.vkn ?? '');
     _tcknMsController = TextEditingController(text: initial?.tcknMs ?? '');
@@ -138,6 +144,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     _nameController.dispose();
     _cityController.dispose();
     _addressController.dispose();
+    _directorNameController.dispose();
     _emailController.dispose();
     _vknController.dispose();
     _tcknMsController.dispose();
@@ -323,6 +330,16 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                       hintText: 'Müşterinin ana adresi',
                       alignLabelWithHint: true,
                       prefixIcon: Icon(Icons.location_on_outlined),
+                    ),
+                  ),
+                  const Gap(12),
+                  TextFormField(
+                    controller: _directorNameController,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Direktör Ad Soyad',
+                      hintText: 'Örn. Ahmet Yılmaz',
+                      prefixIcon: Icon(Icons.person_pin_rounded),
                     ),
                   ),
                   const Gap(12),
@@ -603,6 +620,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       'name': _nameController.text.trim(),
       'city': _nullIfEmpty(_cityController.text),
       'address': _nullIfEmpty(_addressController.text),
+      'director_name': _nullIfEmpty(_directorNameController.text),
       'email': _nullIfEmpty(_emailController.text),
       'vkn': normalizedVkn,
       'tckn_ms': normalizedTcknMs,

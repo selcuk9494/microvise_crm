@@ -786,6 +786,9 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
 
     setState(() => _saving = true);
     try {
+      final isSelf = client.auth.currentUser?.id == widget.user.id;
+      final newPassword = _passwordController.text.trim();
+
       await client
           .from('users')
           .update({
@@ -795,31 +798,49 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
           })
           .eq('id', widget.user.id);
 
-      final newPassword = _passwordController.text.trim();
-      final isSelf = client.auth.currentUser?.id == widget.user.id;
+      String? passwordMessage;
       if (newPassword.isNotEmpty && isSelf) {
-        await client.auth.updateUser(UserAttributes(password: newPassword));
+        try {
+          await client.auth.updateUser(UserAttributes(password: newPassword));
+          passwordMessage = 'Bilgiler ve şifre güncellendi.';
+        } on AuthException catch (e) {
+          passwordMessage =
+              'Bilgiler güncellendi, şifre değiştirilemedi: ${e.message}';
+        } catch (e) {
+          passwordMessage =
+              'Bilgiler güncellendi, şifre değiştirilemedi: $e';
+        }
       } else if (newPassword.isNotEmpty && _emailController.text.trim().isNotEmpty) {
-        await client.auth.resetPasswordForEmail(_emailController.text.trim());
+        try {
+          await client.auth.resetPasswordForEmail(_emailController.text.trim());
+          passwordMessage =
+              'Bilgiler güncellendi, şifre sıfırlama bağlantısı gönderildi.';
+        } on AuthException catch (e) {
+          passwordMessage =
+              'Bilgiler güncellendi, şifre bağlantısı gönderilemedi: ${e.message}';
+        } catch (e) {
+          passwordMessage =
+              'Bilgiler güncellendi, şifre bağlantısı gönderilemedi: $e';
+        }
       }
 
       ref.invalidate(personnelUsersProvider);
       ref.invalidate(currentUserProfileProvider);
       if (!mounted) return;
       Navigator.of(context).pop();
-      final passwordMessage =
-          newPassword.isEmpty
-              ? 'Personel bilgisi güncellendi.'
-              : isSelf
-              ? 'Bilgiler ve şifre güncellendi.'
-              : 'Bilgiler güncellendi, şifre sıfırlama bağlantısı gönderildi.';
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(passwordMessage)));
-    } catch (_) {
+      ).showSnackBar(
+        SnackBar(
+          content: Text(
+            passwordMessage ?? 'Personel bilgisi güncellendi.',
+          ),
+        ),
+      );
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Personel bilgisi güncellenemedi.')),
+        SnackBar(content: Text('Personel bilgisi güncellenemedi: $e')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);

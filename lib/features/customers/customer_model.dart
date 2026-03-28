@@ -4,6 +4,7 @@ class Customer {
     required this.name,
     required this.city,
     required this.address,
+    required this.directorName,
     required this.email,
     required this.phone1,
     required this.phone1Title,
@@ -23,6 +24,7 @@ class Customer {
   final String name;
   final String? city;
   final String? address;
+  final String? directorName;
   final String? email;
   final String? phone1;
   final String? phone1Title;
@@ -43,6 +45,7 @@ class Customer {
       name: (json['name'] ?? '').toString(),
       city: json['city']?.toString(),
       address: json['address']?.toString(),
+      directorName: json['director_name']?.toString(),
       email: json['email']?.toString(),
       phone1: json['phone_1']?.toString(),
       phone1Title: json['phone_1_title']?.toString(),

@@ -30,7 +30,7 @@ final applicationFormCustomersProvider = FutureProvider<List<_CustomerOption>>((
   while (true) {
     final rows = await client
         .from('customers')
-        .select('id,name,vkn,tckn_ms,city,address,is_active')
+        .select('id,name,vkn,tckn_ms,city,address,director_name,is_active')
         .range(from, from + pageSize - 1);
     final batch = (rows as List)
         .map((row) => _CustomerOption.fromJson(row as Map<String, dynamic>))
@@ -888,7 +888,7 @@ class _ApplicationFormDialogState
   String? _selectedModelId;
   String? _selectedFiscalSymbolId;
   String? _selectedStockProductId;
-  String? _selectedBusinessActivityId;
+  List<String> _selectedBusinessActivityIds = [];
   bool _saving = false;
 
   @override
@@ -979,14 +979,17 @@ class _ApplicationFormDialogState
           )
           .map((item) => item.id)
           .firstOrNull;
-      _selectedBusinessActivityId ??= activities
-          .where(
-            (item) =>
-                _sortKey(item.name) ==
-                _sortKey(initial.businessActivityName ?? ''),
-          )
-          .map((item) => item.id)
-          .firstOrNull;
+      if (_selectedBusinessActivityIds.isEmpty) {
+        final selectedNames = (initial.businessActivityName ?? '')
+            .split(',')
+            .map((item) => _sortKey(item))
+            .where((item) => item.isNotEmpty)
+            .toSet();
+        _selectedBusinessActivityIds = activities
+            .where((item) => selectedNames.contains(_sortKey(item.name)))
+            .map((item) => item.id)
+            .toList(growable: false);
+      }
     });
   }
 
@@ -1030,6 +1033,7 @@ class _ApplicationFormDialogState
       _selectedCustomerId = created.id;
       _customerController.text = created.name;
       _workAddressController.text = (created.address ?? '').trim();
+      _directorController.text = (created.directorName ?? '').trim();
       if (_fileRegistryController.text.trim().isEmpty) {
         _fileRegistryController.text = created.vkn ?? '';
       }
@@ -1059,6 +1063,7 @@ class _ApplicationFormDialogState
       _selectedCustomerId = selected.id;
       _customerController.text = selected.name;
       _workAddressController.text = (selected.address ?? '').trim();
+      _directorController.text = (selected.directorName ?? '').trim();
       _fileRegistryController.text = selected.vkn ?? '';
       _customerTcknMsController.text = selected.tcknMs ?? '';
       final city = ref
@@ -1144,9 +1149,9 @@ class _ApplicationFormDialogState
     final stockProduct = stockProducts
         ?.where((item) => item.id == _selectedStockProductId)
         .firstOrNull;
-    final activity = activities
-        ?.where((item) => item.id == _selectedBusinessActivityId)
-        .firstOrNull;
+    final selectedActivities = (activities ?? const <BusinessActivityTypeDefinition>[])
+        .where((item) => _selectedBusinessActivityIds.contains(item.id))
+        .toList(growable: false);
 
     setState(() => _saving = true);
     try {
@@ -1185,8 +1190,11 @@ class _ApplicationFormDialogState
             ? null
             : _accountingOfficeController.text.trim(),
         'okc_start_date': DateFormat('yyyy-MM-dd').format(_okcStartDate),
-        'business_activity_type_id': activity?.id,
-        'business_activity_name': activity?.name,
+        'business_activity_type_id': selectedActivities.firstOrNull?.id,
+        'business_activity_name': selectedActivities
+            .map((item) => item.name.trim())
+            .where((item) => item.isNotEmpty)
+            .join(', '),
         'invoice_number': _invoiceNumberController.text.trim().isEmpty
             ? null
             : _invoiceNumberController.text.trim(),
@@ -1303,11 +1311,8 @@ class _ApplicationFormDialogState
         ),
       ),
       _FormRow(
-        label: 'Direktör',
-        child: _ResponsiveFieldGroup(
-          left: _ApplicationTextField(controller: _directorController),
-          right: _ApplicationTextField(controller: _accountingOfficeController),
-        ),
+        label: 'Direktör Ad Soyad',
+        child: _ApplicationTextField(controller: _directorController),
       ),
       _FormRow(
         label: 'Markası ve Modeli',
@@ -1401,20 +1406,11 @@ class _ApplicationFormDialogState
             error: (error, stackTrace) => const _ContentError(),
           ),
           right: activitiesAsync.when(
-            data: (items) => _ApplicationDropdown<String>(
-              value: _selectedBusinessActivityId,
-              items: items
-                  .where((item) => item.isActive)
-                  .map(
-                    (item) => DropdownMenuItem<String>(
-                      value: item.id,
-                      child: Text(item.name),
-                    ),
-                  )
-                  .toList(growable: false),
+            data: (items) => _BusinessActivityMultiSelectField(
+              items: items.where((item) => item.isActive).toList(growable: false),
+              selectedIds: _selectedBusinessActivityIds,
               onChanged: (value) =>
-                  setState(() => _selectedBusinessActivityId = value),
-              validator: (value) => value == null ? 'Meslek türü seçin.' : null,
+                  setState(() => _selectedBusinessActivityIds = value),
             ),
             loading: () => const _ContentLoading(),
             error: (error, stackTrace) => const _ContentError(),
@@ -1444,11 +1440,11 @@ class _ApplicationFormDialogState
       backgroundColor: Colors.transparent,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: isMobile ? 520 : 1160,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.96,
+          maxWidth: isMobile ? 560 : 1240,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.985,
         ),
         child: AppCard(
-          padding: EdgeInsets.all(isMobile ? 10 : 12),
+          padding: EdgeInsets.all(isMobile ? 12 : 16),
           child: Form(
             key: _formKey,
             child: SingleChildScrollView(
@@ -1492,7 +1488,7 @@ class _ApplicationFormDialogState
                       ),
                     ],
                   ),
-                  const Gap(8),
+                  const Gap(10),
                   isMobile
                       ? Container(
                           decoration: BoxDecoration(
@@ -2013,10 +2009,10 @@ class _FormRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 138,
+          width: 150,
           child: Container(
-            constraints: const BoxConstraints(minHeight: 34),
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+            constraints: const BoxConstraints(minHeight: 44),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: const Color(0xFFFFF15C),
               border: Border(
@@ -2035,8 +2031,8 @@ class _FormRow extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: const Color(0xFF3E3200),
-                  fontSize: 10.5,
-                  height: 1.0,
+                  fontSize: 12,
+                  height: 1.08,
                 ),
               ),
             ),
@@ -2044,8 +2040,8 @@ class _FormRow extends StatelessWidget {
         ),
         Expanded(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 34),
-            padding: const EdgeInsets.all(4),
+            constraints: const BoxConstraints(minHeight: 44),
+            padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border(
@@ -2079,7 +2075,7 @@ class _ResponsiveFieldGroup extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: left),
-        const Gap(4),
+        const Gap(6),
         Expanded(child: right),
       ],
     );
@@ -2109,14 +2105,14 @@ class _ApplicationTextField extends StatelessWidget {
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
         color: const Color(0xFF111827),
         fontWeight: FontWeight.w600,
-        fontSize: 10.5,
+        fontSize: 12,
       ),
       decoration: const InputDecoration(
         isDense: true,
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(),
-        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       ),
     );
   }
@@ -2147,7 +2143,7 @@ class _ApplicationDropdown<T> extends StatelessWidget {
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
         color: const Color(0xFF111827),
         fontWeight: FontWeight.w600,
-        fontSize: 10.5,
+        fontSize: 12,
       ),
       decoration: InputDecoration(
         isDense: true,
@@ -2155,7 +2151,7 @@ class _ApplicationDropdown<T> extends StatelessWidget {
         fillColor: Colors.white,
         border: const OutlineInputBorder(),
         hintText: hintText,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       ),
     );
   }
@@ -2191,7 +2187,172 @@ class _DateField extends StatelessWidget {
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
             color: const Color(0xFF111827),
             fontWeight: FontWeight.w600,
-            fontSize: 10.5,
+            fontSize: 12,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BusinessActivityMultiSelectField extends StatelessWidget {
+  const _BusinessActivityMultiSelectField({
+    required this.items,
+    required this.selectedIds,
+    required this.onChanged,
+  });
+
+  final List<BusinessActivityTypeDefinition> items;
+  final List<String> selectedIds;
+  final ValueChanged<List<String>> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedItems = items
+        .where((item) => selectedIds.contains(item.id))
+        .map((item) => item.name)
+        .toList(growable: false);
+    final label = selectedItems.isEmpty
+        ? 'Meslek türü seçin'
+        : selectedItems.join(', ');
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () async {
+        final selected = await showDialog<List<String>>(
+          context: context,
+          builder: (context) => _BusinessActivityPickerDialog(
+            items: items,
+            selectedIds: selectedIds,
+          ),
+        );
+        if (selected != null) {
+          onChanged(selected);
+        }
+      },
+      child: InputDecorator(
+        decoration: const InputDecoration(
+          isDense: true,
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(),
+          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          suffixIcon: Icon(Icons.arrow_drop_down_rounded),
+        ),
+        child: Text(
+          label,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            color: selectedItems.isEmpty
+                ? AppTheme.textMuted
+                : const Color(0xFF111827),
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BusinessActivityPickerDialog extends StatefulWidget {
+  const _BusinessActivityPickerDialog({
+    required this.items,
+    required this.selectedIds,
+  });
+
+  final List<BusinessActivityTypeDefinition> items;
+  final List<String> selectedIds;
+
+  @override
+  State<_BusinessActivityPickerDialog> createState() =>
+      _BusinessActivityPickerDialogState();
+}
+
+class _BusinessActivityPickerDialogState
+    extends State<_BusinessActivityPickerDialog> {
+  late final Set<String> _selectedIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIds = widget.selectedIds.toSet();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 560),
+        child: AppCard(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Faaliyet Türleri',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const Gap(8),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: widget.items.length,
+                  separatorBuilder: (context, index) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final item = widget.items[index];
+                    return CheckboxListTile(
+                      value: _selectedIds.contains(item.id),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(item.name),
+                      onChanged: (value) {
+                        setState(() {
+                          if (value ?? false) {
+                            _selectedIds.add(item.id);
+                          } else {
+                            _selectedIds.remove(item.id);
+                          }
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+              const Gap(12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Vazgeç'),
+                    ),
+                  ),
+                  const Gap(12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(
+                        context,
+                      ).pop(_selectedIds.toList(growable: false)),
+                      child: const Text('Seç'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
@@ -2407,6 +2568,7 @@ class _CustomerOption {
     required this.tcknMs,
     required this.city,
     required this.address,
+    required this.directorName,
     required this.isActive,
   });
 
@@ -2416,6 +2578,7 @@ class _CustomerOption {
   final String? tcknMs;
   final String? city;
   final String? address;
+  final String? directorName;
   final bool isActive;
 
   factory _CustomerOption.fromJson(Map<String, dynamic> json) {
@@ -2426,6 +2589,7 @@ class _CustomerOption {
       tcknMs: json['tckn_ms']?.toString(),
       city: json['city']?.toString(),
       address: json['address']?.toString(),
+      directorName: json['director_name']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
     );
   }

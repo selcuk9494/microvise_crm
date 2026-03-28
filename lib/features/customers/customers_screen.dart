@@ -765,6 +765,7 @@ class _CustomerCard extends ConsumerWidget {
                           name: customer.name,
                           city: customer.city,
                           address: customer.address,
+                          directorName: customer.directorName,
                           email: customer.email,
                           vkn: customer.vkn,
                           tcknMs: customer.tcknMs,
