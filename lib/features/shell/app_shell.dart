@@ -39,6 +39,21 @@ class _DesktopShell extends ConsumerStatefulWidget {
 class _DesktopShellState extends ConsumerState<_DesktopShell> {
   bool _formsExpanded = false;
 
+  Future<void> _signOut() async {
+    final client = ref.read(supabaseClientProvider);
+    try {
+      await client?.auth.signOut();
+      ref.invalidate(currentUserProfileProvider);
+      if (!mounted) return;
+      context.go('/giris');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Çıkış yapılamadı: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
@@ -131,13 +146,7 @@ class _DesktopShellState extends ConsumerState<_DesktopShell> {
                     ),
                     const Gap(12),
                     _AccountCard(
-                      onSignOut: () async {
-                        final client = ref.read(supabaseClientProvider);
-                        await client?.auth.signOut();
-                        if (context.mounted) {
-                          context.go('/giris');
-                        }
-                      },
+                      onSignOut: _signOut,
                     ),
                   ],
                 ),
@@ -334,60 +343,80 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-class _ProfileButton extends StatelessWidget {
+class _ProfileButton extends ConsumerWidget {
   const _ProfileButton();
 
   @override
-  Widget build(BuildContext context) {
-    return Consumer(
-      builder: (context, ref, _) {
-        final profile = ref.watch(currentUserProfileProvider).value;
-        final displayName = profile?.fullName?.trim().isNotEmpty == true
-            ? profile!.fullName!.trim()
-            : 'Profil';
-        final roleName = profile?.role == 'admin' ? 'Admin' : 'Personel';
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(currentUserProfileProvider).value;
+    final displayName = profile?.fullName?.trim().isNotEmpty == true
+        ? profile!.fullName!.trim()
+        : 'Profil';
+    final roleName = profile?.role == 'admin' ? 'Admin' : 'Personel';
+    final client = ref.read(supabaseClientProvider);
 
-        return MenuAnchor(
-          builder: (context, controller, child) => InkWell(
-            borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-            onTap: () =>
-                controller.isOpen ? controller.close() : controller.open(),
-            child: Container(
-              height: 40,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceMuted,
-                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                border: Border.all(color: AppTheme.border),
-              ),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 11,
-                    backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
-                    child: const Icon(
-                      Icons.person_rounded,
-                      size: 14,
-                      color: AppTheme.primary,
-                    ),
-                  ),
-                  const Gap(8),
-                  Text(
-                    displayName,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const Gap(6),
-                  const Icon(Icons.expand_more_rounded, size: 18),
-                ],
-              ),
-            ),
+    Future<void> signOut() async {
+      try {
+        await client?.auth.signOut();
+        ref.invalidate(currentUserProfileProvider);
+        if (!context.mounted) return;
+        context.go('/giris');
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Çıkış yapılamadı: $e')));
+      }
+    }
+
+    return MenuAnchor(
+      builder: (context, controller, child) => InkWell(
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+        onTap: () =>
+            controller.isOpen ? controller.close() : controller.open(),
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceMuted,
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            border: Border.all(color: AppTheme.border),
           ),
-          menuChildren: [
-            MenuItemButton(onPressed: () {}, child: Text(roleName)),
-          ],
-        );
-      },
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 11,
+                backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
+                child: const Icon(
+                  Icons.person_rounded,
+                  size: 14,
+                  color: AppTheme.primary,
+                ),
+              ),
+              const Gap(8),
+              Text(
+                displayName,
+                style: Theme.of(context).textTheme.bodyMedium,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const Gap(6),
+              const Icon(Icons.expand_more_rounded, size: 18),
+            ],
+          ),
+        ),
+      ),
+      menuChildren: [
+        MenuItemButton(
+          onPressed: null,
+          leadingIcon: const Icon(Icons.shield_outlined, size: 18),
+          child: Text(roleName),
+        ),
+        MenuItemButton(
+          onPressed: signOut,
+          leadingIcon: const Icon(Icons.logout_rounded, size: 18),
+          child: const Text('Çıkış Yap'),
+        ),
+      ],
     );
   }
 }
