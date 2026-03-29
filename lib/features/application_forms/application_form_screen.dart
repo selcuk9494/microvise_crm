@@ -10,6 +10,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../billing/invoice_queue_helper.dart';
 import '../customers/web_download_helper.dart'
     if (dart.library.io) '../customers/io_download_helper.dart';
 import 'application_form_model.dart';
@@ -108,6 +109,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   final _dateFormat = DateFormat('dd.MM.yyyy', 'tr_TR');
   final Set<String> _selectedRecordIds = <String>{};
   bool _showPassive = false;
+  bool _todayOnly = false;
   DateTime? _fromDate;
   DateTime? _toDate;
 
@@ -566,14 +568,27 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       ],
       body: recordsAsync.when(
         data: (records) {
-          final filtered = _filterRecords(records)
+          final baseFiltered = _filterRecords(records, includeTodayOnly: false)
               .where((item) => _showPassive || item.isActive)
               .toList(growable: false);
+          final filtered = _todayOnly
+              ? baseFiltered
+                    .where(
+                      (item) => _isSameDay(
+                        item.applicationDate,
+                        DateTime.now(),
+                      ),
+                    )
+                    .toList(growable: false)
+              : baseFiltered;
           final selectedRecords = filtered
               .where((record) => _selectedRecordIds.contains(record.id))
               .toList(growable: false);
           final allFilteredSelected =
               filtered.isNotEmpty && selectedRecords.length == filtered.length;
+          final todayCount = baseFiltered
+              .where((item) => _isSameDay(item.applicationDate, DateTime.now()))
+              .length;
           return Column(
             children: [
               AppCard(
@@ -655,6 +670,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                   _registryFilterController.clear();
                                   _fromDate = null;
                                   _toDate = null;
+                                  _todayOnly = false;
                                 });
                               },
                               icon: const Icon(Icons.filter_alt_off_rounded),
@@ -669,6 +685,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                 _registryFilterController.clear();
                                 _fromDate = null;
                                 _toDate = null;
+                                _todayOnly = false;
                               });
                             },
                             icon: const Icon(Icons.filter_alt_off_rounded),
@@ -699,16 +716,11 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                         ),
                         _CompactStat(
                           label: 'Bugün',
-                          value: filtered
-                              .where(
-                                (item) => _isSameDay(
-                                  item.applicationDate,
-                                  DateTime.now(),
-                                ),
-                              )
-                              .length
-                              .toString(),
+                          value: todayCount.toString(),
                           icon: Icons.today_rounded,
+                          selected: _todayOnly,
+                          onTap: () =>
+                              setState(() => _todayOnly = !_todayOnly),
                         ),
                       ],
                     ),
@@ -828,6 +840,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
 
   List<ApplicationFormRecord> _filterRecords(
     List<ApplicationFormRecord> input,
+    {bool includeTodayOnly = true}
   ) {
     final customerQuery = _sortKey(_customerFilterController.text);
     final registryQuery = _sortKey(_registryFilterController.text);
@@ -868,6 +881,12 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
               item.applicationDate.day,
             );
             if (target.isAfter(to)) return false;
+          }
+
+          if (includeTodayOnly &&
+              _todayOnly &&
+              !_isSameDay(item.applicationDate, DateTime.now())) {
+            return false;
           }
 
           return true;
@@ -1237,6 +1256,22 @@ class _ApplicationFormDialogState
               )
               .single();
 
+      if (!widget.isEdit) {
+        final modelName = model?.name.trim();
+        await enqueueInvoiceItem(
+          client,
+          customerId: customer?.id,
+          itemType: 'application_form',
+          sourceTable: 'application_forms',
+          sourceId: inserted['id'].toString(),
+          description:
+              'Başvuru Formu - ${_customerController.text.trim()}'
+              '${modelName != null && modelName.isNotEmpty ? ' / $modelName' : ''}',
+          sourceEvent: 'application_form_created',
+          sourceLabel: 'Başvuru Formu',
+        );
+      }
+
       ref.invalidate(applicationFormsProvider);
       if (!mounted) return;
       Navigator.of(context).pop(ApplicationFormRecord.fromJson(inserted));
@@ -1468,11 +1503,11 @@ class _ApplicationFormDialogState
       backgroundColor: Colors.transparent,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: isMobile ? 560 : 1240,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.985,
+          maxWidth: isMobile ? 620 : 1440,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.992,
         ),
         child: AppCard(
-          padding: EdgeInsets.all(isMobile ? 12 : 16),
+          padding: EdgeInsets.all(isMobile ? 14 : 20),
           child: Form(
             key: _formKey,
             child: SingleChildScrollView(
@@ -1869,25 +1904,36 @@ class _CompactStat extends StatelessWidget {
     required this.label,
     required this.value,
     required this.icon,
+    this.selected = false,
+    this.onTap,
   });
 
   final String label;
   final String value;
   final IconData icon;
+  final bool selected;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final child = AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: selected ? AppTheme.primarySoft : const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(
+          color: selected ? AppTheme.primary : AppTheme.border,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: AppTheme.primary),
+          Icon(
+            icon,
+            size: 16,
+            color: selected ? AppTheme.primary : AppTheme.primary,
+          ),
           const Gap(6),
           Text(
             '$label: $value',
@@ -1896,6 +1942,16 @@ class _CompactStat extends StatelessWidget {
             ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800),
           ),
         ],
+      ),
+    );
+
+    if (onTap == null) return child;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: child,
       ),
     );
   }

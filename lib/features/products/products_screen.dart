@@ -11,6 +11,7 @@ import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../../core/ui/smart_filter_bar.dart';
 import '../billing/billing_screen.dart';
+import '../billing/invoice_queue_helper.dart';
 
 final productSearchProvider = NotifierProvider<ProductSearchNotifier, String>(
   ProductSearchNotifier.new,
@@ -1213,18 +1214,19 @@ Future<void> _extendLineAndQueueInvoice(
         .eq('id', line.id);
 
     try {
-      await client.from('invoice_items').insert({
-        'customer_id': line.customerId,
-        'item_type': 'line_renewal',
-        'source_table': 'lines',
-        'source_id': line.id,
-        'description':
+      await enqueueInvoiceItem(
+        client,
+        customerId: line.customerId,
+        itemType: 'line_renewal',
+        sourceTable: 'lines',
+        sourceId: line.id,
+        description:
             'Hat uzatma (${line.number ?? ''}) (yeni bitiş: $newEndStr)',
-        'amount': request.amount,
-        'currency': request.currency,
-        'status': 'pending',
-        'created_by': client.auth.currentUser?.id,
-      });
+        amount: request.amount,
+        currency: request.currency,
+        sourceEvent: 'line_renewed',
+        sourceLabel: 'Hat Uzatma',
+      );
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1332,17 +1334,18 @@ Future<void> _extendLicenseAndQueueInvoice(
         .eq('id', license.id);
 
     try {
-      await client.from('invoice_items').insert({
-        'customer_id': license.customerId,
-        'item_type': 'gmp3_renewal',
-        'source_table': 'licenses',
-        'source_id': license.id,
-        'description': 'GMP3 uzatma (${license.name}) (yeni bitiş: $newEndStr)',
-        'amount': request.amount,
-        'currency': request.currency,
-        'status': 'pending',
-        'created_by': client.auth.currentUser?.id,
-      });
+      await enqueueInvoiceItem(
+        client,
+        customerId: license.customerId,
+        itemType: 'gmp3_renewal',
+        sourceTable: 'licenses',
+        sourceId: license.id,
+        description: 'GMP3 uzatma (${license.name}) (yeni bitiş: $newEndStr)',
+        amount: request.amount,
+        currency: request.currency,
+        sourceEvent: 'gmp3_renewed',
+        sourceLabel: 'GMP3 Uzatma',
+      );
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1395,18 +1398,19 @@ Future<void> _extendLinesInBulk(
           .update({'ends_at': newEndStr, 'expires_at': newEndStr})
           .eq('id', line.id);
       try {
-        await client.from('invoice_items').insert({
-          'customer_id': line.customerId,
-          'item_type': 'line_renewal',
-          'source_table': 'lines',
-          'source_id': line.id,
-          'description':
+        await enqueueInvoiceItem(
+          client,
+          customerId: line.customerId,
+          itemType: 'line_renewal',
+          sourceTable: 'lines',
+          sourceId: line.id,
+          description:
               'Hat uzatma (${line.number ?? ''}) (yeni bitiş: $newEndStr)',
-          'amount': request.amount,
-          'currency': request.currency,
-          'status': 'pending',
-          'created_by': client.auth.currentUser?.id,
-        });
+          amount: request.amount,
+          currency: request.currency,
+          sourceEvent: 'line_renewed',
+          sourceLabel: 'Hat Uzatma',
+        );
       } catch (_) {}
     }
 
@@ -1449,18 +1453,19 @@ Future<void> _extendLicensesInBulk(
           .update({'ends_at': newEndStr, 'expires_at': newEndStr})
           .eq('id', license.id);
       try {
-        await client.from('invoice_items').insert({
-          'customer_id': license.customerId,
-          'item_type': 'gmp3_renewal',
-          'source_table': 'licenses',
-          'source_id': license.id,
-          'description':
+        await enqueueInvoiceItem(
+          client,
+          customerId: license.customerId,
+          itemType: 'gmp3_renewal',
+          sourceTable: 'licenses',
+          sourceId: license.id,
+          description:
               'GMP3 uzatma (${license.name}) (yeni bitiş: $newEndStr)',
-          'amount': request.amount,
-          'currency': request.currency,
-          'status': 'pending',
-          'created_by': client.auth.currentUser?.id,
-        });
+          amount: request.amount,
+          currency: request.currency,
+          sourceEvent: 'gmp3_renewed',
+          sourceLabel: 'GMP3 Uzatma',
+        );
       } catch (_) {}
     }
 

@@ -4,10 +4,12 @@ import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/format/currency_format.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../billing/invoice_queue_helper.dart';
 import '../customers/customer_form_dialog.dart';
 import '../definitions/definitions_screen.dart';
 import 'transfer_form_model.dart';
@@ -149,10 +151,7 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
     );
   }
 
-  Future<void> _setRecordActive(
-    TransferFormRecord record,
-    bool active,
-  ) async {
+  Future<void> _setRecordActive(TransferFormRecord record, bool active) async {
     final client = ref.read(supabaseClientProvider);
     if (client == null) return;
     await client
@@ -163,7 +162,11 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(active ? 'Devir formu aktifleştirildi.' : 'Devir formu pasife alındı.'),
+        content: Text(
+          active
+              ? 'Devir formu aktifleştirildi.'
+              : 'Devir formu pasife alındı.',
+        ),
       ),
     );
   }
@@ -485,22 +488,18 @@ class _TransferMiniActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style =
-        (primary ? FilledButton.styleFrom : OutlinedButton.styleFrom).call(
+    final style = (primary ? FilledButton.styleFrom : OutlinedButton.styleFrom)
+        .call(
           minimumSize: const Size(28, 24),
           padding: const EdgeInsets.symmetric(horizontal: 6),
-          textStyle: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(fontSize: 10, fontWeight: FontWeight.w700),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+          textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
           ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         );
 
-    final child = Tooltip(
-      message: label,
-      child: Icon(icon, size: 12),
-    );
+    final child = Tooltip(message: label, child: Icon(icon, size: 12));
 
     return primary
         ? FilledButton(onPressed: onPressed, style: style, child: child)
@@ -553,8 +552,12 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
           initial.transfereeTaxOfficeAndRegistry ?? '';
       _transfereeApprovalController.text =
           initial.transfereeApprovalDateNo ?? '';
-      _totalSalesController.text = initial.totalSalesReceipt ?? '';
-      _vatCollectedController.text = initial.vatCollected ?? '';
+      _totalSalesController.text = formatCurrencyDisplay(
+        initial.totalSalesReceipt,
+      );
+      _vatCollectedController.text = formatCurrencyDisplay(
+        initial.vatCollected,
+      );
       _lastReceiptController.text = initial.lastReceiptDateNo ?? '';
       _zReportController.text = initial.zReportCount ?? '';
       _otherInfoController.text = initial.otherDeviceInfo ?? '';
@@ -761,6 +764,18 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
                 'id,row_number,transferor_name,transferor_address,transferor_tax_office_and_registry,transferor_approval_date_no,transferee_name,transferee_address,transferee_tax_office_and_registry,transferee_approval_date_no,total_sales_receipt,vat_collected,last_receipt_date_no,z_report_count,other_device_info,brand_model,device_serial_no,fiscal_symbol_company_code,department_count,transfer_date,transfer_reason,is_active,created_at',
               )
               .single();
+      if (!widget.isEdit) {
+        await enqueueInvoiceItem(
+          client,
+          itemType: 'transfer_form',
+          sourceTable: 'transfer_forms',
+          sourceId: inserted['id'].toString(),
+          description:
+              'Devir Formu - ${_transferorController.text.trim()} → ${_transfereeController.text.trim()}',
+          sourceEvent: 'transfer_form_created',
+          sourceLabel: 'Devir Formu',
+        );
+      }
       if (!mounted) return;
       Navigator.of(context).pop(TransferFormRecord.fromJson(inserted));
     } finally {
@@ -965,6 +980,8 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
                         width: isMobile ? double.infinity : 200,
                         child: TextFormField(
                           controller: _totalSalesController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: const [CurrencyTextInputFormatter()],
                           decoration: const InputDecoration(
                             labelText: 'Toplam Hasılat Tutarı',
                           ),
@@ -974,6 +991,8 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
                         width: isMobile ? double.infinity : 200,
                         child: TextFormField(
                           controller: _vatCollectedController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: const [CurrencyTextInputFormatter()],
                           decoration: const InputDecoration(
                             labelText: 'Tahsil Edilen KDV Tutarı',
                           ),

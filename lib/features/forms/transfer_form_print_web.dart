@@ -2,6 +2,7 @@
 
 import 'dart:html' as html;
 
+import '../../core/format/currency_format.dart';
 import 'transfer_form_model.dart';
 
 Future<bool> printTransferForm(
@@ -41,6 +42,9 @@ String _buildPrintableHtml(
 
   String valueText(String? value) =>
       '<span class="value-text">${escape((value ?? '').trim())}</span>';
+
+  final totalSalesText = formatCurrencyDisplay(record.totalSalesReceipt);
+  final vatCollectedText = formatCurrencyDisplay(record.vatCollected);
 
   return '''
 <!doctype html>
@@ -231,8 +235,8 @@ String _buildPrintableHtml(
 
       <div class="section">
         <div class="section-title">${escape(settings.deviceSummaryTitle)}</div>
-        <div class="line"><span class="label">${escape(settings.totalSalesReceiptLabel)} :</span>${dotted(valueText(record.totalSalesReceipt))}</div>
-        <div class="line"><span class="label">${escape(settings.vatCollectedLabel)} :</span>${dotted(valueText(record.vatCollected))}</div>
+        <div class="line"><span class="label">${escape(settings.totalSalesReceiptLabel)} :</span>${dotted(valueText(totalSalesText))}</div>
+        <div class="line"><span class="label">${escape(settings.vatCollectedLabel)} :</span>${dotted(valueText(vatCollectedText))}</div>
         <div class="line"><span class="label">${escape(settings.lastReceiptDateNoLabel)} :</span>${dotted(valueText(record.lastReceiptDateNo))}</div>
         <div class="line"><span class="label">${escape(settings.zReportCountLabel)} :</span>${dotted(valueText(record.zReportCount))}</div>
         <div class="line"><span class="label">${escape(settings.otherDeviceInfoLabel)} :</span>${dotted(valueText(record.otherDeviceInfo))}</div>

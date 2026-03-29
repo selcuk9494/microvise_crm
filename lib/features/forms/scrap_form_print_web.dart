@@ -2,6 +2,7 @@
 
 import 'dart:html' as html;
 
+import '../../core/format/currency_format.dart';
 import 'scrap_form_model.dart';
 
 Future<bool> printScrapForm(
@@ -51,6 +52,8 @@ String _buildPrintableHtml(
   final dateText = formatDate(record.formDate);
   final startDateText = formatDate(record.okcStartDate);
   final lastUsedDateText = formatDate(record.lastUsedDate);
+  final totalVatText = formatCurrencyDisplay(record.totalVatCollection);
+  final totalCollectionText = formatCurrencyDisplay(record.totalCollection);
 
   return '''
 <!doctype html>
@@ -314,12 +317,12 @@ String _buildPrintableHtml(
       <div class="section-line">
         <div class="sub-label">${escape(settings.vatTotalLabel)}</div>
         <div class="value-colon">:</div>
-        ${dottedLine(valueText(record.totalVatCollection))}
+        ${dottedLine(valueText(totalVatText))}
       </div>
       <div class="section-line">
         <div class="sub-label">${escape(settings.grossTotalLabel)}</div>
         <div class="value-colon">:</div>
-        ${dottedLine(valueText(record.totalCollection))}
+        ${dottedLine(valueText(totalCollectionText))}
       </div>
 
       <div class="section-line">

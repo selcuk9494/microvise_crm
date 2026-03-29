@@ -4,10 +4,12 @@ import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/format/currency_format.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../billing/invoice_queue_helper.dart';
 import '../customers/customer_form_dialog.dart';
 import '../definitions/definitions_screen.dart';
 import 'scrap_form_model.dart';
@@ -158,7 +160,11 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(active ? 'Hurda formu aktifleştirildi.' : 'Hurda formu pasife alındı.'),
+        content: Text(
+          active
+              ? 'Hurda formu aktifleştirildi.'
+              : 'Hurda formu pasife alındı.',
+        ),
       ),
     );
   }
@@ -374,12 +380,11 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                                   record.customerName,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 14,
-                                  ),
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 14,
+                                      ),
                                 ),
                               ),
                               const Gap(6),
@@ -432,13 +437,17 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                                   label: 'Sıra: ${record.rowNumber}',
                                   tone: AppBadgeTone.neutral,
                                 ),
-                              if (record.deviceBrandModelRegistry?.trim().isNotEmpty ??
+                              if (record.deviceBrandModelRegistry
+                                      ?.trim()
+                                      .isNotEmpty ??
                                   false)
                                 _TinyBadge(
                                   label: record.deviceBrandModelRegistry!,
                                   tone: AppBadgeTone.warning,
                                 ),
-                              if (record.interventionPurpose?.trim().isNotEmpty ??
+                              if (record.interventionPurpose
+                                      ?.trim()
+                                      .isNotEmpty ??
                                   false)
                                 _TinyBadge(
                                   label: record.interventionPurpose!,
@@ -508,22 +517,18 @@ class _MiniActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style =
-        (primary ? FilledButton.styleFrom : OutlinedButton.styleFrom).call(
+    final style = (primary ? FilledButton.styleFrom : OutlinedButton.styleFrom)
+        .call(
           minimumSize: const Size(28, 24),
           padding: const EdgeInsets.symmetric(horizontal: 6),
-          textStyle: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(fontSize: 10, fontWeight: FontWeight.w700),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+          textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
           ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         );
 
-    final child = Tooltip(
-      message: label,
-      child: Icon(icon, size: 12),
-    );
+    final child = Tooltip(message: label, child: Icon(icon, size: 12));
 
     return primary
         ? FilledButton(onPressed: onPressed, style: style, child: child)
@@ -567,8 +572,12 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
           initial.customerTaxOfficeAndNumber ?? '';
       _deviceController.text = initial.deviceBrandModelRegistry ?? '';
       _zReportController.text = initial.zReportCount ?? '';
-      _vatCollectionController.text = initial.totalVatCollection ?? '';
-      _totalCollectionController.text = initial.totalCollection ?? '';
+      _vatCollectionController.text = formatCurrencyDisplay(
+        initial.totalVatCollection,
+      );
+      _totalCollectionController.text = formatCurrencyDisplay(
+        initial.totalCollection,
+      );
       _purposeController.text = initial.interventionPurpose ?? '';
       _otherFindingsController.text = initial.otherFindings ?? '';
     }
@@ -734,6 +743,21 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                 'id,form_date,row_number,customer_id,customer_name,customer_address,customer_tax_office_and_number,device_brand_model_registry,okc_start_date,last_used_date,z_report_count,total_vat_collection,total_collection,intervention_purpose,other_findings,is_active,created_at',
               )
               .single();
+
+      if (!widget.isEdit) {
+        await enqueueInvoiceItem(
+          client,
+          customerId: _selectedCustomerId,
+          itemType: 'scrap_form',
+          sourceTable: 'scrap_forms',
+          sourceId: inserted['id'].toString(),
+          description:
+              'Hurda Formu - ${_customerController.text.trim()}'
+              '${_deviceController.text.trim().isEmpty ? '' : ' / ${_deviceController.text.trim()}'}',
+          sourceEvent: 'scrap_form_created',
+          sourceLabel: 'Hurda Formu',
+        );
+      }
 
       if (!mounted) return;
       Navigator.of(context).pop(ScrapFormRecord.fromJson(inserted));
@@ -935,6 +959,8 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                         width: isMobile ? double.infinity : 220,
                         child: TextFormField(
                           controller: _vatCollectionController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: const [CurrencyTextInputFormatter()],
                           decoration: const InputDecoration(
                             labelText: 'Toplam KDV Tahsilatı',
                           ),
@@ -944,6 +970,8 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                         width: isMobile ? double.infinity : 220,
                         child: TextFormField(
                           controller: _totalCollectionController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: const [CurrencyTextInputFormatter()],
                           decoration: const InputDecoration(
                             labelText: 'Toplam Hasılat',
                           ),

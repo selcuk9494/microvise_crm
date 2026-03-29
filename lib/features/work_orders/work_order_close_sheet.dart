@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:signature/signature.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../billing/invoice_queue_helper.dart';
 import '../../core/platform/current_position.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
@@ -162,7 +163,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
 
         final start = DateTime(now.year, now.month, now.day);
         final end = DateTime(now.year, 12, 31);
-        await client.from('lines').insert({
+        final insertedLine = await client
+            .from('lines')
+            .insert({
           'customer_id': customer.id,
           'branch_id': branchId,
           'number': number,
@@ -173,7 +176,19 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           'ends_at': end.toIso8601String().substring(0, 10),
           'expires_at': end.toIso8601String().substring(0, 10),
           'is_active': true,
-        });
+            })
+            .select('id')
+            .single();
+        await enqueueInvoiceItem(
+          client,
+          itemType: 'line_activation',
+          sourceTable: 'lines',
+          sourceId: insertedLine['id'].toString(),
+          customerId: customer.id,
+          description: 'Hat Aktivasyonu - ${customer.name} / $number',
+          sourceEvent: 'line_activated',
+          sourceLabel: 'Hat Aktivasyonu',
+        );
       }
 
       if (_addGmp3) {
@@ -181,7 +196,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         if (name.isEmpty) throw Exception('GMP3 adı gerekli.');
         final start = DateTime(now.year, now.month, now.day);
         final end = DateTime(now.year, 12, 31);
-        await client.from('licenses').insert({
+        final insertedLicense = await client
+            .from('licenses')
+            .insert({
           'customer_id': customer.id,
           'name': name,
           'license_type': 'gmp3',
@@ -189,14 +206,25 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           'ends_at': end.toIso8601String().substring(0, 10),
           'expires_at': end.toIso8601String().substring(0, 10),
           'is_active': true,
-        });
+            })
+            .select('id')
+            .single();
+        await enqueueInvoiceItem(
+          client,
+          itemType: 'gmp3_activation',
+          sourceTable: 'licenses',
+          sourceId: insertedLicense['id'].toString(),
+          customerId: customer.id,
+          description: 'GMP3 Aktivasyonu - ${customer.name} / $name',
+          sourceEvent: 'gmp3_activated',
+          sourceLabel: 'GMP3 Aktivasyonu',
+        );
       }
 
-      final paymentRows = <Map<String, dynamic>>[];
       for (final p in _payments) {
         final amount = p.amount;
         if (amount == null) continue;
-        paymentRows.add({
+        final paymentPayload = <String, dynamic>{
           'customer_id': customer.id,
           'work_order_id': widget.order.id,
           'amount': amount,
@@ -206,31 +234,48 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           'paid_at': now.toIso8601String(),
           'created_by': client.auth.currentUser?.id,
           'is_active': true,
-        });
-      }
-      if (paymentRows.isNotEmpty) {
+        };
+        Map<String, dynamic> insertedPayment;
         try {
-          await client.from('payments').insert(paymentRows);
+          insertedPayment = await client
+              .from('payments')
+              .insert(paymentPayload)
+              .select('id')
+              .single();
         } catch (e) {
           final message = e.toString();
           if (!message.contains("'description' column") &&
               !message.contains("'payment_method' column")) {
             rethrow;
           }
-          final fallbackRows = paymentRows
-              .map((row) {
-                final next = Map<String, dynamic>.from(row);
-                if (message.contains("'description' column")) {
-                  next.remove('description');
-                }
-                if (message.contains("'payment_method' column")) {
-                  next.remove('payment_method');
-                }
-                return next;
-              })
-              .toList(growable: false);
-          await client.from('payments').insert(fallbackRows);
+          final fallback = Map<String, dynamic>.from(paymentPayload);
+          if (message.contains("'description' column")) {
+            fallback.remove('description');
+          }
+          if (message.contains("'payment_method' column")) {
+            fallback.remove('payment_method');
+          }
+          insertedPayment = await client
+              .from('payments')
+              .insert(fallback)
+              .select('id')
+              .single();
         }
+        final paymentLabel = p.description == null || p.description!.isEmpty
+            ? 'İş Emri Ödemesi'
+            : 'İş Emri Ödemesi - ${p.description}';
+        await enqueueInvoiceItem(
+          client,
+          itemType: 'work_order_payment',
+          sourceTable: 'payments',
+          sourceId: insertedPayment['id'].toString(),
+          customerId: customer.id,
+          description: '$paymentLabel / ${customer.name}',
+          amount: amount,
+          currency: p.currency,
+          sourceEvent: 'work_order_payment_added',
+          sourceLabel: 'İş Emri Ödemesi',
+        );
       }
 
       Uint8List? signatureBytes = await _signatureController.toPngBytes();

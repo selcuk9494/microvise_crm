@@ -11,6 +11,7 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_section_card.dart';
 import '../../core/ui/compact_stat_card.dart';
+import '../billing/invoice_queue_helper.dart';
 import 'customer_model.dart';
 import 'customers_providers.dart';
 import 'customer_form_dialog.dart';
@@ -2111,15 +2112,16 @@ Future<void> _extendLineAndQueueInvoice(
         .eq('id', lineId);
 
     try {
-      await client.from('invoice_items').insert({
-        'customer_id': customerId,
-        'item_type': 'line_renewal',
-        'source_table': 'lines',
-        'source_id': lineId,
-        'description': 'Hat uzatma (yeni bitiş: $newEndStr)',
-        'status': 'pending',
-        'created_by': client.auth.currentUser?.id,
-      });
+      await enqueueInvoiceItem(
+        client,
+        customerId: customerId,
+        itemType: 'line_renewal',
+        sourceTable: 'lines',
+        sourceId: lineId,
+        description: 'Hat uzatma (yeni bitiş: $newEndStr)',
+        sourceEvent: 'line_renewed',
+        sourceLabel: 'Hat Uzatma',
+      );
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2172,15 +2174,16 @@ Future<void> _extendGmp3AndQueueInvoice(
         .eq('id', licenseId);
 
     try {
-      await client.from('invoice_items').insert({
-        'customer_id': customerId,
-        'item_type': 'gmp3_renewal',
-        'source_table': 'licenses',
-        'source_id': licenseId,
-        'description': 'GMP3 uzatma ($name) (yeni bitiş: $newEndStr)',
-        'status': 'pending',
-        'created_by': client.auth.currentUser?.id,
-      });
+      await enqueueInvoiceItem(
+        client,
+        customerId: customerId,
+        itemType: 'gmp3_renewal',
+        sourceTable: 'licenses',
+        sourceId: licenseId,
+        description: 'GMP3 uzatma ($name) (yeni bitiş: $newEndStr)',
+        sourceEvent: 'gmp3_renewed',
+        sourceLabel: 'GMP3 Uzatma',
+      );
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
