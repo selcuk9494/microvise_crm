@@ -5,6 +5,9 @@ import '../../app/app_config.dart';
 
 final supabaseClientProvider = Provider<SupabaseClient?>((ref) {
   if (!AppConfig.isSupabaseConfigured) return null;
-  return Supabase.instance.client;
+  try {
+    return Supabase.instance.client;
+  } catch (_) {
+    return null;
+  }
 });
-
