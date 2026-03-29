@@ -766,6 +766,29 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     if (client == null) return;
 
     try {
+      await client
+          .from('invoice_items')
+          .delete()
+          .eq('source_table', 'work_orders')
+          .eq('source_id', widget.order.id);
+
+      final paymentRows = await client
+          .from('payments')
+          .select('id')
+          .eq('work_order_id', widget.order.id);
+      final paymentIds = (paymentRows as List)
+          .map((item) => (item as Map<String, dynamic>)['id']?.toString())
+          .whereType<String>()
+          .toList(growable: false);
+
+      if (paymentIds.isNotEmpty) {
+        await client
+            .from('invoice_items')
+            .delete()
+            .inFilter('source_id', paymentIds)
+            .eq('source_table', 'payments');
+      }
+
       await client.from('payments').delete().eq('work_order_id', widget.order.id);
       await client.from('work_orders').delete().eq('id', widget.order.id);
       await ref.read(workOrdersBoardProvider.notifier).refresh();
