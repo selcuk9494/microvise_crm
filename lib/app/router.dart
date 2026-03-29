@@ -17,11 +17,14 @@ import '../features/definitions/definitions_screen.dart';
 import '../features/forms/forms_screen.dart';
 import '../features/forms/scrap_form_screen.dart';
 import '../features/forms/transfer_form_screen.dart';
+import '../features/invoices/accounts_screen.dart';
+import '../features/invoices/invoices_screen.dart';
 import '../features/personnel/personnel_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/service/service_screen.dart';
 import '../features/service/service_detail_screen.dart';
 import '../features/setup/setup_required_screen.dart';
+import '../features/stock/stock_screen.dart';
 import '../features/shell/app_shell.dart';
 import '../features/work_orders/work_orders_kanban_screen.dart';
 
@@ -180,6 +183,38 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   child: BillingScreen(),
                 ),
               ),
+          routes: [
+            GoRoute(
+              path: 'faturalar',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(
+                    child: FeatureAccessGate(
+                      pageKey: kPageBilling,
+                      child: InvoicesScreen(),
+                    ),
+                  ),
+            ),
+            GoRoute(
+              path: 'cari-hesaplar',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(
+                    child: FeatureAccessGate(
+                      pageKey: kPageBilling,
+                      child: AccountsScreen(),
+                    ),
+                  ),
+            ),
+            GoRoute(
+              path: 'stok',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(
+                    child: FeatureAccessGate(
+                      pageKey: kPageBilling,
+                      child: StockScreen(),
+                    ),
+                  ),
+            ),
+          ],
         ),
         GoRoute(
           path: '/urunler',

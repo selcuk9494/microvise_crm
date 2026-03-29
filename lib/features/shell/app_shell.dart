@@ -38,6 +38,7 @@ class _DesktopShell extends ConsumerStatefulWidget {
 
 class _DesktopShellState extends ConsumerState<_DesktopShell> {
   bool _formsExpanded = false;
+  bool _billingExpanded = false;
 
   Future<void> _signOut() async {
     final client = ref.read(supabaseClientProvider);
@@ -76,6 +77,10 @@ class _DesktopShellState extends ConsumerState<_DesktopShell> {
         .where((item) => item.path == '/formlar')
         .expand((item) => item.children)
         .any((child) => _isActive(location, child.path));
+    final hasActiveBillingChild = items
+        .where((item) => item.path == '/faturalama')
+        .expand((item) => item.children)
+        .any((child) => _isActive(location, child.path));
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -106,7 +111,7 @@ class _DesktopShellState extends ConsumerState<_DesktopShell> {
                                 active: _isActive(location, item.path),
                                 onTap: () => context.go(item.path),
                               )
-                            else
+                            else if (item.path == '/formlar')
                               _SidebarExpandableItem(
                                 label: item.label,
                                 icon: item.icon,
@@ -119,9 +124,26 @@ class _DesktopShellState extends ConsumerState<_DesktopShell> {
                                     _formsExpanded = !_formsExpanded;
                                   });
                                 },
+                              )
+                            else
+                              _SidebarExpandableItem(
+                                label: item.label,
+                                icon: item.icon,
+                                active:
+                                    _isActive(location, item.path) ||
+                                    hasActiveBillingChild,
+                                expanded: _billingExpanded || hasActiveBillingChild,
+                                onTap: () {
+                                  setState(() {
+                                    _billingExpanded = !_billingExpanded;
+                                  });
+                                },
                               ),
                             if (item.children.isNotEmpty &&
-                                (_formsExpanded || hasActiveFormsChild)) ...[
+                                (((item.path == '/formlar') &&
+                                        (_formsExpanded || hasActiveFormsChild)) ||
+                                    ((item.path == '/faturalama') &&
+                                        (_billingExpanded || hasActiveBillingChild)))) ...[
                               const Gap(6),
                               Padding(
                                 padding: const EdgeInsets.only(left: 20),
@@ -945,6 +967,28 @@ final _navItems = <_NavItem>[
     label: 'Faturalama',
     icon: PhosphorIcons.receipt(PhosphorIconsStyle.regular),
     permissionKey: kPageBilling,
+    children: const [
+      _NavSubItem(
+        path: '/faturalama',
+        label: 'Fatura Kuyruğu',
+        permissionKey: kPageBilling,
+      ),
+      _NavSubItem(
+        path: '/faturalama/faturalar',
+        label: 'Faturalar',
+        permissionKey: kPageBilling,
+      ),
+      _NavSubItem(
+        path: '/faturalama/cari-hesaplar',
+        label: 'Cari Hesaplar',
+        permissionKey: kPageBilling,
+      ),
+      _NavSubItem(
+        path: '/faturalama/stok',
+        label: 'Stok',
+        permissionKey: kPageBilling,
+      ),
+    ],
   ),
   _NavItem(
     path: '/tanimlamalar',
