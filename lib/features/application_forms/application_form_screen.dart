@@ -6,6 +6,7 @@ import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
@@ -17,6 +18,7 @@ import 'application_form_model.dart';
 import '../customers/customer_form_dialog.dart';
 import '../definitions/definitions_screen.dart';
 import 'application_form_print.dart';
+import '../work_orders/work_orders_providers.dart';
 
 final applicationFormCustomersProvider = FutureProvider<List<_CustomerOption>>((
   ref,
@@ -245,6 +247,148 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         ),
       ),
     );
+  }
+
+  String _defaultWorkOrderDescription(ApplicationFormRecord record) {
+    final parts = <String>[
+      'Başvuru Formu',
+      if (record.brandModel.trim().isNotEmpty) record.brandModel.trim(),
+      if (record.businessActivityName?.trim().isNotEmpty ?? false)
+        record.businessActivityName!.trim(),
+      if (record.fileRegistryNumber?.trim().isNotEmpty ?? false)
+        'Dosya: ${record.fileRegistryNumber!.trim()}',
+    ];
+    return parts.join(' • ');
+  }
+
+  Future<void> _openCreateWorkOrdersDialog(
+    List<ApplicationFormRecord> records,
+  ) async {
+    final linkedRecords = records
+        .where((record) => (record.customerId ?? '').trim().isNotEmpty)
+        .toList(growable: false);
+    final skippedCount = records.length - linkedRecords.length;
+
+    if (linkedRecords.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Secili başvurularda bağlı müşteri bulunmadığı için iş emri oluşturulamadı.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final config = await showDialog<_WorkOrderCreationConfig>(
+      context: context,
+      builder: (context) =>
+          _ApplicationWorkOrderDialog(recordCount: linkedRecords.length),
+    );
+    if (config == null) return;
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null || !mounted) return;
+    final currentUserId = client.auth.currentUser?.id;
+    if ((currentUserId ?? '').isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Oturum bulunamadı.')),
+      );
+      return;
+    }
+
+    final assignedTo = config.assignedTo?.trim().isNotEmpty ?? false
+        ? config.assignedTo!.trim()
+        : currentUserId!;
+    final scheduledDate = config.scheduledDate == null
+        ? null
+        : DateFormat('yyyy-MM-dd').format(config.scheduledDate!);
+    final createdBy = currentUserId;
+    final descriptionTemplate = config.description.trim();
+
+    var createdCount = 0;
+    var failedCount = 0;
+
+    for (final record in linkedRecords) {
+      final payload = <String, dynamic>{
+        'customer_id': record.customerId,
+        'branch_id': null,
+        'work_order_type_id': config.workOrderTypeId,
+        'title': config.workOrderTypeName,
+        'description': descriptionTemplate.isNotEmpty
+            ? descriptionTemplate
+            : _defaultWorkOrderDescription(record),
+        'address': record.workAddress?.trim().isNotEmpty ?? false
+            ? record.workAddress!.trim()
+            : null,
+        'assigned_to': assignedTo,
+        'scheduled_date': scheduledDate,
+        'city': record.taxOfficeCityName?.trim().isNotEmpty ?? false
+            ? record.taxOfficeCityName!.trim()
+            : null,
+        'contact_phone': null,
+        'location_link': null,
+        'status': 'open',
+        'is_active': true,
+        'created_by': createdBy,
+      };
+
+      try {
+        await _insertWorkOrderPayload(client, payload);
+        createdCount += 1;
+      } catch (_) {
+        failedCount += 1;
+      }
+    }
+
+    ref.invalidate(workOrdersBoardProvider);
+    if (!mounted) return;
+
+    final segments = <String>[
+      if (createdCount > 0) '$createdCount iş emri oluşturuldu',
+      if (skippedCount > 0)
+        '$skippedCount kayıt müşteri bağlantısı olmadığı için atlandı',
+      if (failedCount > 0) '$failedCount kayıt oluşturulamadı',
+    ];
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(segments.join(' • '))),
+    );
+  }
+
+  Future<void> _insertWorkOrderPayload(
+    dynamic client,
+    Map<String, dynamic> payload,
+  ) async {
+    final safePayload = Map<String, dynamic>.from(payload);
+    const fallbackColumns = {
+      'address',
+      'city',
+      'contact_phone',
+      'location_link',
+      'work_order_type_id',
+    };
+
+    while (true) {
+      try {
+        await client.from('work_orders').insert(safePayload);
+        return;
+      } catch (e) {
+        final message = e.toString();
+        final matchedColumn = fallbackColumns.firstWhere(
+          (column) =>
+              message.contains("'$column' column") ||
+              message.contains('column "$column"') ||
+              message.contains("Could not find the '$column' column"),
+          orElse: () => '',
+        );
+        if (matchedColumn.isEmpty || !safePayload.containsKey(matchedColumn)) {
+          rethrow;
+        }
+        safePayload.remove(matchedColumn);
+      }
+    }
   }
 
   Future<void> _exportForTaxOffice(List<ApplicationFormRecord> records) async {
@@ -765,6 +909,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                       runSpacing: 8,
                       children: [
                         FilledButton.icon(
+                          onPressed: () =>
+                              _openCreateWorkOrdersDialog(selectedRecords),
+                          icon: const Icon(Icons.playlist_add_rounded, size: 18),
+                          label: Text(
+                            'Toplu İş Emri Oluştur (${selectedRecords.length})',
+                          ),
+                        ),
+                        FilledButton.icon(
                           onPressed: () => _exportForTaxOffice(selectedRecords),
                           icon: const Icon(Icons.download_rounded, size: 18),
                           label: Text(
@@ -816,6 +968,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           filtered[index],
                           kind: ApplicationPrintKind.kdv4a,
                         ),
+                        onCreateWorkOrder: () =>
+                            _openCreateWorkOrdersDialog([filtered[index]]),
                         onEdit: () => _openEditDialog(filtered[index]),
                         onDuplicate: () =>
                             _openDuplicateDialog(filtered[index]),
@@ -1643,6 +1797,7 @@ class _ApplicationRecordCard extends StatelessWidget {
     required this.onSelectionChanged,
     required this.onPrintKdv,
     required this.onPrintKdv4a,
+    required this.onCreateWorkOrder,
     required this.onEdit,
     required this.onDuplicate,
     required this.onToggleActive,
@@ -1653,6 +1808,7 @@ class _ApplicationRecordCard extends StatelessWidget {
   final ValueChanged<bool> onSelectionChanged;
   final VoidCallback onPrintKdv;
   final VoidCallback onPrintKdv4a;
+  final VoidCallback onCreateWorkOrder;
   final VoidCallback onEdit;
   final VoidCallback onDuplicate;
   final VoidCallback onToggleActive;
@@ -1731,6 +1887,12 @@ class _ApplicationRecordCard extends StatelessWidget {
               ),
               const Gap(4),
               _ActionButton(
+                onPressed: onCreateWorkOrder,
+                icon: Icons.playlist_add_rounded,
+                label: 'İş Emri',
+              ),
+              const Gap(4),
+              _ActionButton(
                 onPressed: onToggleActive,
                 icon: record.isActive
                     ? Icons.delete_outline_rounded
@@ -1768,6 +1930,330 @@ class _ApplicationRecordCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _WorkOrderCreationConfig {
+  const _WorkOrderCreationConfig({
+    required this.workOrderTypeId,
+    required this.workOrderTypeName,
+    required this.assignedTo,
+    required this.scheduledDate,
+    required this.description,
+  });
+
+  final String? workOrderTypeId;
+  final String workOrderTypeName;
+  final String? assignedTo;
+  final DateTime? scheduledDate;
+  final String description;
+}
+
+class _WorkOrderTypeChoice {
+  const _WorkOrderTypeChoice({
+    required this.id,
+    required this.name,
+  });
+
+  final String id;
+  final String name;
+
+  factory _WorkOrderTypeChoice.fromJson(Map<String, dynamic> json) {
+    return _WorkOrderTypeChoice(
+      id: json['id'].toString(),
+      name: (json['name'] ?? '').toString(),
+    );
+  }
+}
+
+class _PersonnelChoice {
+  const _PersonnelChoice({
+    required this.id,
+    required this.fullName,
+  });
+
+  final String id;
+  final String fullName;
+
+  factory _PersonnelChoice.fromJson(Map<String, dynamic> json) {
+    return _PersonnelChoice(
+      id: json['id'].toString(),
+      fullName: (json['full_name'] ?? 'Personel').toString(),
+    );
+  }
+}
+
+class _ApplicationWorkOrderDialog extends ConsumerStatefulWidget {
+  const _ApplicationWorkOrderDialog({required this.recordCount});
+
+  final int recordCount;
+
+  @override
+  ConsumerState<_ApplicationWorkOrderDialog> createState() =>
+      _ApplicationWorkOrderDialogState();
+}
+
+class _ApplicationWorkOrderDialogState
+    extends ConsumerState<_ApplicationWorkOrderDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _descriptionController = TextEditingController();
+  List<_WorkOrderTypeChoice> _types = const [];
+  List<_PersonnelChoice> _personnel = const [];
+  String? _selectedTypeId;
+  String? _selectedAssignedTo;
+  DateTime? _scheduledDate;
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
+  }
+
+  Future<void> _loadData() async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      return;
+    }
+
+    final isAdmin = ref.read(isAdminProvider);
+    try {
+      final typesRows = await client
+          .from('work_order_types')
+          .select('id,name')
+          .eq('is_active', true)
+          .order('sort_order')
+          .order('name')
+          .limit(100);
+      List<_PersonnelChoice> personnel = const [];
+      if (isAdmin) {
+        final userRows = await client
+            .from('users')
+            .select('id,full_name,role')
+            .order('full_name')
+            .limit(200);
+        personnel = (userRows as List)
+            .map((row) => row as Map<String, dynamic>)
+            .where((row) => (row['role'] ?? '').toString() != 'admin')
+            .map(_PersonnelChoice.fromJson)
+            .toList(growable: false);
+      }
+
+      if (!mounted) return;
+      final parsedTypes = (typesRows as List)
+          .map((row) => _WorkOrderTypeChoice.fromJson(row as Map<String, dynamic>))
+          .toList(growable: false);
+      setState(() {
+        _types = parsedTypes;
+        _personnel = personnel;
+        if (_types.length == 1) {
+          _selectedTypeId = _types.first.id;
+        }
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDialog<DateTime>(
+      context: context,
+      builder: (context) => _ApplicationDatePickerDialog(
+        initialDate: _scheduledDate ?? DateTime.now(),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _scheduledDate = picked);
+  }
+
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final selectedType = _types.where((item) => item.id == _selectedTypeId).firstOrNull;
+    final fallbackName = selectedType?.name.trim() ?? '';
+    setState(() => _saving = true);
+    Navigator.of(context).pop(
+      _WorkOrderCreationConfig(
+        workOrderTypeId: _selectedTypeId,
+        workOrderTypeName: fallbackName.isEmpty ? 'İş Emri' : fallbackName,
+        assignedTo: _selectedAssignedTo,
+        scheduledDate: _scheduledDate,
+        description: _descriptionController.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAdmin = ref.watch(isAdminProvider);
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: AppCard(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.recordCount == 1
+                            ? 'İş Emri Oluştur'
+                            : 'Toplu İş Emri Oluştur',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                Text(
+                  widget.recordCount == 1
+                      ? 'Seçili başvuru kaydından iş emri oluşturulacak.'
+                      : '${widget.recordCount} başvuru için ayrı iş emri oluşturulacak.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppTheme.textMuted,
+                  ),
+                ),
+                const Gap(14),
+                if (_loading)
+                  const SizedBox(
+                    height: 84,
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else ...[
+                  DropdownButtonFormField<String?>(
+                    initialValue: _selectedTypeId,
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('İş emri tipi seç'),
+                      ),
+                      ..._types.map(
+                        (item) => DropdownMenuItem<String?>(
+                          value: item.id,
+                          child: Text(item.name),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) =>
+                        setState(() => _selectedTypeId = value),
+                    validator: (value) {
+                      if (_types.isNotEmpty && (value ?? '').isEmpty) {
+                        return 'İş emri tipi seçin.';
+                      }
+                      return null;
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'İş Emri Tipi',
+                    ),
+                  ),
+                  const Gap(12),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: _pickDate,
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Planlanan Tarih',
+                        suffixIcon: Icon(Icons.calendar_today_rounded),
+                      ),
+                      child: Text(
+                        _scheduledDate == null
+                            ? 'Seçilmedi'
+                            : DateFormat('dd.MM.yyyy', 'tr_TR')
+                                  .format(_scheduledDate!),
+                      ),
+                    ),
+                  ),
+                  if (isAdmin) ...[
+                    const Gap(12),
+                    DropdownButtonFormField<String?>(
+                      initialValue: _selectedAssignedTo,
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Personel seç'),
+                        ),
+                        ..._personnel.map(
+                          (item) => DropdownMenuItem<String?>(
+                            value: item.id,
+                            child: Text(item.fullName),
+                          ),
+                        ),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _selectedAssignedTo = value),
+                      validator: (value) {
+                        if ((value ?? '').isEmpty) {
+                          return 'Personel seçin.';
+                        }
+                        return null;
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Atanan Personel',
+                      ),
+                    ),
+                  ],
+                  const Gap(12),
+                  TextFormField(
+                    controller: _descriptionController,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Açıklama',
+                      hintText:
+                          'Boş bırakırsan başvuru bilgisinden otomatik açıklama üretilecek.',
+                    ),
+                  ),
+                ],
+                const Gap(16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        child: const Text('Vazgeç'),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _saving || _loading ? null : _submit,
+                        icon: const Icon(Icons.playlist_add_rounded, size: 18),
+                        label: Text(
+                          widget.recordCount == 1 ? 'Oluştur' : 'Toplu Oluştur',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
