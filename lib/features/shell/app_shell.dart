@@ -201,10 +201,28 @@ class _MobileShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).matchedLocation;
     final allowedPages = ref.watch(currentUserPagePermissionsProvider);
+    final profile = ref.watch(currentUserProfileProvider).value;
+    final client = ref.read(supabaseClientProvider);
     final mobileItems = _mobileItems
         .where((item) => allowedPages.contains(item.permissionKey))
         .toList(growable: false);
     final currentIndex = _mobileIndexForLocation(location, mobileItems);
+
+    Future<void> signOut() async {
+      try {
+        await client?.auth.signOut();
+        ref.invalidate(authStateProvider);
+        ref.invalidate(sessionChangesProvider);
+        ref.invalidate(currentUserProfileProvider);
+        if (!context.mounted) return;
+        context.go('/giris');
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Çıkış yapılamadı: $e')));
+      }
+    }
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -234,7 +252,23 @@ class _MobileShell extends ConsumerWidget {
               ),
             ],
             const Spacer(),
-            const Gap(8),
+            IconButton(
+              tooltip: 'Hesap',
+              onPressed: () => _showMobileAccountSheet(
+                context,
+                profileName: profile?.fullName?.trim().isNotEmpty == true
+                    ? profile!.fullName!.trim()
+                    : 'Hesap',
+                roleName: profile?.role == 'admin' ? 'Admin' : 'Personel',
+                onSignOut: signOut,
+              ),
+              icon: Icon(
+                Icons.account_circle_rounded,
+                size: 24,
+                color: AppTheme.textMuted,
+              ),
+            ),
+            const Gap(4),
           ],
         ),
       ),
@@ -812,6 +846,85 @@ Future<void> _showSearchSheet(BuildContext context) async {
             ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
           ),
           const Gap(12),
+        ],
+      ),
+    ),
+  );
+}
+
+Future<void> _showMobileAccountSheet(
+  BuildContext context, {
+  required String profileName,
+  required String roleName,
+  required Future<void> Function() onSignOut,
+}) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    backgroundColor: AppTheme.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (sheetContext) => Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 42,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppTheme.border,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          const Gap(14),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
+                child: const Icon(
+                  Icons.person_rounded,
+                  color: AppTheme.primary,
+                  size: 22,
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      profileName,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Gap(2),
+                    Text(
+                      roleName,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Gap(16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                Navigator.of(sheetContext).pop();
+                await onSignOut();
+              },
+              icon: const Icon(Icons.logout_rounded, size: 18),
+              label: const Text('Çıkış Yap'),
+            ),
+          ),
         ],
       ),
     ),
