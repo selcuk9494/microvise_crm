@@ -217,6 +217,24 @@ class _MetricsGrid extends StatelessWidget {
             icon: Icons.people_alt_rounded,
           ),
           _MetricTile(
+            title: 'Toplam Alacak',
+            value: money.format(metrics.totalReceivable),
+            icon: Icons.trending_up_rounded,
+            tone: _MetricTone.success,
+          ),
+          _MetricTile(
+            title: 'Toplam Borç',
+            value: money.format(metrics.totalPayable),
+            icon: Icons.trending_down_rounded,
+            tone: _MetricTone.warning,
+          ),
+          _MetricTile(
+            title: 'Günlük Tahsilat',
+            value: money.format(metrics.todayCollections),
+            icon: Icons.today_rounded,
+            tone: _MetricTone.primary,
+          ),
+          _MetricTile(
             title: 'Açık İş Emirleri',
             value: metrics.openWorkOrders.toString(),
             icon: Icons.assignment_rounded,
@@ -244,7 +262,7 @@ class _MetricsGrid extends StatelessWidget {
                 : _MetricTone.neutral,
           ),
           _MetricTile(
-            title: 'Gelir (Bu Ay)',
+            title: 'Tahsilat (Bu Ay)',
             value: money.format(metrics.revenue),
             icon: Icons.payments_rounded,
             tone: _MetricTone.success,
@@ -363,6 +381,14 @@ class _DashboardHighlights extends StatelessWidget {
               '${metrics.openInvoices} açık fatura toplam ${money.format(metrics.totalInvoiceAmount)} tutuyor.',
           icon: Icons.receipt_long_rounded,
           color: AppTheme.error,
+        ),
+      if (metrics.totalPayable > 0)
+        _HighlightData(
+          title: 'Ödenecek cari bakiyesi var',
+          description:
+              'Toplam borç ${money.format(metrics.totalPayable)} seviyesinde.',
+          icon: Icons.account_balance_wallet_rounded,
+          color: AppTheme.warning,
         ),
       if (metrics.lowStockProducts > 0)
         _HighlightData(

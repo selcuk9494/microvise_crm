@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/supabase/supabase_providers.dart';
+import '../work_orders/currency_service.dart';
 import 'invoice_model.dart';
 
 // Fatura listesi provider
@@ -63,8 +64,11 @@ final transactionsProvider = FutureProvider.autoDispose.family<List<Transaction>
 
   var query = client
       .from('transactions')
-      .select('*, customers(name), invoices(invoice_number)')
-      .eq('is_active', true);
+      .select('*, customers(name), invoices(invoice_number)');
+
+  if (!filter.includePassive) {
+    query = query.eq('is_active', true);
+  }
 
   if (filter.customerId != null) {
     query = query.eq('customer_id', filter.customerId!);
@@ -75,10 +79,93 @@ final transactionsProvider = FutureProvider.autoDispose.family<List<Transaction>
   if (filter.invoiceId != null) {
     query = query.eq('invoice_id', filter.invoiceId!);
   }
+  if (filter.startDate != null) {
+    query = query.gte(
+      'transaction_date',
+      filter.startDate!.toIso8601String().substring(0, 10),
+    );
+  }
+  if (filter.endDate != null) {
+    query = query.lte(
+      'transaction_date',
+      filter.endDate!.toIso8601String().substring(0, 10),
+    );
+  }
 
   final rows = await query.order('transaction_date', ascending: false).limit(500);
   return (rows as List).map((e) => Transaction.fromJson(e as Map<String, dynamic>)).toList();
 });
+
+final exchangeRatesProvider =
+    FutureProvider.autoDispose.family<Map<String, ExchangeRate>, DateTime?>((ref, date) async {
+      final client = ref.read(supabaseClientProvider);
+      final targetDate = DateTime(
+        (date ?? DateTime.now()).year,
+        (date ?? DateTime.now()).month,
+        (date ?? DateTime.now()).day,
+      );
+
+      if (client == null) {
+        return _fallbackRates(targetDate);
+      }
+
+      try {
+        final rows = await client
+            .from('exchange_rates')
+            .select('currency,rate_to_try,effective_date,source,is_manual,created_at')
+            .lte('effective_date', targetDate.toIso8601String().substring(0, 10))
+            .order('effective_date', ascending: false)
+            .order('created_at', ascending: false)
+            .limit(64);
+
+        final map = <String, ExchangeRate>{};
+        for (final row in rows as List) {
+          final rate = ExchangeRate.fromJson(row as Map<String, dynamic>);
+          map.putIfAbsent(rate.currency, () => rate);
+        }
+        if (map.isNotEmpty) {
+          map.putIfAbsent(
+            'TRY',
+            () => ExchangeRate(
+              currency: 'TRY',
+              rateToTry: 1.0,
+              effectiveDate: targetDate,
+              source: 'system',
+              isManual: false,
+              createdAt: DateTime.now(),
+            ),
+          );
+          return map;
+        }
+      } catch (_) {
+        // Fallback to network/default rates below.
+      }
+
+      return _fallbackRates(targetDate);
+    });
+
+Future<Map<String, ExchangeRate>> _fallbackRates(DateTime date) async {
+  final fetched = await CurrencyService.getExchangeRates();
+  return {
+    'TRY': ExchangeRate(
+      currency: 'TRY',
+      rateToTry: 1.0,
+      effectiveDate: date,
+      source: 'fallback',
+      isManual: false,
+      createdAt: DateTime.now(),
+    ),
+    for (final entry in fetched.entries)
+      entry.key: ExchangeRate(
+        currency: entry.key,
+        rateToTry: entry.value,
+        effectiveDate: date,
+        source: 'fallback',
+        isManual: false,
+        createdAt: DateTime.now(),
+      ),
+  };
+}
 
 // Ürün/Hizmet listesi
 final productsProvider = FutureProvider.autoDispose.family<List<Product>, String?>((ref, category) async {
@@ -169,11 +256,17 @@ class TransactionFilter {
   final String? customerId;
   final String? transactionType;
   final String? invoiceId;
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final bool includePassive;
 
   const TransactionFilter({
     this.customerId,
     this.transactionType,
     this.invoiceId,
+    this.startDate,
+    this.endDate,
+    this.includePassive = false,
   });
 }
 

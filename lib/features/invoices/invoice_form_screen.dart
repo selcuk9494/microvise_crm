@@ -122,11 +122,20 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   Widget build(BuildContext context) {
     final customersAsync = ref.watch(customersProvider);
     final productsAsync = ref.watch(productsProvider(null));
+    final dbRatesAsync = ref.watch(exchangeRatesProvider(_invoiceDate));
+    final dbRates = dbRatesAsync.asData?.value;
     final money = NumberFormat.currency(
       locale: 'tr_TR',
       symbol: '',
       decimalDigits: 2,
     );
+    final effectiveRates = {
+      'TRY': 1.0,
+      ..._rates,
+      ...?dbRates?.map(
+        (key, value) => MapEntry(key, value.rateToTry),
+      ),
+    };
 
     final title = widget.editInvoice != null
         ? 'Fatura Düzenle'
@@ -177,9 +186,9 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                   ),
                   const Gap(12),
                   customersAsync.when(
-                    data: (customers) => DropdownButtonFormField<String>(
+                    data: (customerPage) => DropdownButtonFormField<String>(
                       initialValue: _selectedCustomerId,
-                      items: customers
+                      items: customerPage.items
                           .map(
                             (c) => DropdownMenuItem(
                               value: c.id,
@@ -305,7 +314,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                               _currency = v;
                               _exchangeRate = v == 'TRY'
                                   ? 1.0
-                                  : (_rates[v] ?? 1.0);
+                                  : (effectiveRates[v] ?? 1.0);
                             });
                           },
                           decoration: const InputDecoration(
@@ -321,7 +330,12 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
-                            decoration: const InputDecoration(labelText: 'Kur'),
+                            decoration: InputDecoration(
+                              labelText: 'Kur',
+                              helperText: _buildExchangeRateHelperText(
+                                dbRates?[_currency],
+                              ),
+                            ),
                             onChanged: (v) =>
                                 _exchangeRate = double.tryParse(v) ?? 1.0,
                           ),
@@ -426,6 +440,14 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
         ),
       ),
     );
+  }
+
+  String _buildExchangeRateHelperText(ExchangeRate? rate) {
+    final source = rate?.source;
+    if (source == 'manual') return 'Kayitli manuel kur';
+    if (source == 'fallback') return 'Varsayilan guncel kur';
+    if (source != null && source.isNotEmpty) return 'Kaynak: $source';
+    return 'Kur manuel degistirilebilir';
   }
 
   Future<void> _saveDraft() => _save('draft');
@@ -534,6 +556,21 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
 
       if (itemsData.isNotEmpty) {
         await client.from('invoice_items').insert(itemsData);
+      }
+
+      if (_currency != 'TRY' && _exchangeRate > 0) {
+        try {
+          await client.from('exchange_rates').upsert({
+            'currency': _currency,
+            'rate_to_try': _exchangeRate,
+            'effective_date': _invoiceDate.toIso8601String().substring(0, 10),
+            'source': 'manual',
+            'is_manual': true,
+            'created_by': client.auth.currentUser?.id,
+          }, onConflict: 'currency,effective_date');
+        } catch (_) {
+          // Exchange rate memory is best-effort; invoice save should not fail.
+        }
       }
 
       if (mounted) {

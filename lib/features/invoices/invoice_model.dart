@@ -365,3 +365,36 @@ class AccountBalance {
     );
   }
 }
+
+class ExchangeRate {
+  const ExchangeRate({
+    required this.currency,
+    required this.rateToTry,
+    required this.effectiveDate,
+    required this.source,
+    required this.isManual,
+    required this.createdAt,
+  });
+
+  final String currency;
+  final double rateToTry;
+  final DateTime effectiveDate;
+  final String source;
+  final bool isManual;
+  final DateTime createdAt;
+
+  factory ExchangeRate.fromJson(Map<String, dynamic> json) {
+    return ExchangeRate(
+      currency: json['currency']?.toString() ?? 'TRY',
+      rateToTry: (json['rate_to_try'] as num?)?.toDouble() ?? 1.0,
+      effectiveDate:
+          DateTime.tryParse(json['effective_date']?.toString() ?? '') ??
+          DateTime.now(),
+      source: json['source']?.toString() ?? 'manual',
+      isManual: json['is_manual'] as bool? ?? false,
+      createdAt:
+          DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+          DateTime.now(),
+    );
+  }
+}

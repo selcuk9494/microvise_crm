@@ -391,6 +391,8 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
     decimalDigits: 2,
   );
   final Set<String> _selectedInvoices = {};
+  DateTime? _transactionStartDate;
+  DateTime? _transactionEndDate;
 
   @override
   void initState() {
@@ -410,14 +412,26 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
       invoicesProvider(InvoiceFilter(customerId: widget.customerId)),
     );
     final transactionsAsync = ref.watch(
-      transactionsProvider(TransactionFilter(customerId: widget.customerId)),
+      transactionsProvider(
+        TransactionFilter(
+          customerId: widget.customerId,
+          startDate: _transactionStartDate,
+          endDate: _transactionEndDate,
+        ),
+      ),
     );
+    final balancesAsync = ref.watch(accountBalancesProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: Text(widget.customerName),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.swap_horiz_rounded),
+            tooltip: 'Virman',
+            onPressed: () => _addTransfer(context, balancesAsync.value ?? const []),
+          ),
           IconButton(
             icon: const Icon(Icons.picture_as_pdf_rounded),
             tooltip: 'PDF Ekstre',
@@ -443,15 +457,92 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
         children: [
-          // Açık Faturalar
-          _buildOpenInvoices(invoicesAsync),
-          // Tüm Faturalar
-          _buildAllInvoices(invoicesAsync),
-          // İşlemler
-          _buildTransactions(transactionsAsync),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () async {
+                      final selected = await showDatePicker(
+                        context: context,
+                        initialDate: _transactionStartDate ?? DateTime.now().subtract(const Duration(days: 30)),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2035),
+                      );
+                      if (selected != null) {
+                        setState(() => _transactionStartDate = selected);
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Baslangic',
+                        prefixIcon: Icon(Icons.date_range_rounded),
+                      ),
+                      child: Text(
+                        _transactionStartDate == null
+                            ? 'Tum tarihler'
+                            : DateFormat('d MMM y', 'tr_TR').format(_transactionStartDate!),
+                      ),
+                    ),
+                  ),
+                ),
+                const Gap(12),
+                Expanded(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () async {
+                      final selected = await showDatePicker(
+                        context: context,
+                        initialDate: _transactionEndDate ?? DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2035),
+                      );
+                      if (selected != null) {
+                        setState(() => _transactionEndDate = selected);
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Bitis',
+                        prefixIcon: Icon(Icons.event_available_rounded),
+                      ),
+                      child: Text(
+                        _transactionEndDate == null
+                            ? 'Bugune kadar'
+                            : DateFormat('d MMM y', 'tr_TR').format(_transactionEndDate!),
+                      ),
+                    ),
+                  ),
+                ),
+                const Gap(12),
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _transactionStartDate = null;
+                      _transactionEndDate = null;
+                    });
+                  },
+                  icon: const Icon(Icons.clear_rounded, size: 18),
+                  label: const Text('Temizle'),
+                ),
+              ],
+            ),
+          ),
+          const Gap(12),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildOpenInvoices(invoicesAsync),
+                _buildAllInvoices(invoicesAsync),
+                _buildTransactions(transactionsAsync),
+              ],
+            ),
+          ),
         ],
       ),
       floatingActionButton: _selectedInvoices.isNotEmpty
@@ -635,6 +726,12 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: const Color(0xFF64748B)),
                           ),
+                        if (tx.description?.trim().isNotEmpty ?? false)
+                          Text(
+                            tx.description!,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: const Color(0xFF64748B)),
+                          ),
                         Text(
                           DateFormat(
                             'd MMM y',
@@ -647,7 +744,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
                     ),
                   ),
                   Text(
-                    '${isCollection ? '+' : '-'}${_money.format(tx.amount)}',
+                    '${isCollection ? '+' : '-'}${tx.currency == 'TRY' ? _money.format(tx.amount) : '${tx.currency} ${tx.amount.toStringAsFixed(2)}'}',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: isCollection ? AppTheme.success : AppTheme.error,
@@ -668,7 +765,11 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
   Future<void> _addTransaction(BuildContext context) async {
     String type = 'collection';
     final amountController = TextEditingController();
+    final descriptionController = TextEditingController();
     String method = 'cash';
+    String currency = 'TRY';
+    double exchangeRate = 1.0;
+    DateTime transactionDate = DateTime.now();
 
     final messenger = ScaffoldMessenger.of(context);
     final result = await showDialog<bool>(
@@ -697,6 +798,37 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
               ),
               const Gap(12),
               DropdownButtonFormField<String>(
+                initialValue: currency,
+                items: const [
+                  DropdownMenuItem(value: 'TRY', child: Text('TRY')),
+                  DropdownMenuItem(value: 'USD', child: Text('USD')),
+                  DropdownMenuItem(value: 'EUR', child: Text('EUR')),
+                ],
+                onChanged: (v) => setState(() {
+                  currency = v ?? 'TRY';
+                  if (currency == 'TRY') {
+                    exchangeRate = 1.0;
+                  }
+                }),
+                decoration: const InputDecoration(labelText: 'Para Birimi'),
+              ),
+              if (currency != 'TRY') ...[
+                const Gap(12),
+                TextField(
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Kur',
+                    hintText: exchangeRate.toStringAsFixed(4),
+                  ),
+                  onChanged: (v) =>
+                      exchangeRate = double.tryParse(v.replaceAll(',', '.')) ??
+                          exchangeRate,
+                ),
+              ],
+              const Gap(12),
+              DropdownButtonFormField<String>(
                 initialValue: method,
                 items: const [
                   DropdownMenuItem(value: 'cash', child: Text('Nakit')),
@@ -710,6 +842,38 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
                 ],
                 onChanged: (v) => setState(() => method = v ?? 'cash'),
                 decoration: const InputDecoration(labelText: 'Ödeme Yöntemi'),
+              ),
+              const Gap(12),
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () async {
+                  final selected = await showDatePicker(
+                    context: context,
+                    initialDate: transactionDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2035),
+                  );
+                  if (selected != null) {
+                    setState(() => transactionDate = selected);
+                  }
+                },
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'İşlem Tarihi',
+                    prefixIcon: Icon(Icons.event_rounded),
+                  ),
+                  child: Text(
+                    DateFormat('d MMM y', 'tr_TR').format(transactionDate),
+                  ),
+                ),
+              ),
+              const Gap(12),
+              TextField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Açıklama',
+                  hintText: 'Opsiyonel işlem notu',
+                ),
               ),
             ],
           ),
@@ -741,9 +905,12 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
         'customer_id': widget.customerId,
         'transaction_type': type,
         'amount': amount,
-        'currency': 'TRY',
+        'currency': currency,
+        'exchange_rate': currency == 'TRY' ? 1.0 : exchangeRate,
         'payment_method': method,
-        'transaction_date': DateTime.now().toIso8601String().substring(0, 10),
+        'transaction_date': transactionDate.toIso8601String().substring(0, 10),
+        if (descriptionController.text.trim().isNotEmpty)
+          'description': descriptionController.text.trim(),
         'created_by': client.auth.currentUser?.id,
       });
 
@@ -759,6 +926,172 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
     }
   }
 
+  Future<void> _addTransfer(
+    BuildContext context,
+    List<AccountBalance> balances,
+  ) async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    final targets = balances
+        .where((account) => account.customerId != widget.customerId)
+        .toList(growable: false);
+    if (targets.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Virman icin hedef cari bulunamadi.')),
+      );
+      return;
+    }
+
+    String? targetId = targets.first.customerId;
+    final amountController = TextEditingController();
+    final descriptionController = TextEditingController();
+    DateTime transferDate = DateTime.now();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Cari Virman'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: targetId,
+                items: targets
+                    .map(
+                      (account) => DropdownMenuItem(
+                        value: account.customerId,
+                        child: Text(account.name),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) => setState(() => targetId = value),
+                decoration: const InputDecoration(labelText: 'Hedef Cari'),
+              ),
+              const Gap(12),
+              TextField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(labelText: 'Tutar'),
+              ),
+              const Gap(12),
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () async {
+                  final selected = await showDatePicker(
+                    context: context,
+                    initialDate: transferDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2035),
+                  );
+                  if (selected != null) {
+                    setState(() => transferDate = selected);
+                  }
+                },
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Virman Tarihi',
+                    prefixIcon: Icon(Icons.swap_horiz_rounded),
+                  ),
+                  child: Text(
+                    DateFormat('d MMM y', 'tr_TR').format(transferDate),
+                  ),
+                ),
+              ),
+              const Gap(12),
+              TextField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Açıklama',
+                  hintText: 'Virman açıklaması',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('İptal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Virman Yap'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || targetId == null || !mounted) return;
+
+    final amount =
+        double.tryParse(amountController.text.replaceAll(',', '.')) ?? 0;
+    if (amount <= 0) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Geçerli bir tutar girin.')),
+      );
+      return;
+    }
+
+    final target = targets.firstWhere(
+      (account) => account.customerId == targetId,
+    );
+    final description = descriptionController.text.trim().isEmpty
+        ? 'Virman: ${widget.customerName} -> ${target.name}'
+        : descriptionController.text.trim();
+
+    try {
+      await client.from('transactions').insert([
+        {
+          'customer_id': widget.customerId,
+          'transaction_type': 'payment',
+          'amount': amount,
+          'currency': 'TRY',
+          'exchange_rate': 1.0,
+          'payment_method': 'other',
+          'transaction_date': transferDate.toIso8601String().substring(0, 10),
+          'description': description,
+          'created_by': client.auth.currentUser?.id,
+        },
+        {
+          'customer_id': target.customerId,
+          'transaction_type': 'collection',
+          'amount': amount,
+          'currency': 'TRY',
+          'exchange_rate': 1.0,
+          'payment_method': 'other',
+          'transaction_date': transferDate.toIso8601String().substring(0, 10),
+          'description': description,
+          'created_by': client.auth.currentUser?.id,
+        },
+      ]);
+
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Virman tamamlandi: ${target.name}')),
+      );
+      ref.invalidate(
+        transactionsProvider(
+          TransactionFilter(
+            customerId: widget.customerId,
+            startDate: _transactionStartDate,
+            endDate: _transactionEndDate,
+          ),
+        ),
+      );
+      ref.invalidate(accountBalancesProvider);
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Virman hatasi: $e')),
+      );
+    }
+  }
+
   Future<void> _exportStatement(String format) async {
     final invoices =
         ref
@@ -771,7 +1104,11 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
         ref
             .read(
               transactionsProvider(
-                TransactionFilter(customerId: widget.customerId),
+                TransactionFilter(
+                  customerId: widget.customerId,
+                  startDate: _transactionStartDate,
+                  endDate: _transactionEndDate,
+                ),
               ),
             )
             .value ??
@@ -804,7 +1141,11 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
         ref
             .read(
               transactionsProvider(
-                TransactionFilter(customerId: widget.customerId),
+                TransactionFilter(
+                  customerId: widget.customerId,
+                  startDate: _transactionStartDate,
+                  endDate: _transactionEndDate,
+                ),
               ),
             )
             .value ??
@@ -837,7 +1178,11 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
         ref
             .read(
               transactionsProvider(
-                TransactionFilter(customerId: widget.customerId),
+                TransactionFilter(
+                  customerId: widget.customerId,
+                  startDate: _transactionStartDate,
+                  endDate: _transactionEndDate,
+                ),
               ),
             )
             .value ??
