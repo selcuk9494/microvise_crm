@@ -27,6 +27,10 @@ if [ "${SUPABASE_URL:-}" != "" ]; then
   BUILD_DEFINES+=("--dart-define=SUPABASE_URL=${SUPABASE_URL}")
 fi
 
+if [ "${SUPABASE_PUBLISHABLE_KEY:-}" != "" ]; then
+  BUILD_DEFINES+=("--dart-define=SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY}")
+fi
+
 if [ "${SUPABASE_ANON_KEY:-}" != "" ]; then
   BUILD_DEFINES+=("--dart-define=SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}")
 fi

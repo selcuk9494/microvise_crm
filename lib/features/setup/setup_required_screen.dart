@@ -34,7 +34,7 @@ class SetupRequiredScreen extends StatelessWidget {
                     Text(
                       configured
                           ? 'Supabase yapılandırması bulundu ama uygulama başlatılamadı.'
-                          : 'Uygulamayı çalıştırmak için Supabase URL ve Anon Key gerekli.',
+                          : 'Uygulamayı çalıştırmak için Supabase URL ve Publishable Key gerekli.',
                       style: Theme.of(context)
                           .textTheme
                           .bodyMedium
@@ -49,7 +49,7 @@ class SetupRequiredScreen extends StatelessWidget {
                     ),
                     const Gap(10),
                     _KeyRow(
-                      label: 'SUPABASE_ANON_KEY',
+                      label: 'SUPABASE_KEY',
                       value: AppConfig.supabaseAnonKey.isEmpty
                           ? 'Tanımlı değil'
                           : '${AppConfig.supabaseAnonKey.substring(0, 10)}…',
@@ -63,7 +63,7 @@ class SetupRequiredScreen extends StatelessWidget {
                         border: Border.all(color: AppTheme.border),
                       ),
                       child: Text(
-                        'flutter run --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...',
+                        'flutter run --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_PUBLISHABLE_KEY=...',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               fontFamily: 'monospace',
                               color: const Color(0xFF0F172A),
@@ -132,4 +132,3 @@ class _KeyRow extends StatelessWidget {
     );
   }
 }
-
