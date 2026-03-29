@@ -8,6 +8,8 @@ class ProductSerialInventoryRecord {
     required this.productId,
     required this.serialNumber,
     required this.isActive,
+    this.productName,
+    this.productCode,
     this.notes,
     this.consumedByApplicationFormId,
     this.consumedAt,
@@ -17,6 +19,8 @@ class ProductSerialInventoryRecord {
   final String id;
   final String productId;
   final String serialNumber;
+  final String? productName;
+  final String? productCode;
   final String? notes;
   final bool isActive;
   final String? consumedByApplicationFormId;
@@ -26,10 +30,14 @@ class ProductSerialInventoryRecord {
   bool get isConsumed => consumedAt != null;
 
   factory ProductSerialInventoryRecord.fromJson(Map<String, dynamic> json) {
+    final productData = json['products'];
+    final product = productData is Map<String, dynamic> ? productData : null;
     return ProductSerialInventoryRecord(
       id: json['id'].toString(),
       productId: json['product_id'].toString(),
       serialNumber: (json['serial_number'] ?? '').toString(),
+      productName: product?['name']?.toString(),
+      productCode: product?['code']?.toString(),
       notes: json['notes']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
       consumedByApplicationFormId: json['consumed_by_application_form_id']
@@ -47,6 +55,8 @@ class ProductSerialInventoryRecord {
     String? id,
     String? productId,
     String? serialNumber,
+    String? productName,
+    String? productCode,
     String? notes,
     bool? isActive,
     String? consumedByApplicationFormId,
@@ -57,6 +67,8 @@ class ProductSerialInventoryRecord {
       id: id ?? this.id,
       productId: productId ?? this.productId,
       serialNumber: serialNumber ?? this.serialNumber,
+      productName: productName ?? this.productName,
+      productCode: productCode ?? this.productCode,
       notes: notes ?? this.notes,
       isActive: isActive ?? this.isActive,
       consumedByApplicationFormId:
@@ -98,6 +110,28 @@ final productSerialInventoryProvider =
           .eq('is_active', true)
           .isFilter('consumed_at', null)
           .order('serial_number');
+
+      return (rows as List)
+          .map(
+            (row) => ProductSerialInventoryRecord.fromJson(
+              row as Map<String, dynamic>,
+            ),
+          )
+          .toList(growable: false);
+    });
+
+final productSerialInventoryRecordsProvider =
+    FutureProvider.autoDispose<List<ProductSerialInventoryRecord>>((ref) async {
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
+
+      final rows = await client
+          .from('product_serial_inventory')
+          .select(
+            'id,product_id,serial_number,notes,is_active,consumed_by_application_form_id,consumed_at,created_at,products(name,code)',
+          )
+          .order('created_at', ascending: false)
+          .limit(1000);
 
       return (rows as List)
           .map(
