@@ -113,42 +113,34 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
   final city = filters.city;
   final start = (page - 1) * customerPageSize;
 
-  var sortQuery = client.from('customers').select('id,name,created_at');
-
-  if (city != null && city.isNotEmpty) {
-    sortQuery = sortQuery.eq('city', city);
+  var totalCountQuery = client.from('customers').count();
+  totalCountQuery = _applyCustomerFilters(
+    totalCountQuery,
+    search: search,
+    city: city,
+    showPassive: showPassive,
+  );
+  final totalCount = await totalCountQuery;
+  final hasAnyRows = totalCount > 0 && start < totalCount;
+  if (!hasAnyRows) {
+    return CustomerPageData(
+      items: const [],
+      page: page,
+      hasNextPage: false,
+      totalCount: totalCount,
+    );
   }
-  if (!showPassive) {
-    sortQuery = sortQuery.eq('is_active', true);
-  }
-  if (search.isNotEmpty) {
-    sortQuery = sortQuery.ilike('name', '%$search%');
-  }
 
-  final sortRows = await sortQuery;
-  final sortedRows = (sortRows as List)
-      .map((e) => e as Map<String, dynamic>)
-      .toList(growable: true);
-
-  sortedRows.sort((a, b) {
-    return switch (sort) {
-      CustomerSortOption.id => _compareCreatedAt(
-        a['created_at']?.toString(),
-        b['created_at']?.toString(),
-      ),
-      CustomerSortOption.nameAsc => _normalizeSortText(
-        a['name']?.toString() ?? '',
-      ).compareTo(_normalizeSortText(b['name']?.toString() ?? '')),
-      CustomerSortOption.nameDesc => _normalizeSortText(
-        b['name']?.toString() ?? '',
-      ).compareTo(_normalizeSortText(a['name']?.toString() ?? '')),
-    };
-  });
-
-  final totalCount = sortedRows.length;
-  final currentPageIds = sortedRows
-      .skip(start)
-      .take(customerPageSize)
+  final rows = await _selectCustomersWithFallback(
+    client,
+    search: search,
+    city: city,
+    showPassive: showPassive,
+    sort: sort,
+    from: start,
+    to: start + customerPageSize - 1,
+  );
+  final currentPageIds = rows
       .map((row) => row['id']?.toString())
       .whereType<String>()
       .toList(growable: false);
@@ -162,29 +154,7 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
       totalCount: totalCount,
     );
   }
-
-  final rows = await _selectCustomersWithFallback(client, ids: currentPageIds);
-  final rowById = {
-    for (final row in (rows as List).cast<Map<String, dynamic>>())
-      row['id']?.toString() ?? '': row,
-  };
-  final currentPageRows = [
-    for (final id in currentPageIds)
-      if (rowById.containsKey(id)) rowById[id]!,
-  ];
-
-  if (currentPageRows.isEmpty) {
-    return CustomerPageData(
-      items: const [],
-      page: page,
-      hasNextPage: false,
-      totalCount: totalCount,
-    );
-  }
-
-  final ids = currentPageRows
-      .map((e) => e['id'].toString())
-      .toList(growable: false);
+  final ids = currentPageIds;
 
   final lineRows = await client
       .from('lines')
@@ -217,7 +187,7 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
     page: page,
     hasNextPage: hasNextPage,
     totalCount: totalCount,
-    items: currentPageRows
+    items: rows
         .map(
           (e) => Customer.fromJson({
             ...e,
@@ -228,28 +198,6 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
         .toList(growable: false),
   );
 });
-
-int _compareCreatedAt(String? left, String? right) {
-  final leftDate = DateTime.tryParse(left ?? '');
-  final rightDate = DateTime.tryParse(right ?? '');
-  if (leftDate == null && rightDate == null) return 0;
-  if (leftDate == null) return 1;
-  if (rightDate == null) return -1;
-  return leftDate.compareTo(rightDate);
-}
-
-String _normalizeSortText(String value) {
-  return value
-      .trim()
-      .toLowerCase()
-      .replaceAll('ç', 'c')
-      .replaceAll('ğ', 'g')
-      .replaceAll('ı', 'i')
-      .replaceAll('i̇', 'i')
-      .replaceAll('ö', 'o')
-      .replaceAll('ş', 's')
-      .replaceAll('ü', 'u');
-}
 
 final customerCitiesProvider = FutureProvider<List<String>>((ref) async {
   final client = ref.watch(supabaseClientProvider);
@@ -300,21 +248,62 @@ final customerLocationsProvider =
       }
     });
 
+dynamic _applyCustomerFilters(
+  dynamic query, {
+  required String search,
+  required String? city,
+  required bool showPassive,
+}) {
+  if (city != null && city.isNotEmpty) {
+    query = query.eq('city', city);
+  }
+  if (!showPassive) {
+    query = query.eq('is_active', true);
+  }
+  if (search.isNotEmpty) {
+    query = query.ilike('name', '%$search%');
+  }
+  return query;
+}
+
+dynamic _applyCustomerSort(dynamic query, CustomerSortOption sort) {
+  return switch (sort) {
+    CustomerSortOption.id => query.order('created_at', ascending: true),
+    CustomerSortOption.nameAsc => query.order('name', ascending: true),
+    CustomerSortOption.nameDesc => query.order('name', ascending: false),
+  };
+}
+
 Future<List<Map<String, dynamic>>> _selectCustomersWithFallback(
   dynamic client, {
-  required List<String> ids,
+  required String search,
+  required String? city,
+  required bool showPassive,
+  required CustomerSortOption sort,
+  required int from,
+  required int to,
 }) async {
   try {
-    final rows = await client
-        .from('customers')
-        .select(_customerDirectorSelect)
-        .inFilter('id', ids);
+    var query = client.from('customers').select(_customerDirectorSelect);
+    query = _applyCustomerFilters(
+      query,
+      search: search,
+      city: city,
+      showPassive: showPassive,
+    );
+    query = _applyCustomerSort(query, sort);
+    final rows = await query.range(from, to);
     return (rows as List).cast<Map<String, dynamic>>();
   } catch (_) {
-    final rows = await client
-        .from('customers')
-        .select(_customerBaseSelect)
-        .inFilter('id', ids);
+    var query = client.from('customers').select(_customerBaseSelect);
+    query = _applyCustomerFilters(
+      query,
+      search: search,
+      city: city,
+      showPassive: showPassive,
+    );
+    query = _applyCustomerSort(query, sort);
+    final rows = await query.range(from, to);
     return (rows as List)
         .cast<Map<String, dynamic>>()
         .map((row) => {...row, 'director_name': null})

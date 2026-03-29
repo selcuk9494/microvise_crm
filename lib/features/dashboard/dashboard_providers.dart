@@ -8,6 +8,11 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
   final client = ref.watch(supabaseClientProvider);
   if (client == null) return DashboardMetrics.zero();
 
+  final snapshot = await _fetchDashboardSnapshot(client);
+  if (snapshot != null) {
+    return snapshot;
+  }
+
   final totalCustomers = await _count(client, 'customers', filters: {
     'is_active': true,
   });
@@ -168,10 +173,9 @@ Future<int> _count(
   SupabaseClient client,
   String table, {
   Map<String, Object?> filters = const {},
-  PostgrestFilterBuilder<dynamic> Function(PostgrestFilterBuilder<dynamic> q)?
-      extra,
+  dynamic Function(dynamic q)? extra,
 }) async {
-  PostgrestFilterBuilder<dynamic> q = client.from(table).select('id');
+  dynamic q = client.from(table).count();
   for (final entry in filters.entries) {
     final value = entry.value;
     if (value == null) continue;
@@ -179,7 +183,7 @@ Future<int> _count(
   }
   final finalQ = extra == null ? q : extra(q);
   final response = await finalQ;
-  return (response as List).length;
+  return response as int;
 }
 
 Future<double> _sumTransactions(
@@ -287,6 +291,43 @@ Future<({double receivable, double payable})> _accountingSnapshot(
   } catch (_) {
     return (receivable: 0.0, payable: 0.0);
   }
+}
+
+Future<DashboardMetrics?> _fetchDashboardSnapshot(SupabaseClient client) async {
+  try {
+    final rows = await client.rpc('dashboard_snapshot');
+    if (rows is! List || rows.isEmpty) return null;
+    final row = rows.first as Map<String, dynamic>;
+    return DashboardMetrics(
+      totalCustomers: _intValue(row['total_customers']),
+      openWorkOrders: _intValue(row['open_work_orders']),
+      inProgressWorkOrders: _intValue(row['in_progress_work_orders']),
+      completedWorkOrders: _intValue(row['completed_work_orders']),
+      todayWorkOrders: _intValue(row['today_work_orders']),
+      expiringSoon: _intValue(row['expiring_soon']),
+      totalProducts: _intValue(row['total_products']),
+      lowStockProducts: _intValue(row['low_stock_products']),
+      revenue: _doubleValue(row['revenue']),
+      lastMonthRevenue: _doubleValue(row['last_month_revenue']),
+      todayCollections: _doubleValue(row['today_collections']),
+      totalReceivable: _doubleValue(row['total_receivable']),
+      totalPayable: _doubleValue(row['total_payable']),
+      openInvoices: _intValue(row['open_invoices']),
+      totalInvoiceAmount: _doubleValue(row['total_invoice_amount']),
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+int _intValue(Object? value) {
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+double _doubleValue(Object? value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? 0;
 }
 
 class DashboardMetrics {

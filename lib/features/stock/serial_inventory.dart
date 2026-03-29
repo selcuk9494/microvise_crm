@@ -147,42 +147,58 @@ final productSerialInventorySummaryProvider =
       final client = ref.watch(supabaseClientProvider);
       if (client == null) return const {};
 
-      const pageSize = 1000;
-      var from = 0;
-      final rows = <Map<String, dynamic>>[];
+      try {
+        final rows = await client
+            .from('product_serial_inventory_summary')
+            .select('product_id,total_count,available_count,consumed_count');
 
-      while (true) {
-        final batch = await client
-            .from('product_serial_inventory')
-            .select('product_id,consumed_at,is_active')
-            .eq('is_active', true)
-            .range(from, from + pageSize - 1);
-        final parsed = (batch as List)
-            .map((row) => row as Map<String, dynamic>)
-            .toList(growable: false);
-        rows.addAll(parsed);
-        if (parsed.length < pageSize) break;
-        from += pageSize;
+        return {
+          for (final row in (rows as List).cast<Map<String, dynamic>>())
+            row['product_id'].toString(): ProductSerialInventorySummary(
+              productId: row['product_id'].toString(),
+              totalCount: (row['total_count'] as num?)?.toInt() ?? 0,
+              availableCount: (row['available_count'] as num?)?.toInt() ?? 0,
+              consumedCount: (row['consumed_count'] as num?)?.toInt() ?? 0,
+            ),
+        };
+      } catch (_) {
+        const pageSize = 1000;
+        var from = 0;
+        final rows = <Map<String, dynamic>>[];
+
+        while (true) {
+          final batch = await client
+              .from('product_serial_inventory')
+              .select('product_id,consumed_at,is_active')
+              .eq('is_active', true)
+              .range(from, from + pageSize - 1);
+          final parsed = (batch as List)
+              .map((row) => row as Map<String, dynamic>)
+              .toList(growable: false);
+          rows.addAll(parsed);
+          if (parsed.length < pageSize) break;
+          from += pageSize;
+        }
+
+        final summary = <String, ProductSerialInventorySummary>{};
+        for (final row in rows) {
+          final productId = row['product_id'].toString();
+          final current = summary[productId] ??
+              const ProductSerialInventorySummary(
+                productId: '',
+                totalCount: 0,
+                availableCount: 0,
+                consumedCount: 0,
+              );
+          final isConsumed = row['consumed_at'] != null;
+          summary[productId] = ProductSerialInventorySummary(
+            productId: productId,
+            totalCount: current.totalCount + 1,
+            availableCount: current.availableCount + (isConsumed ? 0 : 1),
+            consumedCount: current.consumedCount + (isConsumed ? 1 : 0),
+          );
+        }
+
+        return summary;
       }
-
-      final summary = <String, ProductSerialInventorySummary>{};
-      for (final row in rows) {
-        final productId = row['product_id'].toString();
-        final current = summary[productId] ??
-            const ProductSerialInventorySummary(
-              productId: '',
-              totalCount: 0,
-              availableCount: 0,
-              consumedCount: 0,
-            );
-        final isConsumed = row['consumed_at'] != null;
-        summary[productId] = ProductSerialInventorySummary(
-          productId: productId,
-          totalCount: current.totalCount + 1,
-          availableCount: current.availableCount + (isConsumed ? 0 : 1),
-          consumedCount: current.consumedCount + (isConsumed ? 1 : 0),
-        );
-      }
-
-      return summary;
     });

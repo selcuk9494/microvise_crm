@@ -26,7 +26,9 @@ class DashboardScreen extends ConsumerWidget {
     final metricsAsync = ref.watch(dashboardMetricsProvider);
     final seriesAsync = ref.watch(dashboardRevenueSeriesProvider);
     final activitiesAsync = ref.watch(dashboardActivitiesProvider);
-    final workOrdersAsync = ref.watch(workOrdersBoardProvider);
+    final workOrdersAsync = isMobile
+        ? ref.watch(workOrdersBoardProvider)
+        : const AsyncData<List<WorkOrder>>(<WorkOrder>[]);
     final money = NumberFormat.currency(
       locale: 'tr_TR',
       symbol: '₺',
