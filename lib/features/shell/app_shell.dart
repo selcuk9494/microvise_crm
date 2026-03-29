@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/auth/auth_providers.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_breakpoints.dart';
@@ -44,6 +45,8 @@ class _DesktopShellState extends ConsumerState<_DesktopShell> {
     final client = ref.read(supabaseClientProvider);
     try {
       await client?.auth.signOut();
+      ref.invalidate(authStateProvider);
+      ref.invalidate(sessionChangesProvider);
       ref.invalidate(currentUserProfileProvider);
       if (!mounted) return;
       context.go('/giris');
@@ -380,6 +383,8 @@ class _ProfileButton extends ConsumerWidget {
     Future<void> signOut() async {
       try {
         await client?.auth.signOut();
+        ref.invalidate(authStateProvider);
+        ref.invalidate(sessionChangesProvider);
         ref.invalidate(currentUserProfileProvider);
         if (!context.mounted) return;
         context.go('/giris');

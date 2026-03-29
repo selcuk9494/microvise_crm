@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_card.dart';
 
@@ -43,6 +44,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _loading = true);
     try {
       await client.auth.signInWithPassword(email: email, password: password);
+      ref.invalidate(currentUserProfileProvider);
       if (!mounted) return;
       context.go('/panel');
     } on AuthException catch (e) {

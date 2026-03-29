@@ -9,9 +9,20 @@ final authStateProvider = StreamProvider<AuthState?>((ref) {
   return client.auth.onAuthStateChange;
 });
 
-final sessionProvider = Provider<Session?>((ref) {
+final sessionChangesProvider = StreamProvider<Session?>((ref) async* {
   final client = ref.watch(supabaseClientProvider);
-  if (client == null) return null;
-  return client.auth.currentSession;
+  if (client == null) {
+    yield null;
+    return;
+  }
+
+  yield client.auth.currentSession;
+  yield* client.auth.onAuthStateChange.map((event) => event.session);
 });
 
+final sessionProvider = Provider<Session?>((ref) {
+  return ref.watch(sessionChangesProvider).maybeWhen(
+    data: (session) => session,
+    orElse: () => ref.watch(supabaseClientProvider)?.auth.currentSession,
+  );
+});
