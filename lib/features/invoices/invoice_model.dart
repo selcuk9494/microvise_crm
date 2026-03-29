@@ -1,3 +1,5 @@
+import '../../core/format/app_date_time.dart';
+
 // Fatura Modelleri
 class Invoice {
   final String id;
@@ -59,8 +61,11 @@ class Invoice {
       invoiceType: json['invoice_type']?.toString() ?? 'sales',
       customerId: json['customer_id'].toString(),
       customerName: json['customers']?['name']?.toString() ?? json['customer_name']?.toString(),
-      invoiceDate: DateTime.tryParse(json['invoice_date']?.toString() ?? '') ?? DateTime.now(),
-      dueDate: json['due_date'] != null ? DateTime.tryParse(json['due_date'].toString()) : null,
+      invoiceDate:
+          parseAppDateTime(json['invoice_date']?.toString()) ?? appNow(),
+      dueDate: json['due_date'] != null
+          ? parseAppDateTime(json['due_date'].toString())
+          : null,
       currency: json['currency']?.toString() ?? 'TRY',
       exchangeRate: (json['exchange_rate'] as num?)?.toDouble() ?? 1.0,
       subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0,
@@ -74,7 +79,8 @@ class Invoice {
       workOrderId: json['work_order_id']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
       createdBy: json['created_by']?.toString(),
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
+      createdAt:
+          parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
       items: (json['invoice_items'] as List?)
               ?.map((e) => InvoiceItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
@@ -256,13 +262,15 @@ class Transaction {
       currency: json['currency']?.toString() ?? 'TRY',
       exchangeRate: (json['exchange_rate'] as num?)?.toDouble() ?? 1.0,
       paymentMethod: json['payment_method']?.toString() ?? 'cash',
-      transactionDate: DateTime.tryParse(json['transaction_date']?.toString() ?? '') ?? DateTime.now(),
+      transactionDate:
+          parseAppDateTime(json['transaction_date']?.toString()) ?? appNow(),
       invoiceId: json['invoice_id']?.toString(),
       invoiceNumber: json['invoices']?['invoice_number']?.toString(),
       description: json['description']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
       createdBy: json['created_by']?.toString(),
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
+      createdAt:
+          parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
     );
   }
 }
@@ -388,13 +396,11 @@ class ExchangeRate {
       currency: json['currency']?.toString() ?? 'TRY',
       rateToTry: (json['rate_to_try'] as num?)?.toDouble() ?? 1.0,
       effectiveDate:
-          DateTime.tryParse(json['effective_date']?.toString() ?? '') ??
-          DateTime.now(),
+          parseAppDateTime(json['effective_date']?.toString()) ?? appNow(),
       source: json['source']?.toString() ?? 'manual',
       isManual: json['is_manual'] as bool? ?? false,
       createdAt:
-          DateTime.tryParse(json['created_at']?.toString() ?? '') ??
-          DateTime.now(),
+          parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
     );
   }
 }

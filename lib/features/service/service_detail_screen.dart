@@ -7,6 +7,7 @@ import 'package:signature/signature.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/format/app_date_time.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
@@ -987,8 +988,7 @@ class ServiceDetail {
       title: (json['title'] ?? '').toString(),
       status: (json['status'] ?? 'open').toString(),
       createdAt:
-          DateTime.tryParse(json['created_at']?.toString() ?? '') ??
-          DateTime.now(),
+          parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
       notes: json['notes']?.toString(),
       currency: json['currency']?.toString(),
       totalAmount: (json['total_amount'] as num?)?.toDouble(),

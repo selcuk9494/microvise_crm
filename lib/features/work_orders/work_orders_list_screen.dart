@@ -11,6 +11,7 @@ import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../../core/ui/app_section_card.dart';
 import '../../core/ui/empty_state_card.dart';
+import '../../core/format/app_date_time.dart';
 import 'work_order_create_dialog.dart';
 import 'work_order_model.dart';
 import 'work_order_detail_sheet.dart';
@@ -29,17 +30,30 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
   late TabController _tabController;
   bool _handledCreateQuery = false;
   bool _showPassive = false;
+  DateTime? _closedFilterDate;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _closedFilterDate = normalizeAppDate(appNow());
+    _tabController.addListener(_handleTabChanged);
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChanged);
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _handleTabChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (_tabController.index == 2 && _closedFilterDate == null) {
+        _closedFilterDate = normalizeAppDate(appNow());
+      }
+    });
   }
 
   @override
@@ -64,7 +78,11 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
   Widget build(BuildContext context) {
     final boardAsync = ref.watch(workOrdersBoardProvider);
     final width = MediaQuery.sizeOf(context).width;
+    final height = MediaQuery.sizeOf(context).height;
     final isCompact = width < 720;
+    final listHeight = isCompact
+        ? (height * 0.52).clamp(300.0, 520.0).toDouble()
+        : (height * 0.58).clamp(360.0, 760.0).toDouble();
 
     return AppPageLayout(
       title: 'İş Emirleri',
@@ -180,12 +198,67 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
             ),
           ),
           Gap(isCompact ? 10 : 10),
-          Expanded(
+          if (_tabController.index == 2) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Bugün'),
+                    selected: _closedFilterDate != null &&
+                        normalizeAppDate(_closedFilterDate!) ==
+                            normalizeAppDate(appNow()),
+                    onSelected: (_) {
+                      setState(() {
+                        _closedFilterDate = normalizeAppDate(appNow());
+                      });
+                    },
+                  ),
+                  ChoiceChip(
+                    label: const Text('Tümü'),
+                    selected: _closedFilterDate == null,
+                    onSelected: (_) {
+                      setState(() => _closedFilterDate = null);
+                    },
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _closedFilterDate ?? normalizeAppDate(appNow()),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2100),
+                        locale: const Locale('tr', 'TR'),
+                      );
+                      if (picked == null || !mounted) return;
+                      setState(() {
+                        _closedFilterDate = normalizeAppDate(picked);
+                      });
+                    },
+                    icon: const Icon(Icons.calendar_month_rounded, size: 16),
+                    label: Text(
+                      _closedFilterDate == null
+                          ? 'Tarih seç'
+                          : DateFormat('d MMM y', 'tr_TR').format(_closedFilterDate!),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Gap(10),
+          ],
+          SizedBox(
+            height: listHeight,
             child: boardAsync.when(
               data: (items) {
                 final visibleItems = items
                     .where((e) => _showPassive || e.isActive)
                     .toList(growable: false);
+                final closedFilterDate = _closedFilterDate == null
+                    ? null
+                    : normalizeAppDate(_closedFilterDate!);
                 return TabBarView(
                   controller: _tabController,
                   children: [
@@ -210,9 +283,13 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
                       onToggleActive: _setWorkOrderActive,
                     ),
                     _WorkOrderList(
-                      items: visibleItems
-                          .where((e) => e.status == 'done')
-                          .toList(),
+                      items: visibleItems.where((e) {
+                        if (e.status != 'done') return false;
+                        if (closedFilterDate == null) return true;
+                        final candidate = e.closedAt ?? e.createdAt ?? e.scheduledDate;
+                        if (candidate == null) return false;
+                        return normalizeAppDate(candidate) == closedFilterDate;
+                      }).toList(),
                       emptyText: _showPassive
                           ? 'Kapalı veya pasif iş emri bulunmuyor.'
                           : 'Kapatılmış iş emri bulunmuyor.',

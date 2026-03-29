@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/format/app_date_time.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
@@ -1102,8 +1103,7 @@ class ServiceRecord {
       customerName: json['customer_name']?.toString(),
       status: (json['status'] ?? 'open').toString(),
       createdAt:
-          DateTime.tryParse(json['created_at']?.toString() ?? '') ??
-          DateTime.now(),
+          parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
     );
   }
 }

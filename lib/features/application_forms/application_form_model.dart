@@ -1,3 +1,5 @@
+import '../../core/format/app_date_time.dart';
+
 class ApplicationFormRecord {
   const ApplicationFormRecord({
     required this.id,
@@ -57,8 +59,8 @@ class ApplicationFormRecord {
     return ApplicationFormRecord(
       id: json['id'].toString(),
       applicationDate:
-          DateTime.tryParse(json['application_date']?.toString() ?? '') ??
-          DateTime.now(),
+          parseAppDateTime(json['application_date']?.toString()) ??
+          appNow(),
       customerId: json['customer_id']?.toString(),
       customerName: json['customer_name']?.toString() ?? '—',
       customerTcknMs: json['customer_tckn_ms']?.toString(),
@@ -73,11 +75,11 @@ class ApplicationFormRecord {
       stockProductName: json['stock_product_name']?.toString(),
       stockRegistryNumber: json['stock_registry_number']?.toString(),
       accountingOffice: json['accounting_office']?.toString(),
-      okcStartDate: DateTime.tryParse(json['okc_start_date']?.toString() ?? ''),
+      okcStartDate: parseAppDateTime(json['okc_start_date']?.toString()),
       businessActivityName: json['business_activity_name']?.toString(),
       invoiceNumber: json['invoice_number']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
+      createdAt: parseAppDateTime(json['created_at']?.toString()),
     );
   }
 }

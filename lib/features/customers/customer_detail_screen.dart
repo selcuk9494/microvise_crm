@@ -6,6 +6,7 @@ import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/format/app_date_time.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
@@ -2673,8 +2674,7 @@ class CustomerDetail {
       phone3Title: json['phone_3_title']?.toString(),
       isActive: (json['is_active'] as bool?) ?? true,
       createdAt:
-          DateTime.tryParse(json['created_at']?.toString() ?? '') ??
-          DateTime.now(),
+          parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/format/app_date_time.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
@@ -944,21 +945,19 @@ class InvoiceItem {
       isActive: (json['is_active'] as bool?) ?? true,
       sourceEvent: json['source_event']?.toString(),
       sourceLabel: json['source_label']?.toString(),
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
-      invoicedAt: DateTime.tryParse(json['invoiced_at']?.toString() ?? ''),
+      createdAt: parseAppDateTime(json['created_at']?.toString()),
+      invoicedAt: parseAppDateTime(json['invoiced_at']?.toString()),
       createdBy: json['created_by']?.toString(),
       createdByLabel: json['created_by_label']?.toString(),
       approvedBy: json['approved_by']?.toString(),
       approvedByLabel: json['approved_by_label']?.toString(),
-      approvedAt: DateTime.tryParse(json['approved_at']?.toString() ?? ''),
+      approvedAt: parseAppDateTime(json['approved_at']?.toString()),
       updatedBy: json['updated_by']?.toString(),
       updatedByLabel: json['updated_by_label']?.toString(),
-      updatedAt: DateTime.tryParse(json['updated_at']?.toString() ?? ''),
+      updatedAt: parseAppDateTime(json['updated_at']?.toString()),
       deactivatedBy: json['deactivated_by']?.toString(),
       deactivatedByLabel: json['deactivated_by_label']?.toString(),
-      deactivatedAt: DateTime.tryParse(
-        json['deactivated_at']?.toString() ?? '',
-      ),
+      deactivatedAt: parseAppDateTime(json['deactivated_at']?.toString()),
     );
   }
 }

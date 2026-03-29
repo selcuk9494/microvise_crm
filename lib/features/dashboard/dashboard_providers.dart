@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/format/app_date_time.dart';
 import '../../core/supabase/supabase_providers.dart';
 
 final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
@@ -27,14 +28,14 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
   });
 
   final todayWorkOrders = await _count(client, 'work_orders', filters: {
-    'scheduled_date': DateTime.now().toIso8601String().substring(0, 10),
+    'scheduled_date': appNow().toIso8601String().substring(0, 10),
     'is_active': true,
   });
 
   final expiring = await _count(client, 'licenses', filters: {
     'is_active': true,
   }, extra: (q) {
-    final now = DateTime.now();
+    final now = appNow();
     final in30 = now.add(const Duration(days: 30));
     return q
         .lte('expires_at', in30.toIso8601String())
@@ -44,7 +45,7 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
   final expiringLines = await _count(client, 'lines', filters: {
     'is_active': true,
   }, extra: (q) {
-    final now = DateTime.now();
+    final now = appNow();
     final in30 = now.add(const Duration(days: 30));
     return q
         .lte('expires_at', in30.toIso8601String())
@@ -97,7 +98,7 @@ final dashboardRevenueSeriesProvider =
   final client = ref.watch(supabaseClientProvider);
   if (client == null) return const [];
 
-  final now = DateTime.now();
+  final now = appNow();
   final from = now.subtract(const Duration(days: 14));
   final rows = await client
       .from('transactions')
@@ -111,9 +112,9 @@ final dashboardRevenueSeriesProvider =
     final paidAtRaw = row['transaction_date'];
     final amountRaw = row['amount'];
     if (paidAtRaw == null || amountRaw == null) continue;
-    final paidAt = DateTime.tryParse(paidAtRaw.toString());
+    final paidAt = parseAppDateTime(paidAtRaw.toString());
     if (paidAt == null) continue;
-    final key = DateTime(paidAt.year, paidAt.month, paidAt.day);
+    final key = normalizeAppDate(paidAt);
     final amount = amountRaw is num ? amountRaw.toDouble() : double.tryParse(amountRaw.toString());
     if (amount == null) continue;
     buckets.update(key, (v) => v + amount, ifAbsent: () => amount);
@@ -186,7 +187,7 @@ Future<double> _sumTransactions(
   required String type,
   bool lastMonth = false,
 }) async {
-  final now = DateTime.now();
+  final now = appNow();
   final from = lastMonth
       ? DateTime(now.year, now.month - 1, 1)
       : DateTime(now.year, now.month, 1);
@@ -213,7 +214,7 @@ Future<double> _sumTransactions(
 }
 
 Future<double> _sumTodayCollections(SupabaseClient client) async {
-  final now = DateTime.now();
+  final now = appNow();
   final rows = await client
       .from('transactions')
       .select('amount')
@@ -378,7 +379,8 @@ class DashboardActivity {
       type: type,
       title: (row['title'] ?? '').toString(),
       customerName: customers?['name']?.toString(),
-      createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ??
+      createdAt:
+          parseAppDateTime(row['created_at']?.toString()) ??
           DateTime.fromMillisecondsSinceEpoch(0),
     );
   }

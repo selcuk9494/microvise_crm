@@ -1,3 +1,5 @@
+import '../../core/format/app_date_time.dart';
+
 class WorkOrder {
   const WorkOrder({
     required this.id,
@@ -12,6 +14,8 @@ class WorkOrder {
     this.branchName,
     required this.assignedTo,
     required this.scheduledDate,
+    this.createdAt,
+    this.closedAt,
     this.workOrderTypeId,
     this.workOrderTypeName,
     this.contactPhone,
@@ -34,6 +38,8 @@ class WorkOrder {
   final String? branchName;
   final String? assignedTo;
   final DateTime? scheduledDate;
+  final DateTime? createdAt;
+  final DateTime? closedAt;
   final String? workOrderTypeId;
   final String? workOrderTypeName;
   final String? contactPhone;
@@ -56,9 +62,9 @@ class WorkOrder {
       branchId: json['branch_id']?.toString(),
       branchName: json['branch_name']?.toString(),
       assignedTo: json['assigned_to']?.toString(),
-      scheduledDate: DateTime.tryParse(
-        json['scheduled_date']?.toString() ?? '',
-      ),
+      scheduledDate: parseAppDateTime(json['scheduled_date']?.toString()),
+      createdAt: parseAppDateTime(json['created_at']?.toString()),
+      closedAt: parseAppDateTime(json['closed_at']?.toString()),
       workOrderTypeId: json['work_order_type_id']?.toString(),
       workOrderTypeName: json['work_order_type_name']?.toString(),
       contactPhone: json['contact_phone']?.toString(),
@@ -94,6 +100,8 @@ class WorkOrder {
       branchName: branchName ?? this.branchName,
       assignedTo: assignedTo,
       scheduledDate: scheduledDate,
+      createdAt: createdAt,
+      closedAt: closedAt,
       workOrderTypeId: workOrderTypeId,
       workOrderTypeName: workOrderTypeName,
       contactPhone: contactPhone,
@@ -131,7 +139,7 @@ class WorkOrderPayment {
     return WorkOrderPayment(
       amount: amount,
       currency: json['currency']?.toString() ?? 'TRY',
-      paidAt: DateTime.tryParse(json['paid_at']?.toString() ?? ''),
+      paidAt: parseAppDateTime(json['paid_at']?.toString()),
       description: json['description']?.toString(),
       paymentMethod: json['payment_method']?.toString(),
       isActive: (json['is_active'] as bool?) ?? true,

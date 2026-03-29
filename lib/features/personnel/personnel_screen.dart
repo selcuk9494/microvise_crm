@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/format/app_date_time.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
@@ -508,11 +509,13 @@ class _CreatePersonnelDialogState
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Hata: ${e.message}')));
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Personel oluşturulamadı.')));
+      ).showSnackBar(
+        SnackBar(content: Text('Personel oluşturulamadı: $e')),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -925,7 +928,7 @@ class PersonnelUser {
       pagePermissions: ((json['page_permissions'] as List?) ?? const [])
           .map((item) => item.toString())
           .toList(growable: false),
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
+      createdAt: parseAppDateTime(json['created_at']?.toString()),
     );
   }
 }

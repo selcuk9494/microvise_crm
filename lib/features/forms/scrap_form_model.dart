@@ -1,3 +1,5 @@
+import '../../core/format/app_date_time.dart';
+
 class ScrapFormRecord {
   const ScrapFormRecord({
     required this.id,
@@ -40,9 +42,7 @@ class ScrapFormRecord {
   factory ScrapFormRecord.fromJson(Map<String, dynamic> json) {
     return ScrapFormRecord(
       id: json['id'].toString(),
-      formDate:
-          DateTime.tryParse(json['form_date']?.toString() ?? '') ??
-          DateTime.now(),
+      formDate: parseAppDateTime(json['form_date']?.toString()) ?? appNow(),
       rowNumber: json['row_number']?.toString(),
       customerId: json['customer_id']?.toString(),
       customerName: json['customer_name']?.toString() ?? '—',
@@ -50,15 +50,15 @@ class ScrapFormRecord {
       customerTaxOfficeAndNumber: json['customer_tax_office_and_number']
           ?.toString(),
       deviceBrandModelRegistry: json['device_brand_model_registry']?.toString(),
-      okcStartDate: DateTime.tryParse(json['okc_start_date']?.toString() ?? ''),
-      lastUsedDate: DateTime.tryParse(json['last_used_date']?.toString() ?? ''),
+      okcStartDate: parseAppDateTime(json['okc_start_date']?.toString()),
+      lastUsedDate: parseAppDateTime(json['last_used_date']?.toString()),
       zReportCount: json['z_report_count']?.toString(),
       totalVatCollection: json['total_vat_collection']?.toString(),
       totalCollection: json['total_collection']?.toString(),
       interventionPurpose: json['intervention_purpose']?.toString(),
       otherFindings: json['other_findings']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
+      createdAt: parseAppDateTime(json['created_at']?.toString()),
     );
   }
 }

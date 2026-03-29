@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/format/app_date_time.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
@@ -54,7 +55,7 @@ class ReportsFilters {
   }
 
   DateTime get from {
-    final now = DateTime.now();
+    final now = appNow();
     return switch (preset) {
       ReportsPreset.last7Days => now.subtract(const Duration(days: 7)),
       ReportsPreset.last30Days => now.subtract(const Duration(days: 30)),
@@ -96,13 +97,13 @@ final reportsDataProvider = FutureProvider<ReportsData>((ref) async {
   final revenueByCustomer = <String, double>{};
   final dailyPayments = <DateTime, _DailyPaymentAccumulator>{};
   for (final row in (payments as List)) {
-    final paidAt = DateTime.tryParse(row['paid_at']?.toString() ?? '');
+    final paidAt = parseAppDateTime(row['paid_at']?.toString());
     final amountRaw = row['amount'];
     final amount = amountRaw is num
         ? amountRaw.toDouble()
         : double.tryParse(amountRaw?.toString() ?? '');
     if (paidAt == null || amount == null) continue;
-    final day = DateTime(paidAt.year, paidAt.month, paidAt.day);
+    final day = normalizeAppDate(paidAt);
     revenueByDay.update(day, (v) => v + amount, ifAbsent: () => amount);
     dailyPayments
         .putIfAbsent(day, _DailyPaymentAccumulator.new)
@@ -135,7 +136,7 @@ final reportsDataProvider = FutureProvider<ReportsData>((ref) async {
     if (status == 'done') done++;
   }
 
-  final now = DateTime.now();
+    final now = appNow();
   final points = <ReportPoint>[];
   final days = switch (filters.preset) {
     ReportsPreset.last7Days => 7,

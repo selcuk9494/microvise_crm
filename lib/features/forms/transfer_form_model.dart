@@ -1,3 +1,5 @@
+import '../../core/format/app_date_time.dart';
+
 class TransferFormRecord {
   const TransferFormRecord({
     required this.id,
@@ -73,11 +75,10 @@ class TransferFormRecord {
       fiscalSymbolCompanyCode: json['fiscal_symbol_company_code']?.toString(),
       departmentCount: json['department_count']?.toString(),
       transferDate:
-          DateTime.tryParse(json['transfer_date']?.toString() ?? '') ??
-          DateTime.now(),
+          parseAppDateTime(json['transfer_date']?.toString()) ?? appNow(),
       transferReason: json['transfer_reason']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
+      createdAt: parseAppDateTime(json['created_at']?.toString()),
     );
   }
 }
