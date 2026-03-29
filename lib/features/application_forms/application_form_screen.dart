@@ -14,10 +14,12 @@ import '../../core/ui/app_page_layout.dart';
 import '../billing/invoice_queue_helper.dart';
 import '../customers/web_download_helper.dart'
     if (dart.library.io) '../customers/io_download_helper.dart';
+import '../invoices/invoice_providers.dart';
 import 'application_form_model.dart';
 import '../customers/customer_form_dialog.dart';
 import '../definitions/definitions_screen.dart';
 import 'application_form_print.dart';
+import '../stock/serial_inventory.dart';
 import '../work_orders/work_orders_providers.dart';
 
 final applicationFormCustomersProvider = FutureProvider<List<_CustomerOption>>((
@@ -87,7 +89,7 @@ final applicationFormsProvider = FutureProvider<List<ApplicationFormRecord>>((
   final rows = await client
       .from('application_forms')
       .select(
-        'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
+        'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
       )
       .order('created_at', ascending: false)
       .limit(500);
@@ -1135,7 +1137,6 @@ class _ApplicationFormDialogState
   late final TextEditingController _customerTcknMsController;
   late final TextEditingController _directorController;
   late final TextEditingController _accountingOfficeController;
-  late final TextEditingController _stockRegistryNumberController;
   late final TextEditingController _invoiceNumberController;
   DateTime _applicationDate = DateTime.now();
   DateTime _okcStartDate = DateTime.now();
@@ -1146,6 +1147,7 @@ class _ApplicationFormDialogState
   String? _selectedFiscalSymbolId;
   String? _selectedStockProductId;
   List<String> _selectedBusinessActivityIds = [];
+  List<ProductSerialInventoryRecord> _selectedSerialInventory = const [];
   bool _saving = false;
 
   @override
@@ -1167,9 +1169,6 @@ class _ApplicationFormDialogState
     _directorController = TextEditingController(text: initial?.director ?? '');
     _accountingOfficeController = TextEditingController(
       text: initial?.accountingOffice ?? '',
-    );
-    _stockRegistryNumberController = TextEditingController(
-      text: initial?.stockRegistryNumber ?? '',
     );
     _invoiceNumberController = TextEditingController(
       text: initial?.invoiceNumber ?? '',
@@ -1226,16 +1225,36 @@ class _ApplicationFormDialogState
           )
           .map((item) => item.id)
           .firstOrNull;
-      _selectedStockProductId ??= stockProducts
-          .where(
-            (item) =>
-                _sortKey(item.name) ==
-                    _sortKey(initial.stockProductName ?? '') ||
-                _sortKey(item.code ?? '') ==
-                    _sortKey(initial.stockRegistryNumber ?? ''),
-          )
-          .map((item) => item.id)
-          .firstOrNull;
+      _selectedStockProductId ??=
+          stockProducts
+              .where((item) => item.id == initial.stockProductId)
+              .map((item) => item.id)
+              .firstOrNull ??
+          stockProducts
+              .where(
+                (item) =>
+                    _sortKey(item.name) ==
+                        _sortKey(initial.stockProductName ?? '') ||
+                    _sortKey(item.code ?? '') ==
+                        _sortKey(initial.stockRegistryNumber ?? ''),
+              )
+              .map((item) => item.id)
+              .firstOrNull;
+      if ((initial.stockRegistryNumber?.trim().isNotEmpty ?? false) &&
+          _selectedSerialInventory.isEmpty) {
+        _selectedSerialInventory = [
+          ProductSerialInventoryRecord(
+            id: 'existing:${initial.id}',
+            productId: _selectedStockProductId ?? '',
+            serialNumber: initial.stockRegistryNumber!.trim(),
+            notes: null,
+            isActive: true,
+            consumedByApplicationFormId: initial.id,
+            consumedAt: initial.createdAt,
+            createdAt: initial.createdAt,
+          ),
+        ];
+      }
       if (_selectedBusinessActivityIds.isEmpty) {
         final selectedNames = (initial.businessActivityName ?? '')
             .split(',')
@@ -1258,7 +1277,6 @@ class _ApplicationFormDialogState
     _customerTcknMsController.dispose();
     _directorController.dispose();
     _accountingOfficeController.dispose();
-    _stockRegistryNumberController.dispose();
     _invoiceNumberController.dispose();
     super.dispose();
   }
@@ -1376,25 +1394,155 @@ class _ApplicationFormDialogState
     });
   }
 
-  List<String> _normalizedRegistryNumbers() {
-    final raw = _stockRegistryNumberController.text;
-    final values = raw
-        .split(RegExp(r'[\n,;]+'))
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty)
-        .toList(growable: false);
-    return {...values}.toList(growable: false);
+  List<String> get _selectedRegistryNumbers => _selectedSerialInventory
+      .map((item) => item.serialNumber.trim())
+      .where((item) => item.isNotEmpty)
+      .toList(growable: false);
+
+  String get _serialSelectionLabel {
+    final selected = _selectedRegistryNumbers;
+    if (selected.isEmpty) return 'Seri havuzundan seçin';
+    if (selected.length == 1) return selected.first;
+    return '${selected.length} seri seçildi';
   }
 
-  void _appendRegistryNumber(String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) return;
-    final items = _normalizedRegistryNumbers();
-    if (items.contains(trimmed)) return;
-    final next = [...items, trimmed].join('\n');
-    _stockRegistryNumberController
-      ..text = next
-      ..selection = TextSelection.collapsed(offset: next.length);
+  Future<void> _pickSerialInventory() async {
+    final productId = _selectedStockProductId?.trim();
+    if (productId == null || productId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Önce stok ürününü seçin.')),
+      );
+      return;
+    }
+
+    final available = await ref.read(productSerialInventoryProvider(productId).future);
+    final existingSelection = _selectedSerialInventory
+        .where((item) => item.serialNumber.trim().isNotEmpty)
+        .toList(growable: false);
+    final options = [
+      ...available,
+      for (final item in existingSelection)
+        if (!available.any((availableItem) => availableItem.id == item.id))
+          item,
+    ];
+
+    if (!mounted) return;
+    final selected = await showDialog<List<ProductSerialInventoryRecord>>(
+      context: context,
+      builder: (context) => _SerialInventoryPickerDialog(
+        items: options,
+        selectedIds: existingSelection.map((item) => item.id).toSet(),
+        allowMultiple: !widget.isEdit,
+      ),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _selectedSerialInventory = selected;
+    });
+  }
+
+  Future<void> _consumeSerialInventoryForApplications({
+    required dynamic client,
+    required List<ApplicationFormRecord> insertedRecords,
+    required List<ProductSerialInventoryRecord> selectedSerials,
+  }) async {
+    if (insertedRecords.isEmpty || selectedSerials.isEmpty) return;
+    final consumedAt = DateTime.now().toUtc().toIso8601String();
+    final userId = client.auth.currentUser?.id;
+
+    for (var index = 0; index < insertedRecords.length; index++) {
+      if (index >= selectedSerials.length) break;
+      final serial = selectedSerials[index];
+      if (serial.id.startsWith('existing:')) continue;
+      await client
+          .from('product_serial_inventory')
+          .update({
+            'consumed_by_application_form_id': insertedRecords[index].id,
+            'consumed_at': consumedAt,
+          })
+          .eq('id', serial.id);
+    }
+
+    final byProduct = <String, int>{};
+    for (final serial in selectedSerials) {
+      byProduct.update(serial.productId, (value) => value + 1, ifAbsent: () => 1);
+    }
+    if (byProduct.isEmpty) return;
+
+    await client.from('stock_movements').insert(
+      byProduct.entries
+          .map(
+            (entry) => {
+              'product_id': entry.key,
+              'movement_type': 'out',
+              'quantity': entry.value.toDouble(),
+              'reference_type': 'application_form',
+              'notes': 'Başvuru formu seri tüketimi',
+              'created_by': userId,
+            },
+          )
+          .toList(growable: false),
+    );
+  }
+
+  Future<void> _syncSerialInventoryForEdit({
+    required dynamic client,
+    required String applicationFormId,
+    required String? previousProductId,
+    required String? previousRegistryNumber,
+    required ProductSerialInventoryRecord nextSerial,
+  }) async {
+    final previousProduct = (previousProductId ?? '').trim();
+    final previousSerial = (previousRegistryNumber ?? '').trim().toUpperCase();
+    final nextProduct = nextSerial.productId.trim();
+    final nextRegistry = nextSerial.serialNumber.trim().toUpperCase();
+    final sameSelection =
+        previousProduct.isNotEmpty &&
+        previousProduct == nextProduct &&
+        previousSerial.isNotEmpty &&
+        previousSerial == nextRegistry;
+
+    if (sameSelection) return;
+
+    final userId = client.auth.currentUser?.id;
+    if (previousProduct.isNotEmpty && previousSerial.isNotEmpty) {
+      await client
+          .from('product_serial_inventory')
+          .update({
+            'consumed_by_application_form_id': null,
+            'consumed_at': null,
+          })
+          .eq('product_id', previousProduct)
+          .eq('serial_number', previousSerial)
+          .eq('consumed_by_application_form_id', applicationFormId);
+      await client.from('stock_movements').insert({
+        'product_id': previousProduct,
+        'movement_type': 'in',
+        'quantity': 1,
+        'reference_type': 'application_form_edit',
+        'notes': 'Başvuru düzenlemesinde seri serbest bırakıldı',
+        'created_by': userId,
+      });
+    }
+
+    if (!nextSerial.id.startsWith('existing:')) {
+      await client
+          .from('product_serial_inventory')
+          .update({
+            'consumed_by_application_form_id': applicationFormId,
+            'consumed_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', nextSerial.id);
+      await client.from('stock_movements').insert({
+        'product_id': nextProduct,
+        'movement_type': 'out',
+        'quantity': 1,
+        'reference_type': 'application_form_edit',
+        'notes': 'Başvuru düzenlemesinde seri yeniden atandı',
+        'created_by': userId,
+      });
+    }
   }
 
   Future<void> _save() async {
@@ -1427,11 +1575,39 @@ class _ApplicationFormDialogState
     final stockProduct = stockProducts
         ?.where((item) => item.id == _selectedStockProductId)
         .firstOrNull;
-    final registryNumbers = _normalizedRegistryNumbers();
+    final selectedSerials = _selectedSerialInventory
+        .where((item) => item.serialNumber.trim().isNotEmpty)
+        .toList(growable: false);
+    final registryNumbers = selectedSerials
+        .map((item) => item.serialNumber.trim())
+        .toList(growable: false);
     final selectedActivities =
         (activities ?? const <BusinessActivityTypeDefinition>[])
             .where((item) => _selectedBusinessActivityIds.contains(item.id))
             .toList(growable: false);
+
+    if (stockProduct == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Stok listesinden ürün seçin.')),
+      );
+      return;
+    }
+    if (registryNumbers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('En az bir sicil numarası seçin.'),
+        ),
+      );
+      return;
+    }
+    if (widget.isEdit && registryNumbers.length > 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Düzenleme modunda yalnızca tek seri seçilebilir.'),
+        ),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
@@ -1460,8 +1636,8 @@ class _ApplicationFormDialogState
         'fiscal_symbol_name': fiscal?.code?.trim().isNotEmpty ?? false
             ? fiscal!.code!.trim()
             : fiscal?.name,
-        'stock_product_id': stockProduct?.id,
-        'stock_product_name': stockProduct?.name,
+        'stock_product_id': stockProduct.id,
+        'stock_product_name': stockProduct.name,
         'accounting_office': _accountingOfficeController.text.trim().isEmpty
             ? null
             : _accountingOfficeController.text.trim(),
@@ -1477,10 +1653,8 @@ class _ApplicationFormDialogState
       };
 
       if (widget.isEdit) {
-        final primaryRegistry = registryNumbers.isEmpty
-            ? _stockRegistryNumberController.text.trim()
-            : registryNumbers.first;
-        final inserted = await client
+        final primaryRegistry = registryNumbers.first;
+      final inserted = await client
             .from('application_forms')
             .update({
               ...basePayload,
@@ -1490,10 +1664,19 @@ class _ApplicationFormDialogState
             })
             .eq('id', widget.initialRecord!.id)
             .select(
-              'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
+              'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
             )
             .single();
+        await _syncSerialInventoryForEdit(
+          client: client,
+          applicationFormId: widget.initialRecord!.id,
+          previousProductId: widget.initialRecord!.stockProductId,
+          previousRegistryNumber: widget.initialRecord!.stockRegistryNumber,
+          nextSerial: selectedSerials.first,
+        );
         ref.invalidate(applicationFormsProvider);
+        ref.invalidate(productSerialInventoryProvider(_selectedStockProductId));
+        ref.invalidate(productSerialInventorySummaryProvider);
         if (!mounted) return;
         Navigator.of(context).pop([ApplicationFormRecord.fromJson(inserted)]);
         return;
@@ -1516,7 +1699,7 @@ class _ApplicationFormDialogState
           .from('application_forms')
           .insert(payloads)
           .select(
-            'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
+            'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
           );
 
       final insertedRecords = (insertedRows as List)
@@ -1524,6 +1707,12 @@ class _ApplicationFormDialogState
             (row) => ApplicationFormRecord.fromJson(row as Map<String, dynamic>),
           )
           .toList(growable: false);
+
+      await _consumeSerialInventoryForApplications(
+        client: client,
+        insertedRecords: insertedRecords,
+        selectedSerials: selectedSerials,
+      );
 
       for (final inserted in insertedRecords) {
         final modelName = model?.name.trim();
@@ -1543,6 +1732,9 @@ class _ApplicationFormDialogState
       }
 
       ref.invalidate(applicationFormsProvider);
+      ref.invalidate(productSerialInventoryProvider(_selectedStockProductId));
+      ref.invalidate(productSerialInventorySummaryProvider);
+      ref.invalidate(stockLevelsProvider);
       if (!mounted) return;
       Navigator.of(context).pop(insertedRecords);
     } finally {
@@ -1690,28 +1882,52 @@ class _ApplicationFormDialogState
               onChanged: (value) {
                 setState(() {
                   _selectedStockProductId = value;
-                  final selected = items
-                      .where((item) => item.id == value)
-                      .firstOrNull;
-                  if (selected != null) {
-                    _appendRegistryNumber(
-                      selected.code?.trim().isNotEmpty ?? false
-                          ? selected.code!.trim()
-                          : selected.name,
-                    );
-                  }
+                  _selectedSerialInventory = const [];
                 });
               },
             ),
             loading: () => const _ContentLoading(),
             error: (error, stackTrace) => const _ContentError(),
           ),
-          right: _ApplicationTextField(
-            controller: _stockRegistryNumberController,
-            hintText:
-                'Her sicil numarasini alt alta, virgulle veya noktalı virgulle girin',
-            minLines: 1,
-            maxLines: 3,
+          right: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _pickSerialInventory,
+                icon: const Icon(Icons.qr_code_2_rounded, size: 18),
+                label: Text(_serialSelectionLabel),
+              ),
+              if (_selectedRegistryNumbers.isNotEmpty) ...[
+                const Gap(8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final serial in _selectedSerialInventory)
+                      InputChip(
+                        label: Text(serial.serialNumber),
+                        onDeleted: () {
+                          setState(() {
+                            _selectedSerialInventory = _selectedSerialInventory
+                                .where((item) => item.id != serial.id)
+                                .toList(growable: false);
+                          });
+                        },
+                      ),
+                  ],
+                ),
+              ] else ...[
+                const Gap(8),
+                Text(
+                  widget.isEdit
+                      ? 'Düzenleme modunda tek seri seçilebilir.'
+                      : 'Stoktaki hazır seri havuzundan bir veya daha fazla sicil seçin.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.textMuted,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),
@@ -2074,6 +2290,185 @@ class _ApplicationRecordCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SerialInventoryPickerDialog extends StatefulWidget {
+  const _SerialInventoryPickerDialog({
+    required this.items,
+    required this.selectedIds,
+    required this.allowMultiple,
+  });
+
+  final List<ProductSerialInventoryRecord> items;
+  final Set<String> selectedIds;
+  final bool allowMultiple;
+
+  @override
+  State<_SerialInventoryPickerDialog> createState() =>
+      _SerialInventoryPickerDialogState();
+}
+
+class _SerialInventoryPickerDialogState
+    extends State<_SerialInventoryPickerDialog> {
+  final _searchController = TextEditingController();
+  late Set<String> _selectedIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIds = {...widget.selectedIds};
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _toggle(ProductSerialInventoryRecord item, bool selected) {
+    setState(() {
+      if (!widget.allowMultiple) {
+        _selectedIds = selected ? {item.id} : <String>{};
+        return;
+      }
+      if (selected) {
+        _selectedIds.add(item.id);
+      } else {
+        _selectedIds.remove(item.id);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _sortKey(_searchController.text);
+    final filtered = widget.items.where((item) {
+      if (query.isEmpty) return true;
+      final haystack = _sortKey('${item.serialNumber} ${item.notes ?? ''}');
+      return haystack.contains(query);
+    }).toList(growable: false);
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 760),
+        child: AppCard(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.allowMultiple
+                          ? 'Seri stoktan sicil seç'
+                          : 'Seri stoktan sicil seçin',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const Gap(10),
+              TextField(
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search_rounded),
+                  hintText: 'Sicil no veya not ara',
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: filtered.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Uygun seri bulunamadı.',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: AppTheme.textMuted),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: filtered.length,
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = filtered[index];
+                          final selected = _selectedIds.contains(item.id);
+                          return ListTile(
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            onTap: () => _toggle(item, !selected),
+                            leading: widget.allowMultiple
+                                ? Checkbox(
+                                    value: selected,
+                                    onChanged: (value) =>
+                                        _toggle(item, value ?? false),
+                                  )
+                                : IconButton(
+                                    onPressed: () => _toggle(item, true),
+                                    icon: Icon(
+                                      selected
+                                          ? Icons.radio_button_checked_rounded
+                                          : Icons.radio_button_off_rounded,
+                                      color: selected
+                                          ? AppTheme.primary
+                                          : const Color(0xFF94A3B8),
+                                    ),
+                                  ),
+                            title: Text(
+                              item.serialNumber,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            subtitle: item.notes?.trim().isNotEmpty ?? false
+                                ? Text(item.notes!.trim())
+                                : null,
+                          );
+                        },
+                      ),
+              ),
+              const Gap(12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Vazgeç'),
+                    ),
+                  ),
+                  const Gap(10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        final selectedItems = widget.items
+                            .where((item) => _selectedIds.contains(item.id))
+                            .toList(growable: false);
+                        Navigator.of(context).pop(selectedItems);
+                      },
+                      child: Text(
+                        widget.allowMultiple ? 'Serileri Seç' : 'Seriyi Seç',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2792,14 +3187,12 @@ class _ApplicationTextField extends StatelessWidget {
     this.minLines,
     this.maxLines = 1,
     this.validator,
-    this.hintText,
   });
 
   final TextEditingController controller;
   final int? minLines;
   final int maxLines;
   final String? Function(String?)? validator;
-  final String? hintText;
 
   @override
   Widget build(BuildContext context) {
@@ -2818,7 +3211,6 @@ class _ApplicationTextField extends StatelessWidget {
         filled: true,
         fillColor: Colors.white,
         border: const OutlineInputBorder(),
-        hintText: hintText,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 15,
           vertical: 13,

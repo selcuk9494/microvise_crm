@@ -32,6 +32,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
   late TabController _tabController;
   bool _handledCreateQuery = false;
   bool _showPassive = false;
+  bool _mobileReorderMode = false;
   DateTime? _closedFilterDate;
 
   @override
@@ -52,6 +53,9 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
   void _handleTabChanged() {
     if (!mounted) return;
     setState(() {
+      if (_tabController.index != 0) {
+        _mobileReorderMode = false;
+      }
       if (_tabController.index == 2 && _closedFilterDate == null) {
         _closedFilterDate = normalizeAppDate(appNow());
       }
@@ -83,7 +87,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
     final height = MediaQuery.sizeOf(context).height;
     final isCompact = width < 720;
     final listHeight = isCompact
-        ? (height * 0.52).clamp(300.0, 520.0).toDouble()
+        ? (height * 0.72).clamp(440.0, 760.0).toDouble()
         : (height * 0.58).clamp(360.0, 760.0).toDouble();
     final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
     final canDeletePermanently = ref.watch(
@@ -93,7 +97,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
     return AppPageLayout(
       title: 'İş Emirleri',
       subtitle: isCompact
-          ? 'Açık işleri sürükleyip sıralayın.'
+          ? 'Açık işleri hızlıca görün, gerekirse sıralama modunu açın.'
           : 'İş emri akışını sıkı ve temiz görünümde yönetin.',
       actions: [
         if (isCompact) ...[
@@ -255,6 +259,28 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
             ),
             const Gap(10),
           ],
+          if (isCompact && _tabController.index == 0) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _mobileReorderMode = !_mobileReorderMode;
+                  });
+                },
+                icon: Icon(
+                  _mobileReorderMode
+                      ? Icons.checklist_rtl_rounded
+                      : Icons.drag_indicator_rounded,
+                  size: 16,
+                ),
+                label: Text(
+                  _mobileReorderMode ? 'Sıralamayı Bitir' : 'Sıralama Modu',
+                ),
+              ),
+            ),
+            const Gap(10),
+          ],
           SizedBox(
             height: listHeight,
             child: boardAsync.when(
@@ -280,6 +306,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
                       canArchive: canArchive,
                       canDeletePermanently: canDeletePermanently,
                       onDeletePermanently: _deleteWorkOrderPermanently,
+                      reorderModeEnabled: !isCompact || _mobileReorderMode,
                     ),
                     _WorkOrderList(
                       items: visibleItems
@@ -293,6 +320,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
                       canArchive: canArchive,
                       canDeletePermanently: canDeletePermanently,
                       onDeletePermanently: _deleteWorkOrderPermanently,
+                      reorderModeEnabled: false,
                     ),
                     _WorkOrderList(
                       items: visibleItems.where((e) {
@@ -310,6 +338,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
                       canArchive: canArchive,
                       canDeletePermanently: canDeletePermanently,
                       onDeletePermanently: _deleteWorkOrderPermanently,
+                      reorderModeEnabled: false,
                     ),
                   ],
                 );
@@ -347,6 +376,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
                   canArchive: true,
                   canDeletePermanently: true,
                   onDeletePermanently: (order) async {},
+                  reorderModeEnabled: false,
                 ),
               ),
               error: (error, stackTrace) => Center(
@@ -441,6 +471,7 @@ class _WorkOrderList extends StatelessWidget {
     required this.canArchive,
     required this.canDeletePermanently,
     required this.onDeletePermanently,
+    required this.reorderModeEnabled,
   });
 
   final List<WorkOrder> items;
@@ -450,6 +481,7 @@ class _WorkOrderList extends StatelessWidget {
   final bool canArchive;
   final bool canDeletePermanently;
   final Future<void> Function(WorkOrder order) onDeletePermanently;
+  final bool reorderModeEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -465,9 +497,9 @@ class _WorkOrderList extends StatelessWidget {
     }
 
     final ref = ProviderScope.containerOf(context);
-    final canReorder = items.every(
-      (item) => item.status == 'open' && item.isActive,
-    );
+    final canReorder =
+        reorderModeEnabled &&
+        items.every((item) => item.status == 'open' && item.isActive);
     if (!canReorder) {
       return ListView.separated(
         padding: EdgeInsets.symmetric(
@@ -494,13 +526,13 @@ class _WorkOrderList extends StatelessWidget {
 
     return Column(
       children: [
-        if (isMobile)
+        if (isMobile && reorderModeEnabled)
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Açık iş emirlerini tutup sürükleyerek sırala.',
+                'Yalnızca tutma alanından sürükleyerek sırala.',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
@@ -1132,27 +1164,30 @@ class _MobileWorkOrderCard extends StatelessWidget {
             Row(
               children: [
                 if (reorderEnabled)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.drag_indicator_rounded,
-                          size: 14,
-                          color: Color(0xFF64748B),
-                        ),
-                        Gap(4),
-                        Text('Sırala'),
-                      ],
+                  ReorderableDragStartListener(
+                    index: reorderIndex,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: AppTheme.border),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.drag_indicator_rounded,
+                            size: 14,
+                            color: Color(0xFF64748B),
+                          ),
+                          Gap(4),
+                          Text('Sırala'),
+                        ],
+                      ),
                     ),
                   ),
                 const Spacer(),
@@ -1194,12 +1229,7 @@ class _MobileWorkOrderCard extends StatelessWidget {
       ),
     );
 
-    if (!reorderEnabled) return content;
-
-    return ReorderableDragStartListener(
-      index: reorderIndex,
-      child: content,
-    );
+    return content;
   }
 }
 

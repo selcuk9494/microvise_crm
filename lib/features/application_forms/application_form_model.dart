@@ -15,6 +15,7 @@ class ApplicationFormRecord {
     required this.brandName,
     required this.modelName,
     required this.fiscalSymbolName,
+    required this.stockProductId,
     required this.stockProductName,
     required this.stockRegistryNumber,
     required this.accountingOffice,
@@ -38,6 +39,7 @@ class ApplicationFormRecord {
   final String? brandName;
   final String? modelName;
   final String? fiscalSymbolName;
+  final String? stockProductId;
   final String? stockProductName;
   final String? stockRegistryNumber;
   final String? accountingOffice;
@@ -72,6 +74,7 @@ class ApplicationFormRecord {
       brandName: json['brand_name']?.toString(),
       modelName: json['model_name']?.toString(),
       fiscalSymbolName: json['fiscal_symbol_name']?.toString(),
+      stockProductId: json['stock_product_id']?.toString(),
       stockProductName: json['stock_product_name']?.toString(),
       stockRegistryNumber: json['stock_registry_number']?.toString(),
       accountingOffice: json['accounting_office']?.toString(),

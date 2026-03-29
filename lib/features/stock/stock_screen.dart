@@ -9,6 +9,7 @@ import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../invoices/invoice_model.dart';
 import '../invoices/invoice_providers.dart';
+import 'serial_inventory.dart';
 
 class StockScreen extends ConsumerStatefulWidget {
   const StockScreen({super.key});
@@ -27,6 +28,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
   @override
   Widget build(BuildContext context) {
     final stockAsync = ref.watch(stockLevelsProvider);
+    final serialSummaryAsync = ref.watch(productSerialInventorySummaryProvider);
 
     return AppPageLayout(
       title: 'Stok Durumu',
@@ -42,6 +44,12 @@ class _StockScreenState extends ConsumerState<StockScreen> {
           onPressed: () => _showAdjustmentDialog(context),
           icon: const Icon(Icons.tune_rounded, size: 18),
           label: const Text('Stok Düzeltme'),
+        ),
+        const Gap(10),
+        FilledButton.icon(
+          onPressed: () => _showSerialEntryDialog(context),
+          icon: const Icon(Icons.qr_code_2_rounded, size: 18),
+          label: const Text('Seri Stok Girişi'),
         ),
       ],
       body: stockAsync.when(
@@ -80,6 +88,12 @@ class _StockScreenState extends ConsumerState<StockScreen> {
             );
           }
 
+          final serialSummary = serialSummaryAsync.asData?.value ?? const {};
+          final totalAvailableSerials = serialSummary.values.fold<int>(
+            0,
+            (sum, item) => sum + item.availableCount,
+          );
+
           // Separate low stock items
           final lowStock = stocks
               .where((s) => (s.currentStock ?? 0) <= s.minStock)
@@ -111,6 +125,15 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                       color: lowStock.isEmpty
                           ? AppTheme.success
                           : AppTheme.error,
+                    ),
+                  ),
+                  const Gap(12),
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Hazır Seri',
+                      value: totalAvailableSerials.toString(),
+                      icon: Icons.qr_code_2_rounded,
+                      color: AppTheme.primary,
                     ),
                   ),
                 ],
@@ -152,6 +175,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                       product: p,
                       money: _money,
                       isLowStock: true,
+                      serialSummary: serialSummary[p.id],
                     ),
                   ),
                 ),
@@ -171,6 +195,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                       product: p,
                       money: _money,
                       isLowStock: false,
+                      serialSummary: serialSummary[p.id],
                     ),
                   ),
                 ),
@@ -343,6 +368,164 @@ class _StockScreenState extends ConsumerState<StockScreen> {
       ref.invalidate(stockLevelsProvider);
     }
   }
+
+  Future<void> _showSerialEntryDialog(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final stocksAsync = ref.read(stockLevelsProvider);
+    final stocks = stocksAsync.value ?? [];
+    if (stocks.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Seri stok için önce stok takipli ürün oluşturun')),
+      );
+      return;
+    }
+
+    String? selectedProductId;
+    final serialsController = TextEditingController();
+    final notesController = TextEditingController();
+    bool saving = false;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Seri Stok Girişi'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: selectedProductId,
+                  items: stocks
+                      .map(
+                        (p) => DropdownMenuItem(
+                          value: p.id,
+                          child: Text(
+                            p.code?.trim().isNotEmpty ?? false
+                                ? '${p.code} - ${p.name}'
+                                : p.name,
+                          ),
+                        ),
+                      )
+                      .toList(growable: false),
+                  onChanged: (value) => setState(() => selectedProductId = value),
+                  decoration: const InputDecoration(labelText: 'Ürün'),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: serialsController,
+                  minLines: 7,
+                  maxLines: 10,
+                  decoration: const InputDecoration(
+                    labelText: 'Sicil Numaraları',
+                    hintText:
+                        'Her sicil numarasını alt alta veya virgülle girin',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: notesController,
+                  decoration: const InputDecoration(
+                    labelText: 'Açıklama',
+                    hintText: 'İsteğe bağlı not',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('İptal'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      final productId = selectedProductId?.trim();
+                      if (productId == null || productId.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Ürün seçin')),
+                        );
+                        return;
+                      }
+
+                      final serialNumbers = serialsController.text
+                          .split(RegExp(r'[\n,;]+'))
+                          .map((item) => item.trim().toUpperCase())
+                          .where((item) => item.isNotEmpty)
+                          .toSet()
+                          .toList(growable: false);
+                      if (serialNumbers.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('En az bir sicil numarası girin'),
+                          ),
+                        );
+                        return;
+                      }
+
+                      setState(() => saving = true);
+                      final client = ref.read(supabaseClientProvider);
+                      if (client == null) return;
+
+                      try {
+                        final userId = client.auth.currentUser?.id;
+                        await client.from('product_serial_inventory').insert(
+                          serialNumbers
+                              .map(
+                                (serial) => {
+                                  'product_id': productId,
+                                  'serial_number': serial,
+                                  'notes': notesController.text.trim().isEmpty
+                                      ? null
+                                      : notesController.text.trim(),
+                                  'created_by': userId,
+                                },
+                              )
+                              .toList(growable: false),
+                        );
+                        await client.from('stock_movements').insert({
+                          'product_id': productId,
+                          'movement_type': 'in',
+                          'quantity': serialNumbers.length.toDouble(),
+                          'reference_type': 'serial_inventory',
+                          'notes': notesController.text.trim().isEmpty
+                              ? 'Toplu seri stok girişi'
+                              : notesController.text.trim(),
+                          'created_by': userId,
+                        });
+                        if (context.mounted) Navigator.of(context).pop(true);
+                      } catch (error) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Seri stok kaydedilemedi: $error')),
+                        );
+                        setState(() => saving = false);
+                      }
+                    },
+              child: saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Kaydet'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == true && mounted) {
+      ref.invalidate(stockLevelsProvider);
+      ref.invalidate(productSerialInventorySummaryProvider);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Seri stok girişleri kaydedildi.')),
+      );
+    }
+  }
 }
 
 class _SummaryCard extends StatelessWidget {
@@ -402,11 +585,13 @@ class _StockCard extends StatelessWidget {
     required this.product,
     required this.money,
     required this.isLowStock,
+    this.serialSummary,
   });
 
   final Product product;
   final NumberFormat money;
   final bool isLowStock;
+  final ProductSerialInventorySummary? serialSummary;
 
   @override
   Widget build(BuildContext context) {
@@ -462,6 +647,15 @@ class _StockCard extends StatelessWidget {
                           fontFamily: 'monospace',
                         ),
                       ),
+                    if (serialSummary != null) ...[
+                      const Gap(12),
+                      Text(
+                        'Seri: ${serialSummary!.availableCount} hazır / ${serialSummary!.consumedCount} kullanıldı',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const Gap(8),
