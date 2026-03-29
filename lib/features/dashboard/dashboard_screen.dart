@@ -2,24 +2,31 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_section_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../../core/ui/compact_stat_card.dart';
 import 'dashboard_providers.dart';
+import '../work_orders/work_order_model.dart';
+import '../work_orders/work_orders_providers.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final width = MediaQuery.sizeOf(context).width;
+    final isMobile = width < 720;
     final metricsAsync = ref.watch(dashboardMetricsProvider);
     final seriesAsync = ref.watch(dashboardRevenueSeriesProvider);
     final activitiesAsync = ref.watch(dashboardActivitiesProvider);
+    final workOrdersAsync = ref.watch(workOrdersBoardProvider);
     final money = NumberFormat.currency(
       locale: 'tr_TR',
       symbol: '₺',
@@ -28,121 +35,704 @@ class DashboardScreen extends ConsumerWidget {
 
     return AppPageLayout(
       title: 'Panel',
-      subtitle: 'Genel görünüm, bugün ve yaklaşan işler.',
+      subtitle: isMobile
+          ? 'Saha görünümü, görev akışı ve güncel durum.'
+          : 'Genel görünüm, bugün ve yaklaşan işler.',
       actions: [
         OutlinedButton.icon(
           onPressed: () {
             ref.invalidate(dashboardMetricsProvider);
             ref.invalidate(dashboardRevenueSeriesProvider);
             ref.invalidate(dashboardActivitiesProvider);
+            ref.invalidate(workOrdersBoardProvider);
           },
           icon: const Icon(Icons.refresh_rounded, size: 18),
           label: const Text('Yenile'),
         ),
       ],
-      body: Column(
-        children: [
-          Skeletonizer(
-            enabled: metricsAsync.isLoading,
-            child: _MetricsGrid(
+      body: isMobile
+          ? _MobileDashboardView(
+              metricsAsync: metricsAsync,
+              activitiesAsync: activitiesAsync,
+              workOrdersAsync: workOrdersAsync,
               money: money,
-              metrics: metricsAsync.value ?? DashboardMetrics.zero(),
-            ),
-          ),
-          const Gap(16),
-          metricsAsync.when(
-            data: (metrics) =>
-                _DashboardHighlights(metrics: metrics, money: money),
-            loading: () => const AppSectionCard(child: SizedBox(height: 90)),
-            error: (error, stackTrace) => const SizedBox.shrink(),
-          ),
-          const Gap(12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final twoCols = constraints.maxWidth >= 980;
-              final sidePanel = Column(
-                children: [
-                  AppCard(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+            )
+          : Column(
+              children: [
+                Skeletonizer(
+                  enabled: metricsAsync.isLoading,
+                  child: _MetricsGrid(
+                    money: money,
+                    metrics: metricsAsync.value ?? DashboardMetrics.zero(),
+                  ),
+                ),
+                const Gap(16),
+                metricsAsync.when(
+                  data: (metrics) =>
+                      _DashboardHighlights(metrics: metrics, money: money),
+                  loading: () => const AppSectionCard(child: SizedBox(height: 90)),
+                  error: (error, stackTrace) => const SizedBox.shrink(),
+                ),
+                const Gap(12),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final twoCols = constraints.maxWidth >= 980;
+                    final sidePanel = Column(
                       children: [
-                        Text(
-                          'İş Emri Durumu',
-                          style: Theme.of(context).textTheme.titleMedium,
+                        AppCard(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'İş Emri Durumu',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const Gap(6),
+                              Text(
+                                'Açık, devam eden ve tamamlanan işler.',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: const Color(0xFF64748B)),
+                              ),
+                              const Gap(12),
+                              SizedBox(
+                                height: 160,
+                                child: metricsAsync.when(
+                                  data: (metrics) =>
+                                      _WorkOrderPieChart(metrics: metrics),
+                                  loading: () => const _ChartSkeleton(),
+                                  error: (error, stackTrace) => const _ChartError(),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        const Gap(6),
-                        Text(
-                          'Açık, devam eden ve tamamlanan işler.',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: const Color(0xFF64748B)),
-                        ),
-                        const Gap(12),
-                        SizedBox(
-                          height: 160,
-                          child: metricsAsync.when(
-                            data: (metrics) =>
-                                _WorkOrderPieChart(metrics: metrics),
-                            loading: () => const _ChartSkeleton(),
-                            error: (error, stackTrace) => const _ChartError(),
+                        const Gap(16),
+                        AppCard(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Son Aktiviteler',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const Gap(6),
+                              Text(
+                                'İş emirleri ve servis kayıtları.',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: const Color(0xFF64748B)),
+                              ),
+                              const Gap(8),
+                              activitiesAsync.when(
+                                data: (items) => _ActivitySummary(items: items),
+                                loading: () => const SizedBox.shrink(),
+                                error: (error, stackTrace) => const SizedBox.shrink(),
+                              ),
+                              const Gap(12),
+                              const _ActivityTimeline(),
+                            ],
                           ),
                         ),
                       ],
+                    );
+
+                    return twoCols
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: _RevenuePanel(seriesAsync: seriesAsync),
+                              ),
+                              const Gap(16),
+                              Expanded(flex: 2, child: sidePanel),
+                            ],
+                          )
+                        : Column(
+                            children: [
+                              _RevenuePanel(seriesAsync: seriesAsync),
+                              const Gap(16),
+                              sidePanel,
+                            ],
+                          );
+                  },
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _MobileDashboardView extends StatelessWidget {
+  const _MobileDashboardView({
+    required this.metricsAsync,
+    required this.activitiesAsync,
+    required this.workOrdersAsync,
+    required this.money,
+  });
+
+  final AsyncValue<DashboardMetrics> metricsAsync;
+  final AsyncValue<List<DashboardActivity>> activitiesAsync;
+  final AsyncValue<List<WorkOrder>> workOrdersAsync;
+  final NumberFormat money;
+
+  @override
+  Widget build(BuildContext context) {
+    final metrics = metricsAsync.value ?? DashboardMetrics.zero();
+
+    return Column(
+      children: [
+        _MobileFieldHero(metrics: metrics, money: money),
+        const Gap(12),
+        _MobileOpsStrip(metrics: metrics, money: money),
+        const Gap(12),
+        _MobileWorkOrdersSection(workOrdersAsync: workOrdersAsync),
+        const Gap(12),
+        AppSectionCard(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Bugün ve Uyarılar',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const Gap(16),
-                  AppCard(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Son Aktiviteler',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const Gap(6),
-                        Text(
-                          'İş emirleri ve servis kayıtları.',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: const Color(0xFF64748B)),
-                        ),
-                        const Gap(8),
-                        activitiesAsync.when(
-                          data: (items) => _ActivitySummary(items: items),
-                          loading: () => const SizedBox.shrink(),
-                          error: (error, stackTrace) => const SizedBox.shrink(),
-                        ),
-                        const Gap(12),
-                        const _ActivityTimeline(),
-                      ],
+                  const Spacer(),
+                  Text(
+                    'Canlı',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.primary,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
-              );
+              ),
+              const Gap(10),
+              metricsAsync.when(
+                data: (metrics) =>
+                    _DashboardHighlights(metrics: metrics, money: money),
+                loading: () => const SizedBox(height: 80),
+                error: (error, stackTrace) => const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+        const Gap(12),
+        AppSectionCard(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Son Aktiviteler',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Gap(10),
+              activitiesAsync.when(
+                data: (items) => _CompactActivityFeed(items: items),
+                loading: () => const SizedBox(height: 64),
+                error: (error, stackTrace) => const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
 
-              return twoCols
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: _RevenuePanel(seriesAsync: seriesAsync),
-                        ),
-                        const Gap(16),
-                        Expanded(flex: 2, child: sidePanel),
-                      ],
-                    )
-                  : Column(
-                      children: [
-                        _RevenuePanel(seriesAsync: seriesAsync),
-                        const Gap(16),
-                        sidePanel,
-                      ],
-                    );
-            },
+class _MobileFieldHero extends StatelessWidget {
+  const _MobileFieldHero({required this.metrics, required this.money});
+
+  final DashboardMetrics metrics;
+  final NumberFormat money;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1D4ED8), Color(0xFF0F3FAE)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primary.withValues(alpha: 0.24),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Saha Operasyon Merkezi',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const Gap(4),
+          Text(
+            'Bugünkü işler, acil uyarılar ve anlık tahsilat.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colors.white.withValues(alpha: 0.78),
+            ),
+          ),
+          const Gap(14),
+          Row(
+            children: [
+              Expanded(
+                child: _HeroMetric(
+                  label: 'Açık İş',
+                  value: metrics.openWorkOrders.toString(),
+                ),
+              ),
+              const Gap(10),
+              Expanded(
+                child: _HeroMetric(
+                  label: 'Bugün',
+                  value: metrics.todayWorkOrders.toString(),
+                ),
+              ),
+              const Gap(10),
+              Expanded(
+                child: _HeroMetric(
+                  label: 'Tahsilat',
+                  value: money.format(metrics.todayCollections),
+                  alignStart: true,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroMetric extends StatelessWidget {
+  const _HeroMetric({
+    required this.label,
+    required this.value,
+    this.alignStart = false,
+  });
+
+  final String label;
+  final String value;
+  final bool alignStart;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            alignStart ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colors.white.withValues(alpha: 0.74),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const Gap(4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileOpsStrip extends StatelessWidget {
+  const _MobileOpsStrip({required this.metrics, required this.money});
+
+  final DashboardMetrics metrics;
+  final NumberFormat money;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _MobileOpsCard(
+            label: 'Devam Eden',
+            value: metrics.inProgressWorkOrders.toString(),
+            icon: Icons.timelapse_rounded,
+            color: AppTheme.primary,
+          ),
+        ),
+        const Gap(10),
+        Expanded(
+          child: _MobileOpsCard(
+            label: 'Açık Fatura',
+            value: metrics.openInvoices.toString(),
+            icon: Icons.receipt_long_rounded,
+            color: AppTheme.warning,
+          ),
+        ),
+        const Gap(10),
+        Expanded(
+          child: _MobileOpsCard(
+            label: 'Düşük Stok',
+            value: metrics.lowStockProducts.toString(),
+            icon: Icons.inventory_2_rounded,
+            color: metrics.lowStockProducts > 0
+                ? AppTheme.error
+                : AppTheme.success,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MobileOpsCard extends StatelessWidget {
+  const _MobileOpsCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const Gap(10),
+          Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: const Color(0xFF64748B),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const Gap(2),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileWorkOrdersSection extends StatelessWidget {
+  const _MobileWorkOrdersSection({required this.workOrdersAsync});
+
+  final AsyncValue<List<WorkOrder>> workOrdersAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSectionCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Siradaki İşler',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: () => context.go('/is-emirleri'),
+                child: const Text('Tümünü Gör'),
+              ),
+            ],
+          ),
+          const Gap(10),
+          workOrdersAsync.when(
+            data: (items) {
+              final visible = items
+                  .where((e) => e.isActive && e.status != 'done')
+                  .take(4)
+                  .toList(growable: false);
+              if (visible.isEmpty) {
+                return Text(
+                  'Sırada açık görev yok.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
+                );
+              }
+              return Column(
+                children: [
+                  for (int i = 0; i < visible.length; i++) ...[
+                    _MobileTaskTile(order: visible[i]),
+                    if (i != visible.length - 1) const Gap(10),
+                  ],
+                ],
+              );
+            },
+            loading: () => const SizedBox(height: 84),
+            error: (error, stackTrace) => Text(
+              'İş listesi yüklenemedi.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileTaskTile extends StatelessWidget {
+  const _MobileTaskTile({required this.order});
+
+  final WorkOrder order;
+
+  @override
+  Widget build(BuildContext context) {
+    final dateText = order.scheduledDate == null
+        ? 'Plan yok'
+        : DateFormat('d MMM', 'tr_TR').format(order.scheduledDate!);
+    final tone = switch (order.status) {
+      'open' => AppBadgeTone.warning,
+      'in_progress' => AppBadgeTone.primary,
+      _ => AppBadgeTone.neutral,
+    };
+    final statusLabel = order.status == 'in_progress' ? 'Devam' : 'Açık';
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => context.go('/is-emirleri'),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(
+                Icons.assignment_rounded,
+                color: AppTheme.primary,
+                size: 20,
+              ),
+            ),
+            const Gap(10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          order.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const Gap(8),
+                      AppBadge(label: statusLabel, tone: tone),
+                    ],
+                  ),
+                  const Gap(4),
+                  Text(
+                    order.customerName ?? '-',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF475569),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Gap(8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _MiniInfo(label: dateText, icon: Icons.calendar_today_rounded),
+                      if (order.city?.isNotEmpty ?? false)
+                        _MiniInfo(
+                          label: order.city!,
+                          icon: Icons.location_on_outlined,
+                        ),
+                      if (order.contactPhone?.isNotEmpty ?? false)
+                        _MiniInfo(
+                          label: order.contactPhone!,
+                          icon: Icons.phone_rounded,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniInfo extends StatelessWidget {
+  const _MiniInfo({required this.label, required this.icon});
+
+  final String label;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: const Color(0xFF64748B)),
+          const Gap(4),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontSize: 11.5,
+              color: const Color(0xFF475569),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactActivityFeed extends StatelessWidget {
+  const _CompactActivityFeed({required this.items});
+
+  final List<DashboardActivity> items;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return Text(
+        'Henüz aktivite yok.',
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+      );
+    }
+    final visible = items.take(4).toList(growable: false);
+    return Column(
+      children: [
+        for (int i = 0; i < visible.length; i++) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 9,
+                height: 9,
+                margin: const EdgeInsets.only(top: 5),
+                decoration: BoxDecoration(
+                  color: visible[i].type == DashboardActivityType.workOrder
+                      ? AppTheme.primary
+                      : AppTheme.success,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const Gap(10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      visible[i].customerName ?? visible[i].title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const Gap(2),
+                    Text(
+                      _relativeTime(visible[i].createdAt),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (i != visible.length - 1) const Gap(10),
+        ],
+      ],
     );
   }
 }

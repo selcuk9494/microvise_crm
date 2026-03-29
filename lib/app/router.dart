@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -27,6 +28,7 @@ import '../features/setup/setup_required_screen.dart';
 import '../features/stock/stock_screen.dart';
 import '../features/shell/app_shell.dart';
 import '../features/work_orders/work_orders_kanban_screen.dart';
+import '../features/work_orders/work_orders_list_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final client = ref.watch(supabaseClientProvider);
@@ -124,13 +126,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
         GoRoute(
           path: '/is-emirleri',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(
-                child: FeatureAccessGate(
-                  pageKey: kPageWorkOrders,
-                  child: WorkOrdersKanbanScreen(),
-                ),
+          pageBuilder: (context, state) {
+            final width = MediaQuery.sizeOf(context).width;
+            final isMobileLayout = width < 860;
+            return NoTransitionPage(
+              child: FeatureAccessGate(
+                pageKey: kPageWorkOrders,
+                child: isMobileLayout
+                    ? const WorkOrdersListScreen()
+                    : const WorkOrdersKanbanScreen(),
               ),
+            );
+          },
         ),
         GoRoute(
           path: '/servis',

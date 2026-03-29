@@ -105,6 +105,15 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
       ],
       body: Column(
         children: [
+          if (isCompact)
+            boardAsync.when(
+              data: (items) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _MobileBoardStrip(items: items, showPassive: _showPassive),
+              ),
+              loading: () => const SizedBox.shrink(),
+              error: (error, stackTrace) => const SizedBox.shrink(),
+            ),
           Align(
             alignment: Alignment.centerLeft,
             child: Wrap(
@@ -468,6 +477,17 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
       _ => ('Bilinmiyor', AppBadgeTone.neutral),
     };
 
+    if (isMobile) {
+      return _MobileWorkOrderCard(
+        order: order,
+        hovered: _hovered,
+        reorderEnabled: widget.reorderEnabled,
+        reorderIndex: widget.reorderIndex,
+        onTap: widget.onTap,
+        onToggleActive: widget.onToggleActive,
+      );
+    }
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -689,6 +709,309 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _MobileBoardStrip extends StatelessWidget {
+  const _MobileBoardStrip({required this.items, required this.showPassive});
+
+  final List<WorkOrder> items;
+  final bool showPassive;
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = items.where((e) => showPassive || e.isActive).toList();
+    final open = visible.where((e) => e.status == 'open').length;
+    final progress = visible.where((e) => e.status == 'in_progress').length;
+    final done = visible.where((e) => e.status == 'done').length;
+    return Row(
+      children: [
+        Expanded(
+          child: _MiniBoardStat(
+            label: 'Açık',
+            value: open.toString(),
+            color: AppTheme.warning,
+          ),
+        ),
+        const Gap(8),
+        Expanded(
+          child: _MiniBoardStat(
+            label: 'Devam',
+            value: progress.toString(),
+            color: AppTheme.primary,
+          ),
+        ),
+        const Gap(8),
+        Expanded(
+          child: _MiniBoardStat(
+            label: 'Kapalı',
+            value: done.toString(),
+            color: AppTheme.success,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MiniBoardStat extends StatelessWidget {
+  const _MiniBoardStat({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: const Color(0xFF64748B),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const Gap(6),
+          Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const Gap(8),
+              Text(
+                value,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileWorkOrderCard extends StatelessWidget {
+  const _MobileWorkOrderCard({
+    required this.order,
+    required this.hovered,
+    required this.reorderEnabled,
+    required this.reorderIndex,
+    required this.onTap,
+    required this.onToggleActive,
+  });
+
+  final WorkOrder order;
+  final bool hovered;
+  final bool reorderEnabled;
+  final int reorderIndex;
+  final VoidCallback onTap;
+  final ValueChanged<bool> onToggleActive;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheduled = order.scheduledDate == null
+        ? 'Plan yok'
+        : DateFormat('d MMM', 'tr_TR').format(order.scheduledDate!);
+    final (statusLabel, statusTone) = switch (order.status) {
+      'open' => ('Açık', AppBadgeTone.warning),
+      'in_progress' => ('Sahada', AppBadgeTone.primary),
+      'done' => ('Kapalı', AppBadgeTone.success),
+      _ => ('Bilinmiyor', AppBadgeTone.neutral),
+    };
+
+    Widget content = InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: hovered
+                ? AppTheme.primary.withValues(alpha: 0.24)
+                : AppTheme.border,
+          ),
+          boxShadow: AppTheme.cardShadow,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        order.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const Gap(3),
+                      Text(
+                        order.customerName ?? '-',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF64748B),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Gap(8),
+                AppBadge(label: statusLabel, tone: statusTone),
+              ],
+            ),
+            const Gap(10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _WorkOrderMetaChip(
+                  icon: Icons.calendar_today_rounded,
+                  label: scheduled,
+                  compact: true,
+                ),
+                if (order.city?.trim().isNotEmpty ?? false)
+                  _WorkOrderMetaChip(
+                    icon: Icons.location_city_rounded,
+                    label: order.city!,
+                    compact: true,
+                    emphasize: true,
+                    backgroundColor: _cityTone(order.city!).withValues(alpha: 0.12),
+                    borderColor: _cityTone(order.city!).withValues(alpha: 0.24),
+                    foregroundColor: _cityTone(order.city!),
+                  ),
+                if (order.workOrderTypeName?.trim().isNotEmpty ?? false)
+                  _WorkOrderMetaChip(
+                    icon: Icons.category_rounded,
+                    label: order.workOrderTypeName!,
+                    compact: true,
+                    emphasize: true,
+                  ),
+                if (order.contactPhone?.trim().isNotEmpty ?? false)
+                  _WorkOrderMetaChip(
+                    icon: Icons.phone_rounded,
+                    label: order.contactPhone!,
+                    compact: true,
+                  ),
+              ],
+            ),
+            if (order.address?.trim().isNotEmpty ?? false) ...[
+              const Gap(8),
+              Text(
+                order.address!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF475569),
+                  height: 1.35,
+                ),
+              ),
+            ] else if (order.description?.trim().isNotEmpty ?? false) ...[
+              const Gap(8),
+              Text(
+                order.description!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF475569),
+                  height: 1.35,
+                ),
+              ),
+            ],
+            const Gap(10),
+            Row(
+              children: [
+                if (reorderEnabled)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.drag_indicator_rounded,
+                          size: 14,
+                          color: Color(0xFF64748B),
+                        ),
+                        Gap(4),
+                        Text('Sırala'),
+                      ],
+                    ),
+                  ),
+                const Spacer(),
+                PopupMenuButton<String>(
+                  tooltip: 'İşlemler',
+                  onSelected: (value) {
+                    if (value == 'toggle_active') {
+                      onToggleActive(!order.isActive);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem<String>(
+                      value: 'toggle_active',
+                      child: Text(order.isActive ? 'Pasife Al' : 'Aktifleştir'),
+                    ),
+                  ],
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6),
+                    child: Icon(
+                      Icons.more_horiz_rounded,
+                      size: 20,
+                      color: Color(0xFF94A3B8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!reorderEnabled) return content;
+
+    return ReorderableDragStartListener(
+      index: reorderIndex,
+      child: content,
     );
   }
 }
