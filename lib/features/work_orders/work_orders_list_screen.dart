@@ -670,6 +670,9 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
   Widget build(BuildContext context) {
     final order = widget.order;
     final isMobile = MediaQuery.sizeOf(context).width < 720;
+    final orderTone = order.status == 'open' && order.isActive
+        ? _orderSequenceTone(widget.reorderIndex)
+        : null;
     final money = NumberFormat.currency(
       locale: 'tr_TR',
       symbol: '',
@@ -712,12 +715,12 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
           transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: AppTheme.surface,
+            color: orderTone?.backgroundColor ?? AppTheme.surface,
             borderRadius: BorderRadius.circular(isMobile ? 12 : 14),
             border: Border.all(
               color: _hovered
                   ? AppTheme.primary.withValues(alpha: 0.24)
-                  : AppTheme.border,
+                  : orderTone?.borderColor ?? AppTheme.border,
             ),
             boxShadow: [
               BoxShadow(
@@ -737,6 +740,14 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (orderTone != null)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: _SequenceBadge(
+                              index: widget.reorderIndex,
+                              tone: orderTone,
+                            ),
+                          ),
                         Expanded(
                           child: Text(
                             order.title,
@@ -1109,6 +1120,9 @@ class _MobileWorkOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final orderTone = order.status == 'open' && order.isActive
+        ? _orderSequenceTone(reorderIndex)
+        : null;
     final scheduled = order.scheduledDate == null
         ? 'Plan yok'
         : DateFormat('d MMM', 'tr_TR').format(order.scheduledDate!);
@@ -1124,14 +1138,14 @@ class _MobileWorkOrderCard extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: orderTone?.backgroundColor ?? Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: hovered
                 ? AppTheme.primary.withValues(alpha: 0.24)
-                : AppTheme.border,
+                : orderTone?.borderColor ?? AppTheme.border,
           ),
           boxShadow: AppTheme.cardShadow,
         ),
@@ -1141,6 +1155,11 @@ class _MobileWorkOrderCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (orderTone != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: _SequenceBadge(index: reorderIndex, tone: orderTone),
+                  ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1151,6 +1170,7 @@ class _MobileWorkOrderCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w800,
+                          fontSize: 13,
                         ),
                       ),
                       const Gap(2),
@@ -1161,7 +1181,7 @@ class _MobileWorkOrderCard extends StatelessWidget {
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: const Color(0xFF64748B),
                           fontWeight: FontWeight.w600,
-                          fontSize: 12,
+                          fontSize: 11.5,
                         ),
                       ),
                     ],
@@ -1169,12 +1189,12 @@ class _MobileWorkOrderCard extends StatelessWidget {
                 ),
                 const Gap(8),
                 AppBadge(label: statusLabel, tone: statusTone),
-              ],
-            ),
-            const Gap(8),
-            Wrap(
-              spacing: 5,
-              runSpacing: 5,
+            ],
+          ),
+          const Gap(8),
+          Wrap(
+            spacing: 5,
+            runSpacing: 5,
               children: [
                 _WorkOrderMetaChip(
                   icon: Icons.calendar_today_rounded,
@@ -1266,8 +1286,8 @@ class _MobileWorkOrderCard extends StatelessWidget {
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
+                        horizontal: 8,
+                        vertical: 7,
                       ),
                       minimumSize: Size.zero,
                       visualDensity: VisualDensity.compact,
@@ -1287,8 +1307,8 @@ class _MobileWorkOrderCard extends StatelessWidget {
                     style: FilledButton.styleFrom(
                       backgroundColor: AppTheme.error,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
+                        horizontal: 8,
+                        vertical: 7,
                       ),
                       minimumSize: Size.zero,
                       visualDensity: VisualDensity.compact,
@@ -1338,6 +1358,43 @@ class _MobileWorkOrderCard extends StatelessWidget {
     );
 
     return content;
+  }
+}
+
+class _SequenceBadge extends StatelessWidget {
+  const _SequenceBadge({
+    required this.index,
+    required this.tone,
+  });
+
+  final int index;
+  final _OrderSequenceTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: tone.accentColor,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: tone.accentColor.withValues(alpha: 0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        '${index + 1}',
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
   }
 }
 
@@ -1425,6 +1482,42 @@ Color _cityTone(String city) {
   final normalized = city.trim().toLowerCase();
   final hash = normalized.codeUnits.fold<int>(0, (sum, unit) => sum + unit);
   return palette[hash % palette.length];
+}
+
+_OrderSequenceTone _orderSequenceTone(int index) {
+  const palette = [
+    _OrderSequenceTone(
+      accentColor: Color(0xFF2563EB),
+      backgroundColor: Color(0xFFF5F9FF),
+      borderColor: Color(0xFFBFDBFE),
+    ),
+    _OrderSequenceTone(
+      accentColor: Color(0xFF0891B2),
+      backgroundColor: Color(0xFFF0FDFF),
+      borderColor: Color(0xFFA5F3FC),
+    ),
+    _OrderSequenceTone(
+      accentColor: Color(0xFF0F766E),
+      backgroundColor: Color(0xFFF0FDFA),
+      borderColor: Color(0xFF99F6E4),
+    ),
+    _OrderSequenceTone(
+      accentColor: Color(0xFF7C3AED),
+      backgroundColor: Color(0xFFF8F5FF),
+      borderColor: Color(0xFFDDD6FE),
+    ),
+    _OrderSequenceTone(
+      accentColor: Color(0xFFEA580C),
+      backgroundColor: Color(0xFFFFF7ED),
+      borderColor: Color(0xFFFED7AA),
+    ),
+    _OrderSequenceTone(
+      accentColor: Color(0xFFBE123C),
+      backgroundColor: Color(0xFFFFF1F2),
+      borderColor: Color(0xFFFDA4AF),
+    ),
+  ];
+  return palette[index % palette.length];
 }
 
 String _paymentSummary(WorkOrder order, NumberFormat money) {
@@ -1526,6 +1619,18 @@ class _PaymentMethodChipData {
   final Color backgroundColor;
   final Color borderColor;
   final Color foregroundColor;
+}
+
+class _OrderSequenceTone {
+  const _OrderSequenceTone({
+    required this.accentColor,
+    required this.backgroundColor,
+    required this.borderColor,
+  });
+
+  final Color accentColor;
+  final Color backgroundColor;
+  final Color borderColor;
 }
 
 class _PaymentMethodTone {

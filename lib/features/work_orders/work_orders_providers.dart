@@ -119,6 +119,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
             .update({'sort_order': i})
             .eq('id', reorderedOpenOrders[i].id);
       }
+      await refresh();
     } catch (_) {
       state = AsyncData(current);
     }

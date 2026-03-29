@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
@@ -1138,6 +1139,7 @@ class _ApplicationFormDialogState
   late final TextEditingController _directorController;
   late final TextEditingController _accountingOfficeController;
   late final TextEditingController _invoiceNumberController;
+  late final TextEditingController _manualSerialsController;
   DateTime _applicationDate = DateTime.now();
   DateTime _okcStartDate = DateTime.now();
   final String _documentType = 'VKN';
@@ -1173,6 +1175,7 @@ class _ApplicationFormDialogState
     _invoiceNumberController = TextEditingController(
       text: initial?.invoiceNumber ?? '',
     );
+    _manualSerialsController = TextEditingController();
     _applicationDate = initial?.applicationDate ?? DateTime.now();
     _okcStartDate = initial?.okcStartDate ?? DateTime.now();
     _selectedCustomerId = initial?.customerId;
@@ -1278,6 +1281,7 @@ class _ApplicationFormDialogState
     _directorController.dispose();
     _accountingOfficeController.dispose();
     _invoiceNumberController.dispose();
+    _manualSerialsController.dispose();
     super.dispose();
   }
 
@@ -1394,13 +1398,59 @@ class _ApplicationFormDialogState
     });
   }
 
-  List<String> get _selectedRegistryNumbers => _selectedSerialInventory
-      .map((item) => item.serialNumber.trim())
+  List<String> get _manualRegistryNumbers => _manualSerialsController.text
+      .split(RegExp(r'[\n,;]+'))
+      .map((item) => item.trim().toUpperCase())
       .where((item) => item.isNotEmpty)
+      .toSet()
       .toList(growable: false);
 
+  List<ProductSerialInventoryRecord> get _resolvedSerialSelections {
+    final bySerial = <String, ProductSerialInventoryRecord>{};
+    for (final item in _selectedSerialInventory) {
+      final serial = item.serialNumber.trim().toUpperCase();
+      if (serial.isEmpty) continue;
+      bySerial[serial] = item.copyWith(serialNumber: serial);
+    }
+    for (final serial in _manualRegistryNumbers) {
+      bySerial.putIfAbsent(
+        serial,
+        () => ProductSerialInventoryRecord(
+          id: 'manual:$serial',
+          productId: _selectedStockProductId ?? '',
+          serialNumber: serial,
+          isActive: true,
+        ),
+      );
+    }
+    return bySerial.values.toList(growable: false);
+  }
+
+  void _removeSelectedSerial(ProductSerialInventoryRecord serial) {
+    setState(() {
+      if (serial.id.startsWith('manual:')) {
+        final nextManuals = _manualRegistryNumbers
+            .where((item) => item != serial.serialNumber.trim().toUpperCase())
+            .toList(growable: false);
+        _manualSerialsController.text = nextManuals.join('\n');
+      } else {
+        _selectedSerialInventory = _selectedSerialInventory
+            .where((item) => item.id != serial.id)
+            .toList(growable: false);
+      }
+    });
+  }
+
+  void _openProductsPage() {
+    Navigator.of(context).pop();
+    context.go('/urunler');
+  }
+
   String get _serialSelectionLabel {
-    final selected = _selectedRegistryNumbers;
+    final selected = _resolvedSerialSelections
+        .map((item) => item.serialNumber.trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
     if (selected.isEmpty) return 'Seri havuzundan seçin';
     if (selected.length == 1) return selected.first;
     return '${selected.length} seri seçildi';
@@ -1454,7 +1504,9 @@ class _ApplicationFormDialogState
     for (var index = 0; index < insertedRecords.length; index++) {
       if (index >= selectedSerials.length) break;
       final serial = selectedSerials[index];
-      if (serial.id.startsWith('existing:')) continue;
+      if (serial.id.startsWith('existing:') || serial.id.startsWith('manual:')) {
+        continue;
+      }
       await client
           .from('product_serial_inventory')
           .update({
@@ -1526,7 +1578,8 @@ class _ApplicationFormDialogState
       });
     }
 
-    if (!nextSerial.id.startsWith('existing:')) {
+    if (!nextSerial.id.startsWith('existing:') &&
+        !nextSerial.id.startsWith('manual:')) {
       await client
           .from('product_serial_inventory')
           .update({
@@ -1575,7 +1628,7 @@ class _ApplicationFormDialogState
     final stockProduct = stockProducts
         ?.where((item) => item.id == _selectedStockProductId)
         .firstOrNull;
-    final selectedSerials = _selectedSerialInventory
+    final selectedSerials = _resolvedSerialSelections
         .where((item) => item.serialNumber.trim().isNotEmpty)
         .toList(growable: false);
     final registryNumbers = selectedSerials
@@ -1883,6 +1936,7 @@ class _ApplicationFormDialogState
                 setState(() {
                   _selectedStockProductId = value;
                   _selectedSerialInventory = const [];
+                  _manualSerialsController.clear();
                 });
               },
             ),
@@ -1892,27 +1946,50 @@ class _ApplicationFormDialogState
           right: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              OutlinedButton.icon(
-                onPressed: _pickSerialInventory,
-                icon: const Icon(Icons.qr_code_2_rounded, size: 18),
-                label: Text(_serialSelectionLabel),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _pickSerialInventory,
+                      icon: const Icon(Icons.qr_code_2_rounded, size: 18),
+                      label: Text(_serialSelectionLabel),
+                    ),
+                  ),
+                  const Gap(8),
+                  OutlinedButton.icon(
+                    onPressed: _openProductsPage,
+                    icon: const Icon(Icons.inventory_2_rounded, size: 18),
+                    label: const Text('Ürün Ekle'),
+                  ),
+                ],
               ),
-              if (_selectedRegistryNumbers.isNotEmpty) ...[
+              const Gap(8),
+              TextFormField(
+                controller: _manualSerialsController,
+                minLines: widget.isEdit ? 1 : 2,
+                maxLines: widget.isEdit ? 2 : 3,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: widget.isEdit
+                      ? 'Manuel Sicil No'
+                      : 'Manuel Sicil No(ları)',
+                  hintText: widget.isEdit
+                      ? 'Havuz dışında tek sicil girin'
+                      : 'Havuz dışında sicilleri alt alta veya virgülle girin',
+                  alignLabelWithHint: true,
+                  prefixIcon: const Icon(Icons.edit_note_rounded),
+                ),
+              ),
+              if (_resolvedSerialSelections.isNotEmpty) ...[
                 const Gap(8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
                   children: [
-                    for (final serial in _selectedSerialInventory)
+                    for (final serial in _resolvedSerialSelections)
                       InputChip(
                         label: Text(serial.serialNumber),
-                        onDeleted: () {
-                          setState(() {
-                            _selectedSerialInventory = _selectedSerialInventory
-                                .where((item) => item.id != serial.id)
-                                .toList(growable: false);
-                          });
-                        },
+                        onDeleted: () => _removeSelectedSerial(serial),
                       ),
                   ],
                 ),
@@ -1920,8 +1997,8 @@ class _ApplicationFormDialogState
                 const Gap(8),
                 Text(
                   widget.isEdit
-                      ? 'Düzenleme modunda tek seri seçilebilir.'
-                      : 'Stoktaki hazır seri havuzundan bir veya daha fazla sicil seçin.',
+                      ? 'Düzenleme modunda tek seri seçilebilir. Havuzdan seçebilir veya manuel yazabilirsiniz.'
+                      : 'Stoktaki hazır seri havuzundan seçebilir veya manuel sicil girebilirsiniz.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppTheme.textMuted,
                   ),

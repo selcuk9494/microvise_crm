@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
@@ -38,6 +39,12 @@ class _StockScreenState extends ConsumerState<StockScreen> {
           onPressed: () => ref.invalidate(stockLevelsProvider),
           icon: const Icon(Icons.refresh_rounded, size: 18),
           label: const Text('Yenile'),
+        ),
+        const Gap(10),
+        OutlinedButton.icon(
+          onPressed: () => context.go('/urunler'),
+          icon: const Icon(Icons.inventory_2_rounded, size: 18),
+          label: const Text('Ürün Girişi'),
         ),
         const Gap(10),
         FilledButton.icon(

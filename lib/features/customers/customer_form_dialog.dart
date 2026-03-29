@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 
@@ -257,6 +258,67 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       );
     }
 
+    String? validateRequiredDigits(
+      String? value, {
+      required int length,
+      required String fieldLabel,
+    }) {
+      final digits = value?.replaceAll(RegExp(r'[^0-9]'), '') ?? '';
+      if (digits.isEmpty) {
+        return '$fieldLabel zorunlu';
+      }
+      if (digits.length != length) {
+        return '$fieldLabel tam olarak $length hane olmalı';
+      }
+      return null;
+    }
+
+    Widget buildVknField() {
+      return TextFormField(
+        controller: _vknController,
+        textInputAction: TextInputAction.next,
+        keyboardType: TextInputType.number,
+        inputFormatters: [
+          FilteringTextInputFormatter.digitsOnly,
+          LengthLimitingTextInputFormatter(10),
+        ],
+        decoration: const InputDecoration(
+          labelText: 'VKN',
+          hintText: '10 haneli vergi numarası',
+          prefixIcon: Icon(Icons.badge_outlined),
+          counterText: '',
+        ),
+        validator: (value) => validateRequiredDigits(
+          value,
+          length: 10,
+          fieldLabel: 'VKN',
+        ),
+      );
+    }
+
+    Widget buildTcknMsField() {
+      return TextFormField(
+        controller: _tcknMsController,
+        textInputAction: TextInputAction.next,
+        keyboardType: TextInputType.number,
+        inputFormatters: [
+          FilteringTextInputFormatter.digitsOnly,
+          LengthLimitingTextInputFormatter(11),
+        ],
+        decoration: const InputDecoration(
+          labelText: 'TCKN-MŞ',
+          hintText: '11 haneli müşteri sicil / TCKN',
+          prefixIcon: Icon(Icons.perm_identity_rounded),
+          counterText: '',
+        ),
+        validator: (value) => validateRequiredDigits(
+          value,
+          length: 11,
+          fieldLabel: 'TCKN-MŞ',
+        ),
+      );
+    }
+
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       backgroundColor: Colors.transparent,
@@ -456,34 +518,11 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                     Row(
                                       children: [
                                         Expanded(
-                                          child: TextFormField(
-                                            controller: _vknController,
-                                            textInputAction:
-                                                TextInputAction.next,
-                                            decoration: const InputDecoration(
-                                              labelText: 'VKN',
-                                              hintText: 'Vergi numarası',
-                                              prefixIcon: Icon(
-                                                Icons.badge_outlined,
-                                              ),
-                                            ),
-                                          ),
+                                          child: buildVknField(),
                                         ),
                                         const Gap(12),
                                         Expanded(
-                                          child: TextFormField(
-                                            controller: _tcknMsController,
-                                            textInputAction:
-                                                TextInputAction.next,
-                                            decoration: const InputDecoration(
-                                              labelText: 'TCKN-MŞ',
-                                              hintText:
-                                                  'Müşteri sicil / TCKN alanı',
-                                              prefixIcon: Icon(
-                                                Icons.perm_identity_rounded,
-                                              ),
-                                            ),
-                                          ),
+                                          child: buildTcknMsField(),
                                         ),
                                       ],
                                     ),
@@ -634,29 +673,11 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                           Row(
                             children: [
                               Expanded(
-                                child: TextFormField(
-                                  controller: _vknController,
-                                  textInputAction: TextInputAction.next,
-                                  decoration: const InputDecoration(
-                                    labelText: 'VKN',
-                                    hintText: 'Vergi numarası',
-                                    prefixIcon: Icon(Icons.badge_outlined),
-                                  ),
-                                ),
+                                child: buildVknField(),
                               ),
                               const Gap(12),
                               Expanded(
-                                child: TextFormField(
-                                  controller: _tcknMsController,
-                                  textInputAction: TextInputAction.next,
-                                  decoration: const InputDecoration(
-                                    labelText: 'TCKN-MŞ',
-                                    hintText: 'Müşteri sicil / TCKN alanı',
-                                    prefixIcon: Icon(
-                                      Icons.perm_identity_rounded,
-                                    ),
-                                  ),
-                                ),
+                                child: buildTcknMsField(),
                               ),
                             ],
                           ),
@@ -874,8 +895,8 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     final client = ref.read(supabaseClientProvider);
     if (client == null) return;
 
-    final normalizedVkn = _normalizeDigits(_vknController.text, 10);
-    final normalizedTcknMs = _normalizeDigits(_tcknMsController.text, 11);
+    final normalizedVkn = _normalizeDigits(_vknController.text);
+    final normalizedTcknMs = _normalizeDigits(_tcknMsController.text);
     _vknController.text = normalizedVkn ?? '';
     _tcknMsController.text = normalizedTcknMs ?? '';
 
@@ -987,13 +1008,10 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     return trimmed.isEmpty ? null : trimmed;
   }
 
-  String? _normalizeDigits(String value, int length) {
+  String? _normalizeDigits(String value) {
     final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return null;
-    if (digits.length >= length) {
-      return digits.substring(digits.length - length);
-    }
-    return digits.padLeft(length, '0');
+    return digits;
   }
 
   Future<void> _saveCustomerLocations(
