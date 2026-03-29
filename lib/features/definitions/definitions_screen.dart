@@ -8,6 +8,8 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/app_section_card.dart';
+import '../../core/ui/compact_stat_card.dart';
 import '../application_forms/application_form_model.dart';
 import '../forms/scrap_form_model.dart';
 import '../forms/transfer_form_model.dart';
@@ -333,78 +335,66 @@ class DefinitionsScreen extends ConsumerWidget {
       length: 8,
       child: AppPageLayout(
         title: 'Tanımlamalar',
-        subtitle: 'Sistem tanımları ve ayarları',
+        subtitle: 'Sistem tanımları, form sabitleri ve operasyon ayarları.',
         body: Column(
           children: [
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                SizedBox(
-                  width: isMobile ? (width - 44) / 2 : null,
-                  child: _DefinitionStatCard(
-                    label: 'Markalar',
+            AppSectionCard(
+              title: 'Tanım Özeti',
+              subtitle:
+                  'Sık kullanılan tanımları tek yerden yönetin, aktif setleri hızlıca görün.',
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  CompactStatCard(
+                    label: 'Marka',
                     value: brandsAsync.asData?.value.length.toString() ?? '—',
                     icon: Icons.copyright_rounded,
+                    color: AppTheme.primary,
                   ),
-                ),
-                SizedBox(
-                  width: isMobile ? (width - 44) / 2 : null,
-                  child: _DefinitionStatCard(
-                    label: 'Modeller',
+                  CompactStatCard(
+                    label: 'Model',
                     value: modelsAsync.asData?.value.length.toString() ?? '—',
                     icon: Icons.memory_rounded,
+                    color: const Color(0xFF2563EB),
                   ),
-                ),
-                SizedBox(
-                  width: isMobile ? (width - 44) / 2 : null,
-                  child: _DefinitionStatCard(
+                  CompactStatCard(
                     label: 'İş Emri Tipi',
                     value: typesAsync.asData?.value.length.toString() ?? '—',
                     icon: Icons.widgets_outlined,
+                    color: const Color(0xFF0F766E),
                   ),
-                ),
-                SizedBox(
-                  width: isMobile ? (width - 44) / 2 : null,
-                  child: _DefinitionStatCard(
-                    label: 'KDV Oranı',
+                  CompactStatCard(
+                    label: 'KDV',
                     value: ratesAsync.asData?.value.length.toString() ?? '—',
                     icon: Icons.percent_rounded,
+                    color: const Color(0xFFEA580C),
                   ),
-                ),
-                SizedBox(
-                  width: isMobile ? (width - 44) / 2 : null,
-                  child: _DefinitionStatCard(
+                  CompactStatCard(
                     label: 'Mali Sembol',
                     value:
                         fiscalSymbolsAsync.asData?.value.length.toString() ??
                         '—',
                     icon: Icons.qr_code_rounded,
+                    color: const Color(0xFF7C3AED),
                   ),
-                ),
-                SizedBox(
-                  width: isMobile ? (width - 44) / 2 : null,
-                  child: _DefinitionStatCard(
+                  CompactStatCard(
                     label: 'Meslek Türü',
                     value:
                         businessActivitiesAsync.asData?.value.length
                             .toString() ??
                         '—',
                     icon: Icons.storefront_rounded,
+                    color: const Color(0xFF0891B2),
                   ),
-                ),
-                SizedBox(
-                  width: isMobile ? (width - 44) / 2 : null,
-                  child: _DefinitionStatCard(
+                  CompactStatCard(
                     label: 'Şehir',
                     value: citiesAsync.asData?.value.length.toString() ?? '—',
                     icon: Icons.location_city_rounded,
+                    color: const Color(0xFF16A34A),
                   ),
-                ),
-                SizedBox(
-                  width: isMobile ? (width - 44) / 2 : null,
-                  child: _DefinitionStatCard(
-                    label: 'Form Çıktıları',
+                  CompactStatCard(
+                    label: 'Form Çıktısı',
                     value:
                         applicationFormSettingsAsync.hasValue &&
                             scrapFormSettingsAsync.hasValue &&
@@ -412,50 +402,58 @@ class DefinitionsScreen extends ConsumerWidget {
                         ? 'Hazır'
                         : '—',
                     icon: Icons.description_rounded,
-                  ),
-                ),
-              ],
-            ),
-            const Gap(16),
-            AppCard(
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  const TabBar(
-                    isScrollable: true,
-                    tabAlignment: TabAlignment.start,
-                    labelPadding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    tabs: [
-                      Tab(text: 'Markalar'),
-                      Tab(text: 'Modeller'),
-                      Tab(text: 'İş Emri Tipleri'),
-                      Tab(text: 'KDV Oranları'),
-                      Tab(text: 'Mali Semboller'),
-                      Tab(text: 'Meslek Türleri'),
-                      Tab(text: 'Şehirler'),
-                      Tab(text: 'Form Çıktıları'),
-                    ],
-                  ),
-                  const Divider(height: 1),
-                  SizedBox(
-                    height: isMobile ? 640 : 720,
-                    child: TabBarView(
-                      children: [
-                        _BrandsTab(isAdmin: isAdmin),
-                        _ModelsTab(isAdmin: isAdmin),
-                        _WorkOrderTypesTab(isAdmin: isAdmin),
-                        _TaxRatesTab(isAdmin: isAdmin),
-                        _FiscalSymbolsTab(isAdmin: isAdmin),
-                        _BusinessActivitiesTab(isAdmin: isAdmin),
-                        _CitiesTab(isAdmin: isAdmin),
-                        _ApplicationFormSettingsTab(isAdmin: isAdmin),
-                      ],
-                    ),
+                    color: const Color(0xFF64748B),
                   ),
                 ],
+              ),
+            ),
+            const Gap(14),
+            AppSectionCard(
+              padding: EdgeInsets.zero,
+              title: 'Tanım Kategorileri',
+              subtitle:
+                  'Sekmeler arasında geçip marka, model, vergi, şehir ve form ayarlarını yönetin.',
+              child: AppCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    const SizedBox(height: 4),
+                    const TabBar(
+                      isScrollable: true,
+                      tabAlignment: TabAlignment.start,
+                      labelPadding: EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      tabs: [
+                        Tab(text: 'Markalar'),
+                        Tab(text: 'Modeller'),
+                        Tab(text: 'İş Emri Tipleri'),
+                        Tab(text: 'KDV Oranları'),
+                        Tab(text: 'Mali Semboller'),
+                        Tab(text: 'Meslek Türleri'),
+                        Tab(text: 'Şehirler'),
+                        Tab(text: 'Form Çıktıları'),
+                      ],
+                    ),
+                    const Divider(height: 1),
+                    SizedBox(
+                      height: isMobile ? 620 : 680,
+                      child: TabBarView(
+                        children: [
+                          _BrandsTab(isAdmin: isAdmin),
+                          _ModelsTab(isAdmin: isAdmin),
+                          _WorkOrderTypesTab(isAdmin: isAdmin),
+                          _TaxRatesTab(isAdmin: isAdmin),
+                          _FiscalSymbolsTab(isAdmin: isAdmin),
+                          _BusinessActivitiesTab(isAdmin: isAdmin),
+                          _CitiesTab(isAdmin: isAdmin),
+                          _ApplicationFormSettingsTab(isAdmin: isAdmin),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -473,51 +471,27 @@ class _BrandsTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final brandsAsync = ref.watch(deviceBrandsProvider);
-    final isMobile = MediaQuery.sizeOf(context).width < 720;
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              SizedBox(
-                width: isMobile ? double.infinity : null,
-                child: Text(
-                  'Cihaz Markaları',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: isAdmin
-                    ? () async {
-                        await _showCreateBrandDialog(context, ref);
-                        ref.invalidate(deviceBrandsProvider);
-                      }
-                    : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Ekle'),
-              ),
-            ],
-          ),
-          const Gap(12),
-          Expanded(
-            child: brandsAsync.when(
-              data: (items) {
-                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
-                return ListView.separated(
-                  itemCount: items.length,
-                  separatorBuilder: (context, index) => const Gap(10),
-                  itemBuilder: (context, index) =>
-                      _BrandRow(brand: items[index], isAdmin: isAdmin),
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
-            ),
-          ),
-        ],
+    return _DefinitionTabScaffold(
+      title: 'Cihaz Markaları',
+      subtitle: 'Marka listelerini aktif/pasif olarak yönetin.',
+      isAdmin: isAdmin,
+      actionLabel: 'Marka Ekle',
+      onAdd: () async {
+        await _showCreateBrandDialog(context, ref);
+        ref.invalidate(deviceBrandsProvider);
+      },
+      child: brandsAsync.when(
+        data: (items) {
+          if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+          return ListView.separated(
+            itemCount: items.length,
+            separatorBuilder: (context, index) => const Gap(8),
+            itemBuilder: (context, index) =>
+                _BrandRow(brand: items[index], isAdmin: isAdmin),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
       ),
     );
   }
@@ -532,58 +506,28 @@ class _ModelsTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final modelsAsync = ref.watch(deviceModelsProvider);
     final brandsAsync = ref.watch(deviceBrandsProvider);
-    final isMobile = MediaQuery.sizeOf(context).width < 720;
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              SizedBox(
-                width: isMobile ? double.infinity : null,
-                child: Text(
-                  'Cihaz Modelleri',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: isAdmin
-                    ? () async {
-                        final brands =
-                            brandsAsync.value ?? const <DeviceBrand>[];
-                        await _showCreateModelDialog(
-                          context,
-                          ref,
-                          brands: brands,
-                        );
-                        ref.invalidate(deviceModelsProvider);
-                      }
-                    : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Ekle'),
-              ),
-            ],
-          ),
-          const Gap(12),
-          Expanded(
-            child: modelsAsync.when(
-              data: (items) {
-                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
-                return ListView.separated(
-                  itemCount: items.length,
-                  separatorBuilder: (context, index) => const Gap(10),
-                  itemBuilder: (context, index) =>
-                      _ModelRow(model: items[index], isAdmin: isAdmin),
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
-            ),
-          ),
-        ],
+    return _DefinitionTabScaffold(
+      title: 'Cihaz Modelleri',
+      subtitle: 'Marka bağlı model tanımlarını burada yönetin.',
+      isAdmin: isAdmin,
+      actionLabel: 'Model Ekle',
+      onAdd: () async {
+        final brands = brandsAsync.value ?? const <DeviceBrand>[];
+        await _showCreateModelDialog(context, ref, brands: brands);
+        ref.invalidate(deviceModelsProvider);
+      },
+      child: modelsAsync.when(
+        data: (items) {
+          if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+          return ListView.separated(
+            itemCount: items.length,
+            separatorBuilder: (context, index) => const Gap(8),
+            itemBuilder: (context, index) =>
+                _ModelRow(model: items[index], isAdmin: isAdmin),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
       ),
     );
   }
@@ -620,67 +564,23 @@ class _BrandRowState extends ConsumerState<_BrandRow> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.sizeOf(context).width < 720;
     final b = widget.brand;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border),
+    return _DefinitionListItem(
+      leading: _DefinitionLeadingIcon(
+        icon: Icons.copyright_rounded,
+        color: const Color(0xFF2563EB),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            b.name,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              decoration: b.isActive ? null : TextDecoration.lineThrough,
-            ),
+      title: b.name,
+      subtitle: 'Cihaz markası',
+      isActive: b.isActive,
+      actions: [
+        if (widget.isAdmin)
+          _DefinitionActionButton(
+            label: b.isActive ? 'Pasif Yap' : 'Aktif Yap',
+            isBusy: _saving,
+            onPressed: _toggleActive,
           ),
-          const Gap(10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              AppBadge(
-                label: b.isActive ? 'Aktif' : 'Pasif',
-                tone: b.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
-              ),
-              if (widget.isAdmin)
-                isMobile
-                    ? SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: _saving ? null : _toggleActive,
-                          child: _saving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(b.isActive ? 'Pasif Yap' : 'Aktif Yap'),
-                        ),
-                      )
-                    : OutlinedButton(
-                        onPressed: _saving ? null : _toggleActive,
-                        child: _saving
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(b.isActive ? 'Pasif Yap' : 'Aktif Yap'),
-                      ),
-            ],
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -715,74 +615,23 @@ class _ModelRowState extends ConsumerState<_ModelRow> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.sizeOf(context).width < 720;
     final m = widget.model;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border),
+    return _DefinitionListItem(
+      leading: _DefinitionLeadingIcon(
+        icon: Icons.memory_rounded,
+        color: const Color(0xFF0F766E),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            m.name,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              decoration: m.isActive ? null : TextDecoration.lineThrough,
-            ),
+      title: m.name,
+      subtitle: m.brandName ?? 'Marka bilgisi yok',
+      isActive: m.isActive,
+      actions: [
+        if (widget.isAdmin)
+          _DefinitionActionButton(
+            label: m.isActive ? 'Pasif Yap' : 'Aktif Yap',
+            isBusy: _saving,
+            onPressed: _toggleActive,
           ),
-          const Gap(4),
-          Text(
-            m.brandName ?? '—',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
-          ),
-          const Gap(10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              AppBadge(
-                label: m.isActive ? 'Aktif' : 'Pasif',
-                tone: m.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
-              ),
-              if (widget.isAdmin)
-                isMobile
-                    ? SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: _saving ? null : _toggleActive,
-                          child: _saving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(m.isActive ? 'Pasif Yap' : 'Aktif Yap'),
-                        ),
-                      )
-                    : OutlinedButton(
-                        onPressed: _saving ? null : _toggleActive,
-                        child: _saving
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(m.isActive ? 'Pasif Yap' : 'Aktif Yap'),
-                      ),
-            ],
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -1022,51 +871,27 @@ class _WorkOrderTypesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final typesAsync = ref.watch(workOrderTypesProvider);
-    final isMobile = MediaQuery.sizeOf(context).width < 720;
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              SizedBox(
-                width: isMobile ? double.infinity : null,
-                child: Text(
-                  'İş Emri Tipleri',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: isAdmin
-                    ? () async {
-                        await _showCreateWorkOrderTypeDialog(context, ref);
-                        ref.invalidate(workOrderTypesProvider);
-                      }
-                    : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Ekle'),
-              ),
-            ],
-          ),
-          const Gap(12),
-          Expanded(
-            child: typesAsync.when(
-              data: (items) {
-                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
-                return ListView.separated(
-                  itemCount: items.length,
-                  separatorBuilder: (context, index) => const Gap(10),
-                  itemBuilder: (context, index) =>
-                      _WorkOrderTypeRow(type: items[index], isAdmin: isAdmin),
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
-            ),
-          ),
-        ],
+    return _DefinitionTabScaffold(
+      title: 'İş Emri Tipleri',
+      subtitle: 'Konum, irtibat ve renk bilgileriyle tip tanımlarını yönetin.',
+      isAdmin: isAdmin,
+      actionLabel: 'Tip Ekle',
+      onAdd: () async {
+        await _showCreateWorkOrderTypeDialog(context, ref);
+        ref.invalidate(workOrderTypesProvider);
+      },
+      child: typesAsync.when(
+        data: (items) {
+          if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+          return ListView.separated(
+            itemCount: items.length,
+            separatorBuilder: (context, index) => const Gap(8),
+            itemBuilder: (context, index) =>
+                _WorkOrderTypeRow(type: items[index], isAdmin: isAdmin),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
       ),
     );
   }
@@ -1102,133 +927,56 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.sizeOf(context).width < 720;
     final t = widget.type;
     final color = _parseColor(t.color);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-              ),
-              const Gap(12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      t.name,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: t.isActive
-                            ? null
-                            : TextDecoration.lineThrough,
-                      ),
-                    ),
-                    if (t.description != null && t.description!.isNotEmpty) ...[
-                      const Gap(2),
-                      Text(
-                        t.description!,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
-                    if (t.locationInfo?.trim().isNotEmpty ?? false) ...[
-                      const Gap(4),
-                      Text(
-                        'Konum: ${t.locationInfo!}',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
-                    if ((t.contactName?.trim().isNotEmpty ?? false) ||
-                        (t.contactPhone?.trim().isNotEmpty ?? false)) ...[
-                      const Gap(2),
-                      Text(
-                        [
-                          if (t.contactName?.trim().isNotEmpty ?? false)
-                            t.contactName!,
-                          if (t.contactPhone?.trim().isNotEmpty ?? false)
-                            t.contactPhone!,
-                        ].join(' • '),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
+    final meta = [
+      if (t.description?.trim().isNotEmpty ?? false) t.description!,
+      if (t.locationInfo?.trim().isNotEmpty ?? false) 'Konum: ${t.locationInfo!}',
+      if ((t.contactName?.trim().isNotEmpty ?? false) ||
+          (t.contactPhone?.trim().isNotEmpty ?? false))
+        [
+          if (t.contactName?.trim().isNotEmpty ?? false) t.contactName!,
+          if (t.contactPhone?.trim().isNotEmpty ?? false) t.contactPhone!,
+        ].join(' • '),
+    ];
+    return _DefinitionListItem(
+      leading: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Center(
+          child: Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(4),
+            ),
           ),
-          const Gap(10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              AppBadge(
-                label: t.isActive ? 'Aktif' : 'Pasif',
-                tone: t.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
-              ),
-              if (widget.isAdmin)
-                OutlinedButton(
-                  onPressed: _saving
-                      ? null
-                      : () async {
-                          await _showEditWorkOrderTypeDialog(context, ref, t);
-                          ref.invalidate(workOrderTypesProvider);
-                        },
-                  child: const Text('Düzenle'),
-                ),
-              if (widget.isAdmin)
-                isMobile
-                    ? SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: _saving ? null : _toggleActive,
-                          child: _saving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(t.isActive ? 'Pasif Yap' : 'Aktif Yap'),
-                        ),
-                      )
-                    : OutlinedButton(
-                        onPressed: _saving ? null : _toggleActive,
-                        child: _saving
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(t.isActive ? 'Pasif Yap' : 'Aktif Yap'),
-                      ),
-            ],
-          ),
-        ],
+        ),
       ),
+      title: t.name,
+      subtitle: meta.isEmpty ? 'İş emri tipi' : meta.join('  •  '),
+      isActive: t.isActive,
+      actions: [
+        if (widget.isAdmin)
+          _DefinitionActionButton(
+            label: 'Düzenle',
+            onPressed: () async {
+              await _showEditWorkOrderTypeDialog(context, ref, t);
+              ref.invalidate(workOrderTypesProvider);
+            },
+          ),
+        if (widget.isAdmin)
+          _DefinitionActionButton(
+            label: t.isActive ? 'Pasif Yap' : 'Aktif Yap',
+            isBusy: _saving,
+            onPressed: _toggleActive,
+          ),
+      ],
     );
   }
 }
@@ -1241,51 +989,27 @@ class _TaxRatesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ratesAsync = ref.watch(taxRatesProvider);
-    final isMobile = MediaQuery.sizeOf(context).width < 720;
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              SizedBox(
-                width: isMobile ? double.infinity : null,
-                child: Text(
-                  'KDV Oranları',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: isAdmin
-                    ? () async {
-                        await _showCreateTaxRateDialog(context, ref);
-                        ref.invalidate(taxRatesProvider);
-                      }
-                    : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Ekle'),
-              ),
-            ],
-          ),
-          const Gap(12),
-          Expanded(
-            child: ratesAsync.when(
-              data: (items) {
-                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
-                return ListView.separated(
-                  itemCount: items.length,
-                  separatorBuilder: (context, index) => const Gap(10),
-                  itemBuilder: (context, index) =>
-                      _TaxRateRow(rate: items[index], isAdmin: isAdmin),
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
-            ),
-          ),
-        ],
+    return _DefinitionTabScaffold(
+      title: 'KDV Oranları',
+      subtitle: 'Varsayılan oranları ve aktif vergi setlerini yönetin.',
+      isAdmin: isAdmin,
+      actionLabel: 'Oran Ekle',
+      onAdd: () async {
+        await _showCreateTaxRateDialog(context, ref);
+        ref.invalidate(taxRatesProvider);
+      },
+      child: ratesAsync.when(
+        data: (items) {
+          if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+          return ListView.separated(
+            itemCount: items.length,
+            separatorBuilder: (context, index) => const Gap(8),
+            itemBuilder: (context, index) =>
+                _TaxRateRow(rate: items[index], isAdmin: isAdmin),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
       ),
     );
   }
@@ -1299,51 +1023,27 @@ class _FiscalSymbolsTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final itemsAsync = ref.watch(fiscalSymbolsProvider);
-    final isMobile = MediaQuery.sizeOf(context).width < 720;
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              SizedBox(
-                width: isMobile ? double.infinity : null,
-                child: Text(
-                  'Mali Sembol Tanımları',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: isAdmin
-                    ? () async {
-                        await _showFiscalSymbolDialog(context, ref);
-                        ref.invalidate(fiscalSymbolsProvider);
-                      }
-                    : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Ekle'),
-              ),
-            ],
-          ),
-          const Gap(12),
-          Expanded(
-            child: itemsAsync.when(
-              data: (items) {
-                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
-                return ListView.separated(
-                  itemCount: items.length,
-                  separatorBuilder: (context, index) => const Gap(10),
-                  itemBuilder: (context, index) =>
-                      _FiscalSymbolRow(item: items[index], isAdmin: isAdmin),
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
-            ),
-          ),
-        ],
+    return _DefinitionTabScaffold(
+      title: 'Mali Sembol Tanımları',
+      subtitle: 'Firma kodu ve sembol karşılıklarını buradan yönetin.',
+      isAdmin: isAdmin,
+      actionLabel: 'Sembol Ekle',
+      onAdd: () async {
+        await _showFiscalSymbolDialog(context, ref);
+        ref.invalidate(fiscalSymbolsProvider);
+      },
+      child: itemsAsync.when(
+        data: (items) {
+          if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+          return ListView.separated(
+            itemCount: items.length,
+            separatorBuilder: (context, index) => const Gap(8),
+            itemBuilder: (context, index) =>
+                _FiscalSymbolRow(item: items[index], isAdmin: isAdmin),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
       ),
     );
   }
@@ -1357,53 +1057,27 @@ class _BusinessActivitiesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final itemsAsync = ref.watch(businessActivityTypesProvider);
-    final isMobile = MediaQuery.sizeOf(context).width < 720;
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              SizedBox(
-                width: isMobile ? double.infinity : null,
-                child: Text(
-                  'Ticari Faaliyet / Meslek Türleri',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: isAdmin
-                    ? () async {
-                        await _showBusinessActivityDialog(context, ref);
-                        ref.invalidate(businessActivityTypesProvider);
-                      }
-                    : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Ekle'),
-              ),
-            ],
-          ),
-          const Gap(12),
-          Expanded(
-            child: itemsAsync.when(
-              data: (items) {
-                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
-                return ListView.separated(
-                  itemCount: items.length,
-                  separatorBuilder: (context, index) => const Gap(10),
-                  itemBuilder: (context, index) => _BusinessActivityRow(
-                    item: items[index],
-                    isAdmin: isAdmin,
-                  ),
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
-            ),
-          ),
-        ],
+    return _DefinitionTabScaffold(
+      title: 'Ticari Faaliyet / Meslek Türleri',
+      subtitle: 'Başvuru ve cihaz işlemlerinde kullanılan faaliyet tanımları.',
+      isAdmin: isAdmin,
+      actionLabel: 'Meslek Türü Ekle',
+      onAdd: () async {
+        await _showBusinessActivityDialog(context, ref);
+        ref.invalidate(businessActivityTypesProvider);
+      },
+      child: itemsAsync.when(
+        data: (items) {
+          if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+          return ListView.separated(
+            itemCount: items.length,
+            separatorBuilder: (context, index) => const Gap(8),
+            itemBuilder: (context, index) =>
+                _BusinessActivityRow(item: items[index], isAdmin: isAdmin),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
       ),
     );
   }
@@ -1417,51 +1091,27 @@ class _CitiesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final citiesAsync = ref.watch(cityDefinitionsProvider);
-    final isMobile = MediaQuery.sizeOf(context).width < 720;
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              SizedBox(
-                width: isMobile ? double.infinity : null,
-                child: Text(
-                  'Şehir Tanımları',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: isAdmin
-                    ? () async {
-                        await _showCityDialog(context, ref);
-                        ref.invalidate(cityDefinitionsProvider);
-                      }
-                    : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Ekle'),
-              ),
-            ],
-          ),
-          const Gap(12),
-          Expanded(
-            child: citiesAsync.when(
-              data: (items) {
-                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
-                return ListView.separated(
-                  itemCount: items.length,
-                  separatorBuilder: (context, index) => const Gap(10),
-                  itemBuilder: (context, index) =>
-                      _CityRow(city: items[index], isAdmin: isAdmin),
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
-            ),
-          ),
-        ],
+    return _DefinitionTabScaffold(
+      title: 'Şehir Tanımları',
+      subtitle: 'Müşteri, şube ve form ekranlarında kullanılan şehir listesi.',
+      isAdmin: isAdmin,
+      actionLabel: 'Şehir Ekle',
+      onAdd: () async {
+        await _showCityDialog(context, ref);
+        ref.invalidate(cityDefinitionsProvider);
+      },
+      child: citiesAsync.when(
+        data: (items) {
+          if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+          return ListView.separated(
+            itemCount: items.length,
+            separatorBuilder: (context, index) => const Gap(8),
+            itemBuilder: (context, index) =>
+                _CityRow(city: items[index], isAdmin: isAdmin),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stackTrace) => const _Empty(text: 'Yüklenemedi.'),
       ),
     );
   }
@@ -1497,101 +1147,32 @@ class _FiscalSymbolRowState extends ConsumerState<_FiscalSymbolRow> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.sizeOf(context).width < 720;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border),
+    return _DefinitionListItem(
+      leading: _DefinitionLeadingIcon(
+        icon: Icons.qr_code_rounded,
+        color: const Color(0xFF7C3AED),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            widget.item.name,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              decoration: widget.item.isActive
-                  ? null
-                  : TextDecoration.lineThrough,
-            ),
+      title: widget.item.name,
+      subtitle: widget.item.code?.trim().isNotEmpty ?? false
+          ? widget.item.code!
+          : 'Firma kodu tanımı',
+      isActive: widget.item.isActive,
+      actions: [
+        if (widget.isAdmin)
+          _DefinitionActionButton(
+            label: 'Düzenle',
+            onPressed: () async {
+              await _showFiscalSymbolDialog(context, ref, item: widget.item);
+              ref.invalidate(fiscalSymbolsProvider);
+            },
           ),
-          if (widget.item.code?.trim().isNotEmpty ?? false) ...[
-            const Gap(2),
-            Text(
-              widget.item.code!,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
-            ),
-          ],
-          const Gap(10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              AppBadge(
-                label: widget.item.isActive ? 'Aktif' : 'Pasif',
-                tone: widget.item.isActive
-                    ? AppBadgeTone.success
-                    : AppBadgeTone.neutral,
-              ),
-              if (widget.isAdmin)
-                OutlinedButton(
-                  onPressed: _saving
-                      ? null
-                      : () async {
-                          await _showFiscalSymbolDialog(
-                            context,
-                            ref,
-                            item: widget.item,
-                          );
-                          ref.invalidate(fiscalSymbolsProvider);
-                        },
-                  child: const Text('Düzenle'),
-                ),
-              if (widget.isAdmin)
-                isMobile
-                    ? SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: _saving ? null : _toggleActive,
-                          child: _saving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(
-                                  widget.item.isActive
-                                      ? 'Pasif Yap'
-                                      : 'Aktif Yap',
-                                ),
-                        ),
-                      )
-                    : OutlinedButton(
-                        onPressed: _saving ? null : _toggleActive,
-                        child: _saving
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(
-                                widget.item.isActive
-                                    ? 'Pasif Yap'
-                                    : 'Aktif Yap',
-                              ),
-                      ),
-            ],
+        if (widget.isAdmin)
+          _DefinitionActionButton(
+            label: widget.item.isActive ? 'Pasif Yap' : 'Aktif Yap',
+            isBusy: _saving,
+            onPressed: _toggleActive,
           ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -1627,92 +1208,30 @@ class _BusinessActivityRowState extends ConsumerState<_BusinessActivityRow> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.sizeOf(context).width < 720;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border),
+    return _DefinitionListItem(
+      leading: _DefinitionLeadingIcon(
+        icon: Icons.storefront_rounded,
+        color: const Color(0xFF0891B2),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            widget.item.name,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              decoration: widget.item.isActive
-                  ? null
-                  : TextDecoration.lineThrough,
-            ),
+      title: widget.item.name,
+      subtitle: 'Faaliyet / meslek tipi',
+      isActive: widget.item.isActive,
+      actions: [
+        if (widget.isAdmin)
+          _DefinitionActionButton(
+            label: 'Düzenle',
+            onPressed: () async {
+              await _showBusinessActivityDialog(context, ref, item: widget.item);
+              ref.invalidate(businessActivityTypesProvider);
+            },
           ),
-          const Gap(10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              AppBadge(
-                label: widget.item.isActive ? 'Aktif' : 'Pasif',
-                tone: widget.item.isActive
-                    ? AppBadgeTone.success
-                    : AppBadgeTone.neutral,
-              ),
-              if (widget.isAdmin)
-                OutlinedButton(
-                  onPressed: _saving
-                      ? null
-                      : () async {
-                          await _showBusinessActivityDialog(
-                            context,
-                            ref,
-                            item: widget.item,
-                          );
-                          ref.invalidate(businessActivityTypesProvider);
-                        },
-                  child: const Text('Düzenle'),
-                ),
-              if (widget.isAdmin)
-                isMobile
-                    ? SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: _saving ? null : _toggleActive,
-                          child: _saving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(
-                                  widget.item.isActive
-                                      ? 'Pasif Yap'
-                                      : 'Aktif Yap',
-                                ),
-                        ),
-                      )
-                    : OutlinedButton(
-                        onPressed: _saving ? null : _toggleActive,
-                        child: _saving
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(
-                                widget.item.isActive
-                                    ? 'Pasif Yap'
-                                    : 'Aktif Yap',
-                              ),
-                      ),
-            ],
+        if (widget.isAdmin)
+          _DefinitionActionButton(
+            label: widget.item.isActive ? 'Pasif Yap' : 'Aktif Yap',
+            isBusy: _saving,
+            onPressed: _toggleActive,
           ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -1747,88 +1266,33 @@ class _CityRowState extends ConsumerState<_CityRow> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.sizeOf(context).width < 720;
     final city = widget.city;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border),
+    return _DefinitionListItem(
+      leading: _DefinitionLeadingIcon(
+        icon: Icons.location_city_rounded,
+        color: const Color(0xFF16A34A),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            city.name,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              decoration: city.isActive ? null : TextDecoration.lineThrough,
-            ),
+      title: city.name,
+      subtitle: city.code?.trim().isNotEmpty ?? false
+          ? 'Kod: ${city.code!}'
+          : 'Şehir tanımı',
+      isActive: city.isActive,
+      actions: [
+        if (widget.isAdmin)
+          _DefinitionActionButton(
+            label: 'Düzenle',
+            onPressed: () async {
+              await _showCityDialog(context, ref, city: city);
+              ref.invalidate(cityDefinitionsProvider);
+            },
           ),
-          if (city.code?.trim().isNotEmpty ?? false) ...[
-            const Gap(2),
-            Text(
-              city.code!,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
-            ),
-          ],
-          const Gap(10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              AppBadge(
-                label: city.isActive ? 'Aktif' : 'Pasif',
-                tone: city.isActive
-                    ? AppBadgeTone.success
-                    : AppBadgeTone.neutral,
-              ),
-              if (widget.isAdmin)
-                OutlinedButton(
-                  onPressed: _saving
-                      ? null
-                      : () async {
-                          await _showCityDialog(context, ref, city: city);
-                          ref.invalidate(cityDefinitionsProvider);
-                        },
-                  child: const Text('Düzenle'),
-                ),
-              if (widget.isAdmin)
-                isMobile
-                    ? SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: _saving ? null : _toggleActive,
-                          child: _saving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(city.isActive ? 'Pasif Yap' : 'Aktif Yap'),
-                        ),
-                      )
-                    : OutlinedButton(
-                        onPressed: _saving ? null : _toggleActive,
-                        child: _saving
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(city.isActive ? 'Pasif Yap' : 'Aktif Yap'),
-                      ),
-            ],
+        if (widget.isAdmin)
+          _DefinitionActionButton(
+            label: city.isActive ? 'Pasif Yap' : 'Aktif Yap',
+            isBusy: _saving,
+            onPressed: _toggleActive,
           ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -1884,106 +1348,50 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.sizeOf(context).width < 720;
     final r = widget.rate;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: r.isDefault ? AppTheme.primary : AppTheme.border,
+    return _DefinitionListItem(
+      leading: Container(
+        width: 40,
+        height: 32,
+        decoration: BoxDecoration(
+          color: AppTheme.primary.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: r.isDefault
+                ? AppTheme.primary.withValues(alpha: 0.25)
+                : AppTheme.border,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            '%${r.rate.toStringAsFixed(0)}',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: AppTheme.primary,
+            ),
+          ),
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Center(
-                  child: Text(
-                    '%${r.rate.toStringAsFixed(0)}',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.primary,
-                    ),
-                  ),
-                ),
-              ),
-              const Gap(12),
-              Expanded(
-                child: Text(
-                  r.name,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    decoration: r.isActive ? null : TextDecoration.lineThrough,
-                  ),
-                ),
-              ),
-            ],
+      title: r.name,
+      subtitle: r.isDefault ? 'Varsayılan oran' : 'KDV oranı',
+      isActive: r.isActive,
+      extraBadges: [
+        if (r.isDefault) AppBadge(label: 'Varsayılan', tone: AppBadgeTone.primary),
+      ],
+      actions: [
+        if (widget.isAdmin && !r.isDefault)
+          _DefinitionActionButton(
+            label: 'Varsayılan Yap',
+            isBusy: _saving,
+            onPressed: _setDefault,
           ),
-          const Gap(10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              if (r.isDefault)
-                AppBadge(label: 'Varsayılan', tone: AppBadgeTone.primary),
-              AppBadge(
-                label: r.isActive ? 'Aktif' : 'Pasif',
-                tone: r.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
-              ),
-              if (widget.isAdmin && !r.isDefault)
-                OutlinedButton(
-                  onPressed: _saving ? null : _setDefault,
-                  child: _saving
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Varsayılan Yap'),
-                ),
-              if (widget.isAdmin)
-                isMobile
-                    ? SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: _saving ? null : _toggleActive,
-                          child: _saving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(r.isActive ? 'Pasif Yap' : 'Aktif Yap'),
-                        ),
-                      )
-                    : OutlinedButton(
-                        onPressed: _saving ? null : _toggleActive,
-                        child: _saving
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(r.isActive ? 'Pasif Yap' : 'Aktif Yap'),
-                      ),
-            ],
+        if (widget.isAdmin)
+          _DefinitionActionButton(
+            label: r.isActive ? 'Pasif Yap' : 'Aktif Yap',
+            isBusy: _saving,
+            onPressed: _toggleActive,
           ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -2611,51 +2019,192 @@ Color _parseColor(String hex) {
   return Color(int.parse('FF$cleaned', radix: 16));
 }
 
-class _DefinitionStatCard extends StatelessWidget {
-  const _DefinitionStatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
+class _DefinitionTabScaffold extends StatelessWidget {
+  const _DefinitionTabScaffold({
+    required this.title,
+    required this.subtitle,
+    required this.isAdmin,
+    required this.child,
+    this.actionLabel,
+    this.onAdd,
   });
 
-  final String label;
-  final String value;
-  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool isAdmin;
+  final Widget child;
+  final String? actionLabel;
+  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
-      child: Row(
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
+    return Padding(
+      padding: EdgeInsets.all(isMobile ? 12 : 14),
+      child: Column(
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: AppTheme.primary, size: 18),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Gap(3),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isAdmin && onAdd != null && actionLabel != null)
+                FilledButton.icon(
+                  onPressed: onAdd,
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  label: Text(actionLabel!),
+                ),
+            ],
           ),
-          const Gap(12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
+          const Gap(10),
+          Expanded(child: child),
+        ],
+      ),
+    );
+  }
+}
+
+class _DefinitionLeadingIcon extends StatelessWidget {
+  const _DefinitionLeadingIcon({required this.icon, required this.color});
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(icon, size: 18, color: color),
+    );
+  }
+}
+
+class _DefinitionActionButton extends StatelessWidget {
+  const _DefinitionActionButton({
+    required this.label,
+    required this.onPressed,
+    this.isBusy = false,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+  final bool isBusy;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: isBusy ? null : onPressed,
+      style: OutlinedButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        minimumSize: const Size(0, 34),
+      ),
+      child: isBusy
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Text(label),
+    );
+  }
+}
+
+class _DefinitionListItem extends StatelessWidget {
+  const _DefinitionListItem({
+    required this.leading,
+    required this.title,
+    required this.subtitle,
+    required this.isActive,
+    this.actions = const [],
+    this.extraBadges = const [],
+  });
+
+  final Widget leading;
+  final String title;
+  final String subtitle;
+  final bool isActive;
+  final List<Widget> actions;
+  final List<Widget> extraBadges;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              leading,
+              const Gap(10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        decoration: isActive
+                            ? null
+                            : TextDecoration.lineThrough,
+                      ),
+                    ),
+                    const Gap(3),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
                 ),
-                const Gap(4),
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
+          ),
+          const Gap(10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              ...extraBadges,
+              AppBadge(
+                label: isActive ? 'Aktif' : 'Pasif',
+                tone: isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
+              ),
+              ...actions,
+            ],
           ),
         ],
       ),
