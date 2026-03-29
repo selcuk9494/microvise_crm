@@ -200,51 +200,69 @@ class ServiceScreen extends ConsumerWidget {
                 ],
               ),
               const Gap(8),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final twoCols = constraints.maxWidth >= 980;
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: twoCols ? 2 : 1,
-                        child: AppCard(
-                          padding: EdgeInsets.zero,
-                          child: filtered.isEmpty
-                              ? const Padding(
-                                  padding: EdgeInsets.all(10),
-                                  child: EmptyStateCard(
-                                    icon: Icons.search_off_rounded,
-                                    title: 'Kayıt bulunamadı',
-                                    message:
-                                        'Filtrelere uygun servis kaydı bulunamadı.',
-                                  ),
-                                )
-                              : ListView.separated(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: filtered.length,
-                                  separatorBuilder: (context, index) =>
-                                      const Divider(height: 1),
-                                  itemBuilder: (context, index) =>
-                                      _ServiceRow(item: filtered[index]),
-                                ),
+              if (isMobile)
+                Expanded(
+                  child: filtered.isEmpty
+                      ? const EmptyStateCard(
+                          icon: Icons.search_off_rounded,
+                          title: 'Kayıt bulunamadı',
+                          message:
+                              'Filtrelere uygun servis kaydı bulunamadı.',
+                        )
+                      : ListView.separated(
+                          itemCount: filtered.length,
+                          separatorBuilder: (context, index) => const Gap(10),
+                          itemBuilder: (context, index) =>
+                              _MobileServiceCard(item: filtered[index]),
                         ),
-                      ),
-                      if (twoCols) const Gap(16),
-                      if (twoCols)
+                )
+              else
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final twoCols = constraints.maxWidth >= 980;
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Expanded(
-                          flex: 3,
-                          child: AppSectionCard(
-                            title: 'Süreç özeti',
-                            subtitle: 'Seçili kayıtların son durum akışı',
-                            child: _ServiceTimelinePreview(items: filtered),
+                          flex: twoCols ? 2 : 1,
+                          child: AppCard(
+                            padding: EdgeInsets.zero,
+                            child: filtered.isEmpty
+                                ? const Padding(
+                                    padding: EdgeInsets.all(10),
+                                    child: EmptyStateCard(
+                                      icon: Icons.search_off_rounded,
+                                      title: 'Kayıt bulunamadı',
+                                      message:
+                                          'Filtrelere uygun servis kaydı bulunamadı.',
+                                    ),
+                                  )
+                                : ListView.separated(
+                                    shrinkWrap: true,
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    itemCount: filtered.length,
+                                    separatorBuilder: (context, index) =>
+                                        const Divider(height: 1),
+                                    itemBuilder: (context, index) =>
+                                        _ServiceRow(item: filtered[index]),
+                                  ),
                           ),
                         ),
-                    ],
-                  );
-                },
-              ),
+                        if (twoCols) const Gap(16),
+                        if (twoCols)
+                          Expanded(
+                            flex: 3,
+                            child: AppSectionCard(
+                              title: 'Süreç özeti',
+                              subtitle: 'Seçili kayıtların son durum akışı',
+                              child: _ServiceTimelinePreview(items: filtered),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
             ],
           );
         },
@@ -304,6 +322,135 @@ class ServiceScreen extends ConsumerWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _MobileServiceCard extends StatelessWidget {
+  const _MobileServiceCard({required this.item});
+
+  final ServiceRecord item;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = switch (item.status) {
+      'open' => ('Açık', AppBadgeTone.warning),
+      'in_progress' => ('Sahada', AppBadgeTone.primary),
+      'done' => ('Tamam', AppBadgeTone.success),
+      _ => ('—', AppBadgeTone.neutral),
+    };
+    final date = item.createdAt == null
+        ? 'Plan yok'
+        : DateFormat('d MMM y', 'tr_TR').format(item.createdAt!);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: () => context.go('/servis/${item.id}'),
+      child: AppCard(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const Gap(4),
+                      Text(
+                        item.customerName ?? 'Müşteri belirtilmedi',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF64748B),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Gap(8),
+                AppBadge(label: status.$1, tone: status.$2),
+              ],
+            ),
+            const Gap(10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _ServiceInfoChip(
+                  icon: Icons.calendar_today_rounded,
+                  label: date,
+                ),
+                _ServiceInfoChip(
+                  icon: Icons.build_circle_outlined,
+                  label: item.status == 'done' ? 'Kapanış hazır' : 'İş aktif',
+                ),
+              ],
+            ),
+            const Gap(10),
+            Row(
+              children: [
+                Text(
+                  'Detayları aç',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFF94A3B8),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ServiceInfoChip extends StatelessWidget {
+  const _ServiceInfoChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: const Color(0xFF64748B)),
+          const Gap(5),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: const Color(0xFF475569),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -57,11 +57,14 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final detailAsync = ref.watch(serviceDetailProvider(widget.serviceId));
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
 
     return detailAsync.when(
       data: (detail) => AppPageLayout(
         title: 'Servis',
-        subtitle: detail.title,
+        subtitle: isMobile
+            ? 'Saha servis akışı ve kapanış detayları.'
+            : detail.title,
         actions: [
           if (detail.status != 'done')
             FilledButton.icon(
@@ -483,6 +486,7 @@ class _BodyState extends ConsumerState<_Body> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
     final date = DateFormat('d MMM y', 'tr_TR').format(widget.detail.createdAt);
     final tone = widget.detail.status == 'done'
         ? AppBadgeTone.success
@@ -504,25 +508,49 @@ class _BodyState extends ConsumerState<_Body> {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      widget.detail.customerName ?? '—',
-                      style: Theme.of(context).textTheme.titleSmall,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.detail.title,
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        const Gap(4),
+                        Text(
+                          widget.detail.customerName ?? '—',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: const Color(0xFF475569)),
+                        ),
+                      ],
                     ),
                   ),
                   AppBadge(label: label, tone: tone),
                 ],
               ),
               const Gap(6),
-              Text(
-                date,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _DetailMetaChip(
+                    icon: Icons.calendar_today_rounded,
+                    label: date,
+                  ),
+                  _DetailMetaChip(
+                    icon: Icons.format_list_bulleted_rounded,
+                    label: '${_steps.length} adım',
+                  ),
+                  _DetailMetaChip(
+                    icon: Icons.inventory_2_outlined,
+                    label: '${_parts.length + _labor.length} kalem',
+                  ),
+                ],
               ),
             ],
           ),
         ),
-        const Gap(12),
+        Gap(isMobile ? 10 : 12),
         AppCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -540,7 +568,7 @@ class _BodyState extends ConsumerState<_Body> {
                         ? null
                         : () => setState(() => _steps.add('Yeni adım')),
                     icon: const Icon(Icons.add_rounded, size: 18),
-                    label: const Text('Ekle'),
+                    label: Text(isMobile ? 'Adım' : 'Ekle'),
                   ),
                 ],
               ),
@@ -612,7 +640,7 @@ class _BodyState extends ConsumerState<_Body> {
             ],
           ),
         ),
-        const Gap(12),
+        Gap(isMobile ? 10 : 12),
         _CostCard(
           title: 'Parçalar',
           items: _parts,
@@ -626,7 +654,7 @@ class _BodyState extends ConsumerState<_Body> {
                   _parts.removeAt(i);
                 }),
         ),
-        const Gap(12),
+        Gap(isMobile ? 10 : 12),
         _CostCard(
           title: 'İşçilik',
           items: _labor,
@@ -640,7 +668,7 @@ class _BodyState extends ConsumerState<_Body> {
                   _labor.removeAt(i);
                 }),
         ),
-        const Gap(12),
+        Gap(isMobile ? 10 : 12),
         AppCard(
           child: Row(
             children: [
@@ -683,6 +711,7 @@ class _CostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -698,7 +727,7 @@ class _CostCard extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onAdd,
                 icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Ekle'),
+                label: Text(isMobile ? 'Kalem' : 'Ekle'),
               ),
             ],
           ),
@@ -732,6 +761,50 @@ class _LineItemEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
+    if (isMobile) {
+      return Column(
+        children: [
+          TextField(
+            controller: item.nameController,
+            decoration: const InputDecoration(labelText: 'Kalem'),
+          ),
+          const Gap(10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: item.qtyController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: 'Adet/Saat'),
+                ),
+              ),
+              const Gap(10),
+              Expanded(
+                child: TextField(
+                  controller: item.unitPriceController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: 'Birim Fiyat'),
+                ),
+              ),
+              if (onRemove != null) ...[
+                const Gap(8),
+                IconButton(
+                  tooltip: 'Sil',
+                  onPressed: onRemove,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+              ],
+            ],
+          ),
+        ],
+      );
+    }
+
     return Row(
       children: [
         Expanded(
@@ -767,6 +840,39 @@ class _LineItemEditor extends StatelessWidget {
             icon: const Icon(Icons.delete_outline_rounded),
           ),
       ],
+    );
+  }
+}
+
+class _DetailMetaChip extends StatelessWidget {
+  const _DetailMetaChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: const Color(0xFF64748B)),
+          const Gap(5),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: const Color(0xFF475569),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
