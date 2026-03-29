@@ -236,27 +236,49 @@ class _Content extends ConsumerWidget {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
               child: AppCard(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
                 child: Column(
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        IconButton(
-                          tooltip: 'Geri',
-                          onPressed: () => Navigator.of(context).maybePop(),
-                          icon: const Icon(Icons.arrow_back_rounded),
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFE0E7FF), Color(0xFFDBEAFE)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: AppTheme.border),
+                          ),
+                          child: IconButton(
+                            tooltip: 'Geri',
+                            onPressed: () => Navigator.of(context).maybePop(),
+                            icon: const Icon(
+                              Icons.arrow_back_rounded,
+                              size: 20,
+                            ),
+                          ),
                         ),
-                        const Gap(6),
+                        const Gap(12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 detail.name,
-                                style: Theme.of(context).textTheme.titleLarge,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.titleLarge
+                                    ?.copyWith(fontWeight: FontWeight.w800),
                               ),
-                              const Gap(4),
-                              Row(
+                              const Gap(6),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
                                 children: [
                                   AppBadge(
                                     label: detail.isActive ? 'Aktif' : 'Pasif',
@@ -265,62 +287,73 @@ class _Content extends ConsumerWidget {
                                         : AppBadgeTone.neutral,
                                   ),
                                   if (detail.city != null) ...[
-                                    const Gap(8),
-                                    Text(
-                                      detail.city!,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: const Color(0xFF64748B),
-                                          ),
+                                    _HeaderChip(
+                                      icon: Icons.location_on_outlined,
+                                      label: detail.city!,
                                     ),
                                   ],
+                                  if (detail.vkn?.trim().isNotEmpty ??
+                                      false) ...[
+                                    _HeaderChip(
+                                      icon: Icons.badge_outlined,
+                                      label: detail.vkn!,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const Gap(10),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                children: [
+                                  CompactStatCard(
+                                    label: 'Hat',
+                                    value: '$activeLines',
+                                    icon: Icons.sim_card_rounded,
+                                    color: AppTheme.primary,
+                                  ),
+                                  CompactStatCard(
+                                    label: 'Lisans',
+                                    value: '$activeLicenses',
+                                    icon: Icons.verified_rounded,
+                                    color: const Color(0xFFF59E0B),
+                                  ),
+                                  CompactStatCard(
+                                    label: 'Açık İş',
+                                    value: '$activeWorkOrders',
+                                    icon: Icons.assignment_turned_in_rounded,
+                                    color: const Color(0xFF22C55E),
+                                  ),
                                 ],
                               ),
                             ],
                           ),
                         ),
-                        FilledButton.icon(
-                          onPressed: () async {
-                            await _showEditCustomerDialog(
-                              context,
-                              ref,
-                              detail: detail,
-                            );
-                          },
-                          icon: const Icon(Icons.edit_rounded, size: 18),
-                          label: const Text('Düzenle'),
+                        const Gap(12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: () async {
+                                await _showEditCustomerDialog(
+                                  context,
+                                  ref,
+                                  detail: detail,
+                                );
+                              },
+                              icon: const Icon(Icons.edit_rounded, size: 18),
+                              label: const Text('Düzenle'),
+                            ),
+                            if (detail.email?.trim().isNotEmpty ?? false) ...[
+                              const Gap(10),
+                              _HeaderChip(
+                                icon: Icons.alternate_email_rounded,
+                                label: detail.email!,
+                              ),
+                            ],
+                          ],
                         ),
                       ],
-                    ),
-                    const Gap(12),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          CompactStatCard(
-                            label: 'Hat',
-                            value: '$activeLines',
-                            icon: Icons.sim_card_rounded,
-                            color: AppTheme.primary,
-                          ),
-                          CompactStatCard(
-                            label: 'Lisans',
-                            value: '$activeLicenses',
-                            icon: Icons.verified_rounded,
-                            color: const Color(0xFFF59E0B),
-                          ),
-                          CompactStatCard(
-                            label: 'Açık İş',
-                            value: '$activeWorkOrders',
-                            icon: Icons.assignment_turned_in_rounded,
-                            color: const Color(0xFF22C55E),
-                          ),
-                        ],
-                      ),
                     ),
                   ],
                 ),
@@ -351,7 +384,7 @@ class _Content extends ConsumerWidget {
                     ),
                     const Divider(height: 1),
                     SizedBox(
-                      height: MediaQuery.sizeOf(context).height * 0.68,
+                      height: MediaQuery.sizeOf(context).height * 0.72,
                       child: TabBarView(
                         children: [
                           _GeneralTab(detail: detail),
@@ -2454,6 +2487,39 @@ class _InfoRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _HeaderChip extends StatelessWidget {
+  const _HeaderChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: const Color(0xFF64748B)),
+          const Gap(6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: const Color(0xFF0F172A),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

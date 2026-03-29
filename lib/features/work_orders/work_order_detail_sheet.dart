@@ -14,6 +14,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_section_card.dart';
+import '../../core/ui/compact_stat_card.dart';
 import '../customers/customer_detail_screen.dart';
 import 'work_order_create_dialog.dart';
 import 'work_order_model.dart';
@@ -165,16 +166,16 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         final insertedLine = await client
             .from('lines')
             .insert({
-          'customer_id': customer.id,
-          'branch_id': branchId,
-          'number': number,
-          'sim_number': _lineSimController.text.trim().isEmpty
-              ? null
-              : _lineSimController.text.trim(),
-          'starts_at': start.toIso8601String().substring(0, 10),
-          'ends_at': end.toIso8601String().substring(0, 10),
-          'expires_at': end.toIso8601String().substring(0, 10),
-          'is_active': true,
+              'customer_id': customer.id,
+              'branch_id': branchId,
+              'number': number,
+              'sim_number': _lineSimController.text.trim().isEmpty
+                  ? null
+                  : _lineSimController.text.trim(),
+              'starts_at': start.toIso8601String().substring(0, 10),
+              'ends_at': end.toIso8601String().substring(0, 10),
+              'expires_at': end.toIso8601String().substring(0, 10),
+              'is_active': true,
             })
             .select('id')
             .single();
@@ -198,13 +199,13 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         final insertedLicense = await client
             .from('licenses')
             .insert({
-          'customer_id': customer.id,
-          'name': name,
-          'license_type': 'gmp3',
-          'starts_at': start.toIso8601String().substring(0, 10),
-          'ends_at': end.toIso8601String().substring(0, 10),
-          'expires_at': end.toIso8601String().substring(0, 10),
-          'is_active': true,
+              'customer_id': customer.id,
+              'name': name,
+              'license_type': 'gmp3',
+              'starts_at': start.toIso8601String().substring(0, 10),
+              'ends_at': end.toIso8601String().substring(0, 10),
+              'expires_at': end.toIso8601String().substring(0, 10),
+              'is_active': true,
             })
             .select('id')
             .single();
@@ -436,45 +437,101 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       'done' => ('Kapalı', AppBadgeTone.success),
       _ => ('Bilinmiyor', AppBadgeTone.neutral),
     };
+    final dateText = widget.order.scheduledDate != null
+        ? DateFormat('d MMM', 'tr_TR').format(widget.order.scheduledDate!)
+        : 'Tarihsiz';
 
     return AppSectionCard(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      child: Column(
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.order.title,
-                  style: Theme.of(context).textTheme.titleMedium,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFE0E7FF), Color(0xFFDBEAFE)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.border),
                 ),
-                if (widget.order.workOrderTypeName?.trim().isNotEmpty ??
-                    false) ...[
-                  const Gap(4),
-                  Text(
-                    widget.order.workOrderTypeName!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.primary,
-                      fontWeight: FontWeight.w700,
+                child: const Icon(
+                  Icons.assignment_turned_in_rounded,
+                  size: 22,
+                  color: AppTheme.primary,
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.order.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                  ),
-                ],
-                const Gap(4),
-                Text(
-                  customer.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
+                    const Gap(6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        AppBadge(label: statusLabel, tone: statusTone),
+                        _HeaderMetaChip(
+                          icon: Icons.business_rounded,
+                          label: customer.name,
+                        ),
+                        if (widget.order.workOrderTypeName?.trim().isNotEmpty ??
+                            false)
+                          _HeaderMetaChip(
+                            icon: Icons.category_rounded,
+                            label: widget.order.workOrderTypeName!,
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Gap(14),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                CompactStatCard(
+                  label: 'Plan',
+                  value: dateText,
+                  icon: Icons.event_rounded,
+                  color: AppTheme.primary,
+                ),
+                CompactStatCard(
+                  label: 'Ödeme',
+                  value: '${_payments.length}',
+                  icon: Icons.payments_rounded,
+                  color: const Color(0xFF22C55E),
+                ),
+                CompactStatCard(
+                  label: 'Şehir',
+                  value: (widget.order.city?.trim().isNotEmpty ?? false)
+                      ? widget.order.city!
+                      : 'Belirsiz',
+                  icon: Icons.location_on_rounded,
+                  color: const Color(0xFFF59E0B),
                 ),
               ],
             ),
           ),
-          AppBadge(label: statusLabel, tone: statusTone),
         ],
       ),
     );
@@ -668,17 +725,42 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     return AppSectionCard(
       title: 'Durum Değiştir',
       subtitle: 'Açık iş emrini yönet ve kapat',
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (widget.order.status == 'open') ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: _saving ? null : _editWorkOrder,
-                icon: const Icon(Icons.edit_rounded, size: 18),
-                label: const Text('Düzenle'),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.tune_rounded,
+                    size: 18,
+                    color: Color(0xFF64748B),
+                  ),
+                  const Gap(10),
+                  Expanded(
+                    child: Text(
+                      'Detayları güncelle veya operasyonu başlat.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const Gap(10),
+                  OutlinedButton.icon(
+                    onPressed: _saving ? null : _editWorkOrder,
+                    icon: const Icon(Icons.edit_rounded, size: 18),
+                    label: const Text('Düzenle'),
+                  ),
+                ],
               ),
             ),
             const Gap(12),
@@ -1149,6 +1231,39 @@ class _InfoRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _HeaderMetaChip extends StatelessWidget {
+  const _HeaderMetaChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: const Color(0xFF64748B)),
+          const Gap(6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: const Color(0xFF0F172A),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -394,6 +394,9 @@ class _CreateWorkOrderDialogState
   Widget build(BuildContext context) {
     final loadingCustomers = _customers.isEmpty;
     final isAdmin = ref.watch(isAdminProvider);
+    final width = MediaQuery.sizeOf(context).width;
+    final isWide = width >= 1100;
+    final isMedium = width >= 860;
 
     if (isAdmin && !_usersLoaded) {
       _usersLoaded = true;
@@ -404,9 +407,9 @@ class _CreateWorkOrderDialogState
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       backgroundColor: Colors.transparent,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 860),
+        constraints: const BoxConstraints(maxWidth: 1040),
         child: AppCard(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(20),
           child: Form(
             key: _formKey,
             child: SingleChildScrollView(
@@ -460,270 +463,221 @@ class _CreateWorkOrderDialogState
                         ],
                       ),
                     )
-                  else
+                  else if (isWide)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: AppSectionCard(
+                            title: 'Operasyon Bilgileri',
+                            subtitle:
+                                'Müşteri, adres ve operasyon lokasyonunu yönetin.',
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                              children: [
+                                _customerField(),
+                                if (_branches.isNotEmpty) ...[
+                                  const Gap(12),
+                                  _branchField(),
+                                ],
+                                const Gap(12),
+                                TextFormField(
+                                  controller: _addressController,
+                                  minLines: 2,
+                                  maxLines: 3,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Adres',
+                                    hintText:
+                                        'Müşteri adresi otomatik gelir, istersen düzenle',
+                                  ),
+                                ),
+                                const Gap(12),
+                                Row(
+                                  children: [
+                                    Expanded(child: _cityField()),
+                                    const Gap(12),
+                                    Expanded(child: _workOrderTypeField()),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const Gap(12),
+                        Expanded(
+                          child: AppSectionCard(
+                            title: 'Planlama ve İletişim',
+                            subtitle:
+                                'Personel ataması, tarih ve saha iletişim bilgileri.',
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(child: _dateField(context)),
+                                    if (isAdmin) ...[
+                                      const Gap(12),
+                                      Expanded(child: _assignedField()),
+                                    ],
+                                  ],
+                                ),
+                                const Gap(12),
+                                TextFormField(
+                                  controller: _descController,
+                                  minLines: 3,
+                                  maxLines: 5,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Açıklama',
+                                    hintText: 'İsteğe bağlı',
+                                  ),
+                                ),
+                                const Gap(12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: _contactPhoneController,
+                                        keyboardType: TextInputType.phone,
+                                        decoration: const InputDecoration(
+                                          labelText: 'İrtibat Numarası',
+                                          hintText: '0 5xx xxx xx xx',
+                                        ),
+                                      ),
+                                    ),
+                                    const Gap(12),
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: _locationLinkController,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Konum Linki',
+                                          hintText:
+                                              'https://maps.google.com/...',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  else ...[
                     AppSectionCard(
                       title: 'Operasyon Bilgileri',
-                      subtitle: 'Müşteri, lokasyon ve iş emri tipini seçin.',
                       padding: const EdgeInsets.all(14),
                       child: Column(
                         children: [
-                          Autocomplete<_CustomerOption>(
-                            optionsBuilder: (text) {
-                              final q = _sortKey(text.text.trim());
-                              if (q.isEmpty) return _customers.take(20);
-                              return _customers
-                                  .where((c) => _sortKey(c.name).contains(q))
-                                  .take(20);
-                            },
-                            displayStringForOption: (o) => o.name,
-                            onSelected: (o) {
-                              setState(() {
-                                _applyCustomerSelection(o);
-                              });
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                _loadBranches(o.id);
-                              });
-                            },
-                            fieldViewBuilder:
-                                (context, controller, focusNode, onSubmit) {
-                                  controller.text = _customerController.text;
-                                  controller.selection =
-                                      TextSelection.collapsed(
-                                        offset: controller.text.length,
-                                      );
-                                  return TextFormField(
-                                    controller: controller,
-                                    focusNode: focusNode,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Müşteri',
-                                      hintText: 'Firma adı yazın ve seçin',
-                                    ),
-                                    validator: (value) {
-                                      if ((_selectedCustomerId ?? '').isEmpty) {
-                                        return 'Müşteri seçin.';
-                                      }
-                                      return null;
-                                    },
-                                    onChanged: (value) =>
-                                        _selectedCustomerId = null,
-                                  );
-                                },
-                          ),
+                          _customerField(),
                           if (_branches.isNotEmpty) ...[
                             const Gap(12),
-                            DropdownButtonFormField<String?>(
-                              initialValue: _selectedBranchId,
-                              items: [
-                                const DropdownMenuItem<String?>(
-                                  value: null,
-                                  child: Text('Şube seç (opsiyonel)'),
+                            _branchField(),
+                          ],
+                          const Gap(12),
+                          TextFormField(
+                            controller: _addressController,
+                            minLines: 2,
+                            maxLines: 3,
+                            decoration: const InputDecoration(
+                              labelText: 'Adres',
+                              hintText:
+                                  'Müşteri adresi otomatik gelir, istersen düzenle',
+                            ),
+                          ),
+                          const Gap(12),
+                          if (isMedium)
+                            Row(
+                              children: [
+                                Expanded(child: _cityField()),
+                                const Gap(12),
+                                Expanded(child: _workOrderTypeField()),
+                              ],
+                            )
+                          else ...[
+                            _cityField(),
+                            const Gap(12),
+                            _workOrderTypeField(),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const Gap(12),
+                    AppSectionCard(
+                      title: 'Planlama ve İletişim',
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        children: [
+                          if (isAdmin && isMedium)
+                            Row(
+                              children: [
+                                Expanded(child: _dateField(context)),
+                                const Gap(12),
+                                Expanded(child: _assignedField()),
+                              ],
+                            )
+                          else ...[
+                            _dateField(context),
+                            if (isAdmin) ...[const Gap(12), _assignedField()],
+                          ],
+                          const Gap(12),
+                          TextFormField(
+                            controller: _descController,
+                            minLines: 2,
+                            maxLines: 4,
+                            decoration: const InputDecoration(
+                              labelText: 'Açıklama',
+                              hintText: 'İsteğe bağlı',
+                            ),
+                          ),
+                          const Gap(12),
+                          if (isMedium)
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _contactPhoneController,
+                                    keyboardType: TextInputType.phone,
+                                    decoration: const InputDecoration(
+                                      labelText: 'İrtibat Numarası',
+                                      hintText: '0 5xx xxx xx xx',
+                                    ),
+                                  ),
                                 ),
-                                ..._branches.map(
-                                  (b) => DropdownMenuItem<String?>(
-                                    value: b.id,
-                                    child: Text(b.name),
+                                const Gap(12),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _locationLinkController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Konum Linki',
+                                      hintText: 'https://maps.google.com/...',
+                                    ),
                                   ),
                                 ),
                               ],
-                              onChanged: _saving
-                                  ? null
-                                  : (v) =>
-                                        setState(() => _selectedBranchId = v),
+                            )
+                          else ...[
+                            TextFormField(
+                              controller: _contactPhoneController,
+                              keyboardType: TextInputType.phone,
                               decoration: const InputDecoration(
-                                labelText: 'Şube',
+                                labelText: 'İrtibat Numarası',
+                                hintText: '0 5xx xxx xx xx',
+                              ),
+                            ),
+                            const Gap(12),
+                            TextFormField(
+                              controller: _locationLinkController,
+                              decoration: const InputDecoration(
+                                labelText: 'Konum Linki',
+                                hintText: 'https://maps.google.com/...',
                               ),
                             ),
                           ],
                         ],
                       ),
                     ),
-                  const Gap(12),
-                  TextFormField(
-                    controller: _addressController,
-                    minLines: 2,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Adres',
-                      hintText:
-                          'Müşteri adresi otomatik gelir, istersen düzenle',
-                    ),
-                  ),
-                  const Gap(12),
-                  DropdownButtonFormField<String?>(
-                    initialValue: _selectedCity,
-                    items: [
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('Şehir seç'),
-                      ),
-                      ..._cities.map(
-                        (city) => DropdownMenuItem<String?>(
-                          value: city,
-                          child: Text(city),
-                        ),
-                      ),
-                    ],
-                    onChanged: _saving
-                        ? null
-                        : (value) => setState(() => _selectedCity = value),
-                    decoration: const InputDecoration(labelText: 'Şehir'),
-                  ),
-                  const Gap(12),
-                  DropdownButtonFormField<String?>(
-                    initialValue: _selectedWorkOrderTypeId,
-                    items: [
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('İş emri tipi seç'),
-                      ),
-                      ..._workOrderTypes.map(
-                        (type) => DropdownMenuItem<String?>(
-                          value: type.id,
-                          child: Text(type.name),
-                        ),
-                      ),
-                    ],
-                    onChanged: _saving
-                        ? null
-                        : (value) {
-                            _WorkOrderTypeOption? selected;
-                            for (final type in _workOrderTypes) {
-                              if (type.id == value) {
-                                selected = type;
-                                break;
-                              }
-                            }
-                            setState(() {
-                              _selectedWorkOrderTypeId = value;
-                              if ((_contactPhoneController.text
-                                      .trim()
-                                      .isEmpty) &&
-                                  (selected?.contactPhone?.trim().isNotEmpty ??
-                                      false)) {
-                                _contactPhoneController.text =
-                                    selected!.contactPhone!;
-                              }
-                              if ((_locationLinkController.text
-                                      .trim()
-                                      .isEmpty) &&
-                                  (selected?.locationInfo?.trim().isNotEmpty ??
-                                      false)) {
-                                _locationLinkController.text =
-                                    selected!.locationInfo!;
-                              }
-                            });
-                          },
-                    decoration: const InputDecoration(
-                      labelText: 'İş Emri Tipi',
-                    ),
-                    validator: (value) {
-                      if (_workOrderTypes.isEmpty) return null;
-                      if ((value ?? '').isEmpty) {
-                        return 'İş emri tipi seçin.';
-                      }
-                      return null;
-                    },
-                  ),
-                  const Gap(12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: _saving
-                              ? null
-                              : () async {
-                                  final initial =
-                                      _scheduledDate ?? DateTime.now();
-                                  final picked = await showDatePicker(
-                                    context: context,
-                                    initialDate: initial,
-                                    firstDate: DateTime(2020),
-                                    lastDate: DateTime(DateTime.now().year + 5),
-                                  );
-                                  if (picked == null) return;
-                                  setState(() => _scheduledDate = picked);
-                                },
-                          child: InputDecorator(
-                            decoration: const InputDecoration(
-                              labelText: 'Planlanan Tarih',
-                            ),
-                            child: Text(
-                              _scheduledDate == null
-                                  ? 'Seçilmedi'
-                                  : '${_scheduledDate!.day}.${_scheduledDate!.month}.${_scheduledDate!.year}',
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (isAdmin) ...[
-                        const Gap(12),
-                        Expanded(
-                          child: DropdownButtonFormField<String?>(
-                            initialValue: _assignedTo,
-                            items: [
-                              const DropdownMenuItem<String?>(
-                                value: null,
-                                child: Text('Personel seç'),
-                              ),
-                              ..._users.map(
-                                (u) => DropdownMenuItem<String?>(
-                                  value: u.id,
-                                  child: Text(u.fullName ?? 'Personel'),
-                                ),
-                              ),
-                            ],
-                            onChanged: _saving
-                                ? null
-                                : (v) => setState(() => _assignedTo = v),
-                            decoration: const InputDecoration(
-                              labelText: 'Atanan Personel',
-                            ),
-                            validator: (v) {
-                              if (!isAdmin) return null;
-                              if ((v ?? '').isEmpty) return 'Personel gerekli.';
-                              return null;
-                            },
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const Gap(12),
-                  TextFormField(
-                    controller: _descController,
-                    minLines: 2,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: 'Açıklama',
-                      hintText: 'İsteğe bağlı',
-                    ),
-                  ),
-                  const Gap(12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _contactPhoneController,
-                          keyboardType: TextInputType.phone,
-                          decoration: const InputDecoration(
-                            labelText: 'İrtibat Numarası',
-                            hintText: '0 5xx xxx xx xx',
-                          ),
-                        ),
-                      ),
-                      const Gap(12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _locationLinkController,
-                          decoration: const InputDecoration(
-                            labelText: 'Konum Linki',
-                            hintText: 'https://maps.google.com/...',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  ],
                   const Gap(18),
                   Row(
                     children: [
@@ -763,6 +717,177 @@ class _CreateWorkOrderDialogState
           ),
         ),
       ),
+    );
+  }
+
+  Widget _customerField() {
+    return Autocomplete<_CustomerOption>(
+      optionsBuilder: (text) {
+        final q = _sortKey(text.text.trim());
+        if (q.isEmpty) return _customers.take(20);
+        return _customers.where((c) => _sortKey(c.name).contains(q)).take(20);
+      },
+      displayStringForOption: (o) => o.name,
+      onSelected: (o) {
+        setState(() {
+          _applyCustomerSelection(o);
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _loadBranches(o.id);
+        });
+      },
+      fieldViewBuilder: (context, controller, focusNode, onSubmit) {
+        controller.text = _customerController.text;
+        controller.selection = TextSelection.collapsed(
+          offset: controller.text.length,
+        );
+        return TextFormField(
+          controller: controller,
+          focusNode: focusNode,
+          decoration: const InputDecoration(
+            labelText: 'Müşteri',
+            hintText: 'Firma adı yazın ve seçin',
+          ),
+          validator: (value) {
+            if ((_selectedCustomerId ?? '').isEmpty) {
+              return 'Müşteri seçin.';
+            }
+            return null;
+          },
+          onChanged: (value) => _selectedCustomerId = null,
+        );
+      },
+    );
+  }
+
+  Widget _branchField() {
+    return DropdownButtonFormField<String?>(
+      initialValue: _selectedBranchId,
+      items: [
+        const DropdownMenuItem<String?>(
+          value: null,
+          child: Text('Şube seç (opsiyonel)'),
+        ),
+        ..._branches.map(
+          (b) => DropdownMenuItem<String?>(value: b.id, child: Text(b.name)),
+        ),
+      ],
+      onChanged: _saving ? null : (v) => setState(() => _selectedBranchId = v),
+      decoration: const InputDecoration(labelText: 'Şube'),
+    );
+  }
+
+  Widget _cityField() {
+    return DropdownButtonFormField<String?>(
+      initialValue: _selectedCity,
+      items: [
+        const DropdownMenuItem<String?>(value: null, child: Text('Şehir seç')),
+        ..._cities.map(
+          (city) => DropdownMenuItem<String?>(value: city, child: Text(city)),
+        ),
+      ],
+      onChanged: _saving
+          ? null
+          : (value) => setState(() => _selectedCity = value),
+      decoration: const InputDecoration(labelText: 'Şehir'),
+    );
+  }
+
+  Widget _workOrderTypeField() {
+    return DropdownButtonFormField<String?>(
+      initialValue: _selectedWorkOrderTypeId,
+      items: [
+        const DropdownMenuItem<String?>(
+          value: null,
+          child: Text('İş emri tipi seç'),
+        ),
+        ..._workOrderTypes.map(
+          (type) =>
+              DropdownMenuItem<String?>(value: type.id, child: Text(type.name)),
+        ),
+      ],
+      onChanged: _saving
+          ? null
+          : (value) {
+              _WorkOrderTypeOption? selected;
+              for (final type in _workOrderTypes) {
+                if (type.id == value) {
+                  selected = type;
+                  break;
+                }
+              }
+              setState(() {
+                _selectedWorkOrderTypeId = value;
+                if ((_contactPhoneController.text.trim().isEmpty) &&
+                    (selected?.contactPhone?.trim().isNotEmpty ?? false)) {
+                  _contactPhoneController.text = selected!.contactPhone!;
+                }
+                if ((_locationLinkController.text.trim().isEmpty) &&
+                    (selected?.locationInfo?.trim().isNotEmpty ?? false)) {
+                  _locationLinkController.text = selected!.locationInfo!;
+                }
+              });
+            },
+      decoration: const InputDecoration(labelText: 'İş Emri Tipi'),
+      validator: (value) {
+        if (_workOrderTypes.isEmpty) return null;
+        if ((value ?? '').isEmpty) {
+          return 'İş emri tipi seçin.';
+        }
+        return null;
+      },
+    );
+  }
+
+  Widget _dateField(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: _saving
+          ? null
+          : () async {
+              final initial = _scheduledDate ?? DateTime.now();
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: initial,
+                firstDate: DateTime(2020),
+                lastDate: DateTime(DateTime.now().year + 5),
+              );
+              if (picked == null) return;
+              setState(() => _scheduledDate = picked);
+            },
+      child: InputDecorator(
+        decoration: const InputDecoration(labelText: 'Planlanan Tarih'),
+        child: Text(
+          _scheduledDate == null
+              ? 'Seçilmedi'
+              : '${_scheduledDate!.day}.${_scheduledDate!.month}.${_scheduledDate!.year}',
+        ),
+      ),
+    );
+  }
+
+  Widget _assignedField() {
+    return DropdownButtonFormField<String?>(
+      initialValue: _assignedTo,
+      items: [
+        const DropdownMenuItem<String?>(
+          value: null,
+          child: Text('Personel seç'),
+        ),
+        ..._users.map(
+          (u) => DropdownMenuItem<String?>(
+            value: u.id,
+            child: Text(u.fullName ?? 'Personel'),
+          ),
+        ),
+      ],
+      onChanged: _saving ? null : (v) => setState(() => _assignedTo = v),
+      decoration: const InputDecoration(labelText: 'Atanan Personel'),
+      validator: (v) {
+        if (!ref.read(isAdminProvider)) return null;
+        if ((v ?? '').isEmpty) return 'Personel gerekli.';
+        return null;
+      },
     );
   }
 }

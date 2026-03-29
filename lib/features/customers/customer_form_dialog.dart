@@ -205,13 +205,65 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   @override
   Widget build(BuildContext context) {
     final citiesAsync = ref.watch(cityDefinitionsProvider);
+    final width = MediaQuery.sizeOf(context).width;
+    final isWide = width >= 1160;
+    final isMedium = width >= 860;
+
+    Widget buildCityField() {
+      return citiesAsync.when(
+        data: (cities) => DropdownButtonFormField<String?>(
+          initialValue: _cityController.text.trim().isEmpty
+              ? null
+              : _cityController.text.trim(),
+          items: [
+            const DropdownMenuItem<String?>(
+              value: null,
+              child: Text('Şehir seç'),
+            ),
+            ...cities
+                .where((city) => city.isActive)
+                .map(
+                  (city) => DropdownMenuItem<String?>(
+                    value: city.name,
+                    child: Text(city.name),
+                  ),
+                ),
+          ],
+          onChanged: (value) =>
+              setState(() => _cityController.text = value ?? ''),
+          decoration: const InputDecoration(
+            labelText: 'Şehir',
+            prefixIcon: Icon(Icons.location_city_rounded),
+          ),
+        ),
+        loading: () => TextFormField(
+          controller: _cityController,
+          enabled: false,
+          decoration: const InputDecoration(
+            labelText: 'Şehir',
+            hintText: 'Şehirler yükleniyor',
+            prefixIcon: Icon(Icons.location_city_rounded),
+          ),
+        ),
+        error: (error, stackTrace) => TextFormField(
+          controller: _cityController,
+          textInputAction: TextInputAction.next,
+          decoration: const InputDecoration(
+            labelText: 'Şehir',
+            hintText: 'Şehir bulunamadı',
+            prefixIcon: Icon(Icons.location_city_rounded),
+          ),
+        ),
+      );
+    }
+
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       backgroundColor: Colors.transparent,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 900),
+        constraints: const BoxConstraints(maxWidth: 1060),
         child: AppCard(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(20),
           child: Form(
             key: _formKey,
             child: SingleChildScrollView(
@@ -251,263 +303,432 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                     ],
                   ),
                   const Gap(18),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _nameController,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            labelText: 'Firma Adı',
-                            hintText: 'Örn. Microvise Teknoloji',
-                            prefixIcon: Icon(Icons.business_rounded),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Firma adı zorunlu';
-                            }
-                            return null;
-                          },
-                        ),
-                      ),
-                      const Gap(12),
-                      Expanded(
-                        child: citiesAsync.when(
-                          data: (cities) => DropdownButtonFormField<String?>(
-                            initialValue: _cityController.text.trim().isEmpty
-                                ? null
-                                : _cityController.text.trim(),
-                            items: [
-                              const DropdownMenuItem<String?>(
-                                value: null,
-                                child: Text('Şehir seç'),
-                              ),
-                              ...cities
-                                  .where((city) => city.isActive)
-                                  .map(
-                                    (city) => DropdownMenuItem<String?>(
-                                      value: city.name,
-                                      child: Text(city.name),
+                  if (isWide)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            children: [
+                              AppSectionCard(
+                                title: 'Temel Bilgiler',
+                                subtitle:
+                                    'Firma, şehir ve ana adres bilgilerini yönetin.',
+                                padding: const EdgeInsets.all(14),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          flex: 3,
+                                          child: TextFormField(
+                                            controller: _nameController,
+                                            textInputAction:
+                                                TextInputAction.next,
+                                            decoration: const InputDecoration(
+                                              labelText: 'Firma Adı',
+                                              hintText:
+                                                  'Örn. Microvise Teknoloji',
+                                              prefixIcon: Icon(
+                                                Icons.business_rounded,
+                                              ),
+                                            ),
+                                            validator: (value) {
+                                              if (value == null ||
+                                                  value.trim().isEmpty) {
+                                                return 'Firma adı zorunlu';
+                                              }
+                                              return null;
+                                            },
+                                          ),
+                                        ),
+                                        const Gap(12),
+                                        Expanded(
+                                          flex: 2,
+                                          child: buildCityField(),
+                                        ),
+                                      ],
                                     ),
-                                  ),
+                                    const Gap(12),
+                                    TextFormField(
+                                      controller: _addressController,
+                                      textInputAction: TextInputAction.next,
+                                      minLines: 2,
+                                      maxLines: 3,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Adres',
+                                        hintText: 'Müşterinin ana adresi',
+                                        alignLabelWithHint: true,
+                                        prefixIcon: Icon(
+                                          Icons.location_on_outlined,
+                                        ),
+                                      ),
+                                    ),
+                                    const Gap(12),
+                                    TextFormField(
+                                      controller: _directorNameController,
+                                      textInputAction: TextInputAction.next,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Direktör Ad Soyad',
+                                        hintText: 'Örn. Ahmet Yılmaz',
+                                        prefixIcon: Icon(
+                                          Icons.person_pin_rounded,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Gap(12),
+                              AppSectionCard(
+                                title: 'Telefonlar',
+                                subtitle:
+                                    'Yetkili, muhasebe ve opsiyonel telefon alanları.',
+                                padding: const EdgeInsets.all(14),
+                                child: Column(
+                                  children: [
+                                    _phoneRow(
+                                      titleController: _phone1TitleController,
+                                      phoneController: _phone1Controller,
+                                      titleLabel: 'Telefon 1 Başlığı',
+                                      phoneLabel: 'Telefon 1',
+                                      phoneHint: '0 5xx xxx xx xx',
+                                      phoneIcon: Icons.phone_outlined,
+                                    ),
+                                    const Gap(12),
+                                    _phoneRow(
+                                      titleController: _phone2TitleController,
+                                      phoneController: _phone2Controller,
+                                      titleLabel: 'Telefon 2 Başlığı',
+                                      phoneLabel: 'Telefon 2',
+                                      phoneHint: '0 2xx xxx xx xx',
+                                      phoneIcon: Icons.phone_in_talk_outlined,
+                                    ),
+                                    const Gap(12),
+                                    _phoneRow(
+                                      titleController: _phone3TitleController,
+                                      phoneController: _phone3Controller,
+                                      titleLabel: 'Telefon 3 Başlığı',
+                                      phoneLabel: 'Telefon 3',
+                                      phoneHint: 'Opsiyonel',
+                                      phoneIcon: Icons.phone_callback_outlined,
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ],
-                            onChanged: (value) => setState(
-                              () => _cityController.text = value ?? '',
+                          ),
+                        ),
+                        const Gap(12),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              AppSectionCard(
+                                title: 'Vergi ve Erişim',
+                                subtitle:
+                                    'Cari kimlik bilgileri ve mail doğrulaması.',
+                                padding: const EdgeInsets.all(14),
+                                child: Column(
+                                  children: [
+                                    TextFormField(
+                                      controller: _emailController,
+                                      textInputAction: TextInputAction.next,
+                                      keyboardType: TextInputType.emailAddress,
+                                      decoration: const InputDecoration(
+                                        labelText: 'E-posta',
+                                        hintText: 'ornek@firma.com',
+                                        prefixIcon: Icon(
+                                          Icons.alternate_email_rounded,
+                                        ),
+                                      ),
+                                      validator: (value) {
+                                        final email = value?.trim() ?? '';
+                                        if (email.isEmpty) return null;
+                                        final ok = RegExp(
+                                          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                                        ).hasMatch(email);
+                                        return ok
+                                            ? null
+                                            : 'Geçerli bir e-posta girin';
+                                      },
+                                    ),
+                                    const Gap(12),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: TextFormField(
+                                            controller: _vknController,
+                                            textInputAction:
+                                                TextInputAction.next,
+                                            decoration: const InputDecoration(
+                                              labelText: 'VKN',
+                                              hintText: 'Vergi numarası',
+                                              prefixIcon: Icon(
+                                                Icons.badge_outlined,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const Gap(12),
+                                        Expanded(
+                                          child: TextFormField(
+                                            controller: _tcknMsController,
+                                            textInputAction:
+                                                TextInputAction.next,
+                                            decoration: const InputDecoration(
+                                              labelText: 'TCKN-MŞ',
+                                              hintText:
+                                                  'Müşteri sicil / TCKN alanı',
+                                              prefixIcon: Icon(
+                                                Icons.perm_identity_rounded,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const Gap(12),
+                                    SwitchListTile.adaptive(
+                                      value: _isActive,
+                                      contentPadding: EdgeInsets.zero,
+                                      onChanged: _saving
+                                          ? null
+                                          : (value) => setState(
+                                              () => _isActive = value,
+                                            ),
+                                      title: const Text('Aktif Müşteri'),
+                                      subtitle: Text(
+                                        widget.isEdit
+                                            ? 'Pasif kayıtlar listede korunur.'
+                                            : 'Pasif kayıtlar listede ayrı görünür.',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Gap(12),
+                              AppSectionCard(
+                                title: 'İç Notlar',
+                                subtitle:
+                                    'Süreçte görünmesini istediğiniz dahili notlar.',
+                                padding: const EdgeInsets.all(14),
+                                child: TextFormField(
+                                  controller: _notesController,
+                                  minLines: 5,
+                                  maxLines: 7,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Notlar',
+                                    hintText: 'Müşteri ile ilgili kısa notlar',
+                                    alignLabelWithHint: true,
+                                    prefixIcon: Icon(Icons.notes_rounded),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
+                  else ...[
+                    AppSectionCard(
+                      title: 'Temel Bilgiler',
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        children: [
+                          if (isMedium)
+                            Row(
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: TextFormField(
+                                    controller: _nameController,
+                                    textInputAction: TextInputAction.next,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Firma Adı',
+                                      hintText: 'Örn. Microvise Teknoloji',
+                                      prefixIcon: Icon(Icons.business_rounded),
+                                    ),
+                                    validator: (value) {
+                                      if (value == null ||
+                                          value.trim().isEmpty) {
+                                        return 'Firma adı zorunlu';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                ),
+                                const Gap(12),
+                                Expanded(flex: 2, child: buildCityField()),
+                              ],
+                            )
+                          else ...[
+                            TextFormField(
+                              controller: _nameController,
+                              textInputAction: TextInputAction.next,
+                              decoration: const InputDecoration(
+                                labelText: 'Firma Adı',
+                                hintText: 'Örn. Microvise Teknoloji',
+                                prefixIcon: Icon(Icons.business_rounded),
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Firma adı zorunlu';
+                                }
+                                return null;
+                              },
                             ),
+                            const Gap(12),
+                            buildCityField(),
+                          ],
+                          const Gap(12),
+                          TextFormField(
+                            controller: _addressController,
+                            textInputAction: TextInputAction.next,
+                            minLines: 2,
+                            maxLines: 3,
                             decoration: const InputDecoration(
-                              labelText: 'Şehir',
-                              prefixIcon: Icon(Icons.location_city_rounded),
+                              labelText: 'Adres',
+                              hintText: 'Müşterinin ana adresi',
+                              alignLabelWithHint: true,
+                              prefixIcon: Icon(Icons.location_on_outlined),
                             ),
                           ),
-                          loading: () => TextFormField(
-                            controller: _cityController,
-                            enabled: false,
-                            decoration: const InputDecoration(
-                              labelText: 'Şehir',
-                              hintText: 'Şehirler yükleniyor',
-                              prefixIcon: Icon(Icons.location_city_rounded),
-                            ),
-                          ),
-                          error: (error, stackTrace) => TextFormField(
-                            controller: _cityController,
+                          const Gap(12),
+                          TextFormField(
+                            controller: _directorNameController,
                             textInputAction: TextInputAction.next,
                             decoration: const InputDecoration(
-                              labelText: 'Şehir',
-                              hintText: 'Şehir bulunamadı',
-                              prefixIcon: Icon(Icons.location_city_rounded),
+                              labelText: 'Direktör Ad Soyad',
+                              hintText: 'Örn. Ahmet Yılmaz',
+                              prefixIcon: Icon(Icons.person_pin_rounded),
                             ),
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Gap(14),
-                  TextFormField(
-                    controller: _addressController,
-                    textInputAction: TextInputAction.next,
-                    minLines: 2,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Adres',
-                      hintText: 'Müşterinin ana adresi',
-                      alignLabelWithHint: true,
-                      prefixIcon: Icon(Icons.location_on_outlined),
-                    ),
-                  ),
-                  const Gap(14),
-                  TextFormField(
-                    controller: _directorNameController,
-                    textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(
-                      labelText: 'Direktör Ad Soyad',
-                      hintText: 'Örn. Ahmet Yılmaz',
-                      prefixIcon: Icon(Icons.person_pin_rounded),
-                    ),
-                  ),
-                  const Gap(14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _emailController,
-                          textInputAction: TextInputAction.next,
-                          keyboardType: TextInputType.emailAddress,
-                          decoration: const InputDecoration(
-                            labelText: 'E-posta',
-                            hintText: 'ornek@firma.com',
-                            prefixIcon: Icon(Icons.alternate_email_rounded),
-                          ),
-                          validator: (value) {
-                            final email = value?.trim() ?? '';
-                            if (email.isEmpty) return null;
-                            final ok = RegExp(
-                              r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                            ).hasMatch(email);
-                            return ok ? null : 'Geçerli bir e-posta girin';
-                          },
-                        ),
-                      ),
-                      const Gap(12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _vknController,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            labelText: 'VKN',
-                            hintText: 'Vergi numarası',
-                            prefixIcon: Icon(Icons.badge_outlined),
-                          ),
-                        ),
-                      ),
-                      const Gap(12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _tcknMsController,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            labelText: 'TCKN-MŞ',
-                            hintText: 'Müşteri sicil / TCKN alanı',
-                            prefixIcon: Icon(Icons.perm_identity_rounded),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Gap(14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _phone1TitleController,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            labelText: 'Telefon 1 Başlığı',
-                            prefixIcon: Icon(Icons.label_outline_rounded),
-                          ),
-                        ),
-                      ),
-                      const Gap(12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _phone1Controller,
-                          textInputAction: TextInputAction.next,
-                          keyboardType: TextInputType.phone,
-                          decoration: const InputDecoration(
-                            labelText: 'Telefon 1',
-                            hintText: '0 5xx xxx xx xx',
-                            prefixIcon: Icon(Icons.phone_outlined),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Gap(14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _phone2TitleController,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            labelText: 'Telefon 2 Başlığı',
-                            prefixIcon: Icon(Icons.label_outline_rounded),
-                          ),
-                        ),
-                      ),
-                      const Gap(12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _phone2Controller,
-                          textInputAction: TextInputAction.next,
-                          keyboardType: TextInputType.phone,
-                          decoration: const InputDecoration(
-                            labelText: 'Telefon 2',
-                            hintText: '0 2xx xxx xx xx',
-                            prefixIcon: Icon(Icons.phone_in_talk_outlined),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Gap(14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _phone3TitleController,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            labelText: 'Telefon 3 Başlığı',
-                            prefixIcon: Icon(Icons.label_outline_rounded),
-                          ),
-                        ),
-                      ),
-                      const Gap(12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _phone3Controller,
-                          keyboardType: TextInputType.phone,
-                          decoration: const InputDecoration(
-                            labelText: 'Telefon 3',
-                            hintText: 'Opsiyonel',
-                            prefixIcon: Icon(Icons.phone_callback_outlined),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Gap(14),
-                  SwitchListTile.adaptive(
-                    value: _isActive,
-                    contentPadding: EdgeInsets.zero,
-                    onChanged: _saving
-                        ? null
-                        : (value) => setState(() => _isActive = value),
-                    title: const Text('Aktif Müşteri'),
-                    subtitle: Text(
-                      widget.isEdit
-                          ? 'Pasif kayıtlar listede korunur.'
-                          : 'Pasif kayıtlar listede ayrı görünür.',
-                    ),
-                  ),
-                  const Gap(10),
-                  AppSectionCard(
-                    title: 'İç Notlar',
-                    subtitle: 'Müşteriyle ilgili dahili notları burada tutun.',
-                    padding: const EdgeInsets.all(12),
-                    child: TextFormField(
-                      controller: _notesController,
-                      minLines: 3,
-                      maxLines: 5,
-                      decoration: const InputDecoration(
-                        labelText: 'Notlar',
-                        hintText: 'Müşteri ile ilgili kısa notlar',
-                        alignLabelWithHint: true,
-                        prefixIcon: Icon(Icons.notes_rounded),
+                        ],
                       ),
                     ),
-                  ),
+                    const Gap(12),
+                    AppSectionCard(
+                      title: 'Vergi ve İletişim',
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        children: [
+                          TextFormField(
+                            controller: _emailController,
+                            textInputAction: TextInputAction.next,
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: const InputDecoration(
+                              labelText: 'E-posta',
+                              hintText: 'ornek@firma.com',
+                              prefixIcon: Icon(Icons.alternate_email_rounded),
+                            ),
+                            validator: (value) {
+                              final email = value?.trim() ?? '';
+                              if (email.isEmpty) return null;
+                              final ok = RegExp(
+                                r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                              ).hasMatch(email);
+                              return ok ? null : 'Geçerli bir e-posta girin';
+                            },
+                          ),
+                          const Gap(12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _vknController,
+                                  textInputAction: TextInputAction.next,
+                                  decoration: const InputDecoration(
+                                    labelText: 'VKN',
+                                    hintText: 'Vergi numarası',
+                                    prefixIcon: Icon(Icons.badge_outlined),
+                                  ),
+                                ),
+                              ),
+                              const Gap(12),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _tcknMsController,
+                                  textInputAction: TextInputAction.next,
+                                  decoration: const InputDecoration(
+                                    labelText: 'TCKN-MŞ',
+                                    hintText: 'Müşteri sicil / TCKN alanı',
+                                    prefixIcon: Icon(
+                                      Icons.perm_identity_rounded,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Gap(12),
+                    AppSectionCard(
+                      title: 'Telefonlar',
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        children: [
+                          _phoneRow(
+                            titleController: _phone1TitleController,
+                            phoneController: _phone1Controller,
+                            titleLabel: 'Telefon 1 Başlığı',
+                            phoneLabel: 'Telefon 1',
+                            phoneHint: '0 5xx xxx xx xx',
+                            phoneIcon: Icons.phone_outlined,
+                          ),
+                          const Gap(12),
+                          _phoneRow(
+                            titleController: _phone2TitleController,
+                            phoneController: _phone2Controller,
+                            titleLabel: 'Telefon 2 Başlığı',
+                            phoneLabel: 'Telefon 2',
+                            phoneHint: '0 2xx xxx xx xx',
+                            phoneIcon: Icons.phone_in_talk_outlined,
+                          ),
+                          const Gap(12),
+                          _phoneRow(
+                            titleController: _phone3TitleController,
+                            phoneController: _phone3Controller,
+                            titleLabel: 'Telefon 3 Başlığı',
+                            phoneLabel: 'Telefon 3',
+                            phoneHint: 'Opsiyonel',
+                            phoneIcon: Icons.phone_callback_outlined,
+                          ),
+                          const Gap(12),
+                          SwitchListTile.adaptive(
+                            value: _isActive,
+                            contentPadding: EdgeInsets.zero,
+                            onChanged: _saving
+                                ? null
+                                : (value) => setState(() => _isActive = value),
+                            title: const Text('Aktif Müşteri'),
+                            subtitle: Text(
+                              widget.isEdit
+                                  ? 'Pasif kayıtlar listede korunur.'
+                                  : 'Pasif kayıtlar listede ayrı görünür.',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Gap(12),
+                    AppSectionCard(
+                      title: 'İç Notlar',
+                      padding: const EdgeInsets.all(12),
+                      child: TextFormField(
+                        controller: _notesController,
+                        minLines: 3,
+                        maxLines: 5,
+                        decoration: const InputDecoration(
+                          labelText: 'Notlar',
+                          hintText: 'Müşteri ile ilgili kısa notlar',
+                          alignLabelWithHint: true,
+                          prefixIcon: Icon(Icons.notes_rounded),
+                        ),
+                      ),
+                    ),
+                  ],
                   const Gap(14),
                   Row(
                     children: [
@@ -608,6 +829,42 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _phoneRow({
+    required TextEditingController titleController,
+    required TextEditingController phoneController,
+    required String titleLabel,
+    required String phoneLabel,
+    required String phoneHint,
+    required IconData phoneIcon,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextFormField(
+            controller: titleController,
+            textInputAction: TextInputAction.next,
+            decoration: InputDecoration(
+              labelText: titleLabel,
+              prefixIcon: const Icon(Icons.label_outline_rounded),
+            ),
+          ),
+        ),
+        const Gap(12),
+        Expanded(
+          child: TextFormField(
+            controller: phoneController,
+            keyboardType: TextInputType.phone,
+            decoration: InputDecoration(
+              labelText: phoneLabel,
+              hintText: phoneHint,
+              prefixIcon: Icon(phoneIcon),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
