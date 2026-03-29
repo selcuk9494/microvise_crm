@@ -13,6 +13,10 @@ const kPageBilling = 'faturalama';
 const kPageDefinitions = 'tanimlamalar';
 const kPagePersonnel = 'personel';
 
+const kActionEditRecords = 'duzenleme';
+const kActionArchiveRecords = 'pasife_alma';
+const kActionDeleteRecords = 'kalici_silme';
+
 const allPagePermissions = <String>{
   kPagePanel,
   kPageCustomers,
@@ -50,16 +54,43 @@ const pagePermissionLabels = <String, String>{
   kPagePersonnel: 'Personel',
 };
 
+const allActionPermissions = <String>{
+  kActionEditRecords,
+  kActionArchiveRecords,
+  kActionDeleteRecords,
+};
+
+const actionPermissionLabels = <String, String>{
+  kActionEditRecords: 'Düzenleme',
+  kActionArchiveRecords: 'Pasife Alma',
+  kActionDeleteRecords: 'Kalıcı Silme',
+};
+
 final currentUserProfileProvider = FutureProvider<UserProfile?>((ref) async {
   final client = ref.watch(supabaseClientProvider);
   final user = client?.auth.currentUser;
   if (client == null || user == null) return null;
 
-  final row = await client
-      .from('users')
-      .select('id,full_name,role,email,page_permissions')
-      .eq('id', user.id)
-      .maybeSingle();
+  Map<String, dynamic>? row;
+  try {
+    row = await client
+        .from('users')
+        .select('id,full_name,role,email,page_permissions,action_permissions')
+        .eq('id', user.id)
+        .maybeSingle();
+  } catch (_) {
+    final fallback = await client
+        .from('users')
+        .select('id,full_name,role,email,page_permissions')
+        .eq('id', user.id)
+        .maybeSingle();
+    if (fallback != null) {
+      row = {
+        ...fallback,
+        'action_permissions': const <String>[],
+      };
+    }
+  }
 
   if (row == null) return null;
   return UserProfile.fromJson(row);
@@ -81,6 +112,17 @@ final hasPageAccessProvider = Provider.family<bool, String>((ref, pageKey) {
   return pages.contains(pageKey);
 });
 
+final currentUserActionPermissionsProvider = Provider<Set<String>>((ref) {
+  final async = ref.watch(currentUserProfileProvider);
+  final profile = async.value;
+  return resolveAllowedActions(profile);
+});
+
+final hasActionAccessProvider = Provider.family<bool, String>((ref, actionKey) {
+  final actions = ref.watch(currentUserActionPermissionsProvider);
+  return actions.contains(actionKey);
+});
+
 Set<String> resolveAllowedPages(UserProfile? profile) {
   if (profile == null) return allPagePermissions;
   if (profile.role == 'admin') return allPagePermissions;
@@ -90,6 +132,12 @@ Set<String> resolveAllowedPages(UserProfile? profile) {
   return profile.pagePermissions.toSet();
 }
 
+Set<String> resolveAllowedActions(UserProfile? profile) {
+  if (profile == null) return allActionPermissions;
+  if (profile.role == 'admin') return allActionPermissions;
+  return profile.actionPermissions.toSet();
+}
+
 class UserProfile {
   const UserProfile({
     required this.id,
@@ -97,6 +145,7 @@ class UserProfile {
     required this.role,
     required this.email,
     required this.pagePermissions,
+    required this.actionPermissions,
   });
 
   final String id;
@@ -104,6 +153,7 @@ class UserProfile {
   final String role;
   final String? email;
   final List<String> pagePermissions;
+  final List<String> actionPermissions;
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     return UserProfile(
@@ -112,6 +162,9 @@ class UserProfile {
       role: (json['role'] ?? 'personel').toString(),
       email: json['email']?.toString(),
       pagePermissions: ((json['page_permissions'] as List?) ?? const [])
+          .map((item) => item.toString())
+          .toList(growable: false),
+      actionPermissions: ((json['action_permissions'] as List?) ?? const [])
           .map((item) => item.toString())
           .toList(growable: false),
     );

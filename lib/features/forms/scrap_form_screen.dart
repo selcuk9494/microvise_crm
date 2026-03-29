@@ -4,6 +4,7 @@ import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/auth/user_profile_provider.dart';
 import '../../core/format/currency_format.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
@@ -169,6 +170,38 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
     );
   }
 
+  Future<void> _deleteRecordPermanently(ScrapFormRecord record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hurda formunu kalıcı sil'),
+        content: Text(
+          '"${record.customerName}" kaydı kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Kalıcı Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+    await client.from('scrap_forms').delete().eq('id', record.id);
+    ref.invalidate(scrapFormsProvider);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Hurda formu kalıcı olarak silindi.')),
+    );
+  }
+
   List<ScrapFormRecord> _filter(List<ScrapFormRecord> records) {
     final customerQuery = _sortKey(_customerFilterController.text);
     final deviceQuery = _sortKey(_deviceFilterController.text);
@@ -209,6 +242,11 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final isMobile = width < 820;
     final recordsAsync = ref.watch(scrapFormsProvider);
+    final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
+    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
+    final canDeletePermanently = ref.watch(
+      hasActionAccessProvider(kActionDeleteRecords),
+    );
 
     return AppPageLayout(
       title: 'Hurda Formları',
@@ -392,33 +430,43 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                                 spacing: 4,
                                 runSpacing: 4,
                                 children: [
-                                  _MiniActionButton(
-                                    onPressed: () => _openEditDialog(record),
-                                    icon: Icons.edit_rounded,
-                                    label: 'Düzenle',
-                                  ),
-                                  _MiniActionButton(
-                                    onPressed: () =>
-                                        _openDuplicateDialog(record),
-                                    icon: Icons.copy_rounded,
-                                    label: 'Kopya',
-                                  ),
+                                  if (canEdit)
+                                    _MiniActionButton(
+                                      onPressed: () => _openEditDialog(record),
+                                      icon: Icons.edit_rounded,
+                                      label: 'Düzenle',
+                                    ),
+                                  if (canEdit)
+                                    _MiniActionButton(
+                                      onPressed: () =>
+                                          _openDuplicateDialog(record),
+                                      icon: Icons.copy_rounded,
+                                      label: 'Kopya',
+                                    ),
                                   _MiniActionButton(
                                     onPressed: () => _print(record),
                                     icon: Icons.print_rounded,
                                     label: 'Yazdır',
                                     primary: true,
                                   ),
-                                  _MiniActionButton(
-                                    onPressed: () => _setRecordActive(
-                                      record,
-                                      !record.isActive,
+                                  if (canArchive)
+                                    _MiniActionButton(
+                                      onPressed: () => _setRecordActive(
+                                        record,
+                                        !record.isActive,
+                                      ),
+                                      icon: record.isActive
+                                          ? Icons.delete_outline_rounded
+                                          : Icons.restore_rounded,
+                                      label: record.isActive ? 'Sil' : 'Aktif',
                                     ),
-                                    icon: record.isActive
-                                        ? Icons.delete_outline_rounded
-                                        : Icons.restore_rounded,
-                                    label: record.isActive ? 'Sil' : 'Aktif',
-                                  ),
+                                  if (!record.isActive && canDeletePermanently)
+                                    _MiniActionButton(
+                                      onPressed: () =>
+                                          _deleteRecordPermanently(record),
+                                      icon: Icons.delete_forever_rounded,
+                                      label: 'Kalıcı Sil',
+                                    ),
                                 ],
                               ),
                             ],

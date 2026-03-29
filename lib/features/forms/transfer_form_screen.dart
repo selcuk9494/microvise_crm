@@ -4,6 +4,7 @@ import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/auth/user_profile_provider.dart';
 import '../../core/format/currency_format.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
@@ -171,6 +172,38 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
     );
   }
 
+  Future<void> _deleteRecordPermanently(TransferFormRecord record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Devir formunu kalıcı sil'),
+        content: Text(
+          '"${record.transferorName} → ${record.transfereeName}" kaydı kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Kalıcı Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+    await client.from('transfer_forms').delete().eq('id', record.id);
+    ref.invalidate(transferFormsProvider);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Devir formu kalıcı olarak silindi.')),
+    );
+  }
+
   List<TransferFormRecord> _filter(List<TransferFormRecord> records) {
     final customerQuery = _sortKey(_customerFilterController.text);
     final deviceQuery = _sortKey(_deviceFilterController.text);
@@ -212,6 +245,11 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final isMobile = width < 820;
     final recordsAsync = ref.watch(transferFormsProvider);
+    final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
+    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
+    final canDeletePermanently = ref.watch(
+      hasActionAccessProvider(kActionDeleteRecords),
+    );
 
     return AppPageLayout(
       title: 'Devir Formları',
@@ -373,33 +411,43 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
                                 spacing: 4,
                                 runSpacing: 4,
                                 children: [
-                                  _TransferMiniActionButton(
-                                    onPressed: () => _openEditDialog(record),
-                                    icon: Icons.edit_rounded,
-                                    label: 'Düzenle',
-                                  ),
-                                  _TransferMiniActionButton(
-                                    onPressed: () =>
-                                        _openDuplicateDialog(record),
-                                    icon: Icons.copy_rounded,
-                                    label: 'Kopya',
-                                  ),
+                                  if (canEdit)
+                                    _TransferMiniActionButton(
+                                      onPressed: () => _openEditDialog(record),
+                                      icon: Icons.edit_rounded,
+                                      label: 'Düzenle',
+                                    ),
+                                  if (canEdit)
+                                    _TransferMiniActionButton(
+                                      onPressed: () =>
+                                          _openDuplicateDialog(record),
+                                      icon: Icons.copy_rounded,
+                                      label: 'Kopya',
+                                    ),
                                   _TransferMiniActionButton(
                                     onPressed: () => _print(record),
                                     icon: Icons.print_rounded,
                                     label: 'Yazdır',
                                     primary: true,
                                   ),
-                                  _TransferMiniActionButton(
-                                    onPressed: () => _setRecordActive(
-                                      record,
-                                      !record.isActive,
+                                  if (canArchive)
+                                    _TransferMiniActionButton(
+                                      onPressed: () => _setRecordActive(
+                                        record,
+                                        !record.isActive,
+                                      ),
+                                      icon: record.isActive
+                                          ? Icons.delete_outline_rounded
+                                          : Icons.restore_rounded,
+                                      label: record.isActive ? 'Sil' : 'Aktif',
                                     ),
-                                    icon: record.isActive
-                                        ? Icons.delete_outline_rounded
-                                        : Icons.restore_rounded,
-                                    label: record.isActive ? 'Sil' : 'Aktif',
-                                  ),
+                                  if (!record.isActive && canDeletePermanently)
+                                    _TransferMiniActionButton(
+                                      onPressed: () =>
+                                          _deleteRecordPermanently(record),
+                                      icon: Icons.delete_forever_rounded,
+                                      label: 'Kalıcı Sil',
+                                    ),
                                 ],
                               ),
                             ],

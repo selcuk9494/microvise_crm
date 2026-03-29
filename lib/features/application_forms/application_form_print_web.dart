@@ -133,46 +133,46 @@ String _buildPrintableHtml(
         padding: 2px 2px 8px;
       }
       .sheet.kdv {
-        width: 760px;
-        padding: 6px 8px 12px;
+        width: 790px;
+        padding: 10px 12px 18px;
       }
       .top-code {
         text-align: right;
         font-size: 12px;
-        margin: 1px 0 6px;
+        margin: 3px 0 10px;
       }
       .title {
         text-align: center;
         font-weight: 700;
-        font-size: 18px;
-        margin: 1px 0 8px;
+        font-size: 21px;
+        margin: 4px 0 14px;
         white-space: pre-line;
       }
       .office {
-        font-size: 15px;
+        font-size: 17px;
         font-weight: 700;
-        line-height: 1.2;
+        line-height: 1.28;
         white-space: pre-line;
-        margin-bottom: 8px;
+        margin-bottom: 12px;
       }
       .intro {
-        font-size: 13px;
-        line-height: 1.28;
-        margin: 0 0 10px;
-        max-width: 92%;
+        font-size: 14px;
+        line-height: 1.42;
+        margin: 0 0 14px;
+        max-width: 96%;
       }
       .line {
         display: flex;
         align-items: baseline;
         flex-wrap: nowrap;
-        gap: 5px;
-        font-size: 13px;
-        line-height: 1.16;
-        margin: 1px 0;
+        gap: 6px;
+        font-size: 14px;
+        line-height: 1.28;
+        margin: 3px 0;
       }
-      .indent-1 { padding-left: 14px; }
-      .indent-2 { padding-left: 36px; }
-      .indent-3 { padding-left: 64px; }
+      .indent-1 { padding-left: 18px; }
+      .indent-2 { padding-left: 42px; }
+      .indent-3 { padding-left: 68px; }
       .label {
         white-space: pre-wrap;
       }
@@ -190,9 +190,9 @@ String _buildPrintableHtml(
       .grow {
         flex: 1;
       }
-      .wide { min-width: 470px; }
-      .medium { min-width: 300px; }
-      .short { min-width: 140px; }
+      .wide { min-width: 520px; }
+      .medium { min-width: 340px; }
+      .short { min-width: 170px; }
       .flex-none { flex: 0 0 auto; }
       .fixed {
         font-weight: 400;
@@ -202,24 +202,24 @@ String _buildPrintableHtml(
         font-weight: 700;
       }
       .signature-block {
-        width: 300px;
+        width: 330px;
         margin-left: auto;
-        margin-top: 28px;
+        margin-top: 42px;
       }
       .signature-title {
-        font-size: 14px;
+        font-size: 15px;
         font-weight: 700;
         display: inline-block;
         border-bottom: 3px solid #000;
         padding: 0 4px 2px;
-        margin-bottom: 8px;
+        margin-bottom: 12px;
       }
       .signature-line {
         display: flex;
         align-items: baseline;
         gap: 8px;
-        font-size: 13px;
-        margin: 6px 0;
+        font-size: 14px;
+        margin: 8px 0;
       }
       .underline-title {
         display: inline-block;

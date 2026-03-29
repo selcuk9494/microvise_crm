@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/auth/user_profile_provider.dart';
+import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
@@ -83,6 +85,10 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
     final listHeight = isCompact
         ? (height * 0.52).clamp(300.0, 520.0).toDouble()
         : (height * 0.58).clamp(360.0, 760.0).toDouble();
+    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
+    final canDeletePermanently = ref.watch(
+      hasActionAccessProvider(kActionDeleteRecords),
+    );
 
     return AppPageLayout(
       title: 'İş Emirleri',
@@ -271,6 +277,9 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
                           : 'Açık iş emri bulunmuyor.',
                       onTap: (order) => _openWorkOrderDetail(order),
                       onToggleActive: _setWorkOrderActive,
+                      canArchive: canArchive,
+                      canDeletePermanently: canDeletePermanently,
+                      onDeletePermanently: _deleteWorkOrderPermanently,
                     ),
                     _WorkOrderList(
                       items: visibleItems
@@ -281,6 +290,9 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
                           : 'Devam eden iş emri bulunmuyor.',
                       onTap: (order) => _openWorkOrderDetail(order),
                       onToggleActive: _setWorkOrderActive,
+                      canArchive: canArchive,
+                      canDeletePermanently: canDeletePermanently,
+                      onDeletePermanently: _deleteWorkOrderPermanently,
                     ),
                     _WorkOrderList(
                       items: visibleItems.where((e) {
@@ -295,6 +307,9 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
                           : 'Kapatılmış iş emri bulunmuyor.',
                       onTap: (order) => _openWorkOrderDetail(order),
                       onToggleActive: _setWorkOrderActive,
+                      canArchive: canArchive,
+                      canDeletePermanently: canDeletePermanently,
+                      onDeletePermanently: _deleteWorkOrderPermanently,
                     ),
                   ],
                 );
@@ -329,6 +344,9 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
                   emptyText: '',
                   onTap: (_) {},
                   onToggleActive: (order, active) async {},
+                  canArchive: true,
+                  canDeletePermanently: true,
+                  onDeletePermanently: (order) async {},
                 ),
               ),
               error: (error, stackTrace) => Center(
@@ -371,6 +389,47 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
       ),
     );
   }
+
+  Future<void> _deleteWorkOrderPermanently(WorkOrder order) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('İş emrini kalıcı sil'),
+        content: Text(
+          '"${order.title}" kaydı kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Kalıcı Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      await client.from('payments').delete().eq('work_order_id', order.id);
+      await client.from('work_orders').delete().eq('id', order.id);
+      await ref.read(workOrdersBoardProvider.notifier).refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('İş emri kalıcı olarak silindi.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İş emri silinemedi: $error')),
+      );
+    }
+  }
 }
 
 class _WorkOrderList extends StatelessWidget {
@@ -379,12 +438,18 @@ class _WorkOrderList extends StatelessWidget {
     required this.emptyText,
     required this.onTap,
     required this.onToggleActive,
+    required this.canArchive,
+    required this.canDeletePermanently,
+    required this.onDeletePermanently,
   });
 
   final List<WorkOrder> items;
   final String emptyText;
   final ValueChanged<WorkOrder> onTap;
   final Future<void> Function(WorkOrder order, bool active) onToggleActive;
+  final bool canArchive;
+  final bool canDeletePermanently;
+  final Future<void> Function(WorkOrder order) onDeletePermanently;
 
   @override
   Widget build(BuildContext context) {
@@ -419,6 +484,9 @@ class _WorkOrderList extends StatelessWidget {
             reorderEnabled: false,
             reorderIndex: index,
             onToggleActive: (active) => onToggleActive(order, active),
+            canArchive: canArchive,
+            canDeletePermanently: canDeletePermanently,
+            onDeletePermanently: () => onDeletePermanently(order),
           );
         },
       );
@@ -469,6 +537,9 @@ class _WorkOrderList extends StatelessWidget {
                   reorderEnabled: true,
                   reorderIndex: index,
                   onToggleActive: (active) => onToggleActive(order, active),
+                  canArchive: canArchive,
+                  canDeletePermanently: canDeletePermanently,
+                  onDeletePermanently: () => onDeletePermanently(order),
                 ),
               );
             },
@@ -519,6 +590,9 @@ class _WorkOrderCard extends StatefulWidget {
     required this.reorderEnabled,
     required this.reorderIndex,
     required this.onToggleActive,
+    required this.canArchive,
+    required this.canDeletePermanently,
+    required this.onDeletePermanently,
   });
 
   final WorkOrder order;
@@ -526,6 +600,9 @@ class _WorkOrderCard extends StatefulWidget {
   final bool reorderEnabled;
   final int reorderIndex;
   final ValueChanged<bool> onToggleActive;
+  final bool canArchive;
+  final bool canDeletePermanently;
+  final Future<void> Function() onDeletePermanently;
 
   @override
   State<_WorkOrderCard> createState() => _WorkOrderCardState();
@@ -562,6 +639,9 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
         reorderIndex: widget.reorderIndex,
         onTap: widget.onTap,
         onToggleActive: widget.onToggleActive,
+        canArchive: widget.canArchive,
+        canDeletePermanently: widget.canDeletePermanently,
+        onDeletePermanently: widget.onDeletePermanently,
       );
     }
 
@@ -575,7 +655,7 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
           duration: const Duration(milliseconds: 140),
           curve: Curves.easeOut,
           transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
-          padding: EdgeInsets.all(isMobile ? 12 : 12),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: AppTheme.surface,
             borderRadius: BorderRadius.circular(isMobile ? 12 : 14),
@@ -630,7 +710,7 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                           ),
                       ],
                     ),
-                    Gap(isMobile ? 4 : 4),
+                    const Gap(3),
                     if (isMobile &&
                         (order.customerName?.trim().isNotEmpty ?? false))
                       Padding(
@@ -642,13 +722,14 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(
                                 color: const Color(0xFF64748B),
-                                fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
                               ),
                         ),
                       ),
                     Wrap(
-                      spacing: isMobile ? 6 : 6,
-                      runSpacing: isMobile ? 6 : 6,
+                      spacing: 5,
+                      runSpacing: 5,
                       children: [
                         if (!isMobile)
                           _WorkOrderMetaChip(
@@ -725,48 +806,59 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                       ],
                     ),
                     if (order.description?.trim().isNotEmpty ?? false) ...[
-                      Gap(isMobile ? 6 : 8),
+                      const Gap(6),
                       Text(
                         order.description!,
                         maxLines: isMobile ? 2 : 2,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: const Color(0xFF64748B),
-                          height: 1.35,
+                          height: 1.3,
+                          fontSize: 12,
                         ),
                       ),
                     ],
                   ],
                 ),
               ),
-              const Gap(10),
+              const Gap(8),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  PopupMenuButton<String>(
-                    tooltip: 'İşlemler',
-                    onSelected: (value) {
-                      if (value == 'toggle_active') {
-                        widget.onToggleActive(!order.isActive);
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      PopupMenuItem<String>(
-                        value: 'toggle_active',
-                        child: Text(
-                          order.isActive ? 'Pasife Al' : 'Aktifleştir',
+                  if (widget.canArchive ||
+                      (!order.isActive && widget.canDeletePermanently))
+                    PopupMenuButton<String>(
+                      tooltip: 'İşlemler',
+                      onSelected: (value) async {
+                        if (value == 'toggle_active') {
+                          widget.onToggleActive(!order.isActive);
+                        } else if (value == 'delete') {
+                          await widget.onDeletePermanently();
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        if (widget.canArchive)
+                          PopupMenuItem<String>(
+                            value: 'toggle_active',
+                            child: Text(
+                              order.isActive ? 'Pasife Al' : 'Aktifleştir',
+                            ),
+                          ),
+                        if (!order.isActive && widget.canDeletePermanently)
+                          const PopupMenuItem<String>(
+                            value: 'delete',
+                            child: Text('Kalıcı Sil'),
+                          ),
+                      ],
+                      child: const Padding(
+                        padding: EdgeInsets.only(bottom: 8),
+                        child: Icon(
+                          Icons.more_vert_rounded,
+                          size: 18,
+                          color: Color(0xFF94A3B8),
                         ),
                       ),
-                    ],
-                    child: const Padding(
-                      padding: EdgeInsets.only(bottom: 8),
-                      child: Icon(
-                        Icons.more_vert_rounded,
-                        size: 18,
-                        color: Color(0xFF94A3B8),
-                      ),
                     ),
-                  ),
                   AppBadge(label: statusLabel, tone: statusTone),
                   if (!order.isActive) ...[
                     const Gap(6),
@@ -846,7 +938,7 @@ class _MiniBoardStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -897,6 +989,9 @@ class _MobileWorkOrderCard extends StatelessWidget {
     required this.reorderIndex,
     required this.onTap,
     required this.onToggleActive,
+    required this.canArchive,
+    required this.canDeletePermanently,
+    required this.onDeletePermanently,
   });
 
   final WorkOrder order;
@@ -905,6 +1000,9 @@ class _MobileWorkOrderCard extends StatelessWidget {
   final int reorderIndex;
   final VoidCallback onTap;
   final ValueChanged<bool> onToggleActive;
+  final bool canArchive;
+  final bool canDeletePermanently;
+  final Future<void> Function() onDeletePermanently;
 
   @override
   Widget build(BuildContext context) {
@@ -923,7 +1021,7 @@ class _MobileWorkOrderCard extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -952,7 +1050,7 @@ class _MobileWorkOrderCard extends StatelessWidget {
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      const Gap(3),
+                      const Gap(2),
                       Text(
                         order.customerName ?? '-',
                         maxLines: 1,
@@ -960,6 +1058,7 @@ class _MobileWorkOrderCard extends StatelessWidget {
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: const Color(0xFF64748B),
                           fontWeight: FontWeight.w600,
+                          fontSize: 12,
                         ),
                       ),
                     ],
@@ -969,10 +1068,10 @@ class _MobileWorkOrderCard extends StatelessWidget {
                 AppBadge(label: statusLabel, tone: statusTone),
               ],
             ),
-            const Gap(10),
+            const Gap(8),
             Wrap(
-              spacing: 6,
-              runSpacing: 6,
+              spacing: 5,
+              runSpacing: 5,
               children: [
                 _WorkOrderMetaChip(
                   icon: Icons.calendar_today_rounded,
@@ -1005,29 +1104,31 @@ class _MobileWorkOrderCard extends StatelessWidget {
               ],
             ),
             if (order.address?.trim().isNotEmpty ?? false) ...[
-              const Gap(8),
+              const Gap(6),
               Text(
                 order.address!,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: const Color(0xFF475569),
-                  height: 1.35,
+                  height: 1.3,
+                  fontSize: 12,
                 ),
               ),
             ] else if (order.description?.trim().isNotEmpty ?? false) ...[
-              const Gap(8),
+              const Gap(6),
               Text(
                 order.description!,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: const Color(0xFF475569),
-                  height: 1.35,
+                  height: 1.3,
+                  fontSize: 12,
                 ),
               ),
             ],
-            const Gap(10),
+            const Gap(8),
             Row(
               children: [
                 if (reorderEnabled)
@@ -1055,28 +1156,37 @@ class _MobileWorkOrderCard extends StatelessWidget {
                     ),
                   ),
                 const Spacer(),
-                PopupMenuButton<String>(
-                  tooltip: 'İşlemler',
-                  onSelected: (value) {
-                    if (value == 'toggle_active') {
-                      onToggleActive(!order.isActive);
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    PopupMenuItem<String>(
-                      value: 'toggle_active',
-                      child: Text(order.isActive ? 'Pasife Al' : 'Aktifleştir'),
-                    ),
-                  ],
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6),
-                    child: Icon(
-                      Icons.more_horiz_rounded,
-                      size: 20,
-                      color: Color(0xFF94A3B8),
+                if (canArchive || (!order.isActive && canDeletePermanently))
+                  PopupMenuButton<String>(
+                    tooltip: 'İşlemler',
+                    onSelected: (value) async {
+                      if (value == 'toggle_active') {
+                        onToggleActive(!order.isActive);
+                      } else if (value == 'delete') {
+                        await onDeletePermanently();
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      if (canArchive)
+                        PopupMenuItem<String>(
+                          value: 'toggle_active',
+                          child: Text(order.isActive ? 'Pasife Al' : 'Aktifleştir'),
+                        ),
+                      if (!order.isActive && canDeletePermanently)
+                        const PopupMenuItem<String>(
+                          value: 'delete',
+                          child: Text('Kalıcı Sil'),
+                        ),
+                    ],
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6),
+                      child: Icon(
+                        Icons.more_horiz_rounded,
+                        size: 20,
+                        color: Color(0xFF94A3B8),
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ],
@@ -1116,8 +1226,8 @@ class _WorkOrderMetaChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 10,
-        vertical: compact ? 5 : 6,
+        horizontal: compact ? 7 : 9,
+        vertical: compact ? 4 : 5,
       ),
       decoration: BoxDecoration(
         color:
@@ -1154,7 +1264,7 @@ class _WorkOrderMetaChip extends StatelessWidget {
                   foregroundColor ??
                   (emphasize ? AppTheme.primary : const Color(0xFF475569)),
               fontWeight: emphasize ? FontWeight.w600 : FontWeight.w500,
-              fontSize: compact ? 11.5 : null,
+              fontSize: compact ? 11 : 11.5,
             ),
           ),
         ],

@@ -137,37 +137,55 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   }
 
   Future<void> _openCreateDialog() async {
-    final saved = await showDialog<ApplicationFormRecord>(
+    final savedRecords = await showDialog<List<ApplicationFormRecord>>(
       context: context,
       barrierDismissible: false,
       builder: (context) => const _ApplicationFormDialog(),
     );
-    if (saved == null || !mounted) return;
+    if (savedRecords == null || savedRecords.isEmpty || !mounted) return;
 
     final _ = await ref.refresh(applicationFormsProvider.future);
-    await _showPrintOptions(saved);
+    if (!mounted) return;
+    if (savedRecords.length == 1) {
+      await _showPrintOptions(savedRecords.first);
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${savedRecords.length} ayrı başvuru kaydı oluşturuldu.'),
+      ),
+    );
   }
 
   Future<void> _openEditDialog(ApplicationFormRecord record) async {
-    final saved = await showDialog<ApplicationFormRecord>(
+    final savedRecords = await showDialog<List<ApplicationFormRecord>>(
       context: context,
       barrierDismissible: false,
       builder: (context) => _ApplicationFormDialog(initialRecord: record),
     );
-    if (saved == null || !mounted) return;
+    if (savedRecords == null || savedRecords.isEmpty || !mounted) return;
     final _ = await ref.refresh(applicationFormsProvider.future);
   }
 
   Future<void> _openDuplicateDialog(ApplicationFormRecord record) async {
-    final saved = await showDialog<ApplicationFormRecord>(
+    final savedRecords = await showDialog<List<ApplicationFormRecord>>(
       context: context,
       barrierDismissible: false,
       builder: (context) =>
           _ApplicationFormDialog(initialRecord: record, duplicateMode: true),
     );
-    if (saved == null || !mounted) return;
+    if (savedRecords == null || savedRecords.isEmpty || !mounted) return;
     final _ = await ref.refresh(applicationFormsProvider.future);
-    await _showPrintOptions(saved);
+    if (!mounted) return;
+    if (savedRecords.length == 1) {
+      await _showPrintOptions(savedRecords.first);
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${savedRecords.length} ayrı başvuru kaydı oluşturuldu.'),
+      ),
+    );
   }
 
   Future<void> _showPrintOptions(ApplicationFormRecord record) async {
@@ -246,6 +264,38 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
               : 'Başvuru pasife alındı.',
         ),
       ),
+    );
+  }
+
+  Future<void> _deleteRecordPermanently(ApplicationFormRecord record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Başvuruyu kalıcı sil'),
+        content: Text(
+          '"${record.customerName}" başvurusu kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Kalıcı Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+    await client.from('application_forms').delete().eq('id', record.id);
+    ref.invalidate(applicationFormsProvider);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Başvuru kalıcı olarak silindi.')),
     );
   }
 
@@ -694,6 +744,11 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final isMobile = width < 820;
     final recordsAsync = ref.watch(applicationFormsProvider);
+    final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
+    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
+    final canDeletePermanently = ref.watch(
+      hasActionAccessProvider(kActionDeleteRecords),
+    );
 
     return AppPageLayout(
       title: 'Başvuru Formları',
@@ -948,6 +1003,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                     for (var index = 0; index < filtered.length; index++) ...[
                       _ApplicationRecordCard(
                         record: filtered[index],
+                        canEdit: canEdit,
+                        canArchive: canArchive,
+                        canDeletePermanently: canDeletePermanently,
                         selected: _selectedRecordIds.contains(
                           filtered[index].id,
                         ),
@@ -977,6 +1035,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           filtered[index],
                           !filtered[index].isActive,
                         ),
+                        onDeletePermanently: () =>
+                            _deleteRecordPermanently(filtered[index]),
                       ),
                       if (index != filtered.length - 1) const Gap(12),
                     ],
@@ -1316,6 +1376,27 @@ class _ApplicationFormDialogState
     });
   }
 
+  List<String> _normalizedRegistryNumbers() {
+    final raw = _stockRegistryNumberController.text;
+    final values = raw
+        .split(RegExp(r'[\n,;]+'))
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+    return {...values}.toList(growable: false);
+  }
+
+  void _appendRegistryNumber(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return;
+    final items = _normalizedRegistryNumbers();
+    if (items.contains(trimmed)) return;
+    final next = [...items, trimmed].join('\n');
+    _stockRegistryNumberController
+      ..text = next
+      ..selection = TextSelection.collapsed(offset: next.length);
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     final client = ref.read(supabaseClientProvider);
@@ -1346,6 +1427,7 @@ class _ApplicationFormDialogState
     final stockProduct = stockProducts
         ?.where((item) => item.id == _selectedStockProductId)
         .firstOrNull;
+    final registryNumbers = _normalizedRegistryNumbers();
     final selectedActivities =
         (activities ?? const <BusinessActivityTypeDefinition>[])
             .where((item) => _selectedBusinessActivityIds.contains(item.id))
@@ -1353,7 +1435,7 @@ class _ApplicationFormDialogState
 
     setState(() => _saving = true);
     try {
-      final payload = {
+      final basePayload = {
         'application_date': DateFormat('yyyy-MM-dd').format(_applicationDate),
         'customer_id': customer?.id,
         'customer_name': _customerController.text.trim(),
@@ -1380,10 +1462,6 @@ class _ApplicationFormDialogState
             : fiscal?.name,
         'stock_product_id': stockProduct?.id,
         'stock_product_name': stockProduct?.name,
-        'stock_registry_number':
-            _stockRegistryNumberController.text.trim().isEmpty
-            ? null
-            : _stockRegistryNumberController.text.trim(),
         'accounting_office': _accountingOfficeController.text.trim().isEmpty
             ? null
             : _accountingOfficeController.text.trim(),
@@ -1398,29 +1476,67 @@ class _ApplicationFormDialogState
             : _invoiceNumberController.text.trim(),
       };
 
-      final inserted =
-          await (widget.isEdit
-                  ? client
-                        .from('application_forms')
-                        .update(payload)
-                        .eq('id', widget.initialRecord!.id)
-                  : client.from('application_forms').insert(payload))
-              .select(
-                'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
-              )
-              .single();
+      if (widget.isEdit) {
+        final primaryRegistry = registryNumbers.isEmpty
+            ? _stockRegistryNumberController.text.trim()
+            : registryNumbers.first;
+        final inserted = await client
+            .from('application_forms')
+            .update({
+              ...basePayload,
+              'stock_registry_number': primaryRegistry.isEmpty
+                  ? null
+                  : primaryRegistry,
+            })
+            .eq('id', widget.initialRecord!.id)
+            .select(
+              'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
+            )
+            .single();
+        ref.invalidate(applicationFormsProvider);
+        if (!mounted) return;
+        Navigator.of(context).pop([ApplicationFormRecord.fromJson(inserted)]);
+        return;
+      }
 
-      if (!widget.isEdit) {
+      final payloads = (registryNumbers.isEmpty
+              ? const <String?>[null]
+              : registryNumbers.map<String?>((item) => item))
+          .map(
+            (registry) => {
+              ...basePayload,
+              'stock_registry_number': registry?.trim().isNotEmpty ?? false
+                  ? registry!.trim()
+                  : null,
+            },
+          )
+          .toList(growable: false);
+
+      final insertedRows = await client
+          .from('application_forms')
+          .insert(payloads)
+          .select(
+            'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
+          );
+
+      final insertedRecords = (insertedRows as List)
+          .map(
+            (row) => ApplicationFormRecord.fromJson(row as Map<String, dynamic>),
+          )
+          .toList(growable: false);
+
+      for (final inserted in insertedRecords) {
         final modelName = model?.name.trim();
         await enqueueInvoiceItem(
           client,
           customerId: customer?.id,
           itemType: 'application_form',
           sourceTable: 'application_forms',
-          sourceId: inserted['id'].toString(),
+          sourceId: inserted.id,
           description:
               'Başvuru Formu - ${_customerController.text.trim()}'
-              '${modelName != null && modelName.isNotEmpty ? ' / $modelName' : ''}',
+              '${modelName != null && modelName.isNotEmpty ? ' / $modelName' : ''}'
+              '${inserted.stockRegistryNumber?.trim().isNotEmpty ?? false ? ' / ${inserted.stockRegistryNumber!.trim()}' : ''}',
           sourceEvent: 'application_form_created',
           sourceLabel: 'Başvuru Formu',
         );
@@ -1428,7 +1544,7 @@ class _ApplicationFormDialogState
 
       ref.invalidate(applicationFormsProvider);
       if (!mounted) return;
-      Navigator.of(context).pop(ApplicationFormRecord.fromJson(inserted));
+      Navigator.of(context).pop(insertedRecords);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1557,7 +1673,7 @@ class _ApplicationFormDialogState
         ),
       ),
       _FormRow(
-        label: 'Cihaz Sicil No',
+        label: 'Cihaz Sicil No(ları)',
         child: _ResponsiveFieldGroup(
           left: stockProductsAsync.when(
             data: (items) => _ApplicationDropdown<String>(
@@ -1578,10 +1694,11 @@ class _ApplicationFormDialogState
                       .where((item) => item.id == value)
                       .firstOrNull;
                   if (selected != null) {
-                    _stockRegistryNumberController.text =
-                        selected.code?.trim().isNotEmpty ?? false
-                        ? selected.code!.trim()
-                        : selected.name;
+                    _appendRegistryNumber(
+                      selected.code?.trim().isNotEmpty ?? false
+                          ? selected.code!.trim()
+                          : selected.name,
+                    );
                   }
                 });
               },
@@ -1591,6 +1708,10 @@ class _ApplicationFormDialogState
           ),
           right: _ApplicationTextField(
             controller: _stockRegistryNumberController,
+            hintText:
+                'Her sicil numarasini alt alta, virgulle veya noktalı virgulle girin',
+            minLines: 1,
+            maxLines: 3,
           ),
         ),
       ),
@@ -1657,11 +1778,14 @@ class _ApplicationFormDialogState
       backgroundColor: Colors.transparent,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: isMobile ? 620 : 1440,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.992,
+          maxWidth: isMobile ? 720 : 1780,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.996,
         ),
         child: AppCard(
-          padding: EdgeInsets.all(isMobile ? 14 : 20),
+          padding: EdgeInsets.symmetric(
+            horizontal: isMobile ? 18 : 28,
+            vertical: isMobile ? 20 : 30,
+          ),
           child: Form(
             key: _formKey,
             child: SingleChildScrollView(
@@ -1705,7 +1829,7 @@ class _ApplicationFormDialogState
                       ),
                     ],
                   ),
-                  const Gap(10),
+                  const Gap(16),
                   isMobile
                       ? Container(
                           decoration: BoxDecoration(
@@ -1733,7 +1857,7 @@ class _ApplicationFormDialogState
                                 ),
                               ),
                             ),
-                            const Gap(12),
+                            const Gap(14),
                             Expanded(
                               child: Container(
                                 decoration: BoxDecoration(
@@ -1751,7 +1875,7 @@ class _ApplicationFormDialogState
                             ),
                           ],
                         ),
-                  const Gap(12),
+                  const Gap(16),
                   Row(
                     children: [
                       Expanded(
@@ -1793,6 +1917,9 @@ class _ApplicationFormDialogState
 class _ApplicationRecordCard extends StatelessWidget {
   const _ApplicationRecordCard({
     required this.record,
+    required this.canEdit,
+    required this.canArchive,
+    required this.canDeletePermanently,
     required this.selected,
     required this.onSelectionChanged,
     required this.onPrintKdv,
@@ -1801,9 +1928,13 @@ class _ApplicationRecordCard extends StatelessWidget {
     required this.onEdit,
     required this.onDuplicate,
     required this.onToggleActive,
+    required this.onDeletePermanently,
   });
 
   final ApplicationFormRecord record;
+  final bool canEdit;
+  final bool canArchive;
+  final bool canDeletePermanently;
   final bool selected;
   final ValueChanged<bool> onSelectionChanged;
   final VoidCallback onPrintKdv;
@@ -1812,6 +1943,7 @@ class _ApplicationRecordCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDuplicate;
   final VoidCallback onToggleActive;
+  final VoidCallback onDeletePermanently;
 
   @override
   Widget build(BuildContext context) {
@@ -1861,18 +1993,20 @@ class _ApplicationRecordCard extends StatelessWidget {
                     : AppBadgeTone.neutral,
               ),
               const Gap(6),
-              _ActionButton(
-                onPressed: onEdit,
-                icon: Icons.edit_rounded,
-                label: 'Düzenle',
-              ),
-              const Gap(4),
-              _ActionButton(
-                onPressed: onDuplicate,
-                icon: Icons.content_copy_rounded,
-                label: 'Kopya',
-              ),
-              const Gap(4),
+              if (canEdit) ...[
+                _ActionButton(
+                  onPressed: onEdit,
+                  icon: Icons.edit_rounded,
+                  label: 'Düzenle',
+                ),
+                const Gap(4),
+                _ActionButton(
+                  onPressed: onDuplicate,
+                  icon: Icons.content_copy_rounded,
+                  label: 'Kopya',
+                ),
+                const Gap(4),
+              ],
               _ActionButton(
                 onPressed: onPrintKdv,
                 icon: Icons.print_rounded,
@@ -1891,14 +2025,24 @@ class _ApplicationRecordCard extends StatelessWidget {
                 icon: Icons.playlist_add_rounded,
                 label: 'İş Emri',
               ),
-              const Gap(4),
-              _ActionButton(
-                onPressed: onToggleActive,
-                icon: record.isActive
-                    ? Icons.delete_outline_rounded
-                    : Icons.restore_rounded,
-                label: record.isActive ? 'Sil' : 'Aktifleştir',
-              ),
+              if (canArchive) ...[
+                const Gap(4),
+                _ActionButton(
+                  onPressed: onToggleActive,
+                  icon: record.isActive
+                      ? Icons.delete_outline_rounded
+                      : Icons.restore_rounded,
+                  label: record.isActive ? 'Sil' : 'Aktifleştir',
+                ),
+              ],
+              if (!record.isActive && canDeletePermanently) ...[
+                const Gap(4),
+                _ActionButton(
+                  onPressed: onDeletePermanently,
+                  icon: Icons.delete_forever_rounded,
+                  label: 'Kalıcı Sil',
+                ),
+              ],
             ],
           ),
           const Gap(5),
@@ -2534,7 +2678,7 @@ class _FormRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: const BoxDecoration(
               color: Color(0xFFFFF15C),
               border: Border(
@@ -2548,13 +2692,13 @@ class _FormRow extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFF3E3200),
-                fontSize: 10.5,
-                height: 1.05,
+                fontSize: 12,
+                height: 1.12,
               ),
             ),
           ),
           Container(
-            padding: const EdgeInsets.all(4),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border.all(color: const Color(0xFF111827)),
@@ -2569,10 +2713,10 @@ class _FormRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 150,
+          width: 196,
           child: Container(
-            constraints: const BoxConstraints(minHeight: 44),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            constraints: const BoxConstraints(minHeight: 64),
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
             decoration: BoxDecoration(
               color: const Color(0xFFFFF15C),
               border: Border(
@@ -2591,8 +2735,8 @@ class _FormRow extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: const Color(0xFF3E3200),
-                  fontSize: 12,
-                  height: 1.08,
+                  fontSize: 14.5,
+                  height: 1.15,
                 ),
               ),
             ),
@@ -2600,8 +2744,8 @@ class _FormRow extends StatelessWidget {
         ),
         Expanded(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 44),
-            padding: const EdgeInsets.all(6),
+            constraints: const BoxConstraints(minHeight: 64),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border(
@@ -2630,12 +2774,12 @@ class _ResponsiveFieldGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.sizeOf(context).width < 760;
     if (isMobile) {
-      return Column(children: [left, const Gap(4), right]);
+      return Column(children: [left, const Gap(10), right]);
     }
     return Row(
       children: [
         Expanded(child: left),
-        const Gap(6),
+        const Gap(12),
         Expanded(child: right),
       ],
     );
@@ -2648,12 +2792,14 @@ class _ApplicationTextField extends StatelessWidget {
     this.minLines,
     this.maxLines = 1,
     this.validator,
+    this.hintText,
   });
 
   final TextEditingController controller;
   final int? minLines;
   final int maxLines;
   final String? Function(String?)? validator;
+  final String? hintText;
 
   @override
   Widget build(BuildContext context) {
@@ -2665,14 +2811,18 @@ class _ApplicationTextField extends StatelessWidget {
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
         color: const Color(0xFF111827),
         fontWeight: FontWeight.w600,
-        fontSize: 12,
+        fontSize: 14,
       ),
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         isDense: true,
         filled: true,
         fillColor: Colors.white,
-        border: OutlineInputBorder(),
-        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        border: const OutlineInputBorder(),
+        hintText: hintText,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 15,
+          vertical: 13,
+        ),
       ),
     );
   }
@@ -2703,7 +2853,7 @@ class _ApplicationDropdown<T> extends StatelessWidget {
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
         color: const Color(0xFF111827),
         fontWeight: FontWeight.w600,
-        fontSize: 12,
+        fontSize: 14,
       ),
       decoration: InputDecoration(
         isDense: true,
@@ -2711,7 +2861,10 @@ class _ApplicationDropdown<T> extends StatelessWidget {
         fillColor: Colors.white,
         border: const OutlineInputBorder(),
         hintText: hintText,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 15,
+          vertical: 13,
+        ),
       ),
     );
   }
@@ -2739,7 +2892,7 @@ class _DateField extends StatelessWidget {
           filled: true,
           fillColor: Colors.white,
           border: OutlineInputBorder(),
-          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          contentPadding: EdgeInsets.symmetric(horizontal: 15, vertical: 13),
           suffixIcon: Icon(Icons.calendar_today_rounded, size: 16),
         ),
         child: Text(
@@ -2747,7 +2900,7 @@ class _DateField extends StatelessWidget {
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
             color: const Color(0xFF111827),
             fontWeight: FontWeight.w600,
-            fontSize: 12,
+            fontSize: 13.5,
           ),
         ),
       ),
@@ -2796,7 +2949,7 @@ class _BusinessActivityMultiSelectField extends StatelessWidget {
           filled: true,
           fillColor: Colors.white,
           border: OutlineInputBorder(),
-          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           suffixIcon: Icon(Icons.arrow_drop_down_rounded),
         ),
         child: Text(
@@ -2808,7 +2961,7 @@ class _BusinessActivityMultiSelectField extends StatelessWidget {
                 ? AppTheme.textMuted
                 : const Color(0xFF111827),
             fontWeight: FontWeight.w600,
-            fontSize: 12,
+            fontSize: 13.5,
           ),
         ),
       ),
@@ -2949,7 +3102,7 @@ class _CustomerPickerField extends StatelessWidget {
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
               color: const Color(0xFF111827),
               fontWeight: FontWeight.w600,
-              fontSize: 10.5,
+              fontSize: 13,
             ),
             decoration: InputDecoration(
               isDense: true,
@@ -2958,28 +3111,28 @@ class _CustomerPickerField extends StatelessWidget {
               border: const OutlineInputBorder(),
               hintText: 'Eski ya da yeni müşteri seçin',
               contentPadding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 4,
+                horizontal: 14,
+                vertical: 12,
               ),
               suffixIcon: IconButton(
                 onPressed: onPickCustomer,
-                icon: const Icon(Icons.search_rounded, size: 16),
+                icon: const Icon(Icons.search_rounded, size: 18),
               ),
             ),
           ),
         ),
-        const Gap(6),
+        const Gap(8),
         OutlinedButton.icon(
           onPressed: onCreateCustomer,
           style: OutlinedButton.styleFrom(
-            minimumSize: const Size(0, 34),
-            padding: const EdgeInsets.symmetric(horizontal: 7),
+            minimumSize: const Size(0, 44),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w700,
-              fontSize: 10.5,
+              fontSize: 12,
             ),
           ),
-          icon: const Icon(Icons.person_add_alt_1_rounded, size: 14),
+          icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
           label: const Text('Yeni'),
         ),
       ],

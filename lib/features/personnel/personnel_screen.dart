@@ -20,12 +20,30 @@ final personnelUsersProvider = FutureProvider<List<PersonnelUser>>((ref) async {
   final client = ref.watch(supabaseClientProvider);
   if (client == null) return const [];
 
-  final rows = await client
-      .from('users')
-      .select('id,full_name,role,email,page_permissions,created_at')
-      .order('created_at', ascending: false);
+  List rows;
+  try {
+    rows = await client
+        .from('users')
+        .select(
+          'id,full_name,role,email,page_permissions,action_permissions,created_at',
+        )
+        .order('created_at', ascending: false);
+  } catch (_) {
+    final fallbackRows = await client
+        .from('users')
+        .select('id,full_name,role,email,page_permissions,created_at')
+        .order('created_at', ascending: false);
+    rows = (fallbackRows as List)
+        .map(
+          (row) => {
+            ...row as Map<String, dynamic>,
+            'action_permissions': const <String>[],
+          },
+        )
+        .toList(growable: false);
+  }
 
-  return (rows as List)
+  return rows
       .map((e) => PersonnelUser.fromJson(e as Map<String, dynamic>))
       .toList(growable: false);
 });
@@ -465,6 +483,7 @@ class _CreatePersonnelDialogState
   final _fullNameController = TextEditingController();
   String _role = 'personel';
   late final Set<String> _pagePermissions;
+  final Set<String> _actionPermissions = <String>{};
   bool _saving = false;
 
   @override
@@ -487,16 +506,30 @@ class _CreatePersonnelDialogState
       final email = _emailController.text.trim();
       final password = _passwordController.text;
       final fullName = _fullNameController.text.trim();
-      await client.rpc(
-        'admin_create_personnel',
-        params: {
-          'p_email': email,
-          'p_password': password,
-          'p_full_name': fullName,
-          'p_role': _role,
-          'p_page_permissions': _pagePermissions.toList(growable: false),
-        },
-      );
+      try {
+        await client.rpc(
+          'admin_create_personnel',
+          params: {
+            'p_email': email,
+            'p_password': password,
+            'p_full_name': fullName,
+            'p_role': _role,
+            'p_page_permissions': _pagePermissions.toList(growable: false),
+            'p_action_permissions': _actionPermissions.toList(growable: false),
+          },
+        );
+      } catch (_) {
+        await client.rpc(
+          'admin_create_personnel',
+          params: {
+            'p_email': email,
+            'p_password': password,
+            'p_full_name': fullName,
+            'p_role': _role,
+            'p_page_permissions': _pagePermissions.toList(growable: false),
+          },
+        );
+      }
 
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -613,10 +646,24 @@ class _CreatePersonnelDialogState
                 ),
                 const Gap(12),
                 _PermissionsEditor(
+                  label: 'Sayfa Yetkileri',
                   selected: _pagePermissions,
                   onChanged: (value) {
                     setState(() {
                       _pagePermissions
+                        ..clear()
+                        ..addAll(value);
+                    });
+                  },
+                ),
+                const Gap(12),
+                _PermissionsEditor(
+                  label: 'İşlem Yetkileri',
+                  labels: actionPermissionLabels,
+                  selected: _actionPermissions,
+                  onChanged: (value) {
+                    setState(() {
+                      _actionPermissions
                         ..clear()
                         ..addAll(value);
                     });
@@ -691,6 +738,7 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
   late final TextEditingController _emailController;
   final _passwordController = TextEditingController();
   late Set<String> _pagePermissions;
+  late Set<String> _actionPermissions;
   late String _role;
   bool _saving = false;
 
@@ -704,6 +752,7 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
     _pagePermissions = widget.user.pagePermissions.isEmpty
         ? {...defaultPersonnelPagePermissions}
         : {...widget.user.pagePermissions};
+    _actionPermissions = {...widget.user.actionPermissions};
     _role = widget.user.role;
   }
 
@@ -725,14 +774,26 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
       final isSelf = client.auth.currentUser?.id == widget.user.id;
       final newPassword = _passwordController.text.trim();
 
-      await client
-          .from('users')
-          .update({
-            'full_name': _fullNameController.text.trim(),
-            'role': _role,
-            'page_permissions': _pagePermissions.toList(growable: false),
-          })
-          .eq('id', widget.user.id);
+      try {
+        await client
+            .from('users')
+            .update({
+              'full_name': _fullNameController.text.trim(),
+              'role': _role,
+              'page_permissions': _pagePermissions.toList(growable: false),
+              'action_permissions': _actionPermissions.toList(growable: false),
+            })
+            .eq('id', widget.user.id);
+      } catch (_) {
+        await client
+            .from('users')
+            .update({
+              'full_name': _fullNameController.text.trim(),
+              'role': _role,
+              'page_permissions': _pagePermissions.toList(growable: false),
+            })
+            .eq('id', widget.user.id);
+      }
 
       String? passwordMessage;
       if (newPassword.isNotEmpty && isSelf) {
@@ -838,10 +899,22 @@ class _EditPersonnelDialogState extends ConsumerState<_EditPersonnelDialog> {
                 ),
                 const Gap(12),
                 _PermissionsEditor(
+                  label: 'Sayfa Yetkileri',
                   selected: _pagePermissions,
                   onChanged: (value) {
                     setState(() {
                       _pagePermissions = value;
+                    });
+                  },
+                ),
+                const Gap(12),
+                _PermissionsEditor(
+                  label: 'İşlem Yetkileri',
+                  labels: actionPermissionLabels,
+                  selected: _actionPermissions,
+                  onChanged: (value) {
+                    setState(() {
+                      _actionPermissions = value;
                     });
                   },
                 ),
@@ -909,6 +982,7 @@ class PersonnelUser {
     required this.role,
     required this.email,
     required this.pagePermissions,
+    required this.actionPermissions,
     required this.createdAt,
   });
 
@@ -917,6 +991,7 @@ class PersonnelUser {
   final String role;
   final String? email;
   final List<String> pagePermissions;
+  final List<String> actionPermissions;
   final DateTime? createdAt;
 
   factory PersonnelUser.fromJson(Map<String, dynamic> json) {
@@ -928,25 +1003,35 @@ class PersonnelUser {
       pagePermissions: ((json['page_permissions'] as List?) ?? const [])
           .map((item) => item.toString())
           .toList(growable: false),
+      actionPermissions: ((json['action_permissions'] as List?) ?? const [])
+          .map((item) => item.toString())
+          .toList(growable: false),
       createdAt: parseAppDateTime(json['created_at']?.toString()),
     );
   }
 }
 
 class _PermissionsEditor extends StatelessWidget {
-  const _PermissionsEditor({required this.selected, required this.onChanged});
+  const _PermissionsEditor({
+    required this.selected,
+    required this.onChanged,
+    this.label = 'Sayfa Yetkileri',
+    this.labels = pagePermissionLabels,
+  });
 
   final Set<String> selected;
   final ValueChanged<Set<String>> onChanged;
+  final String label;
+  final Map<String, String> labels;
 
   @override
   Widget build(BuildContext context) {
     return InputDecorator(
-      decoration: const InputDecoration(labelText: 'Sayfa Yetkileri'),
+      decoration: InputDecoration(labelText: label),
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: pagePermissionLabels.entries
+        children: labels.entries
             .map((entry) {
               final active = selected.contains(entry.key);
               return FilterChip(

@@ -425,7 +425,7 @@ class _LinesTab extends ConsumerWidget {
     final licensesAsync = ref.watch(issuedLicensesProvider);
     final selectedIds = ref.watch(selectedLineIdsProvider);
     return Padding(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(8),
       child: linesAsync.when(
         data: (items) => licensesAsync.when(
           data: (licenses) {
@@ -490,11 +490,11 @@ class _LinesTab extends ConsumerWidget {
                             ref.read(selectedLineIdsProvider.notifier).clear();
                           },
                   ),
-                if (isAdmin) const Gap(6),
+                if (isAdmin) const Gap(4),
                 Expanded(
                   child: ListView.separated(
                     itemCount: filteredItems.length,
-                    separatorBuilder: (context, index) => const Gap(4),
+                    separatorBuilder: (context, index) => const Gap(3),
                     itemBuilder: (context, index) => _LineRow(
                       item: filteredItems[index],
                       isAdmin: isAdmin,
@@ -534,7 +534,7 @@ class _LicensesTab extends ConsumerWidget {
     final linesAsync = ref.watch(issuedLinesProvider);
     final selectedIds = ref.watch(selectedLicenseIdsProvider);
     return Padding(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(8),
       child: licensesAsync.when(
         data: (items) => linesAsync.when(
           data: (lines) {
@@ -596,11 +596,11 @@ class _LicensesTab extends ConsumerWidget {
                                 .clear();
                           },
                   ),
-                if (isAdmin) const Gap(6),
+                if (isAdmin) const Gap(4),
                 Expanded(
                   child: ListView.separated(
                     itemCount: filteredLicenses.length,
-                    separatorBuilder: (context, index) => const Gap(4),
+                    separatorBuilder: (context, index) => const Gap(3),
                     itemBuilder: (context, index) => _LicenseRow(
                       item: filteredLicenses[index],
                       isAdmin: isAdmin,
@@ -684,10 +684,10 @@ class _LineRowState extends ConsumerState<_LineRow> {
         : DateFormat('d MMM y', 'tr_TR').format(endsAt);
 
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppTheme.border),
       ),
       child: Row(
@@ -708,7 +708,7 @@ class _LineRowState extends ConsumerState<_LineRow> {
                   item.number ?? 'Hat',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w800,
-                    fontSize: 13,
+                    fontSize: 12.5,
                     decoration: item.isActive
                         ? null
                         : TextDecoration.lineThrough,
@@ -725,7 +725,7 @@ class _LineRowState extends ConsumerState<_LineRow> {
                   ].join(' • '),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF64748B),
-                    fontSize: 11,
+                    fontSize: 10.5,
                   ),
                 ),
                 const Gap(2),
@@ -733,7 +733,7 @@ class _LineRowState extends ConsumerState<_LineRow> {
                   'Bitiş: $dateText',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF94A3B8),
-                    fontSize: 10.5,
+                    fontSize: 10,
                   ),
                 ),
               ],
@@ -746,10 +746,10 @@ class _LineRowState extends ConsumerState<_LineRow> {
             MenuAnchor(
               builder: (context, controller, _) => OutlinedButton(
                 style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(0, 34),
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  minimumSize: const Size(0, 32),
+                  padding: const EdgeInsets.symmetric(horizontal: 9),
                   textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontSize: 11,
+                    fontSize: 10.5,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -873,10 +873,10 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
         : DateFormat('d MMM y', 'tr_TR').format(endsAt);
 
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppTheme.border),
       ),
       child: Row(
@@ -897,7 +897,7 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
                   widget.hasLine ? 'GMP + Hat' : item.name,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w800,
-                    fontSize: 13,
+                    fontSize: 12.5,
                     decoration: item.isActive
                         ? null
                         : TextDecoration.lineThrough,
@@ -911,7 +911,7 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
                   ].join(' • '),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF64748B),
-                    fontSize: 11,
+                    fontSize: 10.5,
                   ),
                 ),
                 const Gap(2),
@@ -919,7 +919,7 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
                   'Bitiş: $dateText',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF94A3B8),
-                    fontSize: 10.5,
+                    fontSize: 10,
                   ),
                 ),
               ],
@@ -935,12 +935,12 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
             const Gap(8),
             OutlinedButton(
               style: OutlinedButton.styleFrom(
-                minimumSize: const Size(0, 34),
-                padding: const EdgeInsets.symmetric(horizontal: 10),
+                minimumSize: const Size(0, 32),
+                padding: const EdgeInsets.symmetric(horizontal: 9),
                 textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                  ),
               ),
               onPressed: _busy
                   ? null

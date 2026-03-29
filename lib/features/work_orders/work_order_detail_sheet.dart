@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:signature/signature.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/auth/user_profile_provider.dart';
 import '../billing/invoice_queue_helper.dart';
 import '../../core/platform/open_external_url.dart';
 import '../../core/supabase/supabase_providers.dart';
@@ -722,6 +723,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   }
 
   Widget _buildStatusActions(BuildContext context) {
+    final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
     return AppSectionCard(
       title: 'Durum Değiştir',
       subtitle: 'Açık iş emrini yönet ve kapat',
@@ -755,11 +757,12 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                     ),
                   ),
                   const Gap(10),
-                  OutlinedButton.icon(
-                    onPressed: _saving ? null : _editWorkOrder,
-                    icon: const Icon(Icons.edit_rounded, size: 18),
-                    label: const Text('Düzenle'),
-                  ),
+                  if (canEdit)
+                    OutlinedButton.icon(
+                      onPressed: _saving ? null : _editWorkOrder,
+                      icon: const Icon(Icons.edit_rounded, size: 18),
+                      label: const Text('Düzenle'),
+                    ),
                 ],
               ),
             ),
