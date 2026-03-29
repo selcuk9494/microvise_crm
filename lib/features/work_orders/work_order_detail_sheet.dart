@@ -19,6 +19,7 @@ import '../../core/ui/compact_stat_card.dart';
 import '../customers/customer_detail_screen.dart';
 import 'work_order_create_dialog.dart';
 import 'work_order_model.dart';
+import 'work_orders_providers.dart';
 import 'currency_service.dart';
 
 Future<void> showWorkOrderDetailSheet(
@@ -722,8 +723,71 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     ).showSnackBar(const SnackBar(content: Text('İş emri güncellendi.')));
   }
 
+  Future<void> _setOrderActive(bool isActive) async {
+    await ref
+        .read(workOrdersBoardProvider.notifier)
+        .setActive(workOrderId: widget.order.id, isActive: isActive);
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isActive
+              ? 'İş emri yeniden aktifleştirildi.'
+              : 'İş emri pasife alındı.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteOrderPermanently() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('İş emrini kalıcı sil'),
+        content: Text(
+          '"${widget.order.title}" kaydı kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Kalıcı Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      await client.from('payments').delete().eq('work_order_id', widget.order.id);
+      await client.from('work_orders').delete().eq('id', widget.order.id);
+      await ref.read(workOrdersBoardProvider.notifier).refresh();
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('İş emri kalıcı olarak silindi.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İş emri silinemedi: $error')),
+      );
+    }
+  }
+
   Widget _buildStatusActions(BuildContext context) {
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
+    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
+    final canDeletePermanently = ref.watch(
+      hasActionAccessProvider(kActionDeleteRecords),
+    );
     return AppSectionCard(
       title: 'Durum Değiştir',
       subtitle: 'Açık iş emrini yönet ve kapat',
@@ -804,6 +868,59 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
               ),
             ],
           ),
+          if (canArchive || (!widget.order.isActive && canDeletePermanently)) ...[
+            const Gap(12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Kayıt İşlemleri',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const Gap(10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      if (canArchive)
+                        OutlinedButton.icon(
+                          onPressed: _saving
+                              ? null
+                              : () => _setOrderActive(!widget.order.isActive),
+                          icon: Icon(
+                            widget.order.isActive
+                                ? Icons.delete_outline_rounded
+                                : Icons.restore_rounded,
+                            size: 18,
+                          ),
+                          label: Text(
+                            widget.order.isActive ? 'Sil' : 'Geri Al',
+                          ),
+                        ),
+                      if (!widget.order.isActive && canDeletePermanently)
+                        FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppTheme.error,
+                          ),
+                          onPressed: _saving ? null : _deleteOrderPermanently,
+                          icon: const Icon(Icons.delete_forever_rounded, size: 18),
+                          label: const Text('Kalıcı Sil'),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

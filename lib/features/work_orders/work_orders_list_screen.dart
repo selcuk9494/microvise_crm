@@ -896,6 +896,54 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                     const Gap(6),
                     const AppBadge(label: 'Pasif', tone: AppBadgeTone.neutral),
                   ],
+                  if (widget.canArchive || (!order.isActive && widget.canDeletePermanently)) ...[
+                    const Gap(8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      alignment: WrapAlignment.end,
+                      children: [
+                        if (widget.canArchive)
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              minimumSize: Size.zero,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            onPressed: () =>
+                                widget.onToggleActive(!order.isActive),
+                            icon: Icon(
+                              order.isActive
+                                  ? Icons.delete_outline_rounded
+                                  : Icons.restore_rounded,
+                              size: 16,
+                            ),
+                            label: Text(order.isActive ? 'Sil' : 'Geri Al'),
+                          ),
+                        if (!order.isActive && widget.canDeletePermanently)
+                          FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppTheme.error,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              minimumSize: Size.zero,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            onPressed: widget.onDeletePermanently,
+                            icon: const Icon(
+                              Icons.delete_forever_rounded,
+                              size: 16,
+                            ),
+                            label: const Text('Kalıcı Sil'),
+                          ),
+                      ],
+                    ),
+                  ],
                   if (!widget.reorderEnabled) ...[
                     const Gap(8),
                     Icon(
@@ -1191,6 +1239,43 @@ class _MobileWorkOrderCard extends StatelessWidget {
                     ),
                   ),
                 const Spacer(),
+                if (canArchive)
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      minimumSize: Size.zero,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: () => onToggleActive(!order.isActive),
+                    icon: Icon(
+                      order.isActive
+                          ? Icons.delete_outline_rounded
+                          : Icons.restore_rounded,
+                      size: 16,
+                    ),
+                    label: Text(order.isActive ? 'Sil' : 'Geri Al'),
+                  ),
+                if (canArchive) const Gap(8),
+                if (!order.isActive && canDeletePermanently) ...[
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.error,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      minimumSize: Size.zero,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: onDeletePermanently,
+                    icon: const Icon(Icons.delete_forever_rounded, size: 16),
+                    label: const Text('Kalıcı Sil'),
+                  ),
+                  const Gap(8),
+                ],
                 if (canArchive || (!order.isActive && canDeletePermanently))
                   PopupMenuButton<String>(
                     tooltip: 'İşlemler',
