@@ -59,6 +59,9 @@ module.exports = async (req, res) => {
     ) {
       if (!requirePage(user, 'formlar', res)) return;
     }
+    if (resource.startsWith('form_')) {
+      if (!requirePage(user, 'formlar', res)) return;
+    }
 
     switch (resource) {
       case 'customer_detail': {
@@ -335,6 +338,212 @@ module.exports = async (req, res) => {
           `select * from public.transfer_form_settings where id = 'default' limit 1`,
         );
         return ok(res, result.rows[0] || null);
+      }
+
+      case 'form_application_customers': {
+        const result = await query(
+          `
+            select
+              id,
+              name,
+              vkn,
+              tckn_ms,
+              city,
+              address,
+              director_name,
+              is_active
+            from public.customers
+            order by name asc
+          `,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'form_stock_products': {
+        const result = await query(
+          `
+            select id,code,name
+            from public.products
+            where is_active = true
+            order by name asc
+          `,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'form_application_list': {
+        const showPassive = parseBoolean(req.query.showPassive, false);
+        const values = [];
+        let whereSql = 'where true';
+        if (!showPassive) {
+          values.push(true);
+          whereSql += ` and is_active = $${values.length}`;
+        }
+        const result = await query(
+          `
+            select
+              id,
+              application_date,
+              customer_id,
+              customer_name,
+              customer_tckn_ms,
+              work_address,
+              tax_office_city_name,
+              document_type,
+              file_registry_number,
+              director,
+              brand_name,
+              model_name,
+              fiscal_symbol_name,
+              stock_product_id,
+              stock_product_name,
+              stock_registry_number,
+              accounting_office,
+              okc_start_date,
+              business_activity_name,
+              invoice_number,
+              is_active,
+              created_at
+            from public.application_forms
+            ${whereSql}
+            order by created_at desc
+            limit 500
+          `,
+          values,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'form_scrap_customers': {
+        const result = await query(
+          `
+            select
+              c.id,
+              c.name,
+              c.vkn,
+              c.city,
+              c.address,
+              c.is_active,
+              coalesce(
+                (
+                  select json_agg(json_build_object('address', b.address))
+                  from public.branches b
+                  where b.customer_id = c.id
+                ),
+                '[]'::json
+              ) as branches
+            from public.customers c
+            order by c.name asc
+          `,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'form_scrap_list': {
+        const showPassive = parseBoolean(req.query.showPassive, false);
+        const values = [];
+        let whereSql = 'where true';
+        if (!showPassive) {
+          values.push(true);
+          whereSql += ` and is_active = $${values.length}`;
+        }
+        const result = await query(
+          `
+            select
+              id,
+              form_date,
+              row_number,
+              customer_id,
+              customer_name,
+              customer_address,
+              customer_tax_office_and_number,
+              device_brand_model_registry,
+              okc_start_date,
+              last_used_date,
+              z_report_count,
+              total_vat_collection,
+              total_collection,
+              intervention_purpose,
+              other_findings,
+              is_active,
+              created_at
+            from public.scrap_forms
+            ${whereSql}
+            order by created_at desc
+            limit 500
+          `,
+          values,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'form_transfer_customers': {
+        const result = await query(
+          `
+            select
+              c.id,
+              c.name,
+              c.vkn,
+              c.city,
+              c.address,
+              c.is_active,
+              coalesce(
+                (
+                  select json_agg(json_build_object('address', b.address))
+                  from public.branches b
+                  where b.customer_id = c.id
+                ),
+                '[]'::json
+              ) as branches
+            from public.customers c
+            order by c.name asc
+          `,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'form_transfer_list': {
+        const showPassive = parseBoolean(req.query.showPassive, false);
+        const values = [];
+        let whereSql = 'where true';
+        if (!showPassive) {
+          values.push(true);
+          whereSql += ` and is_active = $${values.length}`;
+        }
+        const result = await query(
+          `
+            select
+              id,
+              row_number,
+              transferor_name,
+              transferor_address,
+              transferor_tax_office_and_registry,
+              transferor_approval_date_no,
+              transferee_name,
+              transferee_address,
+              transferee_tax_office_and_registry,
+              transferee_approval_date_no,
+              total_sales_receipt,
+              vat_collected,
+              last_receipt_date_no,
+              z_report_count,
+              other_device_info,
+              brand_model,
+              device_serial_no,
+              fiscal_symbol_company_code,
+              department_count,
+              transfer_date,
+              transfer_reason,
+              is_active,
+              created_at
+            from public.transfer_forms
+            ${whereSql}
+            order by created_at desc
+            limit 500
+          `,
+          values,
+        );
+        return ok(res, { items: result.rows });
       }
 
       case 'personnel_users': {

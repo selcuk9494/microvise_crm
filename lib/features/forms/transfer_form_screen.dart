@@ -4,6 +4,7 @@ import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/format/currency_format.dart';
 import '../../core/supabase/supabase_providers.dart';
@@ -18,7 +19,20 @@ import 'transfer_form_print.dart';
 
 final transferFormCustomersProvider =
     FutureProvider<List<_TransferCustomerOption>>((ref) async {
+      final apiClient = ref.watch(apiClientProvider);
       final client = ref.watch(supabaseClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'form_transfer_customers'},
+        );
+        final items = ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(_TransferCustomerOption.fromJson)
+            .toList(growable: false);
+        items.sort((a, b) => _sortKey(a.name).compareTo(_sortKey(b.name)));
+        return items;
+      }
       if (client == null) return const [];
 
       const pageSize = 500;
@@ -48,7 +62,18 @@ final transferFormCustomersProvider =
 final transferFormsProvider = FutureProvider<List<TransferFormRecord>>((
   ref,
 ) async {
+  final apiClient = ref.watch(apiClientProvider);
   final client = ref.watch(supabaseClientProvider);
+  if (apiClient != null) {
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {'resource': 'form_transfer_list'},
+    );
+    return ((response['items'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(TransferFormRecord.fromJson)
+        .toList(growable: false);
+  }
   if (client == null) return const [];
 
   try {

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
@@ -26,7 +27,20 @@ import '../work_orders/work_orders_providers.dart';
 final applicationFormCustomersProvider = FutureProvider<List<_CustomerOption>>((
   ref,
 ) async {
+  final apiClient = ref.watch(apiClientProvider);
   final client = ref.watch(supabaseClientProvider);
+  if (apiClient != null) {
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {'resource': 'form_application_customers'},
+    );
+    final items = ((response['items'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(_CustomerOption.fromJson)
+        .toList(growable: false);
+    items.sort((a, b) => _sortKey(a.name).compareTo(_sortKey(b.name)));
+    return items;
+  }
   if (client == null) return const [];
 
   const pageSize = 500;
@@ -63,7 +77,20 @@ final applicationFormCustomersProvider = FutureProvider<List<_CustomerOption>>((
 
 final applicationFormStockProductsProvider =
     FutureProvider<List<_StockProductOption>>((ref) async {
+      final apiClient = ref.watch(apiClientProvider);
       final client = ref.watch(supabaseClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'form_stock_products'},
+        );
+        final items = ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(_StockProductOption.fromJson)
+            .toList(growable: false);
+        items.sort((a, b) => _sortKey(a.label).compareTo(_sortKey(b.label)));
+        return items;
+      }
       if (client == null) return const [];
 
       final rows = await client
@@ -84,7 +111,18 @@ final applicationFormStockProductsProvider =
 final applicationFormsProvider = FutureProvider<List<ApplicationFormRecord>>((
   ref,
 ) async {
+  final apiClient = ref.watch(apiClientProvider);
   final client = ref.watch(supabaseClientProvider);
+  if (apiClient != null) {
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {'resource': 'form_application_list'},
+    );
+    return ((response['items'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(ApplicationFormRecord.fromJson)
+        .toList(growable: false);
+  }
   if (client == null) return const [];
 
   final rows = await client

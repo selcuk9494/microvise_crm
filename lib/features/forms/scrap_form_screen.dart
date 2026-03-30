@@ -4,6 +4,7 @@ import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/format/currency_format.dart';
 import '../../core/supabase/supabase_providers.dart';
@@ -16,10 +17,22 @@ import '../definitions/definitions_screen.dart';
 import 'scrap_form_model.dart';
 import 'scrap_form_print.dart';
 
-final scrapFormCustomersProvider = FutureProvider<List<_ScrapCustomerOption>>((
-  ref,
-) async {
+final scrapFormCustomersProvider =
+    FutureProvider<List<_ScrapCustomerOption>>((ref) async {
+  final apiClient = ref.watch(apiClientProvider);
   final client = ref.watch(supabaseClientProvider);
+  if (apiClient != null) {
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {'resource': 'form_scrap_customers'},
+    );
+    final items = ((response['items'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(_ScrapCustomerOption.fromJson)
+        .toList(growable: false);
+    items.sort((a, b) => _sortKey(a.name).compareTo(_sortKey(b.name)));
+    return items;
+  }
   if (client == null) return const [];
 
   const pageSize = 500;
@@ -46,7 +59,18 @@ final scrapFormCustomersProvider = FutureProvider<List<_ScrapCustomerOption>>((
 });
 
 final scrapFormsProvider = FutureProvider<List<ScrapFormRecord>>((ref) async {
+  final apiClient = ref.watch(apiClientProvider);
   final client = ref.watch(supabaseClientProvider);
+  if (apiClient != null) {
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {'resource': 'form_scrap_list'},
+    );
+    return ((response['items'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(ScrapFormRecord.fromJson)
+        .toList(growable: false);
+  }
   if (client == null) return const [];
 
   try {
