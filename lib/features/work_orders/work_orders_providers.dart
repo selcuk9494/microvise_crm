@@ -6,8 +6,8 @@ import 'work_order_model.dart';
 
 final workOrdersBoardProvider =
     AsyncNotifierProvider<WorkOrdersBoardNotifier, List<WorkOrder>>(
-  WorkOrdersBoardNotifier.new,
-);
+      WorkOrdersBoardNotifier.new,
+    );
 
 class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
   @override
@@ -20,9 +20,8 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     var q = client
         .from('work_orders')
         .select(
-          'id,title,status,is_active,customer_id,branch_id,assigned_to,scheduled_date,customers(name)',
-        )
-        .eq('is_active', true);
+          'id,title,description,address,city,status,is_active,customer_id,branch_id,assigned_to,scheduled_date,created_at,closed_at,work_order_type_id,contact_phone,location_link,close_notes,sort_order,customers(name),branches(name),work_order_types(name)',
+        );
 
     if (!isAdmin) {
       final userId = client.auth.currentUser?.id;
@@ -30,16 +29,69 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
       q = q.eq('assigned_to', userId);
     }
 
-    final rows = await q.order('created_at', ascending: false);
+    final rows = await q
+        .order('sort_order')
+        .order('created_at', ascending: false);
 
-    return (rows as List).map((e) {
-      final map = e as Map<String, dynamic>;
+    final rawRows = (rows as List)
+        .cast<Map<String, dynamic>>()
+        .toList(growable: false);
+    final doneIds = rawRows
+        .where((row) => row['status']?.toString() == 'done')
+        .map((row) => row['id']?.toString())
+        .whereType<String>()
+        .toList(growable: false);
+
+    final paymentRows = doneIds.isEmpty
+        ? const <Map<String, dynamic>>[]
+        : await client
+            .from('payments')
+            .select(
+              'work_order_id,amount,currency,description,paid_at,payment_method,is_active',
+            )
+            .eq('is_active', true)
+            .inFilter('work_order_id', doneIds)
+            .order('paid_at', ascending: false)
+            .then((value) => (value as List).cast<Map<String, dynamic>>());
+
+    final paymentsByWorkOrder = <String, List<Map<String, dynamic>>>{};
+    for (final row in paymentRows) {
+      final workOrderId = row['work_order_id']?.toString();
+      if (workOrderId == null || workOrderId.isEmpty) continue;
+      paymentsByWorkOrder.update(
+        workOrderId,
+        (items) => [...items, row],
+        ifAbsent: () => [row],
+      );
+    }
+
+    final items = rawRows.map((map) {
       final customers = map['customers'] as Map<String, dynamic>?;
+      final branches = map['branches'] as Map<String, dynamic>?;
+      final workOrderTypes =
+          map['work_order_types'] as Map<String, dynamic>?;
+      final workOrderId = map['id']?.toString() ?? '';
       return WorkOrder.fromJson({
         ...map,
         'customer_name': customers?['name'],
+        'branch_name': branches?['name'],
+        'work_order_type_name': workOrderTypes?['name'],
+        'payments': paymentsByWorkOrder[workOrderId] ?? const [],
       });
     }).toList(growable: false);
+
+    final statusRank = {'open': 0, 'in_progress': 1, 'done': 2};
+    final sortedItems = [...items]
+      ..sort((a, b) {
+        final statusCompare = (statusRank[a.status] ?? 99).compareTo(
+          statusRank[b.status] ?? 99,
+        );
+        if (statusCompare != 0) return statusCompare;
+        final sortCompare = a.sortOrder.compareTo(b.sortOrder);
+        if (sortCompare != 0) return sortCompare;
+        return 0;
+      });
+    return sortedItems;
   }
 
   Future<void> refresh() async {
@@ -67,6 +119,63 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
       await client
           .from('work_orders')
           .update({'status': newStatus})
+          .eq('id', workOrderId);
+    } catch (_) {
+      state = AsyncData(current);
+    }
+  }
+
+  Future<void> reorderOpenOrders(List<WorkOrder> reorderedOpenOrders) async {
+    final current = state.asData?.value;
+    if (current == null) return;
+
+    final openIds = reorderedOpenOrders.map((item) => item.id).toSet();
+    final reordered = [
+      for (final item in reorderedOpenOrders)
+        item.copyWith(sortOrder: reorderedOpenOrders.indexOf(item)),
+    ];
+    final next = [
+      ...reordered,
+      ...current.where((item) => !openIds.contains(item.id)),
+    ];
+    state = AsyncData(next);
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      for (var i = 0; i < reorderedOpenOrders.length; i++) {
+        await client
+            .from('work_orders')
+            .update({'sort_order': i})
+            .eq('id', reorderedOpenOrders[i].id);
+      }
+      await refresh();
+    } catch (_) {
+      state = AsyncData(current);
+    }
+  }
+
+  Future<void> setActive({
+    required String workOrderId,
+    required bool isActive,
+  }) async {
+    final current = state.asData?.value;
+    if (current == null) return;
+
+    final next = [
+      for (final w in current)
+        if (w.id == workOrderId) w.copyWith(isActive: isActive) else w,
+    ];
+    state = AsyncData(next);
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      await client
+          .from('work_orders')
+          .update({'is_active': isActive})
           .eq('id', workOrderId);
     } catch (_) {
       state = AsyncData(current);

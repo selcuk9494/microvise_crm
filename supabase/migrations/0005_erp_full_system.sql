@@ -394,12 +394,12 @@ begin
   -- Toplam ödeme miktarını hesapla
   select coalesce(sum(amount), 0) into v_paid
   from public.transactions
-  where invoice_id = new.invoice_id and is_active = true;
+  where invoice_id = coalesce(new.invoice_id, old.invoice_id) and is_active = true;
   
   -- Fatura toplamını al
   select grand_total into v_total
   from public.invoices
-  where id = new.invoice_id;
+  where id = coalesce(new.invoice_id, old.invoice_id);
   
   -- Durumu belirle
   if v_paid >= v_total then
@@ -416,7 +416,8 @@ begin
     paid_amount = v_paid,
     status = v_new_status,
     updated_at = now()
-  where id = new.invoice_id and status not in ('draft', 'cancelled');
+  where id = coalesce(new.invoice_id, old.invoice_id)
+    and status not in ('draft', 'cancelled');
   
   return new;
 end;
@@ -425,6 +426,5 @@ $$;
 drop trigger if exists trigger_update_invoice_status on public.transactions;
 create trigger trigger_update_invoice_status
 after insert or update or delete on public.transactions
-for each row 
-when (new.invoice_id is not null)
+for each row
 execute procedure public.update_invoice_status();

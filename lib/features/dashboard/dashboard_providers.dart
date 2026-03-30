@@ -1,11 +1,17 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/format/app_date_time.dart';
 import '../../core/supabase/supabase_providers.dart';
 
 final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
   final client = ref.watch(supabaseClientProvider);
   if (client == null) return DashboardMetrics.zero();
+
+  final snapshot = await _fetchDashboardSnapshot(client);
+  if (snapshot != null) {
+    return snapshot;
+  }
 
   final totalCustomers = await _count(client, 'customers', filters: {
     'is_active': true,
@@ -27,14 +33,14 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
   });
 
   final todayWorkOrders = await _count(client, 'work_orders', filters: {
-    'scheduled_date': DateTime.now().toIso8601String().substring(0, 10),
+    'scheduled_date': appNow().toIso8601String().substring(0, 10),
     'is_active': true,
   });
 
   final expiring = await _count(client, 'licenses', filters: {
     'is_active': true,
   }, extra: (q) {
-    final now = DateTime.now();
+    final now = appNow();
     final in30 = now.add(const Duration(days: 30));
     return q
         .lte('expires_at', in30.toIso8601String())
@@ -44,7 +50,7 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
   final expiringLines = await _count(client, 'lines', filters: {
     'is_active': true,
   }, extra: (q) {
-    final now = DateTime.now();
+    final now = appNow();
     final in30 = now.add(const Duration(days: 30));
     return q
         .lte('expires_at', in30.toIso8601String())
@@ -56,15 +62,22 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
   });
 
   final lowStockProducts = await _lowStockCount(client);
-
-  final revenue = await _sumPaymentsThisMonth(client);
-  final lastMonthRevenue = await _sumPaymentsLastMonth(client);
+  final receivablePayable = await _accountingSnapshot(client);
+  final revenue = await _sumTransactions(client, type: 'collection');
+  final lastMonthRevenue = await _sumTransactions(
+    client,
+    type: 'collection',
+    lastMonth: true,
+  );
+  final todayCollections = await _sumTodayCollections(client);
 
   final openInvoices = await _count(client, 'invoices', filters: {
-    'status': 'open',
+    'is_active': true,
+  }, extra: (q) {
+    return q.inFilter('status', ['open', 'partial']);
   });
 
-  final totalInvoiceAmount = await _sumOpenInvoices(client);
+  final totalInvoiceAmount = await _sumOutstandingInvoices(client);
 
   return DashboardMetrics(
     totalCustomers: totalCustomers,
@@ -77,6 +90,9 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
     lowStockProducts: lowStockProducts,
     revenue: revenue,
     lastMonthRevenue: lastMonthRevenue,
+    todayCollections: todayCollections,
+    totalReceivable: receivablePayable.receivable,
+    totalPayable: receivablePayable.payable,
     openInvoices: openInvoices,
     totalInvoiceAmount: totalInvoiceAmount,
   );
@@ -87,22 +103,23 @@ final dashboardRevenueSeriesProvider =
   final client = ref.watch(supabaseClientProvider);
   if (client == null) return const [];
 
-  final now = DateTime.now();
+  final now = appNow();
   final from = now.subtract(const Duration(days: 14));
   final rows = await client
-      .from('payments')
-      .select('paid_at,amount')
-      .gte('paid_at', from.toIso8601String())
+      .from('transactions')
+      .select('transaction_date,amount,transaction_type,is_active')
+      .gte('transaction_date', from.toIso8601String().substring(0, 10))
+      .eq('transaction_type', 'collection')
       .eq('is_active', true);
 
   final buckets = <DateTime, double>{};
   for (final row in (rows as List)) {
-    final paidAtRaw = row['paid_at'];
+    final paidAtRaw = row['transaction_date'];
     final amountRaw = row['amount'];
     if (paidAtRaw == null || amountRaw == null) continue;
-    final paidAt = DateTime.tryParse(paidAtRaw.toString());
+    final paidAt = parseAppDateTime(paidAtRaw.toString());
     if (paidAt == null) continue;
-    final key = DateTime(paidAt.year, paidAt.month, paidAt.day);
+    final key = normalizeAppDate(paidAt);
     final amount = amountRaw is num ? amountRaw.toDouble() : double.tryParse(amountRaw.toString());
     if (amount == null) continue;
     buckets.update(key, (v) => v + amount, ifAbsent: () => amount);
@@ -156,10 +173,9 @@ Future<int> _count(
   SupabaseClient client,
   String table, {
   Map<String, Object?> filters = const {},
-  PostgrestFilterBuilder<dynamic> Function(PostgrestFilterBuilder<dynamic> q)?
-      extra,
+  dynamic Function(dynamic q)? extra,
 }) async {
-  PostgrestFilterBuilder<dynamic> q = client.from(table).select('id');
+  dynamic q = client.from(table).count();
   for (final entry in filters.entries) {
     final value = entry.value;
     if (value == null) continue;
@@ -167,17 +183,31 @@ Future<int> _count(
   }
   final finalQ = extra == null ? q : extra(q);
   final response = await finalQ;
-  return (response as List).length;
+  return response as int;
 }
 
-Future<double> _sumPaymentsThisMonth(SupabaseClient client) async {
-  final now = DateTime.now();
-  final from = DateTime(now.year, now.month, 1);
-  final rows = await client
-      .from('payments')
+Future<double> _sumTransactions(
+  SupabaseClient client, {
+  required String type,
+  bool lastMonth = false,
+}) async {
+  final now = appNow();
+  final from = lastMonth
+      ? DateTime(now.year, now.month - 1, 1)
+      : DateTime(now.year, now.month, 1);
+  final to = lastMonth
+      ? DateTime(now.year, now.month, 1)
+      : null;
+  var query = client
+      .from('transactions')
       .select('amount')
-      .gte('paid_at', from.toIso8601String())
-      .eq('is_active', true);
+      .eq('transaction_type', type)
+      .eq('is_active', true)
+      .gte('transaction_date', from.toIso8601String().substring(0, 10));
+  if (to != null) {
+    query = query.lt('transaction_date', to.toIso8601String().substring(0, 10));
+  }
+  final rows = await query;
 
   double sum = 0;
   for (final row in (rows as List)) {
@@ -187,15 +217,13 @@ Future<double> _sumPaymentsThisMonth(SupabaseClient client) async {
   return sum;
 }
 
-Future<double> _sumPaymentsLastMonth(SupabaseClient client) async {
-  final now = DateTime.now();
-  final lastMonth = DateTime(now.year, now.month - 1, 1);
-  final thisMonth = DateTime(now.year, now.month, 1);
+Future<double> _sumTodayCollections(SupabaseClient client) async {
+  final now = appNow();
   final rows = await client
-      .from('payments')
+      .from('transactions')
       .select('amount')
-      .gte('paid_at', lastMonth.toIso8601String())
-      .lt('paid_at', thisMonth.toIso8601String())
+      .eq('transaction_type', 'collection')
+      .eq('transaction_date', DateTime(now.year, now.month, now.day).toIso8601String().substring(0, 10))
       .eq('is_active', true);
 
   double sum = 0;
@@ -209,15 +237,13 @@ Future<double> _sumPaymentsLastMonth(SupabaseClient client) async {
 Future<int> _lowStockCount(SupabaseClient client) async {
   try {
     final rows = await client
-        .from('products')
-        .select('id,current_stock,min_stock_level')
-        .eq('is_active', true)
-        .eq('track_stock', true);
+        .from('stock_levels')
+        .select('product_id,current_stock,min_stock');
 
     int count = 0;
     for (final row in (rows as List)) {
       final current = (row['current_stock'] as num?)?.toInt() ?? 0;
-      final min = (row['min_stock_level'] as num?)?.toInt() ?? 0;
+      final min = (row['min_stock'] as num?)?.toInt() ?? 0;
       if (current <= min) count++;
     }
     return count;
@@ -226,22 +252,82 @@ Future<int> _lowStockCount(SupabaseClient client) async {
   }
 }
 
-Future<double> _sumOpenInvoices(SupabaseClient client) async {
+Future<double> _sumOutstandingInvoices(SupabaseClient client) async {
   try {
     final rows = await client
         .from('invoices')
-        .select('grand_total')
-        .eq('status', 'open');
+        .select('grand_total,paid_amount,status,is_active')
+        .eq('is_active', true)
+        .inFilter('status', ['open', 'partial']);
 
     double sum = 0;
     for (final row in (rows as List)) {
-      final total = row['grand_total'];
-      if (total is num) sum += total.toDouble();
+      final total = (row['grand_total'] as num?)?.toDouble() ?? 0;
+      final paid = (row['paid_amount'] as num?)?.toDouble() ?? 0;
+      sum += (total - paid);
     }
     return sum;
   } catch (_) {
     return 0;
   }
+}
+
+Future<({double receivable, double payable})> _accountingSnapshot(
+  SupabaseClient client,
+) async {
+  try {
+    final rows = await client.from('account_balances').select('balance');
+    double receivable = 0;
+    double payable = 0;
+    for (final row in rows as List) {
+      final balance = (row['balance'] as num?)?.toDouble() ?? 0;
+      if (balance > 0) {
+        receivable += balance;
+      } else if (balance < 0) {
+        payable += balance.abs();
+      }
+    }
+    return (receivable: receivable, payable: payable);
+  } catch (_) {
+    return (receivable: 0.0, payable: 0.0);
+  }
+}
+
+Future<DashboardMetrics?> _fetchDashboardSnapshot(SupabaseClient client) async {
+  try {
+    final rows = await client.rpc('dashboard_snapshot');
+    if (rows is! List || rows.isEmpty) return null;
+    final row = rows.first as Map<String, dynamic>;
+    return DashboardMetrics(
+      totalCustomers: _intValue(row['total_customers']),
+      openWorkOrders: _intValue(row['open_work_orders']),
+      inProgressWorkOrders: _intValue(row['in_progress_work_orders']),
+      completedWorkOrders: _intValue(row['completed_work_orders']),
+      todayWorkOrders: _intValue(row['today_work_orders']),
+      expiringSoon: _intValue(row['expiring_soon']),
+      totalProducts: _intValue(row['total_products']),
+      lowStockProducts: _intValue(row['low_stock_products']),
+      revenue: _doubleValue(row['revenue']),
+      lastMonthRevenue: _doubleValue(row['last_month_revenue']),
+      todayCollections: _doubleValue(row['today_collections']),
+      totalReceivable: _doubleValue(row['total_receivable']),
+      totalPayable: _doubleValue(row['total_payable']),
+      openInvoices: _intValue(row['open_invoices']),
+      totalInvoiceAmount: _doubleValue(row['total_invoice_amount']),
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+int _intValue(Object? value) {
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+double _doubleValue(Object? value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? 0;
 }
 
 class DashboardMetrics {
@@ -256,6 +342,9 @@ class DashboardMetrics {
     required this.lowStockProducts,
     required this.revenue,
     required this.lastMonthRevenue,
+    required this.todayCollections,
+    required this.totalReceivable,
+    required this.totalPayable,
     required this.openInvoices,
     required this.totalInvoiceAmount,
   });
@@ -270,6 +359,9 @@ class DashboardMetrics {
   final int lowStockProducts;
   final double revenue;
   final double lastMonthRevenue;
+  final double todayCollections;
+  final double totalReceivable;
+  final double totalPayable;
   final int openInvoices;
   final double totalInvoiceAmount;
 
@@ -289,6 +381,9 @@ class DashboardMetrics {
         lowStockProducts: 0,
         revenue: 0,
         lastMonthRevenue: 0,
+        todayCollections: 0,
+        totalReceivable: 0,
+        totalPayable: 0,
         openInvoices: 0,
         totalInvoiceAmount: 0,
       );
@@ -325,7 +420,8 @@ class DashboardActivity {
       type: type,
       title: (row['title'] ?? '').toString(),
       customerName: customers?['name']?.toString(),
-      createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ??
+      createdAt:
+          parseAppDateTime(row['created_at']?.toString()) ??
           DateTime.fromMillisecondsSinceEpoch(0),
     );
   }

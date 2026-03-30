@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -12,6 +11,10 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/app_section_card.dart';
+import '../../core/ui/empty_state_card.dart';
+import '../../core/format/app_date_time.dart';
+import 'work_order_create_dialog.dart';
 import 'work_order_model.dart';
 import 'work_order_detail_sheet.dart';
 import 'work_orders_providers.dart';
@@ -28,17 +31,35 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _handledCreateQuery = false;
+  bool _showPassive = false;
+  bool _mobileReorderMode = false;
+  DateTime? _closedFilterDate;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _closedFilterDate = normalizeAppDate(appNow());
+    _tabController.addListener(_handleTabChanged);
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChanged);
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _handleTabChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (_tabController.index != 0) {
+        _mobileReorderMode = false;
+      }
+      if (_tabController.index == 2 && _closedFilterDate == null) {
+        _closedFilterDate = normalizeAppDate(appNow());
+      }
+    });
   }
 
   @override
@@ -54,7 +75,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       context.go('/is-emirleri');
-      await _showCreateWorkOrderDialog(context, ref);
+      await showCreateWorkOrderDialog(context, ref);
       ref.read(workOrdersBoardProvider.notifier).refresh();
     });
   }
@@ -62,144 +83,262 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
   @override
   Widget build(BuildContext context) {
     final boardAsync = ref.watch(workOrdersBoardProvider);
+    final width = MediaQuery.sizeOf(context).width;
+    final height = MediaQuery.sizeOf(context).height;
+    final isCompact = width < 720;
+    final listHeight = isCompact
+        ? (height * 0.72).clamp(440.0, 760.0).toDouble()
+        : (height * 0.58).clamp(360.0, 760.0).toDouble();
+    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
+    final canDeletePermanently = ref.watch(
+      hasActionAccessProvider(kActionDeleteRecords),
+    );
 
     return AppPageLayout(
       title: 'İş Emirleri',
-      subtitle: 'Tüm iş emirlerini yönetin',
+      subtitle: isCompact
+          ? 'Açık işleri hızlıca görün, gerekirse sıralama modunu açın.'
+          : 'İş emri akışını sıkı ve temiz görünümde yönetin.',
       actions: [
-        OutlinedButton.icon(
-          onPressed: () => ref.read(workOrdersBoardProvider.notifier).refresh(),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
-          label: const Text('Yenile'),
-        ),
-        const Gap(10),
-        FilledButton.icon(
-          onPressed: () async {
-            await _showCreateWorkOrderDialog(context, ref);
-            ref.read(workOrdersBoardProvider.notifier).refresh();
-          },
-          icon: const Icon(Icons.add_rounded, size: 18),
-          label: const Text('Yeni İş Emri'),
-        ),
+        if (isCompact) ...[
+          OutlinedButton(
+            onPressed: () =>
+                ref.read(workOrdersBoardProvider.notifier).refresh(),
+            child: const Icon(Icons.refresh_rounded, size: 20),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await showCreateWorkOrderDialog(context, ref);
+              ref.read(workOrdersBoardProvider.notifier).refresh();
+            },
+            child: const Icon(Icons.add_rounded, size: 20),
+          ),
+        ] else ...[
+          OutlinedButton.icon(
+            onPressed: () =>
+                ref.read(workOrdersBoardProvider.notifier).refresh(),
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Yenile'),
+          ),
+          const Gap(10),
+          FilledButton.icon(
+            onPressed: () async {
+              await showCreateWorkOrderDialog(context, ref);
+              ref.read(workOrdersBoardProvider.notifier).refresh();
+            },
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('Yeni İş Emri'),
+          ),
+        ],
       ],
       body: Column(
         children: [
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 2),
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppTheme.border),
+          if (isCompact)
+            boardAsync.when(
+              data: (items) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _MobileBoardStrip(items: items, showPassive: _showPassive),
+              ),
+              loading: () => const SizedBox.shrink(),
+              error: (error, stackTrace) => const SizedBox.shrink(),
             ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                FilterChip(
+                  selected: _showPassive,
+                  label: const Text('Pasifleri Göster'),
+                  avatar: Icon(
+                    _showPassive
+                        ? Icons.visibility_rounded
+                        : Icons.visibility_off_rounded,
+                    size: 16,
+                  ),
+                  onSelected: (value) {
+                    setState(() => _showPassive = value);
+                  },
+                ),
+              ],
+            ),
+          ),
+          Gap(isCompact ? 8 : 8),
+          AppSectionCard(
+            padding: const EdgeInsets.all(6),
             child: TabBar(
               controller: _tabController,
+              isScrollable: isCompact,
               indicatorSize: TabBarIndicatorSize.tab,
               dividerColor: Colors.transparent,
-              labelPadding: const EdgeInsets.symmetric(horizontal: 24),
+              tabAlignment: isCompact ? TabAlignment.start : TabAlignment.fill,
+              labelPadding: EdgeInsets.symmetric(
+                horizontal: isCompact ? 12 : 18,
+              ),
               tabs: [
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.radio_button_unchecked_rounded, size: 16),
-                      const Gap(8),
-                      const Text('Açık'),
-                      boardAsync.whenOrNull(
-                        data: (items) {
-                          final count =
-                              items.where((e) => e.status == 'open').length;
-                          return count > 0
-                              ? Padding(
-                                  padding: const EdgeInsets.only(left: 8),
-                                  child: AppBadge(
-                                    label: count.toString(),
-                                    tone: AppBadgeTone.warning,
-                                  ),
-                                )
-                              : const SizedBox.shrink();
-                        },
-                      ) ?? const SizedBox.shrink(),
-                    ],
+                _StatusTab(
+                  label: 'Açık',
+                  icon: Icons.radio_button_unchecked_rounded,
+                  tone: AppBadgeTone.warning,
+                  count: boardAsync.whenOrNull(
+                    data: (items) =>
+                        items.where((e) => e.status == 'open').length,
                   ),
                 ),
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.timelapse_rounded, size: 16),
-                      const Gap(8),
-                      const Text('Devam Ediyor'),
-                      boardAsync.whenOrNull(
-                        data: (items) {
-                          final count =
-                              items.where((e) => e.status == 'in_progress').length;
-                          return count > 0
-                              ? Padding(
-                                  padding: const EdgeInsets.only(left: 8),
-                                  child: AppBadge(
-                                    label: count.toString(),
-                                    tone: AppBadgeTone.primary,
-                                  ),
-                                )
-                              : const SizedBox.shrink();
-                        },
-                      ) ?? const SizedBox.shrink(),
-                    ],
+                _StatusTab(
+                  label: 'Devam Ediyor',
+                  icon: Icons.timelapse_rounded,
+                  tone: AppBadgeTone.primary,
+                  count: boardAsync.whenOrNull(
+                    data: (items) =>
+                        items.where((e) => e.status == 'in_progress').length,
                   ),
                 ),
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.check_circle_outline_rounded, size: 16),
-                      const Gap(8),
-                      const Text('Kapalı'),
-                      boardAsync.whenOrNull(
-                        data: (items) {
-                          final count =
-                              items.where((e) => e.status == 'done').length;
-                          return count > 0
-                              ? Padding(
-                                  padding: const EdgeInsets.only(left: 8),
-                                  child: AppBadge(
-                                    label: count.toString(),
-                                    tone: AppBadgeTone.success,
-                                  ),
-                                )
-                              : const SizedBox.shrink();
-                        },
-                      ) ?? const SizedBox.shrink(),
-                    ],
+                _StatusTab(
+                  label: 'Kapalı',
+                  icon: Icons.check_circle_outline_rounded,
+                  tone: AppBadgeTone.success,
+                  count: boardAsync.whenOrNull(
+                    data: (items) =>
+                        items.where((e) => e.status == 'done').length,
                   ),
                 ),
               ],
             ),
           ),
-          const Gap(16),
-          Expanded(
+          Gap(isCompact ? 10 : 10),
+          if (_tabController.index == 2) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Bugün'),
+                    selected: _closedFilterDate != null &&
+                        normalizeAppDate(_closedFilterDate!) ==
+                            normalizeAppDate(appNow()),
+                    onSelected: (_) {
+                      setState(() {
+                        _closedFilterDate = normalizeAppDate(appNow());
+                      });
+                    },
+                  ),
+                  ChoiceChip(
+                    label: const Text('Tümü'),
+                    selected: _closedFilterDate == null,
+                    onSelected: (_) {
+                      setState(() => _closedFilterDate = null);
+                    },
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _closedFilterDate ?? normalizeAppDate(appNow()),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2100),
+                        locale: const Locale('tr', 'TR'),
+                      );
+                      if (picked == null || !mounted) return;
+                      setState(() {
+                        _closedFilterDate = normalizeAppDate(picked);
+                      });
+                    },
+                    icon: const Icon(Icons.calendar_month_rounded, size: 16),
+                    label: Text(
+                      _closedFilterDate == null
+                          ? 'Tarih seç'
+                          : DateFormat('d MMM y', 'tr_TR').format(_closedFilterDate!),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Gap(10),
+          ],
+          if (isCompact && _tabController.index == 0) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _mobileReorderMode = !_mobileReorderMode;
+                  });
+                },
+                icon: Icon(
+                  _mobileReorderMode
+                      ? Icons.checklist_rtl_rounded
+                      : Icons.drag_indicator_rounded,
+                  size: 16,
+                ),
+                label: Text(
+                  _mobileReorderMode ? 'Sıralamayı Bitir' : 'Sıralama Modu',
+                ),
+              ),
+            ),
+            const Gap(10),
+          ],
+          SizedBox(
+            height: listHeight,
             child: boardAsync.when(
               data: (items) {
-                debugPrint('WorkOrders loaded: ${items.length} items');
-                for (final item in items) {
-                  debugPrint('  - ${item.title}: status=${item.status}');
-                }
+                final visibleItems = items
+                    .where((e) => _showPassive || e.isActive)
+                    .toList(growable: false);
+                final closedFilterDate = _closedFilterDate == null
+                    ? null
+                    : normalizeAppDate(_closedFilterDate!);
                 return TabBarView(
                   controller: _tabController,
                   children: [
                     _WorkOrderList(
-                      items: items.where((e) => e.status == 'open').toList(),
-                      emptyText: 'Açık iş emri bulunmuyor.',
+                      items: visibleItems
+                          .where((e) => e.status == 'open')
+                          .toList(),
+                      emptyText: _showPassive
+                          ? 'Açık veya pasif iş emri bulunmuyor.'
+                          : 'Açık iş emri bulunmuyor.',
                       onTap: (order) => _openWorkOrderDetail(order),
+                      onToggleActive: _setWorkOrderActive,
+                      canArchive: canArchive,
+                      canDeletePermanently: canDeletePermanently,
+                      onDeletePermanently: _deleteWorkOrderPermanently,
+                      reorderModeEnabled: !isCompact || _mobileReorderMode,
                     ),
                     _WorkOrderList(
-                      items: items.where((e) => e.status == 'in_progress').toList(),
-                      emptyText: 'Devam eden iş emri bulunmuyor.',
+                      items: visibleItems
+                          .where((e) => e.status == 'in_progress')
+                          .toList(),
+                      emptyText: _showPassive
+                          ? 'Devam eden veya pasif iş emri bulunmuyor.'
+                          : 'Devam eden iş emri bulunmuyor.',
                       onTap: (order) => _openWorkOrderDetail(order),
+                      onToggleActive: _setWorkOrderActive,
+                      canArchive: canArchive,
+                      canDeletePermanently: canDeletePermanently,
+                      onDeletePermanently: _deleteWorkOrderPermanently,
+                      reorderModeEnabled: false,
                     ),
                     _WorkOrderList(
-                      items: items.where((e) => e.status == 'done').toList(),
-                      emptyText: 'Kapatılmış iş emri bulunmuyor.',
+                      items: visibleItems.where((e) {
+                        if (e.status != 'done') return false;
+                        if (closedFilterDate == null) return true;
+                        final candidate = e.closedAt ?? e.createdAt ?? e.scheduledDate;
+                        if (candidate == null) return false;
+                        return normalizeAppDate(candidate) == closedFilterDate;
+                      }).toList(),
+                      emptyText: _showPassive
+                          ? 'Kapalı veya pasif iş emri bulunmuyor.'
+                          : 'Kapatılmış iş emri bulunmuyor.',
                       onTap: (order) => _openWorkOrderDetail(order),
+                      onToggleActive: _setWorkOrderActive,
+                      canArchive: canArchive,
+                      canDeletePermanently: canDeletePermanently,
+                      onDeletePermanently: _deleteWorkOrderPermanently,
+                      reorderModeEnabled: false,
                     ),
                   ],
                 );
@@ -233,18 +372,22 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
                   ],
                   emptyText: '',
                   onTap: (_) {},
+                  onToggleActive: (order, active) async {},
+                  canArchive: true,
+                  canDeletePermanently: true,
+                  onDeletePermanently: (order) async {},
+                  reorderModeEnabled: false,
                 ),
               ),
-              error: (_, __) => Center(
+              error: (error, stackTrace) => Center(
                 child: AppCard(
                   child: Padding(
                     padding: const EdgeInsets.all(18),
                     child: Text(
                       'İş emirleri yüklenemedi. Yetki ve bağlantı ayarlarını kontrol edin.',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(color: const Color(0xFF64748B)),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
                     ),
                   ),
                 ),
@@ -260,6 +403,86 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen>
     await showWorkOrderDetailSheet(context, ref, order: order);
     ref.read(workOrdersBoardProvider.notifier).refresh();
   }
+
+  Future<void> _setWorkOrderActive(WorkOrder order, bool active) async {
+    await ref
+        .read(workOrdersBoardProvider.notifier)
+        .setActive(workOrderId: order.id, isActive: active);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          active
+              ? 'İş emri yeniden aktifleştirildi.'
+              : 'İş emri pasife alındı.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteWorkOrderPermanently(WorkOrder order) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('İş emrini kalıcı sil'),
+        content: Text(
+          '"${order.title}" kaydı kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Kalıcı Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      await client
+          .from('invoice_items')
+          .delete()
+          .eq('source_table', 'work_orders')
+          .eq('source_id', order.id);
+
+      final paymentRows = await client
+          .from('payments')
+          .select('id')
+          .eq('work_order_id', order.id);
+      final paymentIds = (paymentRows as List)
+          .map((item) => (item as Map<String, dynamic>)['id']?.toString())
+          .whereType<String>()
+          .toList(growable: false);
+
+      if (paymentIds.isNotEmpty) {
+        await client
+            .from('invoice_items')
+            .delete()
+            .inFilter('source_id', paymentIds)
+            .eq('source_table', 'payments');
+      }
+
+      await client.from('payments').delete().eq('work_order_id', order.id);
+      await client.from('work_orders').delete().eq('id', order.id);
+      await ref.read(workOrdersBoardProvider.notifier).refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('İş emri kalıcı olarak silindi.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İş emri silinemedi: $error')),
+      );
+    }
+  }
 }
 
 class _WorkOrderList extends StatelessWidget {
@@ -267,59 +490,174 @@ class _WorkOrderList extends StatelessWidget {
     required this.items,
     required this.emptyText,
     required this.onTap,
+    required this.onToggleActive,
+    required this.canArchive,
+    required this.canDeletePermanently,
+    required this.onDeletePermanently,
+    required this.reorderModeEnabled,
   });
 
   final List<WorkOrder> items;
   final String emptyText;
   final ValueChanged<WorkOrder> onTap;
+  final Future<void> Function(WorkOrder order, bool active) onToggleActive;
+  final bool canArchive;
+  final bool canDeletePermanently;
+  final Future<void> Function(WorkOrder order) onDeletePermanently;
+  final bool reorderModeEnabled;
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
     if (items.isEmpty) {
       return Center(
-        child: AppCard(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.inbox_rounded,
-                  size: 48,
-                  color: const Color(0xFF94A3B8),
-                ),
-                const Gap(12),
-                Text(
-                  emptyText,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: const Color(0xFF64748B)),
-                ),
-              ],
-            ),
-          ),
+        child: EmptyStateCard(
+          icon: Icons.inbox_rounded,
+          title: 'Kayıt bulunamadı',
+          message: emptyText,
         ),
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
-      itemCount: items.length,
-      separatorBuilder: (_, __) => const Gap(10),
-      itemBuilder: (context, index) {
-        final order = items[index];
-        return _WorkOrderCard(order: order, onTap: () => onTap(order));
-      },
+    final ref = ProviderScope.containerOf(context);
+    final canReorder =
+        reorderModeEnabled &&
+        items.every((item) => item.status == 'open' && item.isActive);
+    if (!canReorder) {
+      return ListView.separated(
+        padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 0 : 2,
+          vertical: 2,
+        ),
+        itemCount: items.length,
+        separatorBuilder: (context, index) => Gap(isMobile ? 8 : 6),
+        itemBuilder: (context, index) {
+          final order = items[index];
+          return _WorkOrderCard(
+            order: order,
+            onTap: () => onTap(order),
+            reorderEnabled: false,
+            reorderIndex: index,
+            onToggleActive: (active) => onToggleActive(order, active),
+            canArchive: canArchive,
+            canDeletePermanently: canDeletePermanently,
+            onDeletePermanently: () => onDeletePermanently(order),
+          );
+        },
+      );
+    }
+
+    return Column(
+      children: [
+        if (isMobile && reorderModeEnabled)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Yalnızca tutma alanından sürükleyerek sırala.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+              ),
+            ),
+          ),
+        Expanded(
+          child: ReorderableListView.builder(
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 0 : 2,
+              vertical: 2,
+            ),
+            itemCount: items.length,
+            buildDefaultDragHandles: false,
+            onReorder: (oldIndex, newIndex) async {
+              final reordered = [...items];
+              if (newIndex > oldIndex) newIndex -= 1;
+              final item = reordered.removeAt(oldIndex);
+              reordered.insert(newIndex, item);
+              await ref
+                  .read(workOrdersBoardProvider.notifier)
+                  .reorderOpenOrders(reordered);
+            },
+            itemBuilder: (context, index) {
+              final order = items[index];
+              return Padding(
+                key: ValueKey(order.id),
+                padding: EdgeInsets.only(
+                  bottom: index == items.length - 1 ? 0 : (isMobile ? 8 : 6),
+                ),
+                child: _WorkOrderCard(
+                  order: order,
+                  onTap: () => onTap(order),
+                  reorderEnabled: true,
+                  reorderIndex: index,
+                  onToggleActive: (active) => onToggleActive(order, active),
+                  canArchive: canArchive,
+                  canDeletePermanently: canDeletePermanently,
+                  onDeletePermanently: () => onDeletePermanently(order),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatusTab extends StatelessWidget {
+  const _StatusTab({
+    required this.label,
+    required this.icon,
+    required this.tone,
+    required this.count,
+  });
+
+  final String label;
+  final IconData icon;
+  final AppBadgeTone tone;
+  final int? count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tab(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15),
+          const Gap(6),
+          Text(label),
+          if ((count ?? 0) > 0)
+            Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: AppBadge(label: count.toString(), tone: tone),
+            ),
+        ],
+      ),
     );
   }
 }
 
 class _WorkOrderCard extends StatefulWidget {
-  const _WorkOrderCard({required this.order, required this.onTap});
+  const _WorkOrderCard({
+    required this.order,
+    required this.onTap,
+    required this.reorderEnabled,
+    required this.reorderIndex,
+    required this.onToggleActive,
+    required this.canArchive,
+    required this.canDeletePermanently,
+    required this.onDeletePermanently,
+  });
 
   final WorkOrder order;
   final VoidCallback onTap;
+  final bool reorderEnabled;
+  final int reorderIndex;
+  final ValueChanged<bool> onToggleActive;
+  final bool canArchive;
+  final bool canDeletePermanently;
+  final Future<void> Function() onDeletePermanently;
 
   @override
   State<_WorkOrderCard> createState() => _WorkOrderCardState();
@@ -331,6 +669,15 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
   @override
   Widget build(BuildContext context) {
     final order = widget.order;
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
+    final orderTone = order.status == 'open' && order.isActive
+        ? _orderSequenceTone(widget.reorderIndex)
+        : null;
+    final money = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: '',
+      decimalDigits: 2,
+    );
     final dateText = order.scheduledDate != null
         ? DateFormat('d MMM y', 'tr_TR').format(order.scheduledDate!)
         : 'Tarih belirlenmedi';
@@ -342,102 +689,303 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
       _ => ('Bilinmiyor', AppBadgeTone.neutral),
     };
 
+    if (isMobile) {
+      return _MobileWorkOrderCard(
+        order: order,
+        hovered: _hovered,
+        reorderEnabled: widget.reorderEnabled,
+        reorderIndex: widget.reorderIndex,
+        onTap: widget.onTap,
+        onToggleActive: widget.onToggleActive,
+        canArchive: widget.canArchive,
+        canDeletePermanently: widget.canDeletePermanently,
+        onDeletePermanently: widget.onDeletePermanently,
+      );
+    }
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(isMobile ? 12 : 14),
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           curve: Curves.easeOut,
           transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(14),
+            color: orderTone?.backgroundColor ?? AppTheme.surface,
+            borderRadius: BorderRadius.circular(isMobile ? 12 : 14),
             border: Border.all(
-              color: _hovered ? AppTheme.primary.withValues(alpha: 0.3) : AppTheme.border,
+              color: _hovered
+                  ? AppTheme.primary.withValues(alpha: 0.24)
+                  : orderTone?.borderColor ?? AppTheme.border,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: _hovered ? 0.08 : 0.04),
-                blurRadius: _hovered ? 20 : 12,
-                offset: const Offset(0, 6),
+                color: Colors.black.withValues(alpha: _hovered ? 0.05 : 0.025),
+                blurRadius: _hovered ? 14 : 10,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      order.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            decoration: order.isActive
-                                ? TextDecoration.none
-                                : TextDecoration.lineThrough,
-                          ),
-                    ),
-                    const Gap(6),
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.business_rounded,
-                          size: 14,
-                          color: const Color(0xFF64748B),
-                        ),
-                        const Gap(6),
+                        if (orderTone != null)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: _SequenceBadge(
+                              index: widget.reorderIndex,
+                              tone: orderTone,
+                            ),
+                          ),
                         Expanded(
                           child: Text(
-                            order.customerName ?? '-',
-                            maxLines: 1,
+                            order.title,
+                            maxLines: isMobile ? 1 : 2,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: const Color(0xFF64748B)),
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  decoration: order.isActive
+                                      ? TextDecoration.none
+                                      : TextDecoration.lineThrough,
+                                ),
                           ),
                         ),
+                        if (widget.reorderEnabled)
+                          ReorderableDragStartListener(
+                            index: widget.reorderIndex,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: Icon(
+                                Icons.drag_indicator_rounded,
+                                size: isMobile ? 18 : 18,
+                                color: const Color(0xFF94A3B8),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
-                    const Gap(4),
-                    Row(
+                    const Gap(3),
+                    if (isMobile &&
+                        (order.customerName?.trim().isNotEmpty ?? false))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          order.customerName!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: const Color(0xFF64748B),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                              ),
+                        ),
+                      ),
+                    Wrap(
+                      spacing: 5,
+                      runSpacing: 5,
                       children: [
-                        Icon(
-                          Icons.calendar_today_rounded,
-                          size: 14,
-                          color: const Color(0xFF94A3B8),
+                        if (!isMobile)
+                          _WorkOrderMetaChip(
+                            icon: Icons.business_rounded,
+                            label: order.customerName ?? '-',
+                          ),
+                        if (order.city?.trim().isNotEmpty ?? false)
+                          _WorkOrderMetaChip(
+                            icon: Icons.location_city_rounded,
+                            label: order.city!,
+                            backgroundColor: _cityTone(
+                              order.city!,
+                            ).withValues(alpha: 0.12),
+                            borderColor: _cityTone(
+                              order.city!,
+                            ).withValues(alpha: 0.24),
+                            foregroundColor: _cityTone(order.city!),
+                            emphasize: true,
+                          ),
+                        if (order.workOrderTypeName?.trim().isNotEmpty ?? false)
+                          _WorkOrderMetaChip(
+                            icon: Icons.category_rounded,
+                            label: order.workOrderTypeName!,
+                            emphasize: true,
+                            compact: isMobile,
+                          ),
+                        if (order.branchName?.trim().isNotEmpty ?? false)
+                          _WorkOrderMetaChip(
+                            icon: Icons.account_tree_rounded,
+                            label: order.branchName!,
+                            compact: isMobile,
+                          ),
+                        _WorkOrderMetaChip(
+                          icon: Icons.calendar_today_rounded,
+                          label: dateText,
+                          compact: isMobile,
                         ),
-                        const Gap(6),
-                        Text(
-                          dateText,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(color: const Color(0xFF94A3B8)),
-                        ),
+                        if (order.contactPhone?.trim().isNotEmpty ?? false)
+                          _WorkOrderMetaChip(
+                            icon: Icons.phone_rounded,
+                            label: order.contactPhone!,
+                            compact: isMobile,
+                          ),
+                        if (order.locationLink?.trim().isNotEmpty ?? false)
+                          _WorkOrderMetaChip(
+                            icon: Icons.link_rounded,
+                            label: 'Konum',
+                            compact: isMobile,
+                          ),
+                        if (order.status == 'done' && order.payments.isNotEmpty)
+                          _WorkOrderMetaChip(
+                            icon: Icons.payments_rounded,
+                            label: _paymentSummary(order, money),
+                            backgroundColor: AppTheme.success.withValues(
+                              alpha: 0.10,
+                            ),
+                            borderColor: AppTheme.success.withValues(
+                              alpha: 0.18,
+                            ),
+                            foregroundColor: AppTheme.success,
+                            emphasize: true,
+                            compact: isMobile,
+                          ),
+                        if (order.status == 'done' && order.payments.isNotEmpty)
+                          for (final chip in _paymentMethodChips(order))
+                            _WorkOrderMetaChip(
+                              icon: chip.icon,
+                              label: chip.label,
+                              backgroundColor: chip.backgroundColor,
+                              borderColor: chip.borderColor,
+                              foregroundColor: chip.foregroundColor,
+                              compact: isMobile,
+                            ),
                       ],
                     ),
+                    if (order.description?.trim().isNotEmpty ?? false) ...[
+                      const Gap(6),
+                      Text(
+                        order.description!,
+                        maxLines: isMobile ? 2 : 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF64748B),
+                          height: 1.3,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              const Gap(12),
+              const Gap(8),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  if (widget.canArchive ||
+                      (!order.isActive && widget.canDeletePermanently))
+                    PopupMenuButton<String>(
+                      tooltip: 'İşlemler',
+                      onSelected: (value) async {
+                        if (value == 'toggle_active') {
+                          widget.onToggleActive(!order.isActive);
+                        } else if (value == 'delete') {
+                          await widget.onDeletePermanently();
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        if (widget.canArchive)
+                          PopupMenuItem<String>(
+                            value: 'toggle_active',
+                            child: Text(
+                              order.isActive ? 'Pasife Al' : 'Aktifleştir',
+                            ),
+                          ),
+                        if (!order.isActive && widget.canDeletePermanently)
+                          const PopupMenuItem<String>(
+                            value: 'delete',
+                            child: Text('Kalıcı Sil'),
+                          ),
+                      ],
+                      child: const Padding(
+                        padding: EdgeInsets.only(bottom: 8),
+                        child: Icon(
+                          Icons.more_vert_rounded,
+                          size: 18,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ),
                   AppBadge(label: statusLabel, tone: statusTone),
-                  const Gap(8),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 20,
-                    color: const Color(0xFF94A3B8),
-                  ),
+                  if (!order.isActive) ...[
+                    const Gap(6),
+                    const AppBadge(label: 'Pasif', tone: AppBadgeTone.neutral),
+                  ],
+                  if (widget.canArchive || (!order.isActive && widget.canDeletePermanently)) ...[
+                    const Gap(8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      alignment: WrapAlignment.end,
+                      children: [
+                        if (widget.canArchive)
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              minimumSize: Size.zero,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            onPressed: () =>
+                                widget.onToggleActive(!order.isActive),
+                            icon: Icon(
+                              order.isActive
+                                  ? Icons.delete_outline_rounded
+                                  : Icons.restore_rounded,
+                              size: 16,
+                            ),
+                            label: Text(order.isActive ? 'Sil' : 'Geri Al'),
+                          ),
+                        if (!order.isActive && widget.canDeletePermanently)
+                          FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppTheme.error,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              minimumSize: Size.zero,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            onPressed: widget.onDeletePermanently,
+                            icon: const Icon(
+                              Icons.delete_forever_rounded,
+                              size: 16,
+                            ),
+                            label: const Text('Kalıcı Sil'),
+                          ),
+                      ],
+                    ),
+                  ],
+                  if (!widget.reorderEnabled) ...[
+                    const Gap(8),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 20,
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ],
                 ],
               ),
             ],
@@ -448,481 +996,653 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
   }
 }
 
-Future<void> _showCreateWorkOrderDialog(BuildContext context, WidgetRef ref) async {
-  final client = ref.read(supabaseClientProvider);
-  if (client == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Supabase bağlantısı bulunamadı.')),
-    );
-    return;
-  }
+class _MobileBoardStrip extends StatelessWidget {
+  const _MobileBoardStrip({required this.items, required this.showPassive});
 
-  await showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (context) => const _CreateWorkOrderDialog(),
-  );
-}
-
-class _CreateWorkOrderDialog extends ConsumerStatefulWidget {
-  const _CreateWorkOrderDialog();
-
-  @override
-  ConsumerState<_CreateWorkOrderDialog> createState() =>
-      _CreateWorkOrderDialogState();
-}
-
-class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _customerController = TextEditingController();
-  final _titleController = TextEditingController();
-  final _descController = TextEditingController();
-  bool _saving = false;
-
-  List<_CustomerOption> _customers = const [];
-  String? _selectedCustomerId;
-  List<_BranchOption> _branches = const [];
-  String? _selectedBranchId;
-  DateTime? _scheduledDate;
-
-  bool _usersLoaded = false;
-  List<_UserOption> _users = const [];
-  String? _assignedTo;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCustomers());
-  }
-
-  Future<void> _loadCustomers() async {
-    final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
-
-    try {
-      final rows = await client
-          .from('customers')
-          .select('id,name,is_active')
-          .eq('is_active', true)
-          .order('name')
-          .limit(200);
-
-      final items = (rows as List)
-          .map((e) => _CustomerOption.fromJson(e as Map<String, dynamic>))
-          .toList(growable: false);
-
-      if (!mounted) return;
-      setState(() => _customers = items);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _customers = const []);
-    }
-  }
-
-  Future<void> _loadBranches(String customerId) async {
-    final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
-
-    try {
-      final rows = await client
-          .from('branches')
-          .select('id,name,is_active')
-          .eq('customer_id', customerId)
-          .eq('is_active', true)
-          .order('name')
-          .limit(100);
-
-      final items = (rows as List)
-          .map((e) => _BranchOption.fromJson(e as Map<String, dynamic>))
-          .toList(growable: false);
-
-      if (!mounted) return;
-      setState(() => _branches = items);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _branches = const []);
-    }
-  }
-
-  Future<void> _loadUsers() async {
-    final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
-
-    try {
-      final rows = await client
-          .from('users')
-          .select('id,full_name,role')
-          .order('full_name')
-          .limit(200);
-
-      final items = (rows as List)
-          .map((e) => _UserOption.fromJson(e as Map<String, dynamic>))
-          .where((u) => u.role != 'admin')
-          .toList(growable: false);
-
-      if (!mounted) return;
-      setState(() => _users = items);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _users = const []);
-    }
-  }
-
-  @override
-  void dispose() {
-    _customerController.dispose();
-    _titleController.dispose();
-    _descController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    final ok = _formKey.currentState?.validate() ?? false;
-    if (!ok) return;
-
-    final customerId = _selectedCustomerId;
-    if (customerId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Müşteri seçin.')),
-      );
-      return;
-    }
-
-    final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
-
-    final profile = await ref.read(currentUserProfileProvider.future);
-    if (!mounted) return;
-    final isAdmin = profile?.role == 'admin';
-
-    final assignedTo = isAdmin ? _assignedTo : client.auth.currentUser?.id;
-    if (assignedTo == null || assignedTo.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Personel ataması gerekli.')),
-      );
-      return;
-    }
-
-    setState(() => _saving = true);
-    try {
-      await client.from('work_orders').insert({
-        'customer_id': customerId,
-        'branch_id': _selectedBranchId,
-        'title': _titleController.text.trim(),
-        'description': _descController.text.trim().isEmpty
-            ? null
-            : _descController.text.trim(),
-        'status': 'open',
-        'assigned_to': assignedTo,
-        'scheduled_date': _scheduledDate == null
-            ? null
-            : _scheduledDate!.toIso8601String().substring(0, 10),
-        'is_active': true,
-        'created_by': client.auth.currentUser?.id,
-      });
-
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İş emri oluşturuldu.')),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İş emri oluşturulamadı.')),
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
+  final List<WorkOrder> items;
+  final bool showPassive;
 
   @override
   Widget build(BuildContext context) {
-    final loadingCustomers = _customers.isEmpty;
-    final isAdmin = ref.watch(isAdminProvider);
+    final visible = items.where((e) => showPassive || e.isActive).toList();
+    final open = visible.where((e) => e.status == 'open').length;
+    final progress = visible.where((e) => e.status == 'in_progress').length;
+    final done = visible.where((e) => e.status == 'done').length;
+    return Row(
+      children: [
+        Expanded(
+          child: _MiniBoardStat(
+            label: 'Açık',
+            value: open.toString(),
+            color: AppTheme.warning,
+          ),
+        ),
+        const Gap(8),
+        Expanded(
+          child: _MiniBoardStat(
+            label: 'Devam',
+            value: progress.toString(),
+            color: AppTheme.primary,
+          ),
+        ),
+        const Gap(8),
+        Expanded(
+          child: _MiniBoardStat(
+            label: 'Kapalı',
+            value: done.toString(),
+            color: AppTheme.success,
+          ),
+        ),
+      ],
+    );
+  }
+}
 
-    if (isAdmin && !_usersLoaded) {
-      _usersLoaded = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadUsers());
-    }
+class _MiniBoardStat extends StatelessWidget {
+  const _MiniBoardStat({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
-    return Dialog(
-      insetPadding: const EdgeInsets.all(24),
-      backgroundColor: Colors.transparent,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 640),
-        child: AppCard(
-          padding: const EdgeInsets.all(20),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Yeni İş Emri',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Kapat',
-                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                ),
-                const Gap(12),
-                if (loadingCustomers)
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: Row(
-                      children: [
-                        const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        const Gap(10),
-                        Expanded(
-                          child: Text(
-                            'Müşteriler yükleniyor...',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(color: const Color(0xFF64748B)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  Autocomplete<_CustomerOption>(
-                    optionsBuilder: (text) {
-                      final q = text.text.trim().toLowerCase();
-                      if (q.isEmpty) return _customers.take(20);
-                      return _customers
-                          .where((c) => c.name.toLowerCase().contains(q))
-                          .take(20);
-                    },
-                    displayStringForOption: (o) => o.name,
-                    onSelected: (o) {
-                      _selectedCustomerId = o.id;
-                      _customerController.text = o.name;
-                      _selectedBranchId = null;
-                      _branches = const [];
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        _loadBranches(o.id);
-                      });
-                    },
-                    fieldViewBuilder: (context, controller, focusNode, _) {
-                      controller.text = _customerController.text;
-                      controller.selection = TextSelection.collapsed(
-                        offset: controller.text.length,
-                      );
-                      return TextFormField(
-                        controller: controller,
-                        focusNode: focusNode,
-                        decoration: const InputDecoration(
-                          labelText: 'Müşteri',
-                          hintText: 'Firma adı yazın ve seçin',
-                        ),
-                        validator: (v) {
-                          if ((_selectedCustomerId ?? '').isEmpty) {
-                            return 'Müşteri seçin.';
-                          }
-                          return null;
-                        },
-                        onChanged: (_) => _selectedCustomerId = null,
-                      );
-                    },
-                  ),
-                const Gap(12),
-                if (_branches.isNotEmpty) ...[
-                  DropdownButtonFormField<String?>(
-                    value: _selectedBranchId,
-                    items: [
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('Şube seç (opsiyonel)'),
-                      ),
-                      ..._branches.map(
-                        (b) => DropdownMenuItem<String?>(
-                          value: b.id,
-                          child: Text(b.name),
-                        ),
-                      ),
-                    ],
-                    onChanged: _saving ? null : (v) => setState(() => _selectedBranchId = v),
-                    decoration: const InputDecoration(labelText: 'Şube'),
-                  ),
-                  const Gap(12),
-                ],
-                Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: _saving
-                            ? null
-                            : () async {
-                                final initial = _scheduledDate ?? DateTime.now();
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate: initial,
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime(DateTime.now().year + 5),
-                                );
-                                if (picked == null) return;
-                                setState(() => _scheduledDate = picked);
-                              },
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'Planlanan Tarih',
-                          ),
-                          child: Text(
-                            _scheduledDate == null
-                                ? 'Seçilmedi'
-                                : '${_scheduledDate!.day}.${_scheduledDate!.month}.${_scheduledDate!.year}',
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (isAdmin) ...[
-                      const Gap(12),
-                      Expanded(
-                        child: DropdownButtonFormField<String?>(
-                          value: _assignedTo,
-                          items: [
-                            const DropdownMenuItem<String?>(
-                              value: null,
-                              child: Text('Personel seç'),
-                            ),
-                            ..._users.map(
-                              (u) => DropdownMenuItem<String?>(
-                                value: u.id,
-                                child: Text(u.fullName ?? 'Personel'),
-                              ),
-                            ),
-                          ],
-                          onChanged: _saving ? null : (v) => setState(() => _assignedTo = v),
-                          decoration: const InputDecoration(labelText: 'Atanan Personel'),
-                          validator: (v) {
-                            if (!isAdmin) return null;
-                            if ((v ?? '').isEmpty) return 'Personel gerekli.';
-                            return null;
-                          },
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                const Gap(12),
-                TextFormField(
-                  controller: _titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Başlık',
-                    hintText: 'Örn: Hat yenileme',
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().length < 2) return 'Başlık gerekli.';
-                    return null;
-                  },
-                ),
-                const Gap(12),
-                TextFormField(
-                  controller: _descController,
-                  minLines: 2,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'Açıklama',
-                    hintText: 'İsteğe bağlı',
-                  ),
-                ),
-                const Gap(18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed:
-                            _saving ? null : () => Navigator.of(context).pop(),
-                        child: const Text('Vazgeç'),
-                      ),
-                    ),
-                    const Gap(12),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: _saving ? null : _save,
-                        child: _saving
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('Kaydet'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: const Color(0xFF64748B),
+              fontWeight: FontWeight.w700,
             ),
           ),
+          const Gap(6),
+          Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const Gap(8),
+              Text(
+                value,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileWorkOrderCard extends StatelessWidget {
+  const _MobileWorkOrderCard({
+    required this.order,
+    required this.hovered,
+    required this.reorderEnabled,
+    required this.reorderIndex,
+    required this.onTap,
+    required this.onToggleActive,
+    required this.canArchive,
+    required this.canDeletePermanently,
+    required this.onDeletePermanently,
+  });
+
+  final WorkOrder order;
+  final bool hovered;
+  final bool reorderEnabled;
+  final int reorderIndex;
+  final VoidCallback onTap;
+  final ValueChanged<bool> onToggleActive;
+  final bool canArchive;
+  final bool canDeletePermanently;
+  final Future<void> Function() onDeletePermanently;
+
+  @override
+  Widget build(BuildContext context) {
+    final orderTone = order.status == 'open' && order.isActive
+        ? _orderSequenceTone(reorderIndex)
+        : null;
+    final scheduled = order.scheduledDate == null
+        ? 'Plan yok'
+        : DateFormat('d MMM', 'tr_TR').format(order.scheduledDate!);
+    final (statusLabel, statusTone) = switch (order.status) {
+      'open' => ('Açık', AppBadgeTone.warning),
+      'in_progress' => ('Sahada', AppBadgeTone.primary),
+      'done' => ('Kapalı', AppBadgeTone.success),
+      _ => ('Bilinmiyor', AppBadgeTone.neutral),
+    };
+
+    Widget content = InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: orderTone?.backgroundColor ?? Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: hovered
+                ? AppTheme.primary.withValues(alpha: 0.24)
+                : orderTone?.borderColor ?? AppTheme.border,
+          ),
+          boxShadow: AppTheme.cardShadow,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (orderTone != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: _SequenceBadge(index: reorderIndex, tone: orderTone),
+                  ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        order.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const Gap(2),
+                      Text(
+                        order.customerName ?? '-',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF64748B),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Gap(8),
+                AppBadge(label: statusLabel, tone: statusTone),
+            ],
+          ),
+          const Gap(8),
+          Wrap(
+            spacing: 5,
+            runSpacing: 5,
+              children: [
+                _WorkOrderMetaChip(
+                  icon: Icons.calendar_today_rounded,
+                  label: scheduled,
+                  compact: true,
+                ),
+                if (order.city?.trim().isNotEmpty ?? false)
+                  _WorkOrderMetaChip(
+                    icon: Icons.location_city_rounded,
+                    label: order.city!,
+                    compact: true,
+                    emphasize: true,
+                    backgroundColor: _cityTone(order.city!).withValues(alpha: 0.12),
+                    borderColor: _cityTone(order.city!).withValues(alpha: 0.24),
+                    foregroundColor: _cityTone(order.city!),
+                  ),
+                if (order.workOrderTypeName?.trim().isNotEmpty ?? false)
+                  _WorkOrderMetaChip(
+                    icon: Icons.category_rounded,
+                    label: order.workOrderTypeName!,
+                    compact: true,
+                    emphasize: true,
+                  ),
+                if (order.contactPhone?.trim().isNotEmpty ?? false)
+                  _WorkOrderMetaChip(
+                    icon: Icons.phone_rounded,
+                    label: order.contactPhone!,
+                    compact: true,
+                  ),
+              ],
+            ),
+            if (order.address?.trim().isNotEmpty ?? false) ...[
+              const Gap(6),
+              Text(
+                order.address!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF475569),
+                  height: 1.3,
+                  fontSize: 12,
+                ),
+              ),
+            ] else if (order.description?.trim().isNotEmpty ?? false) ...[
+              const Gap(6),
+              Text(
+                order.description!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF475569),
+                  height: 1.3,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+            const Gap(8),
+            Row(
+              children: [
+                if (reorderEnabled)
+                  ReorderableDragStartListener(
+                    index: reorderIndex,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: AppTheme.border),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.drag_indicator_rounded,
+                            size: 14,
+                            color: Color(0xFF64748B),
+                          ),
+                          Gap(4),
+                          Text('Sırala'),
+                        ],
+                      ),
+                    ),
+                  ),
+                const Spacer(),
+                if (canArchive)
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 7,
+                      ),
+                      minimumSize: Size.zero,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: () => onToggleActive(!order.isActive),
+                    icon: Icon(
+                      order.isActive
+                          ? Icons.delete_outline_rounded
+                          : Icons.restore_rounded,
+                      size: 16,
+                    ),
+                    label: Text(order.isActive ? 'Sil' : 'Geri Al'),
+                  ),
+                if (canArchive) const Gap(8),
+                if (!order.isActive && canDeletePermanently) ...[
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.error,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 7,
+                      ),
+                      minimumSize: Size.zero,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: onDeletePermanently,
+                    icon: const Icon(Icons.delete_forever_rounded, size: 16),
+                    label: const Text('Kalıcı Sil'),
+                  ),
+                  const Gap(8),
+                ],
+                if (canArchive || (!order.isActive && canDeletePermanently))
+                  PopupMenuButton<String>(
+                    tooltip: 'İşlemler',
+                    onSelected: (value) async {
+                      if (value == 'toggle_active') {
+                        onToggleActive(!order.isActive);
+                      } else if (value == 'delete') {
+                        await onDeletePermanently();
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      if (canArchive)
+                        PopupMenuItem<String>(
+                          value: 'toggle_active',
+                          child: Text(order.isActive ? 'Pasife Al' : 'Aktifleştir'),
+                        ),
+                      if (!order.isActive && canDeletePermanently)
+                        const PopupMenuItem<String>(
+                          value: 'delete',
+                          child: Text('Kalıcı Sil'),
+                        ),
+                    ],
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6),
+                      child: Icon(
+                        Icons.more_horiz_rounded,
+                        size: 20,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    return content;
+  }
+}
+
+class _SequenceBadge extends StatelessWidget {
+  const _SequenceBadge({
+    required this.index,
+    required this.tone,
+  });
+
+  final int index;
+  final _OrderSequenceTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: tone.accentColor,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: tone.accentColor.withValues(alpha: 0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        '${index + 1}',
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
   }
 }
 
-class _CustomerOption {
-  const _CustomerOption({required this.id, required this.name});
+class _WorkOrderMetaChip extends StatelessWidget {
+  const _WorkOrderMetaChip({
+    required this.icon,
+    required this.label,
+    this.emphasize = false,
+    this.compact = false,
+    this.backgroundColor,
+    this.borderColor,
+    this.foregroundColor,
+  });
 
-  final String id;
-  final String name;
+  final IconData icon;
+  final String label;
+  final bool emphasize;
+  final bool compact;
+  final Color? backgroundColor;
+  final Color? borderColor;
+  final Color? foregroundColor;
 
-  factory _CustomerOption.fromJson(Map<String, dynamic> json) {
-    return _CustomerOption(
-      id: json['id'].toString(),
-      name: (json['name'] ?? '').toString(),
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 7 : 9,
+        vertical: compact ? 4 : 5,
+      ),
+      decoration: BoxDecoration(
+        color:
+            backgroundColor ??
+            (emphasize
+                ? AppTheme.primary.withValues(alpha: 0.08)
+                : const Color(0xFFF8FAFC)),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color:
+              borderColor ??
+              (emphasize
+                  ? AppTheme.primary.withValues(alpha: 0.18)
+                  : AppTheme.border),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: compact ? 12 : 14,
+            color:
+                foregroundColor ??
+                (emphasize ? AppTheme.primary : const Color(0xFF64748B)),
+          ),
+          Gap(compact ? 4 : 6),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color:
+                  foregroundColor ??
+                  (emphasize ? AppTheme.primary : const Color(0xFF475569)),
+              fontWeight: emphasize ? FontWeight.w600 : FontWeight.w500,
+              fontSize: compact ? 11 : 11.5,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _BranchOption {
-  const _BranchOption({required this.id, required this.name});
-
-  final String id;
-  final String name;
-
-  factory _BranchOption.fromJson(Map<String, dynamic> json) {
-    return _BranchOption(
-      id: json['id'].toString(),
-      name: (json['name'] ?? '').toString(),
-    );
-  }
+Color _cityTone(String city) {
+  const palette = [
+    Color(0xFF2563EB),
+    Color(0xFF16A34A),
+    Color(0xFFEA580C),
+    Color(0xFF9333EA),
+    Color(0xFFDC2626),
+    Color(0xFF0891B2),
+    Color(0xFFCA8A04),
+    Color(0xFF4F46E5),
+  ];
+  final normalized = city.trim().toLowerCase();
+  final hash = normalized.codeUnits.fold<int>(0, (sum, unit) => sum + unit);
+  return palette[hash % palette.length];
 }
 
-class _UserOption {
-  const _UserOption({required this.id, required this.fullName, required this.role});
+_OrderSequenceTone _orderSequenceTone(int index) {
+  const palette = [
+    _OrderSequenceTone(
+      accentColor: Color(0xFF2563EB),
+      backgroundColor: Color(0xFFF5F9FF),
+      borderColor: Color(0xFFBFDBFE),
+    ),
+    _OrderSequenceTone(
+      accentColor: Color(0xFF0891B2),
+      backgroundColor: Color(0xFFF0FDFF),
+      borderColor: Color(0xFFA5F3FC),
+    ),
+    _OrderSequenceTone(
+      accentColor: Color(0xFF0F766E),
+      backgroundColor: Color(0xFFF0FDFA),
+      borderColor: Color(0xFF99F6E4),
+    ),
+    _OrderSequenceTone(
+      accentColor: Color(0xFF7C3AED),
+      backgroundColor: Color(0xFFF8F5FF),
+      borderColor: Color(0xFFDDD6FE),
+    ),
+    _OrderSequenceTone(
+      accentColor: Color(0xFFEA580C),
+      backgroundColor: Color(0xFFFFF7ED),
+      borderColor: Color(0xFFFED7AA),
+    ),
+    _OrderSequenceTone(
+      accentColor: Color(0xFFBE123C),
+      backgroundColor: Color(0xFFFFF1F2),
+      borderColor: Color(0xFFFDA4AF),
+    ),
+  ];
+  return palette[index % palette.length];
+}
 
-  final String id;
-  final String? fullName;
-  final String? role;
-
-  factory _UserOption.fromJson(Map<String, dynamic> json) {
-    return _UserOption(
-      id: json['id'].toString(),
-      fullName: json['full_name']?.toString(),
-      role: json['role']?.toString(),
+String _paymentSummary(WorkOrder order, NumberFormat money) {
+  final totals = <String, double>{};
+  for (final payment in order.payments) {
+    totals.update(
+      payment.currency,
+      (value) => value + payment.amount,
+      ifAbsent: () => payment.amount,
     );
   }
+  return totals.entries
+      .map((entry) => '${money.format(entry.value)} ${entry.key}')
+      .join(' + ');
+}
+
+List<_PaymentMethodChipData> _paymentMethodChips(WorkOrder order) {
+  final counts = <String, int>{};
+  for (final payment in order.payments) {
+    final method = payment.paymentMethod?.trim();
+    if (method == null || method.isEmpty) continue;
+    counts.update(method, (value) => value + 1, ifAbsent: () => 1);
+  }
+
+  final entries = counts.entries.toList()
+    ..sort((a, b) => a.key.compareTo(b.key));
+  return entries
+      .map((entry) {
+        final tone = _paymentMethodTone(entry.key);
+        return _PaymentMethodChipData(
+          label: '${_paymentMethodText(entry.key)} ${entry.value}',
+          icon: tone.icon,
+          backgroundColor: tone.background,
+          borderColor: tone.border,
+          foregroundColor: tone.foreground,
+        );
+      })
+      .toList(growable: false);
+}
+
+String _paymentMethodText(String method) {
+  return switch (method) {
+    'cash' => 'Nakit',
+    'bank' => 'Havale',
+    'pos' => 'POS',
+    'credit_card' => 'Kart',
+    'check' => 'Çek',
+    'other' => 'Diğer',
+    _ => method,
+  };
+}
+
+_PaymentMethodTone _paymentMethodTone(String method) {
+  return switch (method) {
+    'cash' => const _PaymentMethodTone(
+      icon: Icons.payments_outlined,
+      background: Color(0xFFECFDF5),
+      border: Color(0xFFA7F3D0),
+      foreground: Color(0xFF059669),
+    ),
+    'bank' => const _PaymentMethodTone(
+      icon: Icons.account_balance_rounded,
+      background: Color(0xFFEFF6FF),
+      border: Color(0xFFBFDBFE),
+      foreground: Color(0xFF2563EB),
+    ),
+    'pos' => const _PaymentMethodTone(
+      icon: Icons.point_of_sale_rounded,
+      background: Color(0xFFFFF7ED),
+      border: Color(0xFFFED7AA),
+      foreground: Color(0xFFEA580C),
+    ),
+    'credit_card' => const _PaymentMethodTone(
+      icon: Icons.credit_card_rounded,
+      background: Color(0xFFFAF5FF),
+      border: Color(0xFFE9D5FF),
+      foreground: Color(0xFF9333EA),
+    ),
+    _ => const _PaymentMethodTone(
+      icon: Icons.payments_rounded,
+      background: Color(0xFFF8FAFC),
+      border: Color(0xFFE2E8F0),
+      foreground: Color(0xFF475569),
+    ),
+  };
+}
+
+class _PaymentMethodChipData {
+  const _PaymentMethodChipData({
+    required this.label,
+    required this.icon,
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.foregroundColor,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color backgroundColor;
+  final Color borderColor;
+  final Color foregroundColor;
+}
+
+class _OrderSequenceTone {
+  const _OrderSequenceTone({
+    required this.accentColor,
+    required this.backgroundColor,
+    required this.borderColor,
+  });
+
+  final Color accentColor;
+  final Color backgroundColor;
+  final Color borderColor;
+}
+
+class _PaymentMethodTone {
+  const _PaymentMethodTone({
+    required this.icon,
+    required this.background,
+    required this.border,
+    required this.foreground,
+  });
+
+  final IconData icon;
+  final Color background;
+  final Color border;
+  final Color foreground;
 }

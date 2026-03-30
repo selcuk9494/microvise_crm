@@ -19,7 +19,11 @@ class ProductsScreen extends ConsumerStatefulWidget {
 }
 
 class _ProductsScreenState extends ConsumerState<ProductsScreen> {
-  final _money = NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 2);
+  final _money = NumberFormat.currency(
+    locale: 'tr_TR',
+    symbol: '₺',
+    decimalDigits: 2,
+  );
   String? _categoryFilter;
 
   @override
@@ -84,7 +88,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 // Filter by type if category is set
                 var filtered = products;
                 if (_categoryFilter != null) {
-                  filtered = products.where((p) => p.productType == _categoryFilter).toList();
+                  filtered = products
+                      .where((p) => p.productType == _categoryFilter)
+                      .toList();
                 }
 
                 if (filtered.isEmpty) {
@@ -95,11 +101,16 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.inventory_2_rounded, size: 48, color: const Color(0xFF94A3B8)),
+                            Icon(
+                              Icons.inventory_2_rounded,
+                              size: 48,
+                              color: const Color(0xFF94A3B8),
+                            ),
                             const Gap(12),
                             Text(
                               'Ürün bulunmuyor',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: const Color(0xFF64748B)),
                             ),
                           ],
                         ),
@@ -111,7 +122,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 return ListView.separated(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const Gap(10),
+                  separatorBuilder: (context, index) => const Gap(10),
                   itemBuilder: (context, index) {
                     final product = filtered[index];
                     return _ProductCard(
@@ -123,10 +134,12 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => Center(
+              error: (error, stackTrace) => Center(
                 child: Text(
                   'Ürünler yüklenemedi',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ),
             ),
@@ -136,15 +149,26 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     );
   }
 
-  Future<void> _showProductDialog(BuildContext context, Product? product) async {
+  Future<void> _showProductDialog(
+    BuildContext context,
+    Product? product,
+  ) async {
     final isEdit = product != null;
     final codeController = TextEditingController(text: product?.code ?? '');
     final nameController = TextEditingController(text: product?.name ?? '');
-    final descController = TextEditingController(text: product?.description ?? '');
-    final purchasePriceController = TextEditingController(text: product?.purchasePrice.toString() ?? '0');
-    final salePriceController = TextEditingController(text: product?.salePrice.toString() ?? '0');
-    final minStockController = TextEditingController(text: product?.minStock.toString() ?? '0');
-    
+    final descController = TextEditingController(
+      text: product?.description ?? '',
+    );
+    final purchasePriceController = TextEditingController(
+      text: product?.purchasePrice.toString() ?? '0',
+    );
+    final salePriceController = TextEditingController(
+      text: product?.salePrice.toString() ?? '0',
+    );
+    final minStockController = TextEditingController(
+      text: product?.minStock.toString() ?? '0',
+    );
+
     String productType = product?.productType ?? 'product';
     String unit = product?.unit ?? 'Adet';
     double taxRate = product?.taxRate ?? 20;
@@ -167,7 +191,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     ButtonSegment(value: 'part', label: Text('Parça')),
                   ],
                   selected: {productType},
-                  onSelectionChanged: (s) => setState(() => productType = s.first),
+                  onSelectionChanged: (s) =>
+                      setState(() => productType = s.first),
                 ),
                 const Gap(16),
                 TextField(
@@ -192,16 +217,24 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     Expanded(
                       child: TextField(
                         controller: purchasePriceController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'Alış Fiyatı'),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Alış Fiyatı',
+                        ),
                       ),
                     ),
                     const Gap(12),
                     Expanded(
                       child: TextField(
                         controller: salePriceController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'Satış Fiyatı'),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Satış Fiyatı',
+                        ),
                       ),
                     ),
                   ],
@@ -211,7 +244,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: unit,
+                        initialValue: unit,
                         items: const [
                           DropdownMenuItem(value: 'Adet', child: Text('Adet')),
                           DropdownMenuItem(value: 'Kg', child: Text('Kg')),
@@ -226,7 +259,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     const Gap(12),
                     Expanded(
                       child: DropdownButtonFormField<double>(
-                        value: taxRate,
+                        initialValue: taxRate,
                         items: const [
                           DropdownMenuItem(value: 0.0, child: Text('%0')),
                           DropdownMenuItem(value: 1.0, child: Text('%1')),
@@ -250,15 +283,22 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 if (trackStock) ...[
                   TextField(
                     controller: minStockController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: 'Minimum Stok'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Minimum Stok',
+                    ),
                   ),
                 ],
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('İptal')),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('İptal'),
+            ),
             FilledButton(
               onPressed: saving
                   ? null
@@ -276,20 +316,31 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
 
                       try {
                         final data = {
-                          'code': codeController.text.trim().isEmpty ? null : codeController.text.trim(),
+                          'code': codeController.text.trim().isEmpty
+                              ? null
+                              : codeController.text.trim(),
                           'name': nameController.text.trim(),
-                          'description': descController.text.trim().isEmpty ? null : descController.text.trim(),
+                          'description': descController.text.trim().isEmpty
+                              ? null
+                              : descController.text.trim(),
                           'product_type': productType,
                           'unit': unit,
-                          'purchase_price': double.tryParse(purchasePriceController.text) ?? 0,
-                          'sale_price': double.tryParse(salePriceController.text) ?? 0,
+                          'purchase_price':
+                              double.tryParse(purchasePriceController.text) ??
+                              0,
+                          'sale_price':
+                              double.tryParse(salePriceController.text) ?? 0,
                           'tax_rate': taxRate,
                           'track_stock': trackStock,
-                          'min_stock': double.tryParse(minStockController.text) ?? 0,
+                          'min_stock':
+                              double.tryParse(minStockController.text) ?? 0,
                         };
 
                         if (isEdit) {
-                          await client.from('products').update(data).eq('id', product.id);
+                          await client
+                              .from('products')
+                              .update(data)
+                              .eq('id', product.id);
                         } else {
                           data['created_by'] = client.auth.currentUser?.id;
                           await client.from('products').insert(data);
@@ -298,12 +349,18 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                         if (context.mounted) Navigator.pop(context, true);
                       } catch (e) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hata: $e')));
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('Hata: $e')));
                         }
                       }
                     },
               child: saving
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : Text(isEdit ? 'Güncelle' : 'Kaydet'),
             ),
           ],
@@ -318,7 +375,11 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
 }
 
 class _CategoryChip extends StatelessWidget {
-  const _CategoryChip({required this.label, required this.selected, required this.onTap});
+  const _CategoryChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   final String label;
   final bool selected;
@@ -328,15 +389,23 @@ class _CategoryChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return ActionChip(
       label: Text(label),
-      backgroundColor: selected ? AppTheme.primary.withValues(alpha: 0.1) : null,
-      side: selected ? BorderSide(color: AppTheme.primary.withValues(alpha: 0.3)) : null,
+      backgroundColor: selected
+          ? AppTheme.primary.withValues(alpha: 0.1)
+          : null,
+      side: selected
+          ? BorderSide(color: AppTheme.primary.withValues(alpha: 0.3))
+          : null,
       onPressed: onTap,
     );
   }
 }
 
 class _ProductCard extends StatelessWidget {
-  const _ProductCard({required this.product, required this.money, required this.onTap});
+  const _ProductCard({
+    required this.product,
+    required this.money,
+    required this.onTap,
+  });
 
   final Product product;
   final NumberFormat money;
@@ -369,8 +438,8 @@ class _ProductCard extends StatelessWidget {
                 product.productType == 'service'
                     ? Icons.build_rounded
                     : product.productType == 'part'
-                        ? Icons.settings_rounded
-                        : Icons.inventory_2_rounded,
+                    ? Icons.settings_rounded
+                    : Icons.inventory_2_rounded,
                 color: AppTheme.primary,
                 size: 22,
               ),
@@ -385,7 +454,8 @@ class _ProductCard extends StatelessWidget {
                       if (product.code != null) ...[
                         Text(
                           product.code!,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
                                 color: const Color(0xFF64748B),
                                 fontFamily: 'monospace',
                               ),
@@ -398,17 +468,24 @@ class _ProductCard extends StatelessWidget {
                   const Gap(4),
                   Text(
                     product.name,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   if (product.trackStock) ...[
                     const Gap(4),
                     Row(
                       children: [
-                        Icon(Icons.inventory_rounded, size: 12, color: const Color(0xFF94A3B8)),
+                        Icon(
+                          Icons.inventory_rounded,
+                          size: 12,
+                          color: const Color(0xFF94A3B8),
+                        ),
                         const Gap(4),
                         Text(
                           'Stok Takipli',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF94A3B8)),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: const Color(0xFF94A3B8)),
                         ),
                       ],
                     ),
@@ -422,11 +499,15 @@ class _ProductCard extends StatelessWidget {
               children: [
                 Text(
                   money.format(product.salePrice),
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 Text(
                   '%${product.taxRate.toInt()} KDV',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ],
             ),

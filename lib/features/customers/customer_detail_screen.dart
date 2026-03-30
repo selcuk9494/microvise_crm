@@ -6,72 +6,106 @@ import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/format/app_date_time.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_section_card.dart';
+import '../../core/ui/compact_stat_card.dart';
+import '../billing/invoice_queue_helper.dart';
+import 'customer_model.dart';
+import 'customers_providers.dart';
+import 'customer_form_dialog.dart';
 
-final customerDetailProvider =
-    FutureProvider.family<CustomerDetail, String>((ref, customerId) async {
+final customerDetailProvider = FutureProvider.family<CustomerDetail, String>((
+  ref,
+  customerId,
+) async {
   final client = ref.watch(supabaseClientProvider);
   if (client == null) throw Exception('Supabase yapılandırılmamış.');
 
-  final row = await client
-      .from('customers')
-      .select(
-        'id,name,city,email,vkn,notes,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,is_active,created_at',
-      )
-      .eq('id', customerId)
-      .maybeSingle();
+  Map<String, dynamic>? row;
+  try {
+    row = await client
+        .from('customers')
+        .select(
+          'id,name,city,address,director_name,email,vkn,tckn_ms,notes,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,is_active,created_at',
+        )
+        .eq('id', customerId)
+        .maybeSingle();
+  } catch (_) {
+    final fallbackRow = await client
+        .from('customers')
+        .select(
+          'id,name,city,address,email,vkn,tckn_ms,notes,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,is_active,created_at',
+        )
+        .eq('id', customerId)
+        .maybeSingle();
+    row = fallbackRow == null ? null : {...fallbackRow, 'director_name': null};
+  }
 
   if (row == null) throw Exception('Müşteri bulunamadı.');
   return CustomerDetail.fromJson(row);
 });
 
-final customerLinesProvider =
-    FutureProvider.family<List<CustomerLine>, String>((ref, customerId) async {
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
-  final rows = await client
-      .from('lines')
-      .select('id,label,number,sim_number,starts_at,ends_at,expires_at,is_active')
-      .eq('customer_id', customerId)
-      .order('created_at', ascending: false);
-  return (rows as List)
-      .map((e) => CustomerLine.fromJson(e as Map<String, dynamic>))
-      .toList(growable: false);
-});
+final customerLinesProvider = FutureProvider.family<List<CustomerLine>, String>(
+  (ref, customerId) async {
+    final client = ref.watch(supabaseClientProvider);
+    if (client == null) return const [];
+    final rows = await client
+        .from('lines')
+        .select(
+          'id,label,number,sim_number,starts_at,ends_at,expires_at,is_active',
+        )
+        .eq('customer_id', customerId)
+        .order('created_at', ascending: false);
+    return (rows as List)
+        .map((e) => CustomerLine.fromJson(e as Map<String, dynamic>))
+        .toList(growable: false);
+  },
+);
 
 final customerLicensesProvider =
-    FutureProvider.family<List<CustomerLicense>, String>((ref, customerId) async {
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
-  final rows = await client
-      .from('licenses')
-      .select('id,name,license_type,starts_at,ends_at,expires_at,is_active')
-      .eq('customer_id', customerId)
-      .order('created_at', ascending: false);
-  return (rows as List)
-      .map((e) => CustomerLicense.fromJson(e as Map<String, dynamic>))
-      .toList(growable: false);
-});
+    FutureProvider.family<List<CustomerLicense>, String>((
+      ref,
+      customerId,
+    ) async {
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
+      final rows = await client
+          .from('licenses')
+          .select('id,name,license_type,starts_at,ends_at,expires_at,is_active')
+          .eq('customer_id', customerId)
+          .order('created_at', ascending: false);
+      return (rows as List)
+          .map((e) => CustomerLicense.fromJson(e as Map<String, dynamic>))
+          .toList(growable: false);
+    });
 
 final customerBranchesProvider =
-    FutureProvider.family<List<CustomerBranch>, String>((ref, customerId) async {
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
+    FutureProvider.family<List<CustomerBranch>, String>((
+      ref,
+      customerId,
+    ) async {
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
 
-  final rows = await client
-      .from('branches')
-      .select('id,name,city,address,phone,location_lat,location_lng,is_active,created_at')
-      .eq('customer_id', customerId)
-      .order('created_at', ascending: false);
+      final rows = await client
+          .from('branches')
+          .select(
+            'id,name,city,address,phone,location_lat,location_lng,is_active,created_at',
+          )
+          .eq('customer_id', customerId)
+          .order('created_at', ascending: false);
 
-  return (rows as List)
-      .map((e) => CustomerBranch.fromJson(e as Map<String, dynamic>))
-      .toList(growable: false);
-});
+      return (rows as List)
+          .map((e) => CustomerBranch.fromJson(e as Map<String, dynamic>))
+          .toList(growable: false);
+    });
 
-final customersForTransferProvider = FutureProvider<List<_CustomerOption>>((ref) async {
+final customersForTransferProvider = FutureProvider<List<_CustomerOption>>((
+  ref,
+) async {
   final client = ref.watch(supabaseClientProvider);
   if (client == null) return const [];
 
@@ -86,18 +120,21 @@ final customersForTransferProvider = FutureProvider<List<_CustomerOption>>((ref)
 });
 
 final customerWorkOrdersProvider =
-    FutureProvider.family<List<CustomerWorkOrder>, String>((ref, customerId) async {
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
-  final rows = await client
-      .from('work_orders')
-      .select('id,title,status,scheduled_date,is_active')
-      .eq('customer_id', customerId)
-      .order('created_at', ascending: false);
-  return (rows as List)
-      .map((e) => CustomerWorkOrder.fromJson(e as Map<String, dynamic>))
-      .toList(growable: false);
-});
+    FutureProvider.family<List<CustomerWorkOrder>, String>((
+      ref,
+      customerId,
+    ) async {
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
+      final rows = await client
+          .from('work_orders')
+          .select('id,title,status,scheduled_date,is_active')
+          .eq('customer_id', customerId)
+          .order('created_at', ascending: false);
+      return (rows as List)
+          .map((e) => CustomerWorkOrder.fromJson(e as Map<String, dynamic>))
+          .toList(growable: false);
+    });
 
 class CustomerDetailScreen extends ConsumerWidget {
   const CustomerDetailScreen({super.key, required this.customerId});
@@ -121,8 +158,11 @@ class CustomerDetailScreen extends ConsumerWidget {
                 id: customerId,
                 name: 'Microvise Teknoloji A.Ş.',
                 city: 'İstanbul',
+                address: 'Örnek Mah. No:1',
+                directorName: 'Ahmet Yılmaz',
                 email: 'ornek@firma.com',
                 vkn: '1234567890',
+                tcknMs: 'MS-1001',
                 notes: 'Notlar burada görünür.',
                 phone1: '0 555 555 55 55',
                 phone1Title: 'Yetkili',
@@ -135,7 +175,7 @@ class CustomerDetailScreen extends ConsumerWidget {
               ),
             ),
           ),
-          error: (_, __) => Center(
+          error: (error, stackTrace) => Center(
             child: AppCard(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -147,10 +187,9 @@ class CustomerDetailScreen extends ConsumerWidget {
                   const Gap(10),
                   Text(
                     'Yetki, bağlantı veya kayıt kontrolü yapın.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: const Color(0xFF64748B)),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
                   ),
                   const Gap(14),
                   FilledButton(
@@ -174,64 +213,156 @@ class _Content extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final linesAsync = ref.watch(customerLinesProvider(detail.id));
+    final licensesAsync = ref.watch(customerLicensesProvider(detail.id));
+    final workOrdersAsync = ref.watch(customerWorkOrdersProvider(detail.id));
+    final activeLines =
+        linesAsync.asData?.value.where((line) => line.isActive).length ?? 0;
+    final activeLicenses =
+        licensesAsync.asData?.value
+            .where((license) => license.isActive)
+            .length ??
+        0;
+    final activeWorkOrders =
+        workOrdersAsync.asData?.value
+            .where((order) => order.isActive && order.status != 'done')
+            .length ??
+        0;
+
     return DefaultTabController(
       length: 5,
       child: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-              child: Row(
-                children: [
-                  IconButton(
-                    tooltip: 'Geri',
-                    onPressed: () => Navigator.of(context).maybePop(),
-                    icon: const Icon(Icons.arrow_back_rounded),
-                  ),
-                  const Gap(8),
-                  Expanded(
-                    child: Column(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+              child: AppCard(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+                child: Column(
+                  children: [
+                    Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          detail.name,
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        const Gap(4),
-                        Row(
-                          children: [
-                            AppBadge(
-                              label: detail.isActive ? 'Aktif' : 'Pasif',
-                              tone: detail.isActive
-                                  ? AppBadgeTone.success
-                                  : AppBadgeTone.neutral,
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFE0E7FF), Color(0xFFDBEAFE)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
-                            if (detail.city != null) ...[
-                              const Gap(10),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: AppTheme.border),
+                          ),
+                          child: IconButton(
+                            tooltip: 'Geri',
+                            onPressed: () => Navigator.of(context).maybePop(),
+                            icon: const Icon(
+                              Icons.arrow_back_rounded,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                        const Gap(12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                detail.city!,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(color: const Color(0xFF64748B)),
+                                detail.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.titleLarge
+                                    ?.copyWith(fontWeight: FontWeight.w800),
+                              ),
+                              const Gap(6),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  AppBadge(
+                                    label: detail.isActive ? 'Aktif' : 'Pasif',
+                                    tone: detail.isActive
+                                        ? AppBadgeTone.success
+                                        : AppBadgeTone.neutral,
+                                  ),
+                                  if (detail.city != null) ...[
+                                    _HeaderChip(
+                                      icon: Icons.location_on_outlined,
+                                      label: detail.city!,
+                                    ),
+                                  ],
+                                  if (detail.vkn?.trim().isNotEmpty ??
+                                      false) ...[
+                                    _HeaderChip(
+                                      icon: Icons.badge_outlined,
+                                      label: detail.vkn!,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const Gap(10),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                children: [
+                                  CompactStatCard(
+                                    label: 'Hat',
+                                    value: '$activeLines',
+                                    icon: Icons.sim_card_rounded,
+                                    color: AppTheme.primary,
+                                  ),
+                                  CompactStatCard(
+                                    label: 'Lisans',
+                                    value: '$activeLicenses',
+                                    icon: Icons.verified_rounded,
+                                    color: const Color(0xFFF59E0B),
+                                  ),
+                                  CompactStatCard(
+                                    label: 'Açık İş',
+                                    value: '$activeWorkOrders',
+                                    icon: Icons.assignment_turned_in_rounded,
+                                    color: const Color(0xFF22C55E),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Gap(12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: () async {
+                                await _showEditCustomerDialog(
+                                  context,
+                                  ref,
+                                  detail: detail,
+                                );
+                              },
+                              icon: const Icon(Icons.edit_rounded, size: 18),
+                              label: const Text('Düzenle'),
+                            ),
+                            if (detail.email?.trim().isNotEmpty ?? false) ...[
+                              const Gap(10),
+                              _HeaderChip(
+                                icon: Icons.alternate_email_rounded,
+                                label: detail.email!,
                               ),
                             ],
                           ],
                         ),
                       ],
                     ),
-                  ),
-                  FilledButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.edit_rounded, size: 18),
-                    label: const Text('Düzenle'),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 14),
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
             sliver: SliverToBoxAdapter(
               child: AppCard(
                 padding: EdgeInsets.zero,
@@ -240,8 +371,10 @@ class _Content extends ConsumerWidget {
                     const TabBar(
                       isScrollable: true,
                       tabAlignment: TabAlignment.start,
-                      labelPadding:
-                          EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      labelPadding: EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
                       tabs: [
                         Tab(text: 'Genel'),
                         Tab(text: 'Şubeler'),
@@ -252,7 +385,7 @@ class _Content extends ConsumerWidget {
                     ),
                     const Divider(height: 1),
                     SizedBox(
-                      height: 620,
+                      height: MediaQuery.sizeOf(context).height * 0.72,
                       child: TabBarView(
                         children: [
                           _GeneralTab(detail: detail),
@@ -274,115 +407,249 @@ class _Content extends ConsumerWidget {
   }
 }
 
-class _GeneralTab extends StatelessWidget {
+class _GeneralTab extends ConsumerWidget {
   const _GeneralTab({required this.detail});
 
   final CustomerDetail detail;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final date = DateFormat('d MMMM y', 'tr_TR').format(detail.createdAt);
+    final locationsAsync = ref.watch(customerLocationsProvider(detail.id));
 
-    return Padding(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Genel Bilgiler', style: Theme.of(context).textTheme.titleMedium),
-          const Gap(14),
-          _InfoRow(label: 'Firma Adı', value: detail.name),
-          const Gap(10),
-          _InfoRow(label: 'Şehir', value: detail.city ?? '—'),
-          const Gap(10),
-          _InfoRow(label: 'E-posta', value: detail.email ?? '—'),
-          const Gap(10),
-          _InfoRow(label: 'VKN', value: detail.vkn ?? '—'),
-          const Gap(10),
-          _InfoRow(
-            label: detail.phone1Title ?? 'Telefon 1',
-            value: detail.phone1 ?? '—',
-          ),
-          const Gap(10),
-          _InfoRow(
-            label: detail.phone2Title ?? 'Telefon 2',
-            value: detail.phone2 ?? '—',
-          ),
-          const Gap(10),
-          _InfoRow(
-            label: detail.phone3Title ?? 'Telefon 3',
-            value: detail.phone3 ?? '—',
-          ),
-          const Gap(10),
-          _InfoRow(label: 'Kayıt Tarihi', value: date),
-          if (detail.notes?.trim().isNotEmpty ?? false) ...[
-            const Gap(16),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.border),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= 900;
+
+        Widget buildLocationCard(CustomerLocation location) {
+          return Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  location.title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                if (location.description?.trim().isNotEmpty ?? false) ...[
+                  const Gap(6),
+                  Text(
+                    location.description!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF475569),
+                    ),
+                  ),
+                ],
+                if (location.address?.trim().isNotEmpty ?? false) ...[
+                  const Gap(8),
+                  Text(
+                    location.address!,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+                if (location.locationLat != null ||
+                    location.locationLng != null) ...[
+                  const Gap(8),
+                  Text(
+                    'Konum: ${location.locationLat?.toStringAsFixed(5) ?? '-'}, ${location.locationLng?.toStringAsFixed(5) ?? '-'}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        }
+
+        return ListView(
+          padding: const EdgeInsets.all(14),
+          children: [
+            if (isWide)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: AppSectionCard(
+                      title: 'Firma Özeti',
+                      subtitle: 'Temel cari ve kimlik bilgileri',
+                      child: Column(
+                        children: [
+                          _InfoRow(label: 'Firma Adı', value: detail.name),
+                          const Gap(10),
+                          _InfoRow(label: 'Şehir', value: detail.city ?? '—'),
+                          const Gap(10),
+                          _InfoRow(
+                            label: 'Adres',
+                            value: detail.address ?? '—',
+                          ),
+                          const Gap(10),
+                          _InfoRow(
+                            label: 'Direktör Ad Soyad',
+                            value: detail.directorName ?? '—',
+                          ),
+                          const Gap(10),
+                          _InfoRow(label: 'Kayıt Tarihi', value: date),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Gap(12),
+                  Expanded(
+                    child: AppSectionCard(
+                      title: 'İletişim ve Vergi',
+                      subtitle: 'Telefon, mail ve müşteri sicil alanları',
+                      child: Column(
+                        children: [
+                          _InfoRow(
+                            label: 'E-posta',
+                            value: detail.email ?? '—',
+                          ),
+                          const Gap(10),
+                          _InfoRow(label: 'VKN', value: detail.vkn ?? '—'),
+                          const Gap(10),
+                          _InfoRow(
+                            label: 'TCKN-MŞ',
+                            value: detail.tcknMs ?? '—',
+                          ),
+                          const Gap(10),
+                          _InfoRow(
+                            label: detail.phone1Title ?? 'Telefon 1',
+                            value: detail.phone1 ?? '—',
+                          ),
+                          const Gap(10),
+                          _InfoRow(
+                            label: detail.phone2Title ?? 'Telefon 2',
+                            value: detail.phone2 ?? '—',
+                          ),
+                          const Gap(10),
+                          _InfoRow(
+                            label: detail.phone3Title ?? 'Telefon 3',
+                            value: detail.phone3 ?? '—',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            else ...[
+              AppSectionCard(
+                title: 'Firma Özeti',
+                child: Column(
+                  children: [
+                    _InfoRow(label: 'Firma Adı', value: detail.name),
+                    const Gap(10),
+                    _InfoRow(label: 'Şehir', value: detail.city ?? '—'),
+                    const Gap(10),
+                    _InfoRow(label: 'Adres', value: detail.address ?? '—'),
+                    const Gap(10),
+                    _InfoRow(
+                      label: 'Direktör Ad Soyad',
+                      value: detail.directorName ?? '—',
+                    ),
+                  ],
+                ),
               ),
-              child: Text(
-                detail.notes!,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: const Color(0xFF0F172A)),
+              const Gap(12),
+              AppSectionCard(
+                title: 'İletişim ve Vergi',
+                child: Column(
+                  children: [
+                    _InfoRow(label: 'E-posta', value: detail.email ?? '—'),
+                    const Gap(10),
+                    _InfoRow(label: 'VKN', value: detail.vkn ?? '—'),
+                    const Gap(10),
+                    _InfoRow(label: 'TCKN-MŞ', value: detail.tcknMs ?? '—'),
+                  ],
+                ),
+              ),
+            ],
+            const Gap(12),
+            AppSectionCard(
+              title: 'Konumlar',
+              subtitle: 'Kayıtlı operasyon noktaları ve açıklamaları',
+              child: locationsAsync.when(
+                data: (locations) {
+                  if (locations.isEmpty) {
+                    return Text(
+                      'Henüz müşteri konumu eklenmemiş.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
+                    );
+                  }
+                  return Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      for (final location in locations)
+                        SizedBox(
+                          width: isWide
+                              ? (constraints.maxWidth - 38) / 2
+                              : double.infinity,
+                          child: buildLocationCard(location),
+                        ),
+                    ],
+                  );
+                },
+                loading: () => const LinearProgressIndicator(minHeight: 2),
+                error: (error, stackTrace) => const SizedBox.shrink(),
+              ),
+            ),
+            if (detail.notes?.trim().isNotEmpty ?? false) ...[
+              const Gap(12),
+              AppSectionCard(
+                title: 'Notlar',
+                child: Text(
+                  detail.notes!,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+            ],
+            const Gap(12),
+            AppSectionCard(
+              title: 'Hızlı Aksiyonlar',
+              subtitle:
+                  'İş emri, hat, lisans ve servis süreçlerini müşteri bazında başlatın.',
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: const Icon(
+                      Icons.flash_on_rounded,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                  const Gap(12),
+                  Expanded(
+                    child: Text(
+                      'Bu müşteri için operasyon başlatmak, adres ve iletişim bilgisini yeniden kullanmak için ana merkez ekranı kullanın.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
-          const Gap(18),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppTheme.border),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
-                  ),
-                  child: const Icon(
-                    Icons.flash_on_rounded,
-                    color: AppTheme.primary,
-                  ),
-                ),
-                const Gap(12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hızlı Aksiyonlar',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                      const Gap(2),
-                      Text(
-                        'Yeni iş emri açın, hat/ lisans ekleyin veya servis kaydı başlatın.',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: const Color(0xFF64748B)),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -410,7 +677,11 @@ class _BranchesTab extends ConsumerWidget {
               ),
               FilledButton.icon(
                 onPressed: () async {
-                  await _showAddBranchDialog(context, ref, customerId: customerId);
+                  await _showAddBranchDialog(
+                    context,
+                    ref,
+                    customerId: customerId,
+                  );
                   ref.invalidate(customerBranchesProvider(customerId));
                 },
                 icon: const Icon(Icons.add_rounded, size: 18),
@@ -423,16 +694,39 @@ class _BranchesTab extends ConsumerWidget {
             child: branchesAsync.when(
               data: (branches) {
                 if (branches.isEmpty) {
-                  return const _TabEmpty(text: 'Bu müşteriye ait şube bulunamadı.');
+                  return const _TabEmpty(
+                    text: 'Bu müşteriye ait şube bulunamadı.',
+                  );
                 }
                 return ListView.separated(
                   itemCount: branches.length,
-                  separatorBuilder: (_, __) => const Gap(10),
-                  itemBuilder: (context, index) => _BranchItem(branch: branches[index]),
+                  separatorBuilder: (context, index) => const Gap(10),
+                  itemBuilder: (context, index) => _BranchItem(
+                    branch: branches[index],
+                    onEdit: () async {
+                      await _showBranchDialog(
+                        context,
+                        ref,
+                        customerId: customerId,
+                        branch: branches[index],
+                      );
+                      ref.invalidate(customerBranchesProvider(customerId));
+                    },
+                    onToggleActive: () async {
+                      final client = ref.read(supabaseClientProvider);
+                      if (client == null) return;
+                      await client
+                          .from('branches')
+                          .update({'is_active': !branches[index].isActive})
+                          .eq('id', branches[index].id);
+                      ref.invalidate(customerBranchesProvider(customerId));
+                    },
+                  ),
                 );
               },
               loading: () => const _ListSkeleton(),
-              error: (_, __) => const _TabError(text: 'Şubeler yüklenemedi.'),
+              error: (error, stackTrace) =>
+                  const _TabError(text: 'Şubeler yüklenemedi.'),
             ),
           ),
         ],
@@ -464,7 +758,11 @@ class _LinesTab extends ConsumerWidget {
               ),
               FilledButton.icon(
                 onPressed: () async {
-                  await _showSellLineDialog(context, ref, customerId: customerId);
+                  await _showSellLineDialog(
+                    context,
+                    ref,
+                    customerId: customerId,
+                  );
                   ref.invalidate(customerLinesProvider(customerId));
                 },
                 icon: const Icon(Icons.add_rounded, size: 18),
@@ -477,11 +775,13 @@ class _LinesTab extends ConsumerWidget {
             child: linesAsync.when(
               data: (lines) {
                 if (lines.isEmpty) {
-                  return const _TabEmpty(text: 'Bu müşteriye ait hat bulunamadı.');
+                  return const _TabEmpty(
+                    text: 'Bu müşteriye ait hat bulunamadı.',
+                  );
                 }
                 return ListView.separated(
                   itemCount: lines.length,
-                  separatorBuilder: (_, __) => const Gap(10),
+                  separatorBuilder: (context, index) => const Gap(10),
                   itemBuilder: (context, index) => _LineItem(
                     line: lines[index],
                     customerId: customerId,
@@ -490,7 +790,8 @@ class _LinesTab extends ConsumerWidget {
                 );
               },
               loading: () => const _ListSkeleton(),
-              error: (_, __) => const _TabError(text: 'Hatlar yüklenemedi.'),
+              error: (error, stackTrace) =>
+                  const _TabError(text: 'Hatlar yüklenemedi.'),
             ),
           ),
         ],
@@ -521,7 +822,11 @@ class _LicensesTab extends ConsumerWidget {
               ),
               FilledButton.icon(
                 onPressed: () async {
-                  await _showSellGmp3Dialog(context, ref, customerId: customerId);
+                  await _showSellGmp3Dialog(
+                    context,
+                    ref,
+                    customerId: customerId,
+                  );
                   ref.invalidate(customerLicensesProvider(customerId));
                 },
                 icon: const Icon(Icons.add_rounded, size: 18),
@@ -533,19 +838,26 @@ class _LicensesTab extends ConsumerWidget {
           Expanded(
             child: licensesAsync.when(
               data: (items) {
-                final gmp3 = items.where((e) => e.licenseType == 'gmp3').toList();
+                final gmp3 = items
+                    .where((e) => e.licenseType == 'gmp3')
+                    .toList();
                 if (gmp3.isEmpty) {
-                  return const _TabEmpty(text: 'Bu müşteriye ait GMP3 lisansı bulunamadı.');
+                  return const _TabEmpty(
+                    text: 'Bu müşteriye ait GMP3 lisansı bulunamadı.',
+                  );
                 }
                 return ListView.separated(
                   itemCount: gmp3.length,
-                  separatorBuilder: (_, __) => const Gap(10),
-                  itemBuilder: (context, index) =>
-                      _LicenseItem(customerId: customerId, license: gmp3[index]),
+                  separatorBuilder: (context, index) => const Gap(10),
+                  itemBuilder: (context, index) => _LicenseItem(
+                    customerId: customerId,
+                    license: gmp3[index],
+                  ),
                 );
               },
               loading: () => const _ListSkeleton(),
-              error: (_, __) => const _TabError(text: 'Lisanslar yüklenemedi.'),
+              error: (error, stackTrace) =>
+                  const _TabError(text: 'Lisanslar yüklenemedi.'),
             ),
           ),
         ],
@@ -567,11 +879,13 @@ class _WorkOrdersTab extends ConsumerWidget {
       child: workOrdersAsync.when(
         data: (items) {
           if (items.isEmpty) {
-            return const _TabEmpty(text: 'Bu müşteriye ait iş emri bulunamadı.');
+            return const _TabEmpty(
+              text: 'Bu müşteriye ait iş emri bulunamadı.',
+            );
           }
           return ListView.separated(
             itemCount: items.length,
-            separatorBuilder: (_, __) => const Gap(10),
+            separatorBuilder: (context, index) => const Gap(10),
             itemBuilder: (context, index) {
               final w = items[index];
               final status = switch (w.status) {
@@ -599,7 +913,8 @@ class _WorkOrdersTab extends ConsumerWidget {
                         children: [
                           Text(
                             w.title,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
                                   fontWeight: FontWeight.w600,
                                   decoration: w.isActive
                                       ? TextDecoration.none
@@ -609,9 +924,7 @@ class _WorkOrdersTab extends ConsumerWidget {
                           const Gap(4),
                           Text(
                             when,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
+                            style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: const Color(0xFF64748B)),
                           ),
                         ],
@@ -625,16 +938,23 @@ class _WorkOrdersTab extends ConsumerWidget {
           );
         },
         loading: () => const _ListSkeleton(),
-        error: (_, __) => const _TabError(text: 'İş emirleri yüklenemedi.'),
+        error: (error, stackTrace) =>
+            const _TabError(text: 'İş emirleri yüklenemedi.'),
       ),
     );
   }
 }
 
 class _BranchItem extends StatelessWidget {
-  const _BranchItem({required this.branch});
+  const _BranchItem({
+    required this.branch,
+    required this.onEdit,
+    required this.onToggleActive,
+  });
 
   final CustomerBranch branch;
+  final Future<void> Function() onEdit;
+  final Future<void> Function() onToggleActive;
 
   @override
   Widget build(BuildContext context) {
@@ -664,16 +984,35 @@ class _BranchItem extends StatelessWidget {
                 child: Text(
                   title,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: branch.isActive
-                            ? TextDecoration.none
-                            : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    decoration: branch.isActive
+                        ? TextDecoration.none
+                        : TextDecoration.lineThrough,
+                  ),
                 ),
               ),
               AppBadge(
                 label: branch.isActive ? 'Aktif' : 'Pasif',
-                tone: branch.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
+                tone: branch.isActive
+                    ? AppBadgeTone.success
+                    : AppBadgeTone.neutral,
+              ),
+              const Gap(8),
+              PopupMenuButton<String>(
+                onSelected: (value) async {
+                  if (value == 'edit') {
+                    await onEdit();
+                    return;
+                  }
+                  await onToggleActive();
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+                  PopupMenuItem(
+                    value: 'toggle',
+                    child: Text(branch.isActive ? 'Pasif Yap' : 'Aktif Yap'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -681,30 +1020,27 @@ class _BranchItem extends StatelessWidget {
             const Gap(6),
             Text(
               subtitle,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: const Color(0xFF64748B)),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
             ),
           ],
           if (branch.address?.trim().isNotEmpty ?? false) ...[
             const Gap(8),
             Text(
               branch.address!,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: const Color(0xFF475569)),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF475569)),
             ),
           ],
           if (location != null) ...[
             const Gap(8),
             Text(
               'Konum: $location',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: const Color(0xFF94A3B8)),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF94A3B8)),
             ),
           ],
         ],
@@ -741,27 +1077,27 @@ class _LineItemState extends ConsumerState<_LineItem> {
     final tone = !line.isActive
         ? AppBadgeTone.neutral
         : endsAt == null
-            ? AppBadgeTone.neutral
-            : endsAt.isBefore(now)
-                ? AppBadgeTone.error
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? AppBadgeTone.warning
-                    : AppBadgeTone.success;
+        ? AppBadgeTone.neutral
+        : endsAt.isBefore(now)
+        ? AppBadgeTone.error
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? AppBadgeTone.warning
+        : AppBadgeTone.success;
 
     final statusLabel = !line.isActive
         ? 'Pasif'
         : endsAt == null
-            ? 'Tarihsiz'
-            : endsAt.isBefore(now)
-                ? 'Bitmiş'
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? 'Yaklaşıyor'
-                    : 'Aktif';
+        ? 'Tarihsiz'
+        : endsAt.isBefore(now)
+        ? 'Bitmiş'
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? 'Yaklaşıyor'
+        : 'Aktif';
 
     final period = (startsAt == null && endsAt == null)
         ? null
         : '${startsAt == null ? '—' : DateFormat('d MMM y', 'tr_TR').format(startsAt)}'
-            ' → ${endsAt == null ? '—' : DateFormat('d MMM y', 'tr_TR').format(endsAt)}';
+              ' → ${endsAt == null ? '—' : DateFormat('d MMM y', 'tr_TR').format(endsAt)}';
 
     final subtitle = [
       if (line.number?.trim().isNotEmpty ?? false) 'Hat: ${line.number}',
@@ -787,30 +1123,28 @@ class _LineItemState extends ConsumerState<_LineItem> {
                       ? line.label!
                       : (line.number ?? 'Hat'),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: line.isActive
-                            ? TextDecoration.none
-                            : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    decoration: line.isActive
+                        ? TextDecoration.none
+                        : TextDecoration.lineThrough,
+                  ),
                 ),
                 if (subtitle.isNotEmpty) ...[
                   const Gap(4),
                   Text(
                     subtitle,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: const Color(0xFF64748B)),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
                   ),
                 ],
                 if (period != null) ...[
                   const Gap(4),
                   Text(
                     period,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: const Color(0xFF94A3B8)),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF94A3B8),
+                    ),
                   ),
                 ],
               ],
@@ -828,8 +1162,8 @@ class _LineItemState extends ConsumerState<_LineItem> {
                     onPressed: _busy
                         ? null
                         : () => controller.isOpen
-                            ? controller.close()
-                            : controller.open(),
+                              ? controller.close()
+                              : controller.open(),
                     child: _busy
                         ? const SizedBox(
                             width: 16,
@@ -850,7 +1184,9 @@ class _LineItemState extends ConsumerState<_LineItem> {
                             lineId: line.id,
                             fromCustomerId: widget.customerId,
                           );
-                          ref.invalidate(customerLinesProvider(widget.customerId));
+                          ref.invalidate(
+                            customerLinesProvider(widget.customerId),
+                          );
                         } finally {
                           if (mounted) setState(() => _busy = false);
                         }
@@ -869,7 +1205,9 @@ class _LineItemState extends ConsumerState<_LineItem> {
                             customerId: widget.customerId,
                             currentEndsAt: line.endsAt,
                           );
-                          ref.invalidate(customerLinesProvider(widget.customerId));
+                          ref.invalidate(
+                            customerLinesProvider(widget.customerId),
+                          );
                         } finally {
                           if (mounted) setState(() => _busy = false);
                         }
@@ -909,27 +1247,27 @@ class _LicenseItemState extends ConsumerState<_LicenseItem> {
     final tone = !license.isActive
         ? AppBadgeTone.neutral
         : endsAt == null
-            ? AppBadgeTone.neutral
-            : endsAt.isBefore(now)
-                ? AppBadgeTone.error
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? AppBadgeTone.warning
-                    : AppBadgeTone.success;
+        ? AppBadgeTone.neutral
+        : endsAt.isBefore(now)
+        ? AppBadgeTone.error
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? AppBadgeTone.warning
+        : AppBadgeTone.success;
 
     final label = !license.isActive
         ? 'Pasif'
         : endsAt == null
-            ? 'Tarihsiz'
-            : endsAt.isBefore(now)
-                ? 'Bitmiş'
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? 'Yaklaşıyor'
-                    : 'Aktif';
+        ? 'Tarihsiz'
+        : endsAt.isBefore(now)
+        ? 'Bitmiş'
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? 'Yaklaşıyor'
+        : 'Aktif';
 
     final period = (license.startsAt == null && license.endsAt == null)
         ? null
         : '${license.startsAt == null ? '—' : DateFormat('d MMM y', 'tr_TR').format(license.startsAt!)}'
-            ' → ${license.endsAt == null ? '—' : DateFormat('d MMM y', 'tr_TR').format(license.endsAt!)}';
+              ' → ${license.endsAt == null ? '—' : DateFormat('d MMM y', 'tr_TR').format(license.endsAt!)}';
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -947,20 +1285,19 @@ class _LicenseItemState extends ConsumerState<_LicenseItem> {
                 Text(
                   license.name,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: license.isActive
-                            ? TextDecoration.none
-                            : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    decoration: license.isActive
+                        ? TextDecoration.none
+                        : TextDecoration.lineThrough,
+                  ),
                 ),
                 if (period != null) ...[
                   const Gap(4),
                   Text(
                     period,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: const Color(0xFF64748B)),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
                   ),
                 ],
               ],
@@ -1013,17 +1350,28 @@ Future<void> _showAddBranchDialog(
   WidgetRef ref, {
   required String customerId,
 }) async {
+  await _showBranchDialog(context, ref, customerId: customerId);
+}
+
+Future<void> _showBranchDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required String customerId,
+  CustomerBranch? branch,
+}) async {
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (context) => _AddBranchDialog(customerId: customerId),
+    builder: (context) =>
+        _AddBranchDialog(customerId: customerId, branch: branch),
   );
 }
 
 class _AddBranchDialog extends ConsumerStatefulWidget {
-  const _AddBranchDialog({required this.customerId});
+  const _AddBranchDialog({required this.customerId, this.branch});
 
   final String customerId;
+  final CustomerBranch? branch;
 
   @override
   ConsumerState<_AddBranchDialog> createState() => _AddBranchDialogState();
@@ -1031,13 +1379,29 @@ class _AddBranchDialog extends ConsumerStatefulWidget {
 
 class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController(text: 'Merkez');
-  final _cityController = TextEditingController();
-  final _addressController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _latController = TextEditingController();
-  final _lngController = TextEditingController();
+  late final TextEditingController _nameController;
+  late final TextEditingController _cityController;
+  late final TextEditingController _addressController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _latController;
+  late final TextEditingController _lngController;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final branch = widget.branch;
+    _nameController = TextEditingController(text: branch?.name ?? 'Merkez');
+    _cityController = TextEditingController(text: branch?.city ?? '');
+    _addressController = TextEditingController(text: branch?.address ?? '');
+    _phoneController = TextEditingController(text: branch?.phone ?? '');
+    _latController = TextEditingController(
+      text: branch?.locationLat?.toString() ?? '',
+    );
+    _lngController = TextEditingController(
+      text: branch?.locationLng?.toString() ?? '',
+    );
+  }
 
   @override
   void dispose() {
@@ -1062,26 +1426,49 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
       final lat = double.tryParse(_latController.text.trim());
       final lng = double.tryParse(_lngController.text.trim());
 
-      await client.from('branches').insert({
+      final payload = {
         'customer_id': widget.customerId,
         'name': _nameController.text.trim(),
-        'city': _cityController.text.trim().isEmpty ? null : _cityController.text.trim(),
-        'address': _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
-        'phone': _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
+        'city': _cityController.text.trim().isEmpty
+            ? null
+            : _cityController.text.trim(),
+        'address': _addressController.text.trim().isEmpty
+            ? null
+            : _addressController.text.trim(),
+        'phone': _phoneController.text.trim().isEmpty
+            ? null
+            : _phoneController.text.trim(),
         'location_lat': lat,
         'location_lng': lng,
-        'is_active': true,
-      });
+        'is_active': widget.branch?.isActive ?? true,
+      };
+
+      if (widget.branch == null) {
+        await client.from('branches').insert(payload);
+      } else {
+        await client
+            .from('branches')
+            .update(payload)
+            .eq('id', widget.branch!.id);
+      }
 
       if (!mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Şube eklendi.')),
+        SnackBar(
+          content: Text(
+            widget.branch == null ? 'Şube eklendi.' : 'Şube güncellendi.',
+          ),
+        ),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Şube eklenemedi.')),
+        SnackBar(
+          content: Text(
+            widget.branch == null ? 'Şube eklenemedi.' : 'Şube güncellenemedi.',
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -1090,6 +1477,7 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final citiesAsync = ref.watch(customerCitiesProvider);
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
       backgroundColor: Colors.transparent,
@@ -1107,13 +1495,15 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
                   children: [
                     Expanded(
                       child: Text(
-                        'Şube Ekle',
+                        widget.branch == null ? 'Şube Ekle' : 'Şube Düzenle',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -1129,18 +1519,55 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
                           hintText: 'Örn: Merkez',
                         ),
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) return 'Şube ismi gerekli.';
+                          if (v == null || v.trim().isEmpty) {
+                            return 'Şube ismi gerekli.';
+                          }
                           return null;
                         },
                       ),
                     ),
                     const Gap(12),
                     Expanded(
-                      child: TextFormField(
-                        controller: _cityController,
-                        decoration: const InputDecoration(
-                          labelText: 'Şube Şehir',
-                          hintText: 'Örn: İstanbul',
+                      child: citiesAsync.when(
+                        data: (cities) => DropdownButtonFormField<String?>(
+                          initialValue: _cityController.text.trim().isEmpty
+                              ? null
+                              : _cityController.text.trim(),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('Şehir seç'),
+                            ),
+                            ...cities.map(
+                              (city) => DropdownMenuItem<String?>(
+                                value: city,
+                                child: Text(city),
+                              ),
+                            ),
+                          ],
+                          onChanged: _saving
+                              ? null
+                              : (value) => setState(
+                                  () => _cityController.text = value ?? '',
+                                ),
+                          decoration: const InputDecoration(
+                            labelText: 'Şube Şehir',
+                          ),
+                        ),
+                        loading: () => TextFormField(
+                          controller: _cityController,
+                          enabled: false,
+                          decoration: const InputDecoration(
+                            labelText: 'Şube Şehir',
+                            hintText: 'Şehirler yükleniyor',
+                          ),
+                        ),
+                        error: (error, stackTrace) => TextFormField(
+                          controller: _cityController,
+                          decoration: const InputDecoration(
+                            labelText: 'Şube Şehir',
+                            hintText: 'Şehir bulunamadı',
+                          ),
                         ),
                       ),
                     ),
@@ -1204,7 +1631,9 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -1289,9 +1718,13 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
       await client.from('lines').insert({
         'customer_id': widget.customerId,
         'branch_id': _branchId,
-        'label': _labelController.text.trim().isEmpty ? null : _labelController.text.trim(),
+        'label': _labelController.text.trim().isEmpty
+            ? null
+            : _labelController.text.trim(),
         'number': _numberController.text.trim(),
-        'sim_number': _simController.text.trim().isEmpty ? null : _simController.text.trim(),
+        'sim_number': _simController.text.trim().isEmpty
+            ? null
+            : _simController.text.trim(),
         'starts_at': start.toIso8601String().substring(0, 10),
         'ends_at': end.toIso8601String().substring(0, 10),
         'expires_at': end.toIso8601String().substring(0, 10),
@@ -1300,14 +1733,14 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
 
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat kaydedildi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hat kaydedildi.')));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat kaydedilemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hat kaydedilemedi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1315,10 +1748,15 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final branchesAsync = ref.watch(customerBranchesProvider(widget.customerId));
+    final branchesAsync = ref.watch(
+      customerBranchesProvider(widget.customerId),
+    );
     final now = DateTime.now();
     final startText = DateFormat('d MMM y', 'tr_TR').format(now);
-    final endText = DateFormat('d MMM y', 'tr_TR').format(DateTime(now.year, 12, 31));
+    final endText = DateFormat(
+      'd MMM y',
+      'tr_TR',
+    ).format(DateTime(now.year, 12, 31));
 
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
@@ -1343,7 +1781,9 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -1351,7 +1791,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                 const Gap(12),
                 branchesAsync.when(
                   data: (branches) => DropdownButtonFormField<String?>(
-                    value: _branchId,
+                    initialValue: _branchId,
                     items: [
                       const DropdownMenuItem<String?>(
                         value: null,
@@ -1364,11 +1804,13 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                         ),
                       ),
                     ],
-                    onChanged: _saving ? null : (v) => setState(() => _branchId = v),
+                    onChanged: _saving
+                        ? null
+                        : (v) => setState(() => _branchId = v),
                     decoration: const InputDecoration(labelText: 'Şube'),
                   ),
                   loading: () => const SizedBox.shrink(),
-                  error: (_, __) => const SizedBox.shrink(),
+                  error: (error, stackTrace) => const SizedBox.shrink(),
                 ),
                 const Gap(12),
                 TextFormField(
@@ -1379,7 +1821,9 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                     hintText: '90555...',
                   ),
                   validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Hat numarası gerekli.';
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Hat numarası gerekli.';
+                    }
                     return null;
                   },
                 ),
@@ -1412,9 +1856,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                         ),
                         child: Text(
                           'Başlangıç: $startText\nBitiş: $endText',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
+                          style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: const Color(0xFF475569)),
                         ),
                       ),
@@ -1426,7 +1868,9 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -1514,9 +1958,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
 
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('GMP3 lisansı kaydedildi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('GMP3 lisansı kaydedildi.')));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1531,7 +1975,10 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final startText = DateFormat('d MMM y', 'tr_TR').format(now);
-    final endText = DateFormat('d MMM y', 'tr_TR').format(DateTime(now.year, 12, 31));
+    final endText = DateFormat(
+      'd MMM y',
+      'tr_TR',
+    ).format(DateTime(now.year, 12, 31));
 
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
@@ -1556,7 +2003,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -1568,8 +2017,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
                     labelText: 'Lisans Adı',
                     hintText: 'Örn: GMP3 Lisansı',
                   ),
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty ? 'Lisans adı gerekli.' : null,
+                  validator: (v) => v == null || v.trim().isEmpty
+                      ? 'Lisans adı gerekli.'
+                      : null,
                 ),
                 const Gap(12),
                 Container(
@@ -1581,10 +2031,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
                   ),
                   child: Text(
                     'Başlangıç: $startText\nBitiş: $endText',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: const Color(0xFF475569)),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF475569),
+                    ),
                   ),
                 ),
                 const Gap(18),
@@ -1592,7 +2041,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -1654,17 +2105,20 @@ Future<void> _showTransferLineDialog(
     'transferred_by': client.auth.currentUser?.id,
   });
 
-  await client.from('lines').update({
-    'customer_id': selected.id,
-    'branch_id': null,
-    'transferred_at': DateTime.now().toIso8601String(),
-    'transferred_by': client.auth.currentUser?.id,
-  }).eq('id', lineId);
+  await client
+      .from('lines')
+      .update({
+        'customer_id': selected.id,
+        'branch_id': null,
+        'transferred_at': DateTime.now().toIso8601String(),
+        'transferred_by': client.auth.currentUser?.id,
+      })
+      .eq('id', lineId);
 
   if (context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Hat devredildi.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Hat devredildi.')));
   }
 }
 
@@ -1679,32 +2133,34 @@ Future<void> _extendLineAndQueueInvoice(
   if (client == null) return;
 
   final now = DateTime.now();
-  final baseYear =
-      (currentEndsAt != null && currentEndsAt.isAfter(now)) ? currentEndsAt.year : now.year;
+  final baseYear = (currentEndsAt != null && currentEndsAt.isAfter(now))
+      ? currentEndsAt.year
+      : now.year;
   final newEnd = DateTime(baseYear + 1, 12, 31);
   final newEndStr = newEnd.toIso8601String().substring(0, 10);
 
   try {
-    await client.from('lines').update({
-      'ends_at': newEndStr,
-      'expires_at': newEndStr,
-    }).eq('id', lineId);
+    await client
+        .from('lines')
+        .update({'ends_at': newEndStr, 'expires_at': newEndStr})
+        .eq('id', lineId);
 
     try {
-      await client.from('invoice_items').insert({
-        'customer_id': customerId,
-        'item_type': 'line_renewal',
-        'source_table': 'lines',
-        'source_id': lineId,
-        'description': 'Hat uzatma (yeni bitiş: $newEndStr)',
-        'status': 'pending',
-        'created_by': client.auth.currentUser?.id,
-      });
+      await enqueueInvoiceItem(
+        client,
+        customerId: customerId,
+        itemType: 'line_renewal',
+        sourceTable: 'lines',
+        sourceId: lineId,
+        description: 'Hat uzatma (yeni bitiş: $newEndStr)',
+        sourceEvent: 'line_renewed',
+        sourceLabel: 'Hat Uzatma',
+      );
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Hat uzatıldı; fatura listesi için migration 0003 gerekli.'),
+            content: Text('Hat uzatıldı; fatura kuyruğuna eklenemedi.'),
           ),
         );
       }
@@ -1713,14 +2169,16 @@ Future<void> _extendLineAndQueueInvoice(
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat uzatıldı ve fatura listesine eklendi.')),
+        const SnackBar(
+          content: Text('Hat uzatıldı ve fatura listesine eklendi.'),
+        ),
       );
     }
   } catch (_) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat uzatılamadı.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hat uzatılamadı.')));
     }
   }
 }
@@ -1737,32 +2195,34 @@ Future<void> _extendGmp3AndQueueInvoice(
   if (client == null) return;
 
   final now = DateTime.now();
-  final baseYear =
-      (currentEndsAt != null && currentEndsAt.isAfter(now)) ? currentEndsAt.year : now.year;
+  final baseYear = (currentEndsAt != null && currentEndsAt.isAfter(now))
+      ? currentEndsAt.year
+      : now.year;
   final newEnd = DateTime(baseYear + 1, 12, 31);
   final newEndStr = newEnd.toIso8601String().substring(0, 10);
 
   try {
-    await client.from('licenses').update({
-      'ends_at': newEndStr,
-      'expires_at': newEndStr,
-    }).eq('id', licenseId);
+    await client
+        .from('licenses')
+        .update({'ends_at': newEndStr, 'expires_at': newEndStr})
+        .eq('id', licenseId);
 
     try {
-      await client.from('invoice_items').insert({
-        'customer_id': customerId,
-        'item_type': 'gmp3_renewal',
-        'source_table': 'licenses',
-        'source_id': licenseId,
-        'description': 'GMP3 uzatma ($name) (yeni bitiş: $newEndStr)',
-        'status': 'pending',
-        'created_by': client.auth.currentUser?.id,
-      });
+      await enqueueInvoiceItem(
+        client,
+        customerId: customerId,
+        itemType: 'gmp3_renewal',
+        sourceTable: 'licenses',
+        sourceId: licenseId,
+        description: 'GMP3 uzatma ($name) (yeni bitiş: $newEndStr)',
+        sourceEvent: 'gmp3_renewed',
+        sourceLabel: 'GMP3 Uzatma',
+      );
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('GMP3 uzatıldı; fatura listesi için migration 0003 gerekli.'),
+            content: Text('GMP3 uzatıldı; fatura kuyruğuna eklenemedi.'),
           ),
         );
       }
@@ -1771,14 +2231,16 @@ Future<void> _extendGmp3AndQueueInvoice(
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('GMP3 uzatıldı ve fatura listesine eklendi.')),
+        const SnackBar(
+          content: Text('GMP3 uzatıldı ve fatura listesine eklendi.'),
+        ),
       );
     }
   } catch (_) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('GMP3 uzatılamadı.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('GMP3 uzatılamadı.')));
     }
   }
 }
@@ -1914,22 +2376,22 @@ class _ExpiryItem extends StatelessWidget {
     final tone = !active
         ? AppBadgeTone.neutral
         : expiresAt == null
-            ? AppBadgeTone.neutral
-            : expiresAt!.isBefore(now)
-                ? AppBadgeTone.error
-                : expiresAt!.isBefore(now.add(const Duration(days: 30)))
-                    ? AppBadgeTone.warning
-                    : AppBadgeTone.success;
+        ? AppBadgeTone.neutral
+        : expiresAt!.isBefore(now)
+        ? AppBadgeTone.error
+        : expiresAt!.isBefore(now.add(const Duration(days: 30)))
+        ? AppBadgeTone.warning
+        : AppBadgeTone.success;
 
     final label = !active
         ? 'Pasif'
         : expiresAt == null
-            ? 'Tarihsiz'
-            : expiresAt!.isBefore(now)
-                ? 'Bitmiş'
-                : expiresAt!.isBefore(now.add(const Duration(days: 30)))
-                    ? 'Yaklaşıyor'
-                    : 'Aktif';
+        ? 'Tarihsiz'
+        : expiresAt!.isBefore(now)
+        ? 'Bitmiş'
+        : expiresAt!.isBefore(now.add(const Duration(days: 30)))
+        ? 'Yaklaşıyor'
+        : 'Aktif';
 
     final dateText = expiresAt == null
         ? '—'
@@ -1951,10 +2413,11 @@ class _ExpiryItem extends StatelessWidget {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        decoration:
-                            active ? TextDecoration.none : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w600,
+                    decoration: active
+                        ? TextDecoration.none
+                        : TextDecoration.lineThrough,
+                  ),
                 ),
                 const Gap(3),
                 Row(
@@ -1963,9 +2426,7 @@ class _ExpiryItem extends StatelessWidget {
                       Expanded(
                         child: Text(
                           subtitle!,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
+                          style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: const Color(0xFF64748B)),
                         ),
                       )
@@ -1973,19 +2434,16 @@ class _ExpiryItem extends StatelessWidget {
                       Expanded(
                         child: Text(
                           dateText,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
+                          style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: const Color(0xFF64748B)),
                         ),
                       ),
                     if (subtitle != null)
                       Text(
                         dateText,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: const Color(0xFF94A3B8)),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF94A3B8),
+                        ),
                       ),
                   ],
                 ),
@@ -2009,26 +2467,60 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 140,
+          width: 132,
           child: Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF64748B),
-                  fontWeight: FontWeight.w600,
-                ),
+              color: const Color(0xFF64748B),
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
         Expanded(
           child: Text(
             value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _HeaderChip extends StatelessWidget {
+  const _HeaderChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: const Color(0xFF64748B)),
+          const Gap(6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: const Color(0xFF0F172A),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2043,10 +2535,9 @@ class _TabEmpty extends StatelessWidget {
     return Center(
       child: Text(
         text,
-        style: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.copyWith(color: const Color(0xFF64748B)),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
       ),
     );
   }
@@ -2062,10 +2553,9 @@ class _TabError extends StatelessWidget {
     return Center(
       child: Text(
         text,
-        style: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.copyWith(color: const Color(0xFF64748B)),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
       ),
     );
   }
@@ -2080,7 +2570,7 @@ class _ListSkeleton extends StatelessWidget {
       enabled: true,
       child: ListView.separated(
         itemCount: 6,
-        separatorBuilder: (_, __) => const Gap(10),
+        separatorBuilder: (context, index) => const Gap(10),
         itemBuilder: (context, index) => const _ExpiryItem(
           title: 'Kurumsal Hat',
           subtitle: '905555555555',
@@ -2092,13 +2582,50 @@ class _ListSkeleton extends StatelessWidget {
   }
 }
 
+Future<void> _showEditCustomerDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required CustomerDetail detail,
+}) async {
+  final updated = await showEditCustomerDialog(
+    context,
+    initialData: CustomerFormData(
+      id: detail.id,
+      name: detail.name,
+      city: detail.city,
+      address: detail.address,
+      directorName: detail.directorName,
+      email: detail.email,
+      vkn: detail.vkn,
+      tcknMs: detail.tcknMs,
+      phone1Title: detail.phone1Title,
+      phone1: detail.phone1,
+      phone2Title: detail.phone2Title,
+      phone2: detail.phone2,
+      phone3Title: detail.phone3Title,
+      phone3: detail.phone3,
+      notes: detail.notes,
+      isActive: detail.isActive,
+    ),
+  );
+
+  if (updated != true) return;
+  ref.invalidate(customerDetailProvider(detail.id));
+  ref.invalidate(customerLocationsProvider(detail.id));
+  ref.invalidate(customersProvider);
+  ref.invalidate(customerCitiesProvider);
+}
+
 class CustomerDetail {
   const CustomerDetail({
     required this.id,
     required this.name,
     required this.city,
+    required this.address,
+    required this.directorName,
     required this.email,
     required this.vkn,
+    required this.tcknMs,
     required this.notes,
     required this.phone1,
     required this.phone1Title,
@@ -2113,8 +2640,11 @@ class CustomerDetail {
   final String id;
   final String name;
   final String? city;
+  final String? address;
+  final String? directorName;
   final String? email;
   final String? vkn;
+  final String? tcknMs;
   final String? notes;
   final String? phone1;
   final String? phone1Title;
@@ -2130,8 +2660,11 @@ class CustomerDetail {
       id: json['id'].toString(),
       name: (json['name'] ?? '').toString(),
       city: json['city']?.toString(),
+      address: json['address']?.toString(),
+      directorName: json['director_name']?.toString(),
       email: json['email']?.toString(),
       vkn: json['vkn']?.toString(),
+      tcknMs: json['tckn_ms']?.toString(),
       notes: json['notes']?.toString(),
       phone1: json['phone_1']?.toString(),
       phone1Title: json['phone_1_title']?.toString(),
@@ -2140,8 +2673,8 @@ class CustomerDetail {
       phone3: json['phone_3']?.toString(),
       phone3Title: json['phone_3_title']?.toString(),
       isActive: (json['is_active'] as bool?) ?? true,
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
-          DateTime.now(),
+      createdAt:
+          parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
     );
   }
 }
@@ -2172,7 +2705,8 @@ class CustomerLine {
       number: json['number']?.toString(),
       simNumber: json['sim_number']?.toString(),
       startsAt: DateTime.tryParse(json['starts_at']?.toString() ?? ''),
-      endsAt: DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
+      endsAt:
+          DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
           DateTime.tryParse(json['expires_at']?.toString() ?? ''),
       isActive: (json['is_active'] as bool?) ?? true,
     );
@@ -2202,7 +2736,8 @@ class CustomerLicense {
       name: (json['name'] ?? '').toString(),
       licenseType: (json['license_type'] ?? 'gmp3').toString(),
       startsAt: DateTime.tryParse(json['starts_at']?.toString() ?? ''),
-      endsAt: DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
+      endsAt:
+          DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
           DateTime.tryParse(json['expires_at']?.toString() ?? ''),
       isActive: (json['is_active'] as bool?) ?? true,
     );
@@ -2229,7 +2764,9 @@ class CustomerWorkOrder {
       id: json['id'].toString(),
       title: (json['title'] ?? '').toString(),
       status: (json['status'] ?? 'open').toString(),
-      scheduledDate: DateTime.tryParse(json['scheduled_date']?.toString() ?? ''),
+      scheduledDate: DateTime.tryParse(
+        json['scheduled_date']?.toString() ?? '',
+      ),
       isActive: (json['is_active'] as bool?) ?? true,
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 
@@ -19,7 +20,11 @@ class AccountsScreen extends ConsumerStatefulWidget {
 }
 
 class _AccountsScreenState extends ConsumerState<AccountsScreen> {
-  final _money = NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 2);
+  final _money = NumberFormat.currency(
+    locale: 'tr_TR',
+    symbol: '₺',
+    decimalDigits: 2,
+  );
   String _filter = 'all'; // all, receivable, payable
 
   @override
@@ -41,8 +46,12 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
           // Summary Cards
           balancesAsync.when(
             data: (balances) {
-              final totalReceivable = balances.where((b) => b.balance > 0).fold<double>(0, (sum, b) => sum + b.balance);
-              final totalPayable = balances.where((b) => b.balance < 0).fold<double>(0, (sum, b) => sum + b.balance.abs());
+              final totalReceivable = balances
+                  .where((b) => b.balance > 0)
+                  .fold<double>(0, (sum, b) => sum + b.balance);
+              final totalPayable = balances
+                  .where((b) => b.balance < 0)
+                  .fold<double>(0, (sum, b) => sum + b.balance.abs());
               final netBalance = totalReceivable - totalPayable;
 
               return Padding(
@@ -55,7 +64,11 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                         value: _money.format(totalReceivable),
                         color: AppTheme.success,
                         icon: Icons.arrow_upward_rounded,
-                        onTap: () => setState(() => _filter = _filter == 'receivable' ? 'all' : 'receivable'),
+                        onTap: () => setState(
+                          () => _filter = _filter == 'receivable'
+                              ? 'all'
+                              : 'receivable',
+                        ),
                         selected: _filter == 'receivable',
                       ),
                     ),
@@ -66,7 +79,11 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                         value: _money.format(totalPayable),
                         color: AppTheme.error,
                         icon: Icons.arrow_downward_rounded,
-                        onTap: () => setState(() => _filter = _filter == 'payable' ? 'all' : 'payable'),
+                        onTap: () => setState(
+                          () => _filter = _filter == 'payable'
+                              ? 'all'
+                              : 'payable',
+                        ),
                         selected: _filter == 'payable',
                       ),
                     ),
@@ -75,7 +92,9 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                       child: _SummaryCard(
                         title: 'Net Bakiye',
                         value: _money.format(netBalance),
-                        color: netBalance >= 0 ? AppTheme.success : AppTheme.error,
+                        color: netBalance >= 0
+                            ? AppTheme.success
+                            : AppTheme.error,
                         icon: Icons.account_balance_wallet_rounded,
                         onTap: () => setState(() => _filter = 'all'),
                         selected: _filter == 'all',
@@ -86,7 +105,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
               );
             },
             loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
+            error: (error, stackTrace) => const SizedBox.shrink(),
           ),
           const Gap(16),
           // List
@@ -101,7 +120,9 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                 }
 
                 // Sort by absolute balance descending
-                filtered.sort((a, b) => b.balance.abs().compareTo(a.balance.abs()));
+                filtered.sort(
+                  (a, b) => b.balance.abs().compareTo(a.balance.abs()),
+                );
 
                 if (filtered.isEmpty) {
                   return Center(
@@ -111,11 +132,16 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.account_balance_rounded, size: 48, color: const Color(0xFF94A3B8)),
+                            Icon(
+                              Icons.account_balance_rounded,
+                              size: 48,
+                              color: const Color(0xFF94A3B8),
+                            ),
                             const Gap(12),
                             Text(
                               'Cari hesap bulunmuyor',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: const Color(0xFF64748B)),
                             ),
                           ],
                         ),
@@ -127,7 +153,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                 return ListView.separated(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const Gap(10),
+                  separatorBuilder: (context, index) => const Gap(10),
                   itemBuilder: (context, index) {
                     final account = filtered[index];
                     return _AccountCard(
@@ -139,10 +165,12 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => Center(
+              error: (error, stackTrace) => Center(
                 child: Text(
                   'Cari hesaplar yüklenemedi',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ),
             ),
@@ -155,7 +183,10 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
   void _openAccountDetail(AccountBalance account) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => AccountDetailScreen(customerId: account.customerId, customerName: account.name),
+        builder: (context) => AccountDetailScreen(
+          customerId: account.customerId,
+          customerName: account.name,
+        ),
       ),
     );
   }
@@ -209,7 +240,9 @@ class _SummaryCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       title,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
                     ),
                   ),
                 ],
@@ -217,7 +250,9 @@ class _SummaryCard extends StatelessWidget {
               const Gap(10),
               Text(
                 value,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -228,7 +263,11 @@ class _SummaryCard extends StatelessWidget {
 }
 
 class _AccountCard extends StatelessWidget {
-  const _AccountCard({required this.account, required this.money, required this.onTap});
+  const _AccountCard({
+    required this.account,
+    required this.money,
+    required this.onTap,
+  });
 
   final AccountBalance account;
   final NumberFormat money;
@@ -260,8 +299,8 @@ class _AccountCard extends StatelessWidget {
                 color: isReceivable
                     ? AppTheme.success.withValues(alpha: 0.1)
                     : isPayable
-                        ? AppTheme.error.withValues(alpha: 0.1)
-                        : const Color(0xFFF1F5F9),
+                    ? AppTheme.error.withValues(alpha: 0.1)
+                    : const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -269,8 +308,8 @@ class _AccountCard extends StatelessWidget {
                 color: isReceivable
                     ? AppTheme.success
                     : isPayable
-                        ? AppTheme.error
-                        : const Color(0xFF64748B),
+                    ? AppTheme.error
+                    : const Color(0xFF64748B),
                 size: 22,
               ),
             ),
@@ -281,7 +320,9 @@ class _AccountCard extends StatelessWidget {
                 children: [
                   Text(
                     account.name,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const Gap(4),
                   AppBadge(label: typeLabel, tone: typeTone),
@@ -295,18 +336,24 @@ class _AccountCard extends StatelessWidget {
                 Text(
                   money.format(account.balance.abs()),
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: isReceivable
-                            ? AppTheme.success
-                            : isPayable
-                                ? AppTheme.error
-                                : null,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    color: isReceivable
+                        ? AppTheme.success
+                        : isPayable
+                        ? AppTheme.error
+                        : null,
+                  ),
                 ),
                 const Gap(2),
                 Text(
-                  isReceivable ? 'Alacak' : isPayable ? 'Borç' : 'Dengede',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                  isReceivable
+                      ? 'Alacak'
+                      : isPayable
+                      ? 'Borç'
+                      : 'Dengede',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ],
             ),
@@ -321,19 +368,31 @@ class _AccountCard extends StatelessWidget {
 
 // Cari Hesap Detay Ekranı - Ekstre
 class AccountDetailScreen extends ConsumerStatefulWidget {
-  const AccountDetailScreen({super.key, required this.customerId, required this.customerName});
+  const AccountDetailScreen({
+    super.key,
+    required this.customerId,
+    required this.customerName,
+  });
 
   final String customerId;
   final String customerName;
 
   @override
-  ConsumerState<AccountDetailScreen> createState() => _AccountDetailScreenState();
+  ConsumerState<AccountDetailScreen> createState() =>
+      _AccountDetailScreenState();
 }
 
-class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with SingleTickerProviderStateMixin {
+class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final _money = NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 2);
+  final _money = NumberFormat.currency(
+    locale: 'tr_TR',
+    symbol: '₺',
+    decimalDigits: 2,
+  );
   final Set<String> _selectedInvoices = {};
+  DateTime? _transactionStartDate;
+  DateTime? _transactionEndDate;
 
   @override
   void initState() {
@@ -349,14 +408,30 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
 
   @override
   Widget build(BuildContext context) {
-    final invoicesAsync = ref.watch(invoicesProvider(InvoiceFilter(customerId: widget.customerId)));
-    final transactionsAsync = ref.watch(transactionsProvider(TransactionFilter(customerId: widget.customerId)));
+    final invoicesAsync = ref.watch(
+      invoicesProvider(InvoiceFilter(customerId: widget.customerId)),
+    );
+    final transactionsAsync = ref.watch(
+      transactionsProvider(
+        TransactionFilter(
+          customerId: widget.customerId,
+          startDate: _transactionStartDate,
+          endDate: _transactionEndDate,
+        ),
+      ),
+    );
+    final balancesAsync = ref.watch(accountBalancesProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: Text(widget.customerName),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.swap_horiz_rounded),
+            tooltip: 'Virman',
+            onPressed: () => _addTransfer(context, balancesAsync.value ?? const []),
+          ),
           IconButton(
             icon: const Icon(Icons.picture_as_pdf_rounded),
             tooltip: 'PDF Ekstre',
@@ -382,15 +457,92 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
         children: [
-          // Açık Faturalar
-          _buildOpenInvoices(invoicesAsync),
-          // Tüm Faturalar
-          _buildAllInvoices(invoicesAsync),
-          // İşlemler
-          _buildTransactions(transactionsAsync),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () async {
+                      final selected = await showDatePicker(
+                        context: context,
+                        initialDate: _transactionStartDate ?? DateTime.now().subtract(const Duration(days: 30)),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2035),
+                      );
+                      if (selected != null) {
+                        setState(() => _transactionStartDate = selected);
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Baslangic',
+                        prefixIcon: Icon(Icons.date_range_rounded),
+                      ),
+                      child: Text(
+                        _transactionStartDate == null
+                            ? 'Tum tarihler'
+                            : DateFormat('d MMM y', 'tr_TR').format(_transactionStartDate!),
+                      ),
+                    ),
+                  ),
+                ),
+                const Gap(12),
+                Expanded(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () async {
+                      final selected = await showDatePicker(
+                        context: context,
+                        initialDate: _transactionEndDate ?? DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2035),
+                      );
+                      if (selected != null) {
+                        setState(() => _transactionEndDate = selected);
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Bitis',
+                        prefixIcon: Icon(Icons.event_available_rounded),
+                      ),
+                      child: Text(
+                        _transactionEndDate == null
+                            ? 'Bugune kadar'
+                            : DateFormat('d MMM y', 'tr_TR').format(_transactionEndDate!),
+                      ),
+                    ),
+                  ),
+                ),
+                const Gap(12),
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _transactionStartDate = null;
+                      _transactionEndDate = null;
+                    });
+                  },
+                  icon: const Icon(Icons.clear_rounded, size: 18),
+                  label: const Text('Temizle'),
+                ),
+              ],
+            ),
+          ),
+          const Gap(12),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildOpenInvoices(invoicesAsync),
+                _buildAllInvoices(invoicesAsync),
+                _buildTransactions(transactionsAsync),
+              ],
+            ),
+          ),
         ],
       ),
       floatingActionButton: _selectedInvoices.isNotEmpty
@@ -400,9 +552,9 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
               label: Text('${_selectedInvoices.length} Fatura Seçili'),
             )
           : FloatingActionButton(
+              tooltip: 'Tahsilat/Ödeme Ekle',
               onPressed: () => _addTransaction(context),
               child: const Icon(Icons.add_rounded),
-              tooltip: 'Tahsilat/Ödeme Ekle',
             ),
     );
   }
@@ -410,21 +562,33 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
   Widget _buildOpenInvoices(AsyncValue<List<Invoice>> invoicesAsync) {
     return invoicesAsync.when(
       data: (invoices) {
-        final openInvoices = invoices.where((i) => i.status == 'open' || i.status == 'partial').toList();
+        final openInvoices = invoices
+            .where((i) => i.status == 'open' || i.status == 'partial')
+            .toList();
         if (openInvoices.isEmpty) {
           return Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.check_circle_outline_rounded, size: 64, color: AppTheme.success),
+                Icon(
+                  Icons.check_circle_outline_rounded,
+                  size: 64,
+                  color: AppTheme.success,
+                ),
                 const Gap(12),
-                Text('Açık fatura bulunmuyor', style: Theme.of(context).textTheme.bodyLarge),
+                Text(
+                  'Açık fatura bulunmuyor',
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
               ],
             ),
           );
         }
 
-        final totalOpen = openInvoices.fold<double>(0, (sum, i) => sum + i.remainingAmount);
+        final totalOpen = openInvoices.fold<double>(
+          0,
+          (sum, i) => sum + i.remainingAmount,
+        );
 
         return Column(
           children: [
@@ -438,7 +602,9 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
                   Expanded(
                     child: Text(
                       'Toplam Açık Tutar: ${_money.format(totalOpen)}',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -448,7 +614,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
               child: ListView.separated(
                 padding: const EdgeInsets.all(16),
                 itemCount: openInvoices.length,
-                separatorBuilder: (_, __) => const Gap(10),
+                separatorBuilder: (context, index) => const Gap(10),
                 itemBuilder: (context, index) {
                   final invoice = openInvoices[index];
                   return _InvoiceSelectCard(
@@ -470,7 +636,8 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, __) => const Center(child: Text('Faturalar yüklenemedi')),
+      error: (error, stackTrace) =>
+          const Center(child: Text('Faturalar yüklenemedi')),
     );
   }
 
@@ -484,7 +651,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
         return ListView.separated(
           padding: const EdgeInsets.all(16),
           itemCount: invoices.length,
-          separatorBuilder: (_, __) => const Gap(10),
+          separatorBuilder: (context, index) => const Gap(10),
           itemBuilder: (context, index) {
             final invoice = invoices[index];
             return _InvoiceSelectCard(
@@ -503,7 +670,8 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, __) => const Center(child: Text('Faturalar yüklenemedi')),
+      error: (error, stackTrace) =>
+          const Center(child: Text('Faturalar yüklenemedi')),
     );
   }
 
@@ -517,7 +685,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
         return ListView.separated(
           padding: const EdgeInsets.all(16),
           itemCount: transactions.length,
-          separatorBuilder: (_, __) => const Gap(10),
+          separatorBuilder: (context, index) => const Gap(10),
           itemBuilder: (context, index) {
             final tx = transactions[index];
             final isCollection = tx.transactionType == 'collection';
@@ -530,11 +698,14 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: (isCollection ? AppTheme.success : AppTheme.error).withValues(alpha: 0.1),
+                      color: (isCollection ? AppTheme.success : AppTheme.error)
+                          .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
-                      isCollection ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                      isCollection
+                          ? Icons.arrow_downward_rounded
+                          : Icons.arrow_upward_rounded,
                       color: isCollection ? AppTheme.success : AppTheme.error,
                       size: 18,
                     ),
@@ -546,26 +717,38 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
                       children: [
                         Text(
                           isCollection ? 'Tahsilat' : 'Ödeme',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         if (tx.invoiceNumber != null)
                           Text(
                             'Fatura: ${tx.invoiceNumber}',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: const Color(0xFF64748B)),
+                          ),
+                        if (tx.description?.trim().isNotEmpty ?? false)
+                          Text(
+                            tx.description!,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: const Color(0xFF64748B)),
                           ),
                         Text(
-                          DateFormat('d MMM y', 'tr_TR').format(tx.transactionDate),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF94A3B8)),
+                          DateFormat(
+                            'd MMM y',
+                            'tr_TR',
+                          ).format(tx.transactionDate),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: const Color(0xFF94A3B8)),
                         ),
                       ],
                     ),
                   ),
                   Text(
-                    '${isCollection ? '+' : '-'}${_money.format(tx.amount)}',
+                    '${isCollection ? '+' : '-'}${tx.currency == 'TRY' ? _money.format(tx.amount) : '${tx.currency} ${tx.amount.toStringAsFixed(2)}'}',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: isCollection ? AppTheme.success : AppTheme.error,
-                        ),
+                      fontWeight: FontWeight.w700,
+                      color: isCollection ? AppTheme.success : AppTheme.error,
+                    ),
                   ),
                 ],
               ),
@@ -574,15 +757,21 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, __) => const Center(child: Text('İşlemler yüklenemedi')),
+      error: (error, stackTrace) =>
+          const Center(child: Text('İşlemler yüklenemedi')),
     );
   }
 
   Future<void> _addTransaction(BuildContext context) async {
     String type = 'collection';
     final amountController = TextEditingController();
+    final descriptionController = TextEditingController();
     String method = 'cash';
+    String currency = 'TRY';
+    double exchangeRate = 1.0;
+    DateTime transactionDate = DateTime.now();
 
+    final messenger = ScaffoldMessenger.of(context);
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -602,26 +791,101 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
               const Gap(16),
               TextField(
                 controller: amountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(labelText: 'Tutar'),
               ),
               const Gap(12),
               DropdownButtonFormField<String>(
-                value: method,
+                initialValue: currency,
+                items: const [
+                  DropdownMenuItem(value: 'TRY', child: Text('TRY')),
+                  DropdownMenuItem(value: 'USD', child: Text('USD')),
+                  DropdownMenuItem(value: 'EUR', child: Text('EUR')),
+                ],
+                onChanged: (v) => setState(() {
+                  currency = v ?? 'TRY';
+                  if (currency == 'TRY') {
+                    exchangeRate = 1.0;
+                  }
+                }),
+                decoration: const InputDecoration(labelText: 'Para Birimi'),
+              ),
+              if (currency != 'TRY') ...[
+                const Gap(12),
+                TextField(
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Kur',
+                    hintText: exchangeRate.toStringAsFixed(4),
+                  ),
+                  onChanged: (v) =>
+                      exchangeRate = double.tryParse(v.replaceAll(',', '.')) ??
+                          exchangeRate,
+                ),
+              ],
+              const Gap(12),
+              DropdownButtonFormField<String>(
+                initialValue: method,
                 items: const [
                   DropdownMenuItem(value: 'cash', child: Text('Nakit')),
                   DropdownMenuItem(value: 'bank', child: Text('Havale/EFT')),
-                  DropdownMenuItem(value: 'credit_card', child: Text('Kredi Kartı')),
+                  DropdownMenuItem(value: 'pos', child: Text('POS')),
+                  DropdownMenuItem(
+                    value: 'credit_card',
+                    child: Text('Kredi Kartı'),
+                  ),
                   DropdownMenuItem(value: 'check', child: Text('Çek')),
                 ],
                 onChanged: (v) => setState(() => method = v ?? 'cash'),
                 decoration: const InputDecoration(labelText: 'Ödeme Yöntemi'),
               ),
+              const Gap(12),
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () async {
+                  final selected = await showDatePicker(
+                    context: context,
+                    initialDate: transactionDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2035),
+                  );
+                  if (selected != null) {
+                    setState(() => transactionDate = selected);
+                  }
+                },
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'İşlem Tarihi',
+                    prefixIcon: Icon(Icons.event_rounded),
+                  ),
+                  child: Text(
+                    DateFormat('d MMM y', 'tr_TR').format(transactionDate),
+                  ),
+                ),
+              ),
+              const Gap(12),
+              TextField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Açıklama',
+                  hintText: 'Opsiyonel işlem notu',
+                ),
+              ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('İptal')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Kaydet')),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('İptal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Kaydet'),
+            ),
           ],
         ),
       ),
@@ -629,7 +893,8 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
 
     if (result != true || !mounted) return;
 
-    final amount = double.tryParse(amountController.text.replaceAll(',', '.')) ?? 0;
+    final amount =
+        double.tryParse(amountController.text.replaceAll(',', '.')) ?? 0;
     if (amount <= 0) return;
 
     final client = ref.read(supabaseClientProvider);
@@ -640,39 +905,366 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
         'customer_id': widget.customerId,
         'transaction_type': type,
         'amount': amount,
-        'currency': 'TRY',
+        'currency': currency,
+        'exchange_rate': currency == 'TRY' ? 1.0 : exchangeRate,
         'payment_method': method,
-        'transaction_date': DateTime.now().toIso8601String().substring(0, 10),
+        'transaction_date': transactionDate.toIso8601String().substring(0, 10),
+        if (descriptionController.text.trim().isNotEmpty)
+          'description': descriptionController.text.trim(),
         'created_by': client.auth.currentUser?.id,
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('İşlem kaydedildi')));
-        ref.invalidate(transactionsProvider(TransactionFilter(customerId: widget.customerId)));
-        ref.invalidate(accountBalancesProvider);
-      }
+      if (!mounted) return;
+      messenger.showSnackBar(const SnackBar(content: Text('İşlem kaydedildi')));
+      ref.invalidate(
+        transactionsProvider(TransactionFilter(customerId: widget.customerId)),
+      );
+      ref.invalidate(accountBalancesProvider);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hata: $e')));
-      }
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Hata: $e')));
     }
   }
 
-  void _exportStatement(String format) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${format.toUpperCase()} ekstre özelliği yakında eklenecek')),
+  Future<void> _addTransfer(
+    BuildContext context,
+    List<AccountBalance> balances,
+  ) async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    final targets = balances
+        .where((account) => account.customerId != widget.customerId)
+        .toList(growable: false);
+    if (targets.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Virman icin hedef cari bulunamadi.')),
+      );
+      return;
+    }
+
+    String? targetId = targets.first.customerId;
+    final amountController = TextEditingController();
+    final descriptionController = TextEditingController();
+    DateTime transferDate = DateTime.now();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Cari Virman'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: targetId,
+                items: targets
+                    .map(
+                      (account) => DropdownMenuItem(
+                        value: account.customerId,
+                        child: Text(account.name),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) => setState(() => targetId = value),
+                decoration: const InputDecoration(labelText: 'Hedef Cari'),
+              ),
+              const Gap(12),
+              TextField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(labelText: 'Tutar'),
+              ),
+              const Gap(12),
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () async {
+                  final selected = await showDatePicker(
+                    context: context,
+                    initialDate: transferDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2035),
+                  );
+                  if (selected != null) {
+                    setState(() => transferDate = selected);
+                  }
+                },
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Virman Tarihi',
+                    prefixIcon: Icon(Icons.swap_horiz_rounded),
+                  ),
+                  child: Text(
+                    DateFormat('d MMM y', 'tr_TR').format(transferDate),
+                  ),
+                ),
+              ),
+              const Gap(12),
+              TextField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Açıklama',
+                  hintText: 'Virman açıklaması',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('İptal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Virman Yap'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || targetId == null || !mounted) return;
+
+    final amount =
+        double.tryParse(amountController.text.replaceAll(',', '.')) ?? 0;
+    if (amount <= 0) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Geçerli bir tutar girin.')),
+      );
+      return;
+    }
+
+    final target = targets.firstWhere(
+      (account) => account.customerId == targetId,
+    );
+    final description = descriptionController.text.trim().isEmpty
+        ? 'Virman: ${widget.customerName} -> ${target.name}'
+        : descriptionController.text.trim();
+
+    try {
+      await client.from('transactions').insert([
+        {
+          'customer_id': widget.customerId,
+          'transaction_type': 'payment',
+          'amount': amount,
+          'currency': 'TRY',
+          'exchange_rate': 1.0,
+          'payment_method': 'other',
+          'transaction_date': transferDate.toIso8601String().substring(0, 10),
+          'description': description,
+          'created_by': client.auth.currentUser?.id,
+        },
+        {
+          'customer_id': target.customerId,
+          'transaction_type': 'collection',
+          'amount': amount,
+          'currency': 'TRY',
+          'exchange_rate': 1.0,
+          'payment_method': 'other',
+          'transaction_date': transferDate.toIso8601String().substring(0, 10),
+          'description': description,
+          'created_by': client.auth.currentUser?.id,
+        },
+      ]);
+
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Virman tamamlandi: ${target.name}')),
+      );
+      ref.invalidate(
+        transactionsProvider(
+          TransactionFilter(
+            customerId: widget.customerId,
+            startDate: _transactionStartDate,
+            endDate: _transactionEndDate,
+          ),
+        ),
+      );
+      ref.invalidate(accountBalancesProvider);
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Virman hatasi: $e')),
+      );
+    }
+  }
+
+  Future<void> _exportStatement(String format) async {
+    final invoices =
+        ref
+            .read(
+              invoicesProvider(InvoiceFilter(customerId: widget.customerId)),
+            )
+            .value ??
+        const <Invoice>[];
+    final transactions =
+        ref
+            .read(
+              transactionsProvider(
+                TransactionFilter(
+                  customerId: widget.customerId,
+                  startDate: _transactionStartDate,
+                  endDate: _transactionEndDate,
+                ),
+              ),
+            )
+            .value ??
+        const <Transaction>[];
+    if (invoices.isEmpty && transactions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ekstre için veri bulunamadı.')),
+      );
+      return;
+    }
+    await _showStatementPreview(
+      title: '${format.toUpperCase()} Ekstre Önizleme',
+      text: _buildStatementText(
+        invoices: invoices,
+        transactions: transactions,
+        onlySelected: false,
+      ),
     );
   }
 
-  void _sendStatement() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('E-posta ekstre özelliği yakında eklenecek')),
+  Future<void> _sendStatement() async {
+    final invoices =
+        ref
+            .read(
+              invoicesProvider(InvoiceFilter(customerId: widget.customerId)),
+            )
+            .value ??
+        const <Invoice>[];
+    final transactions =
+        ref
+            .read(
+              transactionsProvider(
+                TransactionFilter(
+                  customerId: widget.customerId,
+                  startDate: _transactionStartDate,
+                  endDate: _transactionEndDate,
+                ),
+              ),
+            )
+            .value ??
+        const <Transaction>[];
+    if (invoices.isEmpty && transactions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gönderilecek ekstre verisi yok.')),
+      );
+      return;
+    }
+    await _showStatementPreview(
+      title: 'E-posta Ekstre İçeriği',
+      text: _buildStatementText(
+        invoices: invoices,
+        transactions: transactions,
+        onlySelected: false,
+      ),
     );
   }
 
-  void _exportSelectedStatement() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${_selectedInvoices.length} fatura için ekstre oluşturulacak')),
+  Future<void> _exportSelectedStatement() async {
+    final invoices =
+        ref
+            .read(
+              invoicesProvider(InvoiceFilter(customerId: widget.customerId)),
+            )
+            .value ??
+        const <Invoice>[];
+    final transactions =
+        ref
+            .read(
+              transactionsProvider(
+                TransactionFilter(
+                  customerId: widget.customerId,
+                  startDate: _transactionStartDate,
+                  endDate: _transactionEndDate,
+                ),
+              ),
+            )
+            .value ??
+        const <Transaction>[];
+    if (_selectedInvoices.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Önce fatura seçin.')));
+      return;
+    }
+    await _showStatementPreview(
+      title: 'Seçili Açık Faturalar Ekstresi',
+      text: _buildStatementText(
+        invoices: invoices,
+        transactions: transactions,
+        onlySelected: true,
+      ),
+    );
+  }
+
+  String _buildStatementText({
+    required List<Invoice> invoices,
+    required List<Transaction> transactions,
+    required bool onlySelected,
+  }) {
+    final filteredInvoices = onlySelected
+        ? invoices
+              .where((invoice) => _selectedInvoices.contains(invoice.id))
+              .toList()
+        : invoices;
+    final totalOpen = filteredInvoices.fold<double>(
+      0,
+      (sum, invoice) => sum + invoice.remainingAmount,
+    );
+    final lines = <String>[
+      'Cari: ${widget.customerName}',
+      'Tarih: ${DateFormat('d MMMM y HH:mm', 'tr_TR').format(DateTime.now())}',
+      '',
+      'Açık Fatura Toplamı: ${_money.format(totalOpen)}',
+      '',
+      'Faturalar',
+      for (final invoice in filteredInvoices)
+        '- ${invoice.invoiceNumber} | ${DateFormat('d MMM y', 'tr_TR').format(invoice.invoiceDate)} | ${invoice.status} | Kalan: ${_money.format(invoice.remainingAmount)}',
+      '',
+      'İşlemler',
+      for (final tx in transactions)
+        '- ${DateFormat('d MMM y', 'tr_TR').format(tx.transactionDate)} | ${tx.transactionType == 'collection' ? 'Tahsilat' : 'Ödeme'} | ${_money.format(tx.amount)}${tx.invoiceNumber != null ? ' | ${tx.invoiceNumber}' : ''}${tx.description?.trim().isNotEmpty ?? false ? ' | ${tx.description}' : ''}',
+    ];
+    return lines.join('\n');
+  }
+
+  Future<void> _showStatementPreview({
+    required String title,
+    required String text,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 680,
+          child: SingleChildScrollView(child: SelectableText(text)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Kapat'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: text));
+              if (!context.mounted) return;
+              Navigator.of(context).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Ekstre panoya kopyalandı.')),
+              );
+            },
+            icon: const Icon(Icons.copy_rounded, size: 18),
+            label: const Text('Kopyala'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -708,10 +1300,7 @@ class _InvoiceSelectCard extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
-            Checkbox(
-              value: selected,
-              onChanged: (_) => onTap(),
-            ),
+            Checkbox(value: selected, onChanged: (_) => onTap()),
             const Gap(8),
             Expanded(
               child: Column(
@@ -721,18 +1310,24 @@ class _InvoiceSelectCard extends StatelessWidget {
                     children: [
                       Text(
                         invoice.invoiceNumber,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       const Gap(8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: statusColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
                           statusLabel,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
                                 color: statusColor,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -743,7 +1338,9 @@ class _InvoiceSelectCard extends StatelessWidget {
                   const Gap(4),
                   Text(
                     DateFormat('d MMM y', 'tr_TR').format(invoice.invoiceDate),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
                   ),
                 ],
               ),
@@ -753,12 +1350,16 @@ class _InvoiceSelectCard extends StatelessWidget {
               children: [
                 Text(
                   money.format(invoice.grandTotal),
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 if (invoice.remainingAmount > 0 && invoice.status != 'paid')
                   Text(
                     'Kalan: ${money.format(invoice.remainingAmount)}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTheme.error),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.error),
                   ),
               ],
             ),

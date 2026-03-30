@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/auth/auth_providers.dart';
+import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_breakpoints.dart';
 
@@ -26,57 +28,150 @@ class AppShell extends ConsumerWidget {
   }
 }
 
-class _DesktopShell extends ConsumerWidget {
+class _DesktopShell extends ConsumerStatefulWidget {
   const _DesktopShell({required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_DesktopShell> createState() => _DesktopShellState();
+}
+
+class _DesktopShellState extends ConsumerState<_DesktopShell> {
+  bool _formsExpanded = false;
+  bool _billingExpanded = false;
+
+  Future<void> _signOut() async {
+    final client = ref.read(supabaseClientProvider);
+    try {
+      await client?.auth.signOut();
+      ref.invalidate(authStateProvider);
+      ref.invalidate(sessionChangesProvider);
+      ref.invalidate(currentUserProfileProvider);
+      if (!mounted) return;
+      context.go('/giris');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Çıkış yapılamadı: $e')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
-    final items = _navItems;
+    final allowedPages = ref.watch(currentUserPagePermissionsProvider);
+    final items = _navItems
+        .where((item) => allowedPages.contains(item.permissionKey))
+        .map(
+          (item) => item.copyWith(
+            children: item.children
+                .where(
+                  (child) =>
+                      allowedPages.contains(child.permissionKey) ||
+                      item.permissionKey == child.permissionKey,
+                )
+                .toList(growable: false),
+          ),
+        )
+        .toList(growable: false);
+    final hasActiveFormsChild = items
+        .where((item) => item.path == '/formlar')
+        .expand((item) => item.children)
+        .any((child) => _isActive(location, child.path));
+    final hasActiveBillingChild = items
+        .where((item) => item.path == '/faturalama')
+        .expand((item) => item.children)
+        .any((child) => _isActive(location, child.path));
 
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: Row(
         children: [
           Container(
-            width: 280,
+            width: 236,
             decoration: BoxDecoration(
-              color: AppTheme.surface,
-              border: Border(
-                right: BorderSide(color: AppTheme.border),
-              ),
+              color: Colors.white,
+              border: Border(right: BorderSide(color: AppTheme.border)),
+              boxShadow: AppTheme.cardShadow,
             ),
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                 child: Column(
                   children: [
                     _BrandHeader(onTap: () => context.go('/panel')),
-                    const Gap(16),
+                    const Gap(10),
                     Expanded(
-                      child: ListView.separated(
-                        itemCount: items.length,
-                        separatorBuilder: (_, __) => const Gap(6),
-                        itemBuilder: (context, index) {
-                          final item = items[index];
-                          final active = _isActive(location, item.path);
-                          return _SidebarItem(
-                            label: item.label,
-                            icon: item.icon,
-                            active: active,
-                            onTap: () => context.go(item.path),
-                          );
-                        },
+                      child: ListView(
+                        children: [
+                          for (final item in items) ...[
+                            if (item.children.isEmpty)
+                              _SidebarItem(
+                                label: item.label,
+                                icon: item.icon,
+                                active: _isActive(location, item.path),
+                                onTap: () => context.go(item.path),
+                              )
+                            else if (item.path == '/formlar')
+                              _SidebarExpandableItem(
+                                label: item.label,
+                                icon: item.icon,
+                                active:
+                                    _isActive(location, item.path) ||
+                                    hasActiveFormsChild,
+                                expanded: _formsExpanded || hasActiveFormsChild,
+                                onTap: () {
+                                  setState(() {
+                                    _formsExpanded = !_formsExpanded;
+                                  });
+                                },
+                              )
+                            else
+                              _SidebarExpandableItem(
+                                label: item.label,
+                                icon: item.icon,
+                                active:
+                                    _isActive(location, item.path) ||
+                                    hasActiveBillingChild,
+                                expanded: _billingExpanded || hasActiveBillingChild,
+                                onTap: () {
+                                  setState(() {
+                                    _billingExpanded = !_billingExpanded;
+                                  });
+                                },
+                              ),
+                            if (item.children.isNotEmpty &&
+                                (((item.path == '/formlar') &&
+                                        (_formsExpanded || hasActiveFormsChild)) ||
+                                    ((item.path == '/faturalama') &&
+                                        (_billingExpanded || hasActiveBillingChild)))) ...[
+                              const Gap(6),
+                              Padding(
+                                padding: const EdgeInsets.only(left: 20),
+                                child: Column(
+                                  children: [
+                                    for (final child in item.children) ...[
+                                      _SidebarSubItem(
+                                        label: child.label,
+                                        active: _isActive(location, child.path),
+                                        onTap: () => context.go(child.path),
+                                      ),
+                                      const Gap(6),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                            const Gap(6),
+                          ],
+                        ],
                       ),
                     ),
                     const Gap(12),
                     _AccountCard(
-                      onSignOut: () async {
-                        final client = ref.read(supabaseClientProvider);
-                        await client?.auth.signOut();
-                      },
+                      onSignOut: _signOut,
                     ),
                   ],
                 ),
@@ -86,10 +181,8 @@ class _DesktopShell extends ConsumerWidget {
           Expanded(
             child: Column(
               children: [
-                _TopBar(
-                  onSearchTap: () => _showSearchSheet(context),
-                ),
-                Expanded(child: child),
+                _TopBar(onSearchTap: () => _showSearchSheet(context)),
+                Expanded(child: widget.child),
               ],
             ),
           ),
@@ -99,60 +192,83 @@ class _DesktopShell extends ConsumerWidget {
   }
 }
 
-class _MobileShell extends StatelessWidget {
+class _MobileShell extends ConsumerWidget {
   const _MobileShell({required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).matchedLocation;
-    final currentIndex = _mobileIndexForLocation(location);
+    final allowedPages = ref.watch(currentUserPagePermissionsProvider);
+    final profile = ref.watch(currentUserProfileProvider).value;
+    final client = ref.read(supabaseClientProvider);
+    final mobileItems = _mobileItems
+        .where((item) => allowedPages.contains(item.permissionKey))
+        .toList(growable: false);
+    final currentIndex = _mobileIndexForLocation(location, mobileItems);
+
+    Future<void> signOut() async {
+      try {
+        await client?.auth.signOut();
+        ref.invalidate(authStateProvider);
+        ref.invalidate(sessionChangesProvider);
+        ref.invalidate(currentUserProfileProvider);
+        if (!context.mounted) return;
+        context.go('/giris');
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Çıkış yapılamadı: $e')));
+      }
+    }
 
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: child,
       floatingActionButton: FloatingActionButton(
-        backgroundColor: AppTheme.primary,
+        backgroundColor: AppTheme.primaryDark,
         foregroundColor: Colors.white,
-        onPressed: () => _showQuickCreateSheet(context),
+        onPressed: () => _showQuickCreateSheet(context, ref),
         child: const Icon(Icons.add_rounded),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: BottomAppBar(
-        color: AppTheme.surface,
+        color: Colors.white,
         surfaceTintColor: Colors.transparent,
-        height: 66,
+        height: 74,
         padding: EdgeInsets.zero,
         child: Row(
           children: [
             const Gap(8),
-            _BottomItem(
-              label: 'Panel',
-              icon: PhosphorIcons.house(PhosphorIconsStyle.regular),
-              active: currentIndex == 0,
-              onTap: () => context.go('/panel'),
-            ),
-            _BottomItem(
-              label: 'Müşteriler',
-              icon: PhosphorIcons.users(PhosphorIconsStyle.regular),
-              active: currentIndex == 1,
-              onTap: () => context.go('/musteriler'),
-            ),
+            for (var i = 0; i < mobileItems.length; i++) ...[
+              if (i == 2) const Spacer(),
+              _BottomItem(
+                label: mobileItems[i].label,
+                icon: mobileItems[i].icon,
+                active: currentIndex == i,
+                onTap: () => context.go(mobileItems[i].path),
+              ),
+            ],
             const Spacer(),
-            _BottomItem(
-              label: 'İş Emirleri',
-              icon: PhosphorIcons.kanban(PhosphorIconsStyle.regular),
-              active: currentIndex == 2,
-              onTap: () => context.go('/is-emirleri'),
+            IconButton(
+              tooltip: 'Hesap',
+              onPressed: () => _showMobileAccountSheet(
+                context,
+                profileName: profile?.fullName?.trim().isNotEmpty == true
+                    ? profile!.fullName!.trim()
+                    : 'Hesap',
+                roleName: profile?.role == 'admin' ? 'Admin' : 'Personel',
+                onSignOut: signOut,
+              ),
+              icon: Icon(
+                Icons.account_circle_rounded,
+                size: 24,
+                color: AppTheme.textMuted,
+              ),
             ),
-            _BottomItem(
-              label: 'Raporlar',
-              icon: PhosphorIcons.chartLineUp(PhosphorIconsStyle.regular),
-              active: currentIndex == 3,
-              onTap: () => context.go('/raporlar'),
-            ),
-            const Gap(8),
+            const Gap(4),
           ],
         ),
       ),
@@ -168,18 +284,23 @@ class _BrandHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(18),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: AppTheme.primary,
-                borderRadius: BorderRadius.circular(12),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppTheme.primary, AppTheme.primaryDark],
+                ),
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                boxShadow: AppTheme.cardShadow,
               ),
               child: const Icon(
                 Icons.grid_view_rounded,
@@ -187,20 +308,21 @@ class _BrandHeader extends StatelessWidget {
                 size: 20,
               ),
             ),
-            const Gap(12),
+            const Gap(10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Microvise',
-                  style: Theme.of(context).textTheme.titleSmall,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 Text(
                   'CRM & Servis',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -221,24 +343,24 @@ class _TopBar extends StatelessWidget {
     return SafeArea(
       bottom: false,
       child: Container(
-        height: 64,
+        height: 56,
         padding: const EdgeInsets.symmetric(horizontal: 18),
         decoration: BoxDecoration(
-          color: AppTheme.background,
+          color: Colors.white.withValues(alpha: 0.9),
           border: Border(bottom: BorderSide(color: AppTheme.border)),
         ),
         child: Row(
           children: [
             Expanded(
               child: InkWell(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
                 onTap: onSearchTap,
                 child: Container(
-                  height: 40,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  height: 42,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
-                    color: AppTheme.surface,
-                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                     border: Border.all(color: AppTheme.border),
                   ),
                   child: Row(
@@ -248,14 +370,14 @@ class _TopBar extends StatelessWidget {
                           PhosphorIconsStyle.regular,
                         ),
                         size: 18,
-                        color: const Color(0xFF64748B),
+                        color: AppTheme.textMuted,
                       ),
                       const Gap(10),
                       Text(
                         'Ara (müşteri, iş emri, servis...)',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: const Color(0xFF94A3B8),
-                            ),
+                          color: const Color(0xFF8CA0B8),
+                        ),
                       ),
                     ],
                   ),
@@ -268,10 +390,10 @@ class _TopBar extends StatelessWidget {
               onPressed: () {},
               icon: Icon(
                 PhosphorIcons.bell(PhosphorIconsStyle.regular),
-                color: const Color(0xFF0F172A),
+                color: AppTheme.text,
               ),
             ),
-            const Gap(6),
+            const Gap(10),
             _ProfileButton(),
           ],
         ),
@@ -280,36 +402,63 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-class _ProfileButton extends StatelessWidget {
+class _ProfileButton extends ConsumerWidget {
+  const _ProfileButton();
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(currentUserProfileProvider).value;
+    final displayName = profile?.fullName?.trim().isNotEmpty == true
+        ? profile!.fullName!.trim()
+        : 'Profil';
+    final roleName = profile?.role == 'admin' ? 'Admin' : 'Personel';
+    final client = ref.read(supabaseClientProvider);
+
+    Future<void> signOut() async {
+      try {
+        await client?.auth.signOut();
+        ref.invalidate(authStateProvider);
+        ref.invalidate(sessionChangesProvider);
+        ref.invalidate(currentUserProfileProvider);
+        if (!context.mounted) return;
+        context.go('/giris');
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Çıkış yapılamadı: $e')));
+      }
+    }
+
     return MenuAnchor(
       builder: (context, controller, child) => InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => controller.isOpen ? controller.close() : controller.open(),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+        onTap: () =>
+            controller.isOpen ? controller.close() : controller.open(),
         child: Container(
           height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(12),
+            color: AppTheme.surfaceMuted,
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             border: Border.all(color: AppTheme.border),
           ),
           child: Row(
             children: [
               CircleAvatar(
-                radius: 12,
+                radius: 11,
                 backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
                 child: const Icon(
                   Icons.person_rounded,
-                  size: 16,
+                  size: 14,
                   color: AppTheme.primary,
                 ),
               ),
-              const Gap(10),
+              const Gap(8),
               Text(
-                'Profil',
+                displayName,
                 style: Theme.of(context).textTheme.bodyMedium,
+                overflow: TextOverflow.ellipsis,
               ),
               const Gap(6),
               const Icon(Icons.expand_more_rounded, size: 18),
@@ -319,8 +468,14 @@ class _ProfileButton extends StatelessWidget {
       ),
       menuChildren: [
         MenuItemButton(
-          onPressed: () {},
-          child: const Text('Ayarlar'),
+          onPressed: null,
+          leadingIcon: const Icon(Icons.shield_outlined, size: 18),
+          child: Text(roleName),
+        ),
+        MenuItemButton(
+          onPressed: signOut,
+          leadingIcon: const Icon(Icons.logout_rounded, size: 18),
+          child: const Text('Çıkış Yap'),
         ),
       ],
     );
@@ -342,17 +497,17 @@ class _SidebarItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg =
-        active ? AppTheme.primary.withValues(alpha: 0.10) : Colors.transparent;
-    final border =
-        active ? AppTheme.primary.withValues(alpha: 0.18) : AppTheme.border;
-    final fg = active ? AppTheme.primary : const Color(0xFF0F172A);
+    final bg = active
+        ? AppTheme.primarySoft.withValues(alpha: 0.85)
+        : Colors.transparent;
+    final border = active ? Colors.transparent : Colors.transparent;
+    final fg = active ? AppTheme.primaryDark : AppTheme.text;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
       onTap: onTap,
       child: Container(
-        height: 44,
+        height: 42,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: bg,
@@ -367,10 +522,69 @@ class _SidebarItem extends StatelessWidget {
               child: Text(
                 label,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-                      color: fg,
-                    ),
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  color: fg,
+                ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SidebarExpandableItem extends StatelessWidget {
+  const _SidebarExpandableItem({
+    required this.label,
+    required this.icon,
+    required this.active,
+    required this.expanded,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool active;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = active
+        ? AppTheme.primarySoft.withValues(alpha: 0.85)
+        : Colors.transparent;
+    final border = Colors.transparent;
+    final fg = active ? AppTheme.primaryDark : AppTheme.text;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+      onTap: onTap,
+      child: Container(
+        height: 42,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: border),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: fg),
+            const Gap(10),
+            Expanded(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  color: fg,
+                ),
+              ),
+            ),
+            Icon(
+              expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+              size: 18,
+              color: fg,
             ),
           ],
         ),
@@ -394,13 +608,13 @@ class _BottomItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? AppTheme.primary : const Color(0xFF64748B);
+    final color = active ? AppTheme.primaryDark : AppTheme.textMuted;
     return Expanded(
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -410,12 +624,69 @@ class _BottomItem extends StatelessWidget {
                 label,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: color,
-                      fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-                    ),
+                  color: color,
+                  fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SidebarSubItem extends StatelessWidget {
+  const _SidebarSubItem({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = active ? AppTheme.primaryDark : AppTheme.textMuted;
+    final bg = active
+        ? AppTheme.primarySoft.withValues(alpha: 0.72)
+        : Colors.transparent;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+      onTap: onTap,
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: active
+                ? AppTheme.primary.withValues(alpha: 0.14)
+                : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
+            ),
+            const Gap(10),
+            Expanded(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: fg,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -429,58 +700,72 @@ class _AccountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
-            child: const Icon(Icons.person_rounded, color: AppTheme.primary),
+    return Consumer(
+      builder: (context, ref, _) {
+        final profile = ref.watch(currentUserProfileProvider).value;
+        final displayName = profile?.fullName?.trim().isNotEmpty == true
+            ? profile!.fullName!.trim()
+            : 'Hesap';
+        final roleName = profile?.role == 'admin' ? 'Admin' : 'Personel';
+
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            border: Border.all(color: AppTheme.border),
+            boxShadow: AppTheme.cardShadow,
           ),
-          const Gap(12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Hesap',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
+                child: const Icon(
+                  Icons.person_rounded,
+                  color: AppTheme.primary,
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      displayName,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
+                    ),
+                    Text(
+                      roleName,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
-                  'Admin / Personel',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+              ),
+              IconButton(
+                tooltip: 'Çıkış Yap',
+                onPressed: onSignOut,
+                icon: Icon(
+                  PhosphorIcons.signOut(PhosphorIconsStyle.regular),
+                  size: 18,
+                  color: AppTheme.text,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          IconButton(
-            tooltip: 'Çıkış Yap',
-            onPressed: onSignOut,
-            icon: Icon(
-              PhosphorIcons.signOut(PhosphorIconsStyle.regular),
-              size: 18,
-              color: const Color(0xFF0F172A),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
-Future<void> _showQuickCreateSheet(BuildContext context) async {
+Future<void> _showQuickCreateSheet(BuildContext context, WidgetRef ref) async {
+  final allowedPages = ref.read(currentUserPagePermissionsProvider);
   await showModalBottomSheet<void>(
     context: context,
     useSafeArea: true,
@@ -496,30 +781,33 @@ Future<void> _showQuickCreateSheet(BuildContext context) async {
         children: [
           Text('Hızlı Ekle', style: Theme.of(context).textTheme.titleMedium),
           const Gap(10),
-          _SheetItem(
-            title: 'Yeni Müşteri',
-            icon: PhosphorIcons.userPlus(PhosphorIconsStyle.regular),
-            onTap: () {
-              Navigator.of(context).pop();
-              context.go('/musteriler?yeni=1');
-            },
-          ),
-          _SheetItem(
-            title: 'Yeni İş Emri',
-            icon: PhosphorIcons.clipboardText(PhosphorIconsStyle.regular),
-            onTap: () {
-              Navigator.of(context).pop();
-              context.go('/is-emirleri?yeni=1');
-            },
-          ),
-          _SheetItem(
-            title: 'Yeni Servis Kaydı',
-            icon: PhosphorIcons.wrench(PhosphorIconsStyle.regular),
-            onTap: () {
-              Navigator.of(context).pop();
-              context.go('/servis?yeni=1');
-            },
-          ),
+          if (allowedPages.contains(kPageCustomers))
+            _SheetItem(
+              title: 'Yeni Müşteri',
+              icon: PhosphorIcons.userPlus(PhosphorIconsStyle.regular),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.go('/musteriler?yeni=1');
+              },
+            ),
+          if (allowedPages.contains(kPageWorkOrders))
+            _SheetItem(
+              title: 'Yeni İş Emri',
+              icon: PhosphorIcons.clipboardText(PhosphorIconsStyle.regular),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.go('/is-emirleri?yeni=1');
+              },
+            ),
+          if (allowedPages.contains(kPageService))
+            _SheetItem(
+              title: 'Yeni Servis Kaydı',
+              icon: PhosphorIcons.wrench(PhosphorIconsStyle.regular),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.go('/servis?yeni=1');
+              },
+            ),
           const Gap(6),
         ],
       ),
@@ -553,10 +841,9 @@ Future<void> _showSearchSheet(BuildContext context) async {
           const Gap(12),
           Text(
             'Son aramalar yakında burada görünecek.',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: const Color(0xFF64748B)),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
           ),
           const Gap(12),
         ],
@@ -565,8 +852,91 @@ Future<void> _showSearchSheet(BuildContext context) async {
   );
 }
 
+Future<void> _showMobileAccountSheet(
+  BuildContext context, {
+  required String profileName,
+  required String roleName,
+  required Future<void> Function() onSignOut,
+}) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    backgroundColor: AppTheme.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (sheetContext) => Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 42,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppTheme.border,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          const Gap(14),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
+                child: const Icon(
+                  Icons.person_rounded,
+                  color: AppTheme.primary,
+                  size: 22,
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      profileName,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Gap(2),
+                    Text(
+                      roleName,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Gap(16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                Navigator.of(sheetContext).pop();
+                await onSignOut();
+              },
+              icon: const Icon(Icons.logout_rounded, size: 18),
+              label: const Text('Çıkış Yap'),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class _SheetItem extends StatelessWidget {
-  const _SheetItem({required this.title, required this.icon, required this.onTap});
+  const _SheetItem({
+    required this.title,
+    required this.icon,
+    required this.onTap,
+  });
 
   final String title;
   final IconData icon;
@@ -588,9 +958,9 @@ class _SheetItem extends StatelessWidget {
       ),
       title: Text(
         title,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
       ),
       trailing: const Icon(Icons.chevron_right_rounded),
       onTap: onTap,
@@ -599,23 +969,55 @@ class _SheetItem extends StatelessWidget {
 }
 
 bool _isActive(String matchedLocation, String path) {
-  if (path == '/panel') return matchedLocation == '/panel' || matchedLocation == '/';
+  if (path == '/panel') {
+    return matchedLocation == '/panel' || matchedLocation == '/';
+  }
   return matchedLocation == path || matchedLocation.startsWith('$path/');
 }
 
-int _mobileIndexForLocation(String matchedLocation) {
-  if (matchedLocation.startsWith('/musteriler')) return 1;
-  if (matchedLocation.startsWith('/is-emirleri')) return 2;
-  if (matchedLocation.startsWith('/raporlar')) return 3;
+int _mobileIndexForLocation(String matchedLocation, List<_NavItem> items) {
+  for (var i = 0; i < items.length; i++) {
+    if (_isActive(matchedLocation, items[i].path)) return i;
+  }
   return 0;
 }
 
 class _NavItem {
-  const _NavItem({required this.path, required this.label, required this.icon});
+  const _NavItem({
+    required this.path,
+    required this.label,
+    required this.icon,
+    required this.permissionKey,
+    this.children = const [],
+  });
 
   final String path;
   final String label;
   final IconData icon;
+  final String permissionKey;
+  final List<_NavSubItem> children;
+
+  _NavItem copyWith({List<_NavSubItem>? children}) {
+    return _NavItem(
+      path: path,
+      label: label,
+      icon: icon,
+      permissionKey: permissionKey,
+      children: children ?? this.children,
+    );
+  }
+}
+
+class _NavSubItem {
+  const _NavSubItem({
+    required this.path,
+    required this.label,
+    required this.permissionKey,
+  });
+
+  final String path;
+  final String label;
+  final String permissionKey;
 }
 
 final _navItems = <_NavItem>[
@@ -623,45 +1025,106 @@ final _navItems = <_NavItem>[
     path: '/panel',
     label: 'Panel',
     icon: PhosphorIcons.house(PhosphorIconsStyle.regular),
+    permissionKey: kPagePanel,
   ),
   _NavItem(
     path: '/musteriler',
     label: 'Müşteriler',
     icon: PhosphorIcons.users(PhosphorIconsStyle.regular),
+    permissionKey: kPageCustomers,
+  ),
+  _NavItem(
+    path: '/formlar',
+    label: 'Formlar',
+    icon: PhosphorIcons.files(PhosphorIconsStyle.regular),
+    permissionKey: kPageForms,
+    children: const [
+      _NavSubItem(
+        path: '/formlar/basvuru',
+        label: 'Başvuru Formu',
+        permissionKey: kPageForms,
+      ),
+      _NavSubItem(
+        path: '/formlar/hurda',
+        label: 'Hurda Formu',
+        permissionKey: kPageForms,
+      ),
+      _NavSubItem(
+        path: '/formlar/devir',
+        label: 'Devir Formu',
+        permissionKey: kPageForms,
+      ),
+    ],
   ),
   _NavItem(
     path: '/is-emirleri',
     label: 'İş Emirleri',
     icon: PhosphorIcons.kanban(PhosphorIconsStyle.regular),
+    permissionKey: kPageWorkOrders,
   ),
   _NavItem(
     path: '/servis',
     label: 'Servis',
     icon: PhosphorIcons.wrench(PhosphorIconsStyle.regular),
+    permissionKey: kPageService,
   ),
   _NavItem(
     path: '/raporlar',
     label: 'Raporlar',
     icon: PhosphorIcons.chartBar(PhosphorIconsStyle.regular),
+    permissionKey: kPageReports,
   ),
   _NavItem(
     path: '/urunler',
     label: 'Hat & Lisans',
     icon: PhosphorIcons.simCard(PhosphorIconsStyle.regular),
+    permissionKey: kPageProducts,
   ),
   _NavItem(
     path: '/faturalama',
     label: 'Faturalama',
     icon: PhosphorIcons.receipt(PhosphorIconsStyle.regular),
+    permissionKey: kPageBilling,
+    children: const [
+      _NavSubItem(
+        path: '/faturalama',
+        label: 'Fatura Kuyruğu',
+        permissionKey: kPageBilling,
+      ),
+      _NavSubItem(
+        path: '/faturalama/faturalar',
+        label: 'Faturalar',
+        permissionKey: kPageBilling,
+      ),
+      _NavSubItem(
+        path: '/faturalama/cari-hesaplar',
+        label: 'Cari Hesaplar',
+        permissionKey: kPageBilling,
+      ),
+      _NavSubItem(
+        path: '/faturalama/stok',
+        label: 'Stok',
+        permissionKey: kPageBilling,
+      ),
+    ],
   ),
   _NavItem(
     path: '/tanimlamalar',
     label: 'Tanımlamalar',
     icon: PhosphorIcons.sliders(PhosphorIconsStyle.regular),
+    permissionKey: kPageDefinitions,
   ),
   _NavItem(
     path: '/personel',
     label: 'Personel',
     icon: PhosphorIcons.identificationCard(PhosphorIconsStyle.regular),
+    permissionKey: kPagePersonnel,
   ),
+];
+
+final _mobileItems = <_NavItem>[
+  _navItems[0],
+  _navItems[1],
+  _navItems[3],
+  _navItems[5],
 ];
