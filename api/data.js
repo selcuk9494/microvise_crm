@@ -64,6 +64,18 @@ module.exports = async (req, res) => {
     }
 
     switch (resource) {
+      case 'customers_basic': {
+        const result = await query(
+          `
+            select id,name,city,address,is_active
+            from public.customers
+            where is_active = true
+            order by name asc
+          `,
+        );
+        return ok(res, { items: result.rows });
+      }
+
       case 'customer_detail': {
         const id = String(req.query.customerId || '').trim();
         if (!id) return badRequest(res, 'customerId zorunludur.');

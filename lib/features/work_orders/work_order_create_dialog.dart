@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_card.dart';
@@ -14,14 +15,6 @@ Future<void> showCreateWorkOrderDialog(
   WidgetRef ref, {
   WorkOrder? initialOrder,
 }) async {
-  final client = ref.read(supabaseClientProvider);
-  if (client == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Supabase bağlantısı bulunamadı.')),
-    );
-    return;
-  }
-
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
@@ -91,10 +84,26 @@ class _CreateWorkOrderDialogState
   }
 
   Future<void> _loadCustomers() async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
 
     try {
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'customers_basic'},
+        );
+        final items = ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(_CustomerOption.fromJson)
+            .toList(growable: false);
+        items.sort((a, b) => _sortKey(a.name).compareTo(_sortKey(b.name)));
+        if (!mounted) return;
+        setState(() => _customers = items);
+        return;
+      }
+
+      if (client == null) return;
       final items = <_CustomerOption>[];
       var from = 0;
       const pageSize = 500;
@@ -127,10 +136,27 @@ class _CreateWorkOrderDialogState
   }
 
   Future<void> _loadCities() async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
 
     try {
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'definition_cities'},
+        );
+        final items = ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map((row) => row['name']?.toString().trim())
+            .whereType<String>()
+            .where((name) => name.isNotEmpty)
+            .toList(growable: false);
+        if (!mounted) return;
+        setState(() => _cities = items);
+        return;
+      }
+
+      if (client == null) return;
       final rows = await client
           .from('cities')
           .select('name')
@@ -152,10 +178,28 @@ class _CreateWorkOrderDialogState
   }
 
   Future<void> _loadBranches(String customerId) async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
 
     try {
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {
+            'resource': 'customer_branches',
+            'customerId': customerId,
+          },
+        );
+        final items = ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(_BranchOption.fromJson)
+            .toList(growable: false);
+        if (!mounted) return;
+        setState(() => _branches = items);
+        return;
+      }
+
+      if (client == null) return;
       final rows = await client
           .from('branches')
           .select('id,name,is_active')
@@ -177,10 +221,26 @@ class _CreateWorkOrderDialogState
   }
 
   Future<void> _loadUsers() async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
 
     try {
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'personnel_users'},
+        );
+        final items = ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(_UserOption.fromJson)
+            .where((u) => u.role != 'admin')
+            .toList(growable: false);
+        if (!mounted) return;
+        setState(() => _users = items);
+        return;
+      }
+
+      if (client == null) return;
       final rows = await client
           .from('users')
           .select('id,full_name,role')
@@ -201,10 +261,30 @@ class _CreateWorkOrderDialogState
   }
 
   Future<void> _loadWorkOrderTypes() async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
 
     try {
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'definition_work_order_types'},
+        );
+        final items = ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(_WorkOrderTypeOption.fromJson)
+            .toList(growable: false);
+        if (!mounted) return;
+        setState(() {
+          _workOrderTypes = items;
+          if (items.length == 1) {
+            _selectedWorkOrderTypeId = items.first.id;
+          }
+        });
+        return;
+      }
+
+      if (client == null) return;
       final rows = await client
           .from('work_order_types')
           .select(
@@ -263,14 +343,16 @@ class _CreateWorkOrderDialogState
       return;
     }
 
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
 
     final profile = await ref.read(currentUserProfileProvider.future);
     if (!mounted) return;
     final isAdmin = profile?.role == 'admin';
 
-    final assignedTo = isAdmin ? _assignedTo : client.auth.currentUser?.id;
+    final assignedTo =
+        isAdmin ? _assignedTo : (apiClient != null ? profile?.id : client?.auth.currentUser?.id);
     if (assignedTo == null || assignedTo.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Personel ataması gerekli.')),
@@ -310,21 +392,32 @@ class _CreateWorkOrderDialogState
       };
 
       if (widget.initialOrder == null) {
-        await _saveWorkOrderPayload(
-          client,
-          payload: {
-            ...payload,
-            'status': 'open',
-            'is_active': true,
-            'created_by': client.auth.currentUser?.id,
-          },
-        );
+        if (apiClient != null) {
+          await apiClient.postJson('/work-orders', body: payload);
+        } else {
+          await _saveWorkOrderPayload(
+            client,
+            payload: {
+              ...payload,
+              'status': 'open',
+              'is_active': true,
+              'created_by': client!.auth.currentUser?.id,
+            },
+          );
+        }
       } else {
-        await _saveWorkOrderPayload(
-          client,
-          payload: payload,
-          workOrderId: widget.initialOrder!.id,
-        );
+        if (apiClient != null) {
+          await apiClient.patchJson(
+            '/work-orders',
+            body: {'id': widget.initialOrder!.id, ...payload},
+          );
+        } else {
+          await _saveWorkOrderPayload(
+            client,
+            payload: payload,
+            workOrderId: widget.initialOrder!.id,
+          );
+        }
       }
 
       if (!mounted) return;
