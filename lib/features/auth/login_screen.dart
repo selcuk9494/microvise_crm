@@ -182,7 +182,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       const Gap(10),
                       Text(
-                        'Admin ve personel rolleri Supabase üzerinden yönetilir.',
+                        'Admin ve personel rolleri sistem üzerinden yönetilir.',
                         style: Theme.of(context)
                             .textTheme
                             .bodySmall
