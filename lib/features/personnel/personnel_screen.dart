@@ -506,30 +506,17 @@ class _CreatePersonnelDialogState
       final email = _emailController.text.trim();
       final password = _passwordController.text;
       final fullName = _fullNameController.text.trim();
-      try {
-        await client.rpc(
-          'admin_create_personnel',
-          params: {
-            'p_email': email,
-            'p_password': password,
-            'p_full_name': fullName,
-            'p_role': _role,
-            'p_page_permissions': _pagePermissions.toList(growable: false),
-            'p_action_permissions': _actionPermissions.toList(growable: false),
-          },
-        );
-      } catch (_) {
-        await client.rpc(
-          'admin_create_personnel',
-          params: {
-            'p_email': email,
-            'p_password': password,
-            'p_full_name': fullName,
-            'p_role': _role,
-            'p_page_permissions': _pagePermissions.toList(growable: false),
-          },
-        );
-      }
+      await client.rpc(
+        'admin_create_personnel',
+        params: {
+          'p_email': email,
+          'p_password': password,
+          'p_full_name': fullName,
+          'p_role': _role,
+          'p_page_permissions': _pagePermissions.toList(growable: false),
+          'p_action_permissions': _actionPermissions.toList(growable: false),
+        },
+      );
 
       if (!mounted) return;
       Navigator.of(context).pop();
