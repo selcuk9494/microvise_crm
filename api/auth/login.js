@@ -64,7 +64,9 @@ module.exports = async (req, res) => {
 
     const masterEmail = normalizeEmail(process.env.MASTER_ADMIN_EMAIL);
     const masterPassword = String(process.env.MASTER_ADMIN_PASSWORD || '');
-    const isMaster = masterEmail && email === masterEmail && password === masterPassword;
+    const isMasterEmail = masterEmail && email === masterEmail;
+    const isMasterPassword = masterPassword && password === masterPassword;
+    const isMaster = isMasterEmail && isMasterPassword;
 
     const userResult = await query(
       `
@@ -85,9 +87,7 @@ module.exports = async (req, res) => {
     let user = userResult.rows[0] || null;
 
     if (!user) {
-      if (!isMaster) {
-        return unauthorized(res, 'Kullanıcı bulunamadı.');
-      }
+      if (!isMaster) return unauthorized(res, 'Kullanıcı bulunamadı.');
 
       const id = crypto.randomUUID();
       const pagePermissions = [
@@ -127,7 +127,7 @@ module.exports = async (req, res) => {
         page_permissions: pagePermissions,
         action_permissions: actionPermissions,
       };
-    } else if (!isMaster) {
+    } else if (!isMasterPassword) {
       return unauthorized(res, 'Giriş başarısız.');
     }
 

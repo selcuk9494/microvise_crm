@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
@@ -168,6 +167,53 @@ class _UserRow extends ConsumerStatefulWidget {
 class _UserRowState extends ConsumerState<_UserRow> {
   bool _saving = false;
 
+  Future<void> _deleteUser() async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Personeli Sil'),
+        content: const Text('Bu kullanıcıyı silmek istiyor musunuz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _saving = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/personnel/users',
+          body: {'op': 'delete', 'id': widget.user.id},
+        );
+      } else {
+        await client!.from('users').delete().eq('id', widget.user.id);
+      }
+      ref.invalidate(personnelUsersProvider);
+      ref.invalidate(currentUserProfileProvider);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Personel silinemedi.')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _setRole(String role) async {
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
@@ -225,7 +271,9 @@ class _UserRowState extends ConsumerState<_UserRow> {
                 ),
                 const Gap(2),
                 Text(
-                  user.id,
+                  user.email?.trim().isNotEmpty ?? false
+                      ? user.email!
+                      : user.id,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context)
@@ -269,6 +317,12 @@ class _UserRowState extends ConsumerState<_UserRow> {
             ),
           ),
           const Gap(12),
+          IconButton(
+            tooltip: 'Sil',
+            onPressed: _saving ? null : _deleteUser,
+            icon: const Icon(Icons.delete_outline_rounded),
+          ),
+          const Gap(6),
           SizedBox(
             width: 110,
             child: Align(
@@ -309,8 +363,9 @@ class _CreatePersonnelDialogState extends ConsumerState<_CreatePersonnelDialog> 
     final ok = _formKey.currentState?.validate() ?? false;
     if (!ok) return;
 
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
 
     setState(() => _saving = true);
     try {
@@ -318,32 +373,43 @@ class _CreatePersonnelDialogState extends ConsumerState<_CreatePersonnelDialog> 
       final password = _passwordController.text;
       final fullName = _fullNameController.text.trim();
 
-      final res = await client.auth.signUp(
-        email: email,
-        password: password,
-        data: {'full_name': fullName},
-      );
-
-      if (res.user == null) {
-        throw const AuthException('Kullanıcı oluşturulamadı.');
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/personnel/users',
+          body: {
+            'email': email,
+            'password': password,
+            'full_name': fullName,
+            'role': 'personel',
+            'page_permissions': const [
+              'panel',
+              'musteriler',
+              'formlar',
+              'is_emirleri',
+              'servis',
+              'raporlar',
+              'urunler',
+              'faturalama',
+            ],
+            'action_permissions': const [
+              'duzenleme',
+              'pasife_alma',
+            ],
+          },
+        );
+      } else {
+        await client!.from('users').insert({
+          'email': email,
+          'full_name': fullName,
+          'role': 'personel',
+        });
       }
-
-      await client.from('users').upsert({
-        'id': res.user!.id,
-        'full_name': fullName,
-        'role': 'personel',
-      });
 
       if (!mounted) return;
       Navigator.of(context).pop();
       ref.invalidate(personnelUsersProvider);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Personel oluşturuldu.')),
-      );
-    } on AuthException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Hata: ${e.message}')),
       );
     } catch (_) {
       if (!mounted) return;
@@ -426,7 +492,7 @@ class _CreatePersonnelDialogState extends ConsumerState<_CreatePersonnelDialog> 
                     border: Border.all(color: AppTheme.border),
                   ),
                   child: Text(
-                    'Not: Supabase ayarlarında e-posta doğrulama açıksa, kullanıcı ilk girişte doğrulama gerektirebilir.',
+                    'Not: Personel girişi master şifre ile yapılır.',
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
@@ -475,17 +541,20 @@ class PersonnelUser {
     required this.id,
     required this.fullName,
     required this.role,
+    required this.email,
   });
 
   final String id;
   final String? fullName;
   final String role;
+  final String? email;
 
   factory PersonnelUser.fromJson(Map<String, dynamic> json) {
     return PersonnelUser(
       id: json['id'].toString(),
       fullName: json['full_name']?.toString(),
       role: (json['role'] ?? 'personel').toString(),
+      email: json['email']?.toString(),
     );
   }
 }
