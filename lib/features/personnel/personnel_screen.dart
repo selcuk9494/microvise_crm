@@ -169,12 +169,27 @@ class _UserRowState extends ConsumerState<_UserRow> {
   bool _saving = false;
 
   Future<void> _setRole(String role) async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
 
     setState(() => _saving = true);
     try {
-      await client.from('users').update({'role': role}).eq('id', widget.user.id);
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'users',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.user.id},
+            ],
+            'values': {'role': role},
+          },
+        );
+      } else {
+        await client!.from('users').update({'role': role}).eq('id', widget.user.id);
+      }
       ref.invalidate(personnelUsersProvider);
       ref.invalidate(currentUserProfileProvider);
     } catch (_) {

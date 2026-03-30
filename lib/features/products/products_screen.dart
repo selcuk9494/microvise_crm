@@ -769,8 +769,9 @@ Future<void> _extendLineAndQueueInvoice(
   WidgetRef ref, {
   required IssuedLine line,
 }) async {
+  final apiClient = ref.read(apiClientProvider);
   final client = ref.read(supabaseClientProvider);
-  if (client == null) return;
+  if (apiClient == null && client == null) return;
 
   final now = DateTime.now();
   final baseYear = (line.endsAt != null && line.endsAt!.isAfter(now)) ? line.endsAt!.year : now.year;
@@ -870,15 +871,29 @@ Future<void> _extendLineAndQueueInvoice(
   }
 
   try {
-    await client.from('lines').update({
-      'ends_at': newEndStr,
-      'expires_at': newEndStr,
-    }).eq('id', line.id);
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'lines',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': line.id},
+          ],
+          'values': {'ends_at': newEndStr, 'expires_at': newEndStr},
+        },
+      );
+    } else {
+      await client!.from('lines').update({
+        'ends_at': newEndStr,
+        'expires_at': newEndStr,
+      }).eq('id', line.id);
+    }
 
     final amountRaw = amountController.text.trim().replaceAll(',', '.');
     final amount = amountRaw.isEmpty ? null : double.tryParse(amountRaw);
 
-    await client.from('invoice_items').insert({
+    final invoiceItem = {
       'customer_id': line.customerId,
       'item_type': 'line_renewal',
       'source_table': 'lines',
@@ -887,8 +902,20 @@ Future<void> _extendLineAndQueueInvoice(
       'amount': amount,
       'currency': currency,
       'status': 'pending',
-      'created_by': client.auth.currentUser?.id,
-    });
+      'is_active': true,
+    };
+
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {'op': 'insertMany', 'table': 'invoice_items', 'rows': [invoiceItem]},
+      );
+    } else {
+      await client!.from('invoice_items').insert({
+        ...invoiceItem,
+        'created_by': client.auth.currentUser?.id,
+      });
+    }
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -911,8 +938,9 @@ Future<void> _transferLine(
   WidgetRef ref, {
   required IssuedLine line,
 }) async {
+  final apiClient = ref.read(apiClientProvider);
   final client = ref.read(supabaseClientProvider);
-  if (client == null) return;
+  if (apiClient == null && client == null) return;
 
   final customers = await ref.read(customersLookupProvider.future);
   if (!context.mounted) return;
@@ -928,19 +956,46 @@ Future<void> _transferLine(
   if (selected == null) return;
 
   try {
-    await client.from('line_transfers').insert({
+    final transferPayload = {
       'line_id': line.id,
       'from_customer_id': line.customerId,
       'to_customer_id': selected.id,
-      'transferred_by': client.auth.currentUser?.id,
-    });
+      'transferred_by': null,
+    };
 
-    await client.from('lines').update({
-      'customer_id': selected.id,
-      'branch_id': null,
-      'transferred_at': DateTime.now().toIso8601String(),
-      'transferred_by': client.auth.currentUser?.id,
-    }).eq('id', line.id);
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {'op': 'upsert', 'table': 'line_transfers', 'values': transferPayload},
+      );
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'lines',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': line.id},
+          ],
+          'values': {
+            'customer_id': selected.id,
+            'branch_id': null,
+            'transferred_at': DateTime.now().toIso8601String(),
+            'transferred_by': null,
+          },
+        },
+      );
+    } else {
+      await client!.from('line_transfers').insert({
+        ...transferPayload,
+        'transferred_by': client.auth.currentUser?.id,
+      });
+      await client.from('lines').update({
+        'customer_id': selected.id,
+        'branch_id': null,
+        'transferred_at': DateTime.now().toIso8601String(),
+        'transferred_by': client.auth.currentUser?.id,
+      }).eq('id', line.id);
+    }
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -961,8 +1016,9 @@ Future<void> _extendLicenseAndQueueInvoice(
   WidgetRef ref, {
   required IssuedLicense license,
 }) async {
+  final apiClient = ref.read(apiClientProvider);
   final client = ref.read(supabaseClientProvider);
-  if (client == null) return;
+  if (apiClient == null && client == null) return;
 
   final now = DateTime.now();
   final baseYear =
@@ -1063,15 +1119,29 @@ Future<void> _extendLicenseAndQueueInvoice(
   }
 
   try {
-    await client.from('licenses').update({
-      'ends_at': newEndStr,
-      'expires_at': newEndStr,
-    }).eq('id', license.id);
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'licenses',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': license.id},
+          ],
+          'values': {'ends_at': newEndStr, 'expires_at': newEndStr},
+        },
+      );
+    } else {
+      await client!.from('licenses').update({
+        'ends_at': newEndStr,
+        'expires_at': newEndStr,
+      }).eq('id', license.id);
+    }
 
     final amountRaw = amountController.text.trim().replaceAll(',', '.');
     final amount = amountRaw.isEmpty ? null : double.tryParse(amountRaw);
 
-    await client.from('invoice_items').insert({
+    final invoiceItem = {
       'customer_id': license.customerId,
       'item_type': 'gmp3_renewal',
       'source_table': 'licenses',
@@ -1080,8 +1150,20 @@ Future<void> _extendLicenseAndQueueInvoice(
       'amount': amount,
       'currency': currency,
       'status': 'pending',
-      'created_by': client.auth.currentUser?.id,
-    });
+      'is_active': true,
+    };
+
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {'op': 'insertMany', 'table': 'invoice_items', 'rows': [invoiceItem]},
+      );
+    } else {
+      await client!.from('invoice_items').insert({
+        ...invoiceItem,
+        'created_by': client.auth.currentUser?.id,
+      });
+    }
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
