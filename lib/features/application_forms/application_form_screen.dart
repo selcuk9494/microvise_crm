@@ -289,12 +289,25 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     ApplicationFormRecord record,
     bool active,
   ) async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
-    await client
-        .from('application_forms')
-        .update({'is_active': active})
-        .eq('id', record.id);
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'application_forms',
+          'returning': 'row',
+          'values': {'id': record.id, 'is_active': active},
+        },
+      );
+    } else {
+      if (client == null) return;
+      await client
+          .from('application_forms')
+          .update({'is_active': active})
+          .eq('id', record.id);
+    }
     ref.invalidate(applicationFormsProvider);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -330,9 +343,17 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     );
     if (confirmed != true) return;
 
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
-    await client.from('application_forms').delete().eq('id', record.id);
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {'op': 'delete', 'table': 'application_forms', 'id': record.id},
+      );
+    } else {
+      if (client == null) return;
+      await client.from('application_forms').delete().eq('id', record.id);
+    }
     ref.invalidate(applicationFormsProvider);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -426,7 +447,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       };
 
       try {
-        await _insertWorkOrderPayload(client, payload);
+        await _insertWorkOrderPayload(payload: payload);
         createdCount += 1;
       } catch (_) {
         failedCount += 1;
@@ -448,10 +469,35 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     );
   }
 
-  Future<void> _insertWorkOrderPayload(
-    dynamic client,
-    Map<String, dynamic> payload,
-  ) async {
+  Future<void> _insertWorkOrderPayload({
+    required Map<String, dynamic> payload,
+  }) async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) {
+      throw Exception('API bağlantısı bulunamadı.');
+    }
+
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/work-orders',
+        body: {
+          'customer_id': payload['customer_id'],
+          'branch_id': payload['branch_id'],
+          'work_order_type_id': payload['work_order_type_id'],
+          'title': payload['title'],
+          'description': payload['description'],
+          'address': payload['address'],
+          'city': payload['city'],
+          'assigned_to': payload['assigned_to'],
+          'scheduled_date': payload['scheduled_date'],
+          'contact_phone': payload['contact_phone'],
+          'location_link': payload['location_link'],
+        },
+      );
+      return;
+    }
+
     final safePayload = Map<String, dynamic>.from(payload);
     const fallbackColumns = {
       'address',
@@ -463,7 +509,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
 
     while (true) {
       try {
-        await client.from('work_orders').insert(safePayload);
+        await client!.from('work_orders').insert(safePayload);
         return;
       } catch (e) {
         final message = e.toString();

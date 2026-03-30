@@ -175,12 +175,25 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
   }
 
   Future<void> _setRecordActive(ScrapFormRecord record, bool active) async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
-    await client
-        .from('scrap_forms')
-        .update({'is_active': active})
-        .eq('id', record.id);
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'scrap_forms',
+          'returning': 'row',
+          'values': {'id': record.id, 'is_active': active},
+        },
+      );
+    } else {
+      if (client == null) return;
+      await client
+          .from('scrap_forms')
+          .update({'is_active': active})
+          .eq('id', record.id);
+    }
     ref.invalidate(scrapFormsProvider);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -216,9 +229,17 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
     );
     if (confirmed != true) return;
 
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
-    await client.from('scrap_forms').delete().eq('id', record.id);
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {'op': 'delete', 'table': 'scrap_forms', 'id': record.id},
+      );
+    } else {
+      if (client == null) return;
+      await client.from('scrap_forms').delete().eq('id', record.id);
+    }
     ref.invalidate(scrapFormsProvider);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -759,8 +780,9 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
 
     setState(() => _saving = true);
     try {
@@ -804,31 +826,75 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
             : _otherFindingsController.text.trim(),
       };
 
-      final inserted =
-          await (widget.isEdit
-                  ? client
+      Map<String, dynamic> inserted;
+      if (apiClient != null) {
+        final response = await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'upsert',
+            'table': 'scrap_forms',
+            'returning': 'row',
+            'values': {
+              if (widget.isEdit) 'id': widget.initialRecord!.id,
+              ...payload,
+              if (!widget.isEdit) 'is_active': true,
+            },
+          },
+        );
+        inserted = (response['row'] as Map?)?.cast<String, dynamic>() ?? {};
+        final sourceId = (response['id'] ?? '').toString();
+        if (!widget.isEdit && sourceId.isNotEmpty) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'insertMany',
+              'table': 'invoice_items',
+              'rows': [
+                {
+                  'customer_id': _selectedCustomerId,
+                  'item_type': 'scrap_form',
+                  'source_table': 'scrap_forms',
+                  'source_id': sourceId,
+                  'description':
+                      'Hurda Formu - ${_customerController.text.trim()}${_deviceController.text.trim().isEmpty ? '' : ' / ${_deviceController.text.trim()}'}',
+                  'amount': null,
+                  'currency': 'TRY',
+                  'status': 'pending',
+                  'is_active': true,
+                  'source_event': 'scrap_form_created',
+                  'source_label': 'Hurda Formu',
+                },
+              ],
+            },
+          );
+        }
+      } else {
+        inserted =
+            await (widget.isEdit
+                    ? client!
                         .from('scrap_forms')
                         .update(payload)
                         .eq('id', widget.initialRecord!.id)
-                  : client.from('scrap_forms').insert(payload))
-              .select(
-                'id,form_date,row_number,customer_id,customer_name,customer_address,customer_tax_office_and_number,device_brand_model_registry,okc_start_date,last_used_date,z_report_count,total_vat_collection,total_collection,intervention_purpose,other_findings,is_active,created_at',
-              )
-              .single();
+                    : client!.from('scrap_forms').insert(payload))
+                .select(
+                  'id,form_date,row_number,customer_id,customer_name,customer_address,customer_tax_office_and_number,device_brand_model_registry,okc_start_date,last_used_date,z_report_count,total_vat_collection,total_collection,intervention_purpose,other_findings,is_active,created_at',
+                )
+                .single();
 
-      if (!widget.isEdit) {
-        await enqueueInvoiceItem(
-          client,
-          customerId: _selectedCustomerId,
-          itemType: 'scrap_form',
-          sourceTable: 'scrap_forms',
-          sourceId: inserted['id'].toString(),
-          description:
-              'Hurda Formu - ${_customerController.text.trim()}'
-              '${_deviceController.text.trim().isEmpty ? '' : ' / ${_deviceController.text.trim()}'}',
-          sourceEvent: 'scrap_form_created',
-          sourceLabel: 'Hurda Formu',
-        );
+        if (!widget.isEdit) {
+          await enqueueInvoiceItem(
+            client,
+            customerId: _selectedCustomerId,
+            itemType: 'scrap_form',
+            sourceTable: 'scrap_forms',
+            sourceId: inserted['id'].toString(),
+            description:
+                'Hurda Formu - ${_customerController.text.trim()}'
+                '${_deviceController.text.trim().isEmpty ? '' : ' / ${_deviceController.text.trim()}'}',
+            sourceEvent: 'scrap_form_created',
+            sourceLabel: 'Hurda Formu',
+          );
+        }
       }
 
       if (!mounted) return;

@@ -178,12 +178,25 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
   }
 
   Future<void> _setRecordActive(TransferFormRecord record, bool active) async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
-    await client
-        .from('transfer_forms')
-        .update({'is_active': active})
-        .eq('id', record.id);
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'transfer_forms',
+          'returning': 'row',
+          'values': {'id': record.id, 'is_active': active},
+        },
+      );
+    } else {
+      if (client == null) return;
+      await client
+          .from('transfer_forms')
+          .update({'is_active': active})
+          .eq('id', record.id);
+    }
     ref.invalidate(transferFormsProvider);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -219,9 +232,17 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
     );
     if (confirmed != true) return;
 
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
-    await client.from('transfer_forms').delete().eq('id', record.id);
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {'op': 'delete', 'table': 'transfer_forms', 'id': record.id},
+      );
+    } else {
+      if (client == null) return;
+      await client.from('transfer_forms').delete().eq('id', record.id);
+    }
     ref.invalidate(transferFormsProvider);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -759,8 +780,9 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
     setState(() => _saving = true);
     try {
       final payload = {
@@ -826,28 +848,72 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
             ? null
             : _transferReasonController.text.trim(),
       };
-      final inserted =
-          await (widget.isEdit
-                  ? client
+      Map<String, dynamic> inserted;
+      if (apiClient != null) {
+        final response = await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'upsert',
+            'table': 'transfer_forms',
+            'returning': 'row',
+            'values': {
+              if (widget.isEdit) 'id': widget.initialRecord!.id,
+              ...payload,
+              if (!widget.isEdit) 'is_active': true,
+            },
+          },
+        );
+        inserted = (response['row'] as Map?)?.cast<String, dynamic>() ?? {};
+        final sourceId = (response['id'] ?? '').toString();
+        if (!widget.isEdit && sourceId.isNotEmpty) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'insertMany',
+              'table': 'invoice_items',
+              'rows': [
+                {
+                  'customer_id': _transferorCustomerId,
+                  'item_type': 'transfer_form',
+                  'source_table': 'transfer_forms',
+                  'source_id': sourceId,
+                  'description':
+                      'Devir Formu - ${_transferorController.text.trim()} → ${_transfereeController.text.trim()}',
+                  'amount': null,
+                  'currency': 'TRY',
+                  'status': 'pending',
+                  'is_active': true,
+                  'source_event': 'transfer_form_created',
+                  'source_label': 'Devir Formu',
+                },
+              ],
+            },
+          );
+        }
+      } else {
+        inserted =
+            await (widget.isEdit
+                    ? client!
                         .from('transfer_forms')
                         .update(payload)
                         .eq('id', widget.initialRecord!.id)
-                  : client.from('transfer_forms').insert(payload))
-              .select(
-                'id,row_number,transferor_name,transferor_address,transferor_tax_office_and_registry,transferor_approval_date_no,transferee_name,transferee_address,transferee_tax_office_and_registry,transferee_approval_date_no,total_sales_receipt,vat_collected,last_receipt_date_no,z_report_count,other_device_info,brand_model,device_serial_no,fiscal_symbol_company_code,department_count,transfer_date,transfer_reason,is_active,created_at',
-              )
-              .single();
-      if (!widget.isEdit) {
-        await enqueueInvoiceItem(
-          client,
-          itemType: 'transfer_form',
-          sourceTable: 'transfer_forms',
-          sourceId: inserted['id'].toString(),
-          description:
-              'Devir Formu - ${_transferorController.text.trim()} → ${_transfereeController.text.trim()}',
-          sourceEvent: 'transfer_form_created',
-          sourceLabel: 'Devir Formu',
-        );
+                    : client!.from('transfer_forms').insert(payload))
+                .select(
+                  'id,row_number,transferor_name,transferor_address,transferor_tax_office_and_registry,transferor_approval_date_no,transferee_name,transferee_address,transferee_tax_office_and_registry,transferee_approval_date_no,total_sales_receipt,vat_collected,last_receipt_date_no,z_report_count,other_device_info,brand_model,device_serial_no,fiscal_symbol_company_code,department_count,transfer_date,transfer_reason,is_active,created_at',
+                )
+                .single();
+        if (!widget.isEdit) {
+          await enqueueInvoiceItem(
+            client,
+            itemType: 'transfer_form',
+            sourceTable: 'transfer_forms',
+            sourceId: inserted['id'].toString(),
+            description:
+                'Devir Formu - ${_transferorController.text.trim()} → ${_transfereeController.text.trim()}',
+            sourceEvent: 'transfer_form_created',
+            sourceLabel: 'Devir Formu',
+          );
+        }
       }
       if (!mounted) return;
       Navigator.of(context).pop(TransferFormRecord.fromJson(inserted));
