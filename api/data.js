@@ -46,6 +46,12 @@ module.exports = async (req, res) => {
     if (resource.startsWith('definition_')) {
       if (!requirePage(user, 'tanimlamalar', res)) return;
     }
+    if (resource.startsWith('personnel_')) {
+      if (!requirePage(user, 'personel', res)) return;
+    }
+    if (resource.startsWith('products_') || resource === 'customers_lookup') {
+      if (!requirePage(user, 'urunler', res)) return;
+    }
     if (
       resource === 'application_form_print_settings' ||
       resource === 'scrap_form_print_settings' ||
@@ -329,6 +335,111 @@ module.exports = async (req, res) => {
           `select * from public.transfer_form_settings where id = 'default' limit 1`,
         );
         return ok(res, result.rows[0] || null);
+      }
+
+      case 'personnel_users': {
+        const result = await query(
+          `
+            select
+              id,
+              full_name,
+              role,
+              email,
+              coalesce(page_permissions, '{}'::text[]) as page_permissions,
+              coalesce(action_permissions, '{}'::text[]) as action_permissions,
+              created_at
+            from public.users
+            order by created_at desc
+          `,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'customers_lookup': {
+        const result = await query(
+          `select id,name,is_active from public.customers order by name asc`,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'products_lines': {
+        const search = String(req.query.search || '').trim();
+        const showPassive = parseBoolean(req.query.showPassive, false);
+        const values = [];
+        let whereSql = 'where true';
+
+        if (!(user.role === 'admin' && showPassive)) {
+          values.push(true);
+          whereSql += ` and l.is_active = $${values.length}`;
+        }
+
+        if (search) {
+          values.push(`%${search}%`);
+          whereSql += ` and (l.number ilike $${values.length} or l.sim_number ilike $${values.length})`;
+        }
+
+        const result = await query(
+          `
+            select
+              l.id,
+              l.label,
+              l.number,
+              l.sim_number,
+              l.starts_at,
+              l.ends_at,
+              l.is_active,
+              l.customer_id,
+              l.branch_id,
+              c.name as customer_name,
+              b.name as branch_name
+            from public.lines l
+            left join public.customers c on c.id = l.customer_id
+            left join public.branches b on b.id = l.branch_id
+            ${whereSql}
+            order by l.ends_at asc nulls last, l.created_at desc
+            limit 500
+          `,
+          values,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'products_licenses': {
+        const search = String(req.query.search || '').trim();
+        const showPassive = parseBoolean(req.query.showPassive, false);
+        const values = [];
+        let whereSql = `where true`;
+
+        if (!(user.role === 'admin' && showPassive)) {
+          values.push(true);
+          whereSql += ` and lic.is_active = $${values.length}`;
+        }
+
+        if (search) {
+          values.push(`%${search}%`);
+          whereSql += ` and lic.name ilike $${values.length}`;
+        }
+
+        const result = await query(
+          `
+            select
+              lic.id,
+              lic.name,
+              lic.license_type,
+              lic.starts_at,
+              lic.ends_at,
+              lic.is_active,
+              lic.customer_id,
+              c.name as customer_name
+            from public.licenses lic
+            left join public.customers c on c.id = lic.customer_id
+            ${whereSql}
+            order by lic.ends_at asc nulls last, lic.created_at desc
+            limit 500
+          `,
+          values,
+        );
+        return ok(res, { items: result.rows });
       }
 
       default:
