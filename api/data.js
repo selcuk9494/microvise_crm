@@ -131,6 +131,31 @@ module.exports = async (req, res) => {
         return ok(res, { items: result.rows });
       }
 
+      case 'customer_locations': {
+        const customerId = String(req.query.customerId || '').trim();
+        if (!customerId) return badRequest(res, 'customerId zorunludur.');
+        const result = await query(
+          `
+            select
+              id,
+              customer_id,
+              title,
+              description,
+              address,
+              location_link,
+              location_lat,
+              location_lng,
+              is_active,
+              created_at
+            from public.customer_locations
+            where customer_id = $1 and is_active = true
+            order by created_at desc
+          `,
+          [customerId],
+        );
+        return ok(res, { items: result.rows });
+      }
+
       case 'customer_licenses': {
         const customerId = String(req.query.customerId || '').trim();
         if (!customerId) return badRequest(res, 'customerId zorunludur.');

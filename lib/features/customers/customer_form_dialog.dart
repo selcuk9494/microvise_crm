@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 
+import '../../core/api/api_client.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_section_card.dart';
@@ -166,24 +167,40 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   Future<void> _loadLocations() async {
     final customerId = widget.initialData?.id;
     if (customerId == null || customerId.isEmpty) return;
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
 
     setState(() => _loadingLocations = true);
     try {
-      final rows = await client
-          .from('customer_locations')
-          .select(
-            'id,customer_id,title,description,address,location_link,location_lat,location_lng,is_active,created_at',
-          )
-          .eq('customer_id', customerId)
-          .eq('is_active', true)
-          .order('created_at', ascending: false);
+      final List<Map<String, dynamic>> rows;
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {
+            'resource': 'customer_locations',
+            'customerId': customerId,
+          },
+        );
+        rows = ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .toList(growable: false);
+      } else {
+        final result = await client!
+            .from('customer_locations')
+            .select(
+              'id,customer_id,title,description,address,location_link,location_lat,location_lng,is_active,created_at',
+            )
+            .eq('customer_id', customerId)
+            .eq('is_active', true)
+            .order('created_at', ascending: false);
+        rows = (result as List).cast<Map<String, dynamic>>();
+      }
 
-      final nextDrafts = (rows as List)
+      final nextDrafts = rows
           .map(
             (row) => _CustomerLocationDraft.fromLocation(
-              CustomerLocation.fromJson(row as Map<String, dynamic>),
+              CustomerLocation.fromJson(row),
             ),
           )
           .toList(growable: true);
@@ -892,8 +909,9 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
 
     final normalizedVkn = _normalizeDigits(_vknController.text);
     final normalizedTcknMs = _normalizeDigits(_tcknMsController.text);
@@ -948,13 +966,54 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
           )
           .toList(growable: false);
 
+      if (apiClient != null) {
+        if (widget.isEdit) {
+          await apiClient.patchJson(
+            '/customers',
+            body: {
+              'id': widget.initialData!.id!,
+              ...payload,
+              'locations': locationPayloads,
+            },
+          );
+          ref.invalidate(customerLocationsProvider(widget.initialData!.id!));
+          if (!mounted) return;
+          ref.invalidate(customersProvider);
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Müşteri güncellendi.')),
+          );
+          Navigator.of(context).pop(widget.initialData!.id);
+          return;
+        }
+
+        final response = await apiClient.postJson(
+          '/customers',
+          body: {...payload, 'locations': locationPayloads},
+        );
+        final customerId = (response['id'] ?? '').toString();
+        if (customerId.isEmpty) {
+          throw Exception('Müşteri kaydedilemedi.');
+        }
+
+        if (!mounted) return;
+        ref.invalidate(customersProvider);
+        ref.invalidate(customerLocationsProvider(customerId));
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Müşteri kaydı oluşturuldu.')),
+        );
+        Navigator.of(context).pop(customerId);
+        return;
+      }
+
+      final supabase = client!;
+
       if (widget.isEdit) {
-        await client
+        await supabase
             .from('customers')
             .update(payload)
             .eq('id', widget.initialData!.id!);
         await _saveCustomerLocations(
-          client,
+          supabase,
           customerId: widget.initialData!.id!,
           locationPayloads: locationPayloads,
         );
@@ -968,15 +1027,15 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
         return;
       }
 
-      final inserted = await client
+      final inserted = await supabase
           .from('customers')
-          .insert({...payload, 'created_by': client.auth.currentUser?.id})
+          .insert({...payload, 'created_by': supabase.auth.currentUser?.id})
           .select('id')
           .single();
 
       final customerId = inserted['id'].toString();
       await _saveCustomerLocations(
-        client,
+        supabase,
         customerId: customerId,
         locationPayloads: locationPayloads,
       );

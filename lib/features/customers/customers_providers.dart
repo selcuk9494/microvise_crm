@@ -229,7 +229,20 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
 });
 
 final customerCitiesProvider = FutureProvider<List<String>>((ref) async {
+  final apiClient = ref.watch(apiClientProvider);
   final client = ref.watch(supabaseClientProvider);
+  if (apiClient != null) {
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {'resource': 'definition_cities'},
+    );
+    return ((response['items'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map((row) => row['name']?.toString().trim())
+        .whereType<String>()
+        .where((name) => name.isNotEmpty)
+        .toList(growable: false);
+  }
   if (client == null) return const [];
 
   try {
@@ -254,7 +267,21 @@ final customerLocationsProvider =
       ref,
       customerId,
     ) async {
+      final apiClient = ref.watch(apiClientProvider);
       final client = ref.watch(supabaseClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {
+            'resource': 'customer_locations',
+            'customerId': customerId,
+          },
+        );
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(CustomerLocation.fromJson)
+            .toList(growable: false);
+      }
       if (client == null) return const [];
 
       try {
