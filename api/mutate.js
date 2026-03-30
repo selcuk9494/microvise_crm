@@ -59,15 +59,15 @@ const allowedTables = new Set([
 const tablePermissions = {
   customers: 'musteriler',
   customer_locations: 'musteriler',
-  branches: 'musteriler',
-  lines: 'urunler',
-  licenses: 'urunler',
-  line_transfers: 'urunler',
+  branches: ['musteriler', 'is_emirleri'],
+  lines: ['urunler', 'is_emirleri'],
+  licenses: ['urunler', 'is_emirleri'],
+  line_transfers: ['urunler', 'is_emirleri'],
   products: 'urunler',
-  stock_movements: 'urunler',
-  product_serial_inventory: 'urunler',
+  stock_movements: ['urunler', 'formlar'],
+  product_serial_inventory: ['urunler', 'formlar'],
   work_orders: 'is_emirleri',
-  payments: 'is_emirleri',
+  payments: ['is_emirleri', 'servis'],
   service_records: 'servis',
   customer_devices: 'servis',
   device_brands: 'tanimlamalar',
@@ -80,19 +80,23 @@ const tablePermissions = {
   scrap_forms: 'formlar',
   transfer_forms: 'formlar',
   invoices: 'faturalama',
-  invoice_items: 'faturalama',
+  invoice_items: ['faturalama', 'urunler', 'formlar', 'is_emirleri'],
   transactions: 'faturalama',
   users: 'personel',
 };
 
 const columnsCache = new Map();
 
-function requirePage(user, pageKey, res) {
-  if (!hasPageAccess(user, pageKey)) {
-    forbidden(res, 'Erişim yetkiniz yok.');
-    return false;
+function requireAnyPage(user, pageKeys, res) {
+  const keys = Array.isArray(pageKeys)
+    ? pageKeys
+    : [String(pageKeys || '').trim()].filter((k) => k.length > 0);
+  if (!keys.length) return true;
+  for (const key of keys) {
+    if (hasPageAccess(user, key)) return true;
   }
-  return true;
+  forbidden(res, 'Erişim yetkiniz yok.');
+  return false;
 }
 
 async function getColumns(table) {
@@ -336,7 +340,7 @@ module.exports = async (req, res) => {
     if (!allowedTables.has(table)) return badRequest(res, 'table desteklenmiyor.');
 
     const requiredPage = tablePermissions[table] || null;
-    if (requiredPage && !requirePage(user, requiredPage, res)) return;
+    if (requiredPage && !requireAnyPage(user, requiredPage, res)) return;
 
     if (op === 'upsert') {
       const values = body.values;
