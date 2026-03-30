@@ -121,6 +121,15 @@ module.exports = async (req, res) => {
       0,
     );
 
+    const invoiceQueuePending = await scalarNumber(
+      `select count(*)::int as value
+       from public.invoice_items
+       where coalesce(is_active, true) = true
+         and coalesce(status, 'pending') = 'pending'`,
+      [],
+      0,
+    );
+
     const balances = await listRows(`select balance from public.account_balances`);
     let totalReceivable = 0;
     let totalPayable = 0;
@@ -148,6 +157,7 @@ module.exports = async (req, res) => {
       total_payable: totalPayable,
       open_invoices: openInvoices,
       total_invoice_amount: totalInvoiceAmount,
+      invoice_queue_pending: invoiceQueuePending,
     });
   } catch (error) {
     return serverError(res, error);

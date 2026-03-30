@@ -10,6 +10,7 @@ import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
+import '../dashboard/dashboard_providers.dart';
 
 final customerDetailProvider =
     FutureProvider.family<CustomerDetail, String>((ref, customerId) async {
@@ -1360,8 +1361,9 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
     final ok = _formKey.currentState?.validate() ?? false;
     if (!ok) return;
 
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
 
     setState(() => _saving = true);
     try {
@@ -1369,17 +1371,73 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
       final start = DateTime(now.year, now.month, now.day);
       final end = DateTime(now.year, 12, 31);
 
-      await client.from('lines').insert({
+      final profile = await ref.read(currentUserProfileProvider.future);
+      final createdBy = profile?.id;
+
+      final linePayload = {
         'customer_id': widget.customerId,
         'branch_id': _branchId,
-        'label': _labelController.text.trim().isEmpty ? null : _labelController.text.trim(),
+        'label': _labelController.text.trim().isEmpty
+            ? null
+            : _labelController.text.trim(),
         'number': _numberController.text.trim(),
-        'sim_number': _simController.text.trim().isEmpty ? null : _simController.text.trim(),
+        'sim_number': _simController.text.trim().isEmpty
+            ? null
+            : _simController.text.trim(),
         'starts_at': start.toIso8601String().substring(0, 10),
         'ends_at': end.toIso8601String().substring(0, 10),
         'expires_at': end.toIso8601String().substring(0, 10),
         'is_active': true,
-      });
+        'created_by': createdBy,
+      };
+
+      String? lineId;
+      if (apiClient != null) {
+        final response = await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'upsert',
+            'table': 'lines',
+            'returning': 'row',
+            'values': linePayload,
+          },
+        );
+        lineId = (response['id'] ?? '').toString();
+        if (lineId.isNotEmpty) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'insertMany',
+              'table': 'invoice_items',
+              'rows': [
+                {
+                  'customer_id': widget.customerId,
+                  'item_type': 'line_activation',
+                  'source_table': 'lines',
+                  'source_id': lineId,
+                  'description':
+                      'Hat Aktivasyonu - ${_numberController.text.trim()}',
+                  'amount': null,
+                  'currency': 'TRY',
+                  'status': 'pending',
+                  'is_active': true,
+                  'created_by': createdBy,
+                  'source_event': 'line_sold',
+                  'source_label': 'Hat Aktivasyonu',
+                },
+              ],
+            },
+          );
+        }
+      } else {
+        await client!.from('lines').insert({
+          ...linePayload,
+          'created_by': client.auth.currentUser?.id,
+        });
+      }
+
+      ref.invalidate(customerLinesProvider(widget.customerId));
+      ref.invalidate(dashboardMetricsProvider);
 
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -1576,8 +1634,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
     final ok = _formKey.currentState?.validate() ?? false;
     if (!ok) return;
 
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
 
     setState(() => _saving = true);
     try {
@@ -1585,7 +1644,10 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
       final start = DateTime(now.year, now.month, now.day);
       final end = DateTime(now.year, 12, 31);
 
-      await client.from('licenses').insert({
+      final profile = await ref.read(currentUserProfileProvider.future);
+      final createdBy = profile?.id;
+
+      final licensePayload = {
         'customer_id': widget.customerId,
         'name': _nameController.text.trim(),
         'license_type': 'gmp3',
@@ -1593,7 +1655,57 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
         'ends_at': end.toIso8601String().substring(0, 10),
         'expires_at': end.toIso8601String().substring(0, 10),
         'is_active': true,
-      });
+        'created_by': createdBy,
+      };
+
+      String? licenseId;
+      if (apiClient != null) {
+        final response = await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'upsert',
+            'table': 'licenses',
+            'returning': 'row',
+            'values': licensePayload,
+          },
+        );
+        licenseId = (response['id'] ?? '').toString();
+
+        if (licenseId.isNotEmpty) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'insertMany',
+              'table': 'invoice_items',
+              'rows': [
+                {
+                  'customer_id': widget.customerId,
+                  'item_type': 'gmp3_activation',
+                  'source_table': 'licenses',
+                  'source_id': licenseId,
+                  'description':
+                      'GMP3 Aktivasyonu - ${_nameController.text.trim()}',
+                  'amount': null,
+                  'currency': 'TRY',
+                  'status': 'pending',
+                  'is_active': true,
+                  'created_by': createdBy,
+                  'source_event': 'gmp3_sold',
+                  'source_label': 'GMP3 Aktivasyonu',
+                },
+              ],
+            },
+          );
+        }
+      } else {
+        await client!.from('licenses').insert({
+          ...licensePayload,
+          'created_by': client.auth.currentUser?.id,
+        });
+      }
+
+      ref.invalidate(customerLicensesProvider(widget.customerId));
+      ref.invalidate(dashboardMetricsProvider);
 
       if (!mounted) return;
       Navigator.of(context).pop();

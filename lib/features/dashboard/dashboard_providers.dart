@@ -25,6 +25,7 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
       totalPayable: _doubleValue(row['total_payable']),
       openInvoices: _intValue(row['open_invoices']),
       totalInvoiceAmount: _doubleValue(row['total_invoice_amount']),
+      invoiceQueuePending: _intValue(row['invoice_queue_pending']),
     );
   }
 
@@ -102,6 +103,16 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
 
   final totalInvoiceAmount = await _sumOutstandingInvoices(client);
 
+  int invoiceQueuePending = 0;
+  try {
+    invoiceQueuePending = await _count(client, 'invoice_items', filters: {
+      'status': 'pending',
+      'is_active': true,
+    });
+  } catch (_) {
+    invoiceQueuePending = 0;
+  }
+
   return DashboardMetrics(
     totalCustomers: totalCustomers,
     openWorkOrders: openWorkOrders,
@@ -118,6 +129,7 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
     totalPayable: receivablePayable.payable,
     openInvoices: openInvoices,
     totalInvoiceAmount: totalInvoiceAmount,
+    invoiceQueuePending: invoiceQueuePending,
   );
 });
 
@@ -337,6 +349,7 @@ Future<DashboardMetrics?> _fetchDashboardSnapshot(SupabaseClient client) async {
       totalPayable: _doubleValue(row['total_payable']),
       openInvoices: _intValue(row['open_invoices']),
       totalInvoiceAmount: _doubleValue(row['total_invoice_amount']),
+      invoiceQueuePending: _intValue(row['invoice_queue_pending']),
     );
   } catch (_) {
     return null;
@@ -370,6 +383,7 @@ class DashboardMetrics {
     required this.totalPayable,
     required this.openInvoices,
     required this.totalInvoiceAmount,
+    required this.invoiceQueuePending,
   });
 
   final int totalCustomers;
@@ -387,6 +401,7 @@ class DashboardMetrics {
   final double totalPayable;
   final int openInvoices;
   final double totalInvoiceAmount;
+  final int invoiceQueuePending;
 
   double get revenueChangePercent {
     if (lastMonthRevenue == 0) return revenue > 0 ? 100 : 0;
@@ -409,6 +424,7 @@ class DashboardMetrics {
         totalPayable: 0,
         openInvoices: 0,
         totalInvoiceAmount: 0,
+        invoiceQueuePending: 0,
       );
 }
 
