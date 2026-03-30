@@ -26,3 +26,24 @@ final sessionProvider = Provider<Session?>((ref) {
     orElse: () => ref.watch(supabaseClientProvider)?.auth.currentSession,
   );
 });
+
+final apiAccessTokenProvider =
+    NotifierProvider<ApiAccessTokenNotifier, String?>(ApiAccessTokenNotifier.new);
+
+class ApiAccessTokenNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void set(String? token) {
+    final trimmed = token?.trim();
+    state = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+  }
+
+  void clear() => state = null;
+}
+
+final accessTokenProvider = Provider<String?>((ref) {
+  final apiToken = ref.watch(apiAccessTokenProvider);
+  if (apiToken != null && apiToken.isNotEmpty) return apiToken;
+  return ref.watch(sessionProvider)?.accessToken;
+});

@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/api/api_client.dart';
+import '../../core/auth/auth_providers.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_card.dart';
@@ -29,8 +31,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _signIn() async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
 
     final email = _emailController.text.trim();
     final password = _passwordController.text;
@@ -43,7 +45,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     setState(() => _loading = true);
     try {
-      await client.auth.signInWithPassword(email: email, password: password);
+      if (apiClient != null) {
+        final response = await apiClient.postJson(
+          '/auth/login',
+          requiresAuth: false,
+          body: {'email': email, 'password': password},
+        );
+        final token = (response['accessToken'] ?? '').toString();
+        if (token.isEmpty) {
+          throw Exception('Giriş başarısız.');
+        }
+        ref.read(apiAccessTokenProvider.notifier).set(token);
+      } else {
+        if (client == null) throw Exception('Giriş yapılamadı.');
+        await client.auth.signInWithPassword(email: email, password: password);
+      }
       ref.invalidate(currentUserProfileProvider);
       if (!mounted) return;
       context.go('/panel');
@@ -52,10 +68,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Giriş başarısız: ${e.message}')),
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Giriş başarısız.')),
+        SnackBar(content: Text('Giriş başarısız: ${e.toString()}')),
       );
     } finally {
       if (mounted) setState(() => _loading = false);

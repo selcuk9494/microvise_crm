@@ -1,6 +1,10 @@
 import 'package:flutter/foundation.dart';
 
 class AppConfig {
+  static const _envDisableSupabase = String.fromEnvironment(
+    'DISABLE_SUPABASE',
+    defaultValue: '',
+  );
   static const _defaultSupabaseUrl = 'https://xvbczyhvmmcvqezjjpbn.supabase.co';
   static const _defaultSupabasePublishableKey =
       'sb_publishable_H5LsiU6dSi-8ymL9rYBjIg_NPzJ8hAq';
@@ -32,7 +36,9 @@ class AppConfig {
   }
 
   static bool get isSupabaseConfigured =>
-      supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
+      _envDisableSupabase != 'true' &&
+      supabaseUrl.isNotEmpty &&
+      supabaseAnonKey.isNotEmpty;
 
   static String? get apiBaseUrl {
     if (_envApiBaseUrl.isNotEmpty) return _envApiBaseUrl;

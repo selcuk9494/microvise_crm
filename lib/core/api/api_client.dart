@@ -51,6 +51,21 @@ class ApiClient {
     );
   }
 
+  Future<Map<String, dynamic>> postJson(
+    String path, {
+    Object? body,
+    Map<String, String>? queryParameters,
+    bool requiresAuth = true,
+  }) async {
+    return _requestJson(
+      method: 'POST',
+      path: path,
+      queryParameters: queryParameters,
+      requiresAuth: requiresAuth,
+      body: body,
+    );
+  }
+
   Future<Map<String, dynamic>> patchJson(
     String path, {
     Object? body,
@@ -75,8 +90,7 @@ class ApiClient {
   }) async {
     final headers = <String, String>{'Accept': 'application/json'};
     if (requiresAuth) {
-      final session = ref.read(sessionProvider);
-      final accessToken = session?.accessToken;
+      final accessToken = ref.read(accessTokenProvider);
       if (accessToken == null || accessToken.isEmpty) {
         throw Exception('Oturum bulunamadı.');
       }
@@ -113,4 +127,3 @@ class ApiClient {
     throw Exception('Beklenmeyen API yanıtı.');
   }
 }
-

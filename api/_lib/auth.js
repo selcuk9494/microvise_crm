@@ -1,13 +1,39 @@
 const { query } = require('./db');
+const crypto = require('crypto');
 
-function getSupabaseAuthConfig() {
-  const url = process.env.SUPABASE_URL;
-  const publishableKey =
-    process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!url || !publishableKey) {
-    throw new Error('SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are required.');
+function base64UrlDecode(input) {
+  const normalized = String(input || '')
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+  return Buffer.from(padded, 'base64').toString('utf8');
+}
+
+function verifyJwt(token, secret) {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) return null;
+
+  const [encodedHeader, encodedPayload, encodedSignature] = parts;
+  const data = `${encodedHeader}.${encodedPayload}`;
+  const expectedSig = crypto
+    .createHmac('sha256', secret)
+    .update(data)
+    .digest('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+
+  if (expectedSig !== encodedSignature) return null;
+
+  try {
+    const payload = JSON.parse(base64UrlDecode(encodedPayload));
+    if (!payload || typeof payload !== 'object') return null;
+    const now = Math.floor(Date.now() / 1000);
+    if (typeof payload.exp === 'number' && payload.exp < now) return null;
+    return payload;
+  } catch (_) {
+    return null;
   }
-  return { url, publishableKey };
 }
 
 async function getAccessToken(req) {
@@ -24,19 +50,17 @@ async function getAuthenticatedUser(req) {
     return null;
   }
 
-  const { url, publishableKey } = getSupabaseAuthConfig();
-  const response = await fetch(`${url}/auth/v1/user`, {
-    headers: {
-      apikey: publishableKey,
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
-
-  if (!response.ok) {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
     return null;
   }
 
-  const authUser = await response.json();
+  const payload = verifyJwt(accessToken, jwtSecret);
+  if (!payload || !payload.sub) {
+    return null;
+  }
+
+  const userId = String(payload.sub);
   const profileResult = await query(
     `
       select
@@ -50,25 +74,11 @@ async function getAuthenticatedUser(req) {
       where id = $1
       limit 1
     `,
-    [authUser.id],
+    [userId],
   );
 
   const profile = profileResult.rows[0];
-  if (!profile) {
-    return {
-      id: authUser.id,
-      email: authUser.email || null,
-      full_name:
-        authUser.user_metadata?.full_name ||
-        authUser.user_metadata?.name ||
-        null,
-      role: 'personel',
-      page_permissions: [],
-      action_permissions: [],
-    };
-  }
-
-  return profile;
+  return profile || null;
 }
 
 function hasPageAccess(user, pageKey) {
