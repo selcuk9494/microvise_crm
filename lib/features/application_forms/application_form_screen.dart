@@ -1016,10 +1016,15 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                 ),
               ),
               const Gap(12),
-              Row(
-                children: [
-                  Expanded(
-                    child: Wrap(
+              AppCard(
+                padding: const EdgeInsets.all(12),
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
@@ -1043,71 +1048,72 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                         ),
                       ],
                     ),
-                  ),
-                  const Gap(8),
-                  if (filtered.isNotEmpty)
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          if (allFilteredSelected) {
-                            for (final record in filtered) {
-                              _selectedRecordIds.remove(record.id);
-                            }
-                          } else {
-                            for (final record in filtered) {
-                              _selectedRecordIds.add(record.id);
-                            }
-                          }
-                        });
-                      },
-                      icon: Icon(
-                        allFilteredSelected
-                            ? Icons.deselect_rounded
-                            : Icons.select_all_rounded,
-                        size: 18,
-                      ),
-                      label: Text(
-                        allFilteredSelected ? 'Secimi Temizle' : 'Tumunu Sec',
-                      ),
-                    ),
-                  if (filtered.isNotEmpty) const Gap(8),
-                  FilterChip(
-                    selected: _showPassive,
-                    onSelected: (value) => setState(() => _showPassive = value),
-                    label: const Text('Pasifleri Göster'),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  if (filtered.isNotEmpty) const Gap(8),
-                  if (selectedRecords.isNotEmpty)
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        FilledButton.icon(
-                          onPressed: () =>
-                              _openCreateWorkOrdersDialog(selectedRecords),
-                          icon: const Icon(Icons.playlist_add_rounded, size: 18),
-                          label: Text(
-                            'Toplu İş Emri Oluştur (${selectedRecords.length})',
+                        if (filtered.isNotEmpty)
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                if (allFilteredSelected) {
+                                  for (final record in filtered) {
+                                    _selectedRecordIds.remove(record.id);
+                                  }
+                                } else {
+                                  for (final record in filtered) {
+                                    _selectedRecordIds.add(record.id);
+                                  }
+                                }
+                              });
+                            },
+                            icon: Icon(
+                              allFilteredSelected
+                                  ? Icons.deselect_rounded
+                                  : Icons.select_all_rounded,
+                              size: 18,
+                            ),
+                            label: Text(
+                              allFilteredSelected
+                                  ? 'Seçimi Temizle'
+                                  : 'Tümünü Seç',
+                            ),
                           ),
+                        FilterChip(
+                          selected: _showPassive,
+                          onSelected: (value) =>
+                              setState(() => _showPassive = value),
+                          label: const Text('Pasifleri Göster'),
+                          visualDensity: VisualDensity.compact,
                         ),
-                        FilledButton.icon(
-                          onPressed: () => _exportForTaxOffice(selectedRecords),
-                          icon: const Icon(Icons.download_rounded, size: 18),
-                          label: Text(
-                            'Vergi Dairesine Gonder (${selectedRecords.length})',
+                        if (selectedRecords.isNotEmpty) ...[
+                          FilledButton.icon(
+                            onPressed: () =>
+                                _openCreateWorkOrdersDialog(selectedRecords),
+                            icon: const Icon(Icons.playlist_add_rounded, size: 18),
+                            label: Text(
+                              'İş Emri Oluştur (${selectedRecords.length})',
+                            ),
                           ),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: () => _exportForTsm(selectedRecords),
-                          icon: const Icon(Icons.table_chart_rounded, size: 18),
-                          label: Text(
-                            'TSM\'e Gonder (${selectedRecords.length})',
+                          FilledButton.icon(
+                            onPressed: () => _exportForTaxOffice(selectedRecords),
+                            icon: const Icon(Icons.download_rounded, size: 18),
+                            label: Text(
+                              'Vergi Dairesine Gönder (${selectedRecords.length})',
+                            ),
                           ),
-                        ),
+                          OutlinedButton.icon(
+                            onPressed: () => _exportForTsm(selectedRecords),
+                            icon: const Icon(Icons.table_chart_rounded, size: 18),
+                            label: Text(
+                              'TSM\'e Gönder (${selectedRecords.length})',
+                            ),
+                          ),
+                        ],
                       ],
                     ),
-                ],
+                  ],
+                ),
               ),
               const Gap(12),
               if (filtered.isEmpty)
@@ -2576,6 +2582,45 @@ class _ApplicationRecordCard extends StatelessWidget {
       'tr_TR',
     ).format(record.applicationDate);
     final isMobile = MediaQuery.sizeOf(context).width < 900;
+    final accentColor = record.isActive ? AppTheme.primary : AppTheme.textMuted;
+    final badgeLabel = record.isActive ? record.documentType : 'Pasif';
+    final badgeTone = record.isActive ? AppBadgeTone.primary : AppBadgeTone.neutral;
+
+    final menuItems = <PopupMenuEntry<String>>[
+      if (canEdit)
+        const PopupMenuItem(
+          value: 'edit',
+          child: Text('Düzenle'),
+        ),
+      if (canEdit)
+        const PopupMenuItem(
+          value: 'duplicate',
+          child: Text('Kopya Oluştur'),
+        ),
+      const PopupMenuItem(
+        value: 'print_kdv4',
+        child: Text('KDV4 Yazdır'),
+      ),
+      const PopupMenuItem(
+        value: 'print_kdv4a',
+        child: Text('KDV4A Yazdır'),
+      ),
+      const PopupMenuItem(
+        value: 'create_work_order',
+        child: Text('İş Emri Oluştur'),
+      ),
+      if (canArchive)
+        PopupMenuItem(
+          value: 'toggle_active',
+          child: Text(record.isActive ? 'Pasife Al' : 'Aktifleştir'),
+        ),
+      if (!record.isActive && canDeletePermanently)
+        const PopupMenuItem(
+          value: 'delete_permanently',
+          child: Text('Kalıcı Sil'),
+        ),
+    ];
+
     return AppCard(
       padding: EdgeInsets.symmetric(
         horizontal: isMobile ? 8 : 10,
@@ -2587,14 +2632,21 @@ class _ApplicationRecordCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              Container(
+                width: 10,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: accentColor.withValues(alpha: 0.25)),
+                ),
+              ),
+              const Gap(6),
               Padding(
-                padding: const EdgeInsets.only(right: 4),
+                padding: const EdgeInsets.only(right: 2),
                 child: Checkbox(
                   value: selected,
-                  visualDensity: VisualDensity(
-                    horizontal: -4.5,
-                    vertical: -4.5,
-                  ),
+                  visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
                   onChanged: (value) => onSelectionChanged(value ?? false),
                 ),
               ),
@@ -2609,63 +2661,96 @@ class _ApplicationRecordCard extends StatelessWidget {
                   ),
                 ),
               ),
-              const Gap(4),
-              AppBadge(
-                label: record.isActive ? record.documentType : 'Pasif',
-                tone: record.isActive
-                    ? AppBadgeTone.primary
-                    : AppBadgeTone.neutral,
-              ),
+              const Gap(8),
+              AppBadge(label: badgeLabel, tone: badgeTone),
               const Gap(6),
-              if (canEdit) ...[
+              if (isMobile)
+                PopupMenuButton<String>(
+                  tooltip: 'İşlemler',
+                  itemBuilder: (context) => menuItems,
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'edit':
+                        onEdit();
+                        break;
+                      case 'duplicate':
+                        onDuplicate();
+                        break;
+                      case 'print_kdv4':
+                        onPrintKdv();
+                        break;
+                      case 'print_kdv4a':
+                        onPrintKdv4a();
+                        break;
+                      case 'create_work_order':
+                        onCreateWorkOrder();
+                        break;
+                      case 'toggle_active':
+                        onToggleActive();
+                        break;
+                      case 'delete_permanently':
+                        onDeletePermanently();
+                        break;
+                      default:
+                        break;
+                    }
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Icon(Icons.more_horiz_rounded),
+                  ),
+                )
+              else ...[
+                if (canEdit) ...[
+                  _ActionButton(
+                    onPressed: onEdit,
+                    icon: Icons.edit_rounded,
+                    label: 'Düzenle',
+                  ),
+                  const Gap(4),
+                  _ActionButton(
+                    onPressed: onDuplicate,
+                    icon: Icons.content_copy_rounded,
+                    label: 'Kopya',
+                  ),
+                  const Gap(4),
+                ],
                 _ActionButton(
-                  onPressed: onEdit,
-                  icon: Icons.edit_rounded,
-                  label: 'Düzenle',
+                  onPressed: onPrintKdv,
+                  icon: Icons.print_rounded,
+                  label: 'KDV4',
                 ),
                 const Gap(4),
                 _ActionButton(
-                  onPressed: onDuplicate,
-                  icon: Icons.content_copy_rounded,
-                  label: 'Kopya',
+                  onPressed: onPrintKdv4a,
+                  icon: Icons.picture_as_pdf_rounded,
+                  label: 'KDV4A',
+                  primary: true,
                 ),
-                const Gap(4),
-              ],
-              _ActionButton(
-                onPressed: onPrintKdv,
-                icon: Icons.print_rounded,
-                label: 'KDV4',
-              ),
-              const Gap(4),
-              _ActionButton(
-                onPressed: onPrintKdv4a,
-                icon: Icons.picture_as_pdf_rounded,
-                label: 'KDV4A',
-                primary: true,
-              ),
-              const Gap(4),
-              _ActionButton(
-                onPressed: onCreateWorkOrder,
-                icon: Icons.playlist_add_rounded,
-                label: 'İş Emri',
-              ),
-              if (canArchive) ...[
                 const Gap(4),
                 _ActionButton(
-                  onPressed: onToggleActive,
-                  icon: record.isActive
-                      ? Icons.delete_outline_rounded
-                      : Icons.restore_rounded,
-                  label: record.isActive ? 'Sil' : 'Aktifleştir',
+                  onPressed: onCreateWorkOrder,
+                  icon: Icons.playlist_add_rounded,
+                  label: 'İş Emri',
                 ),
-              ],
-              if (!record.isActive && canDeletePermanently) ...[
-                const Gap(4),
-                _ActionButton(
-                  onPressed: onDeletePermanently,
-                  icon: Icons.delete_forever_rounded,
-                  label: 'Kalıcı Sil',
-                ),
+                if (canArchive) ...[
+                  const Gap(4),
+                  _ActionButton(
+                    onPressed: onToggleActive,
+                    icon: record.isActive
+                        ? Icons.delete_outline_rounded
+                        : Icons.restore_rounded,
+                    label: record.isActive ? 'Pasif' : 'Aktif',
+                  ),
+                ],
+                if (!record.isActive && canDeletePermanently) ...[
+                  const Gap(4),
+                  _ActionButton(
+                    onPressed: onDeletePermanently,
+                    icon: Icons.delete_forever_rounded,
+                    label: 'Kalıcı Sil',
+                  ),
+                ],
               ],
             ],
           ),
