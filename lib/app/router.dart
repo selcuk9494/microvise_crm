@@ -23,7 +23,7 @@ import '../features/service/service_screen.dart';
 import '../features/service/service_detail_screen.dart';
 import '../features/setup/setup_required_screen.dart';
 import '../features/shell/app_shell.dart';
-import '../features/work_orders/work_orders_kanban_screen.dart';
+import '../features/work_orders/work_orders_list_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final client = ref.watch(supabaseClientProvider);
@@ -112,7 +112,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         GoRoute(
           path: '/is-emirleri',
           pageBuilder: (context, state) => const NoTransitionPage(
-            child: WorkOrdersKanbanScreen(),
+            child: WorkOrdersListScreen(),
           ),
         ),
         GoRoute(
