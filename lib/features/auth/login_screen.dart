@@ -34,7 +34,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
 
-    final email = _emailController.text.trim();
+    var email = _emailController.text.trim();
+    while (email.endsWith('.')) {
+      email = email.substring(0, email.length - 1).trimRight();
+    }
     final password = _passwordController.text;
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

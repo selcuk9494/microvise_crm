@@ -36,7 +36,11 @@ function signJwt(payload, secret) {
 }
 
 function normalizeEmail(email) {
-  return String(email || '').trim().toLowerCase();
+  let value = String(email || '').trim().toLowerCase();
+  while (value.endsWith('.')) {
+    value = value.slice(0, -1).trimEnd();
+  }
+  return value;
 }
 
 module.exports = async (req, res) => {
@@ -152,4 +156,3 @@ module.exports = async (req, res) => {
     return serverError(res, error);
   }
 };
-
