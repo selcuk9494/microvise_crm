@@ -18,6 +18,18 @@ function requirePage(user, pageKey, res) {
   return true;
 }
 
+function requireAnyPage(user, pageKeys, res) {
+  const keys = Array.isArray(pageKeys)
+    ? pageKeys
+    : [String(pageKeys || '').trim()].filter((k) => k.length > 0);
+  if (!keys.length) return true;
+  for (const key of keys) {
+    if (hasPageAccess(user, key)) return true;
+  }
+  forbidden(res, 'Erişim yetkiniz yok.');
+  return false;
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'GET') {
     return methodNotAllowed(res, 'GET');
@@ -44,10 +56,21 @@ module.exports = async (req, res) => {
       if (!requirePage(user, 'servis', res)) return;
     }
     if (resource.startsWith('definition_')) {
-      if (!requirePage(user, 'tanimlamalar', res)) return;
+      if (resource === 'definition_work_order_types') {
+        if (!requireAnyPage(user, ['tanimlamalar', 'is_emirleri', 'formlar'], res))
+          return;
+      } else if (resource === 'definition_cities') {
+        if (!requireAnyPage(user, ['tanimlamalar', 'musteriler', 'is_emirleri'], res))
+          return;
+      } else {
+        if (!requirePage(user, 'tanimlamalar', res)) return;
+      }
     }
     if (resource.startsWith('personnel_')) {
       if (!requirePage(user, 'personel', res)) return;
+    }
+    if (resource === 'personnel_users') {
+      if (!requireAnyPage(user, ['personel', 'is_emirleri', 'formlar'], res)) return;
     }
     if (resource.startsWith('products_') || resource === 'customers_lookup') {
       if (!requirePage(user, 'urunler', res)) return;

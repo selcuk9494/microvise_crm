@@ -142,6 +142,7 @@ Set<String> resolveAllowedPages(UserProfile? profile) {
 Set<String> resolveAllowedActions(UserProfile? profile) {
   if (profile == null) return allActionPermissions;
   if (profile.role == 'admin') return allActionPermissions;
+  if (profile.actionPermissions.isEmpty) return allActionPermissions;
   return profile.actionPermissions.toSet();
 }
 

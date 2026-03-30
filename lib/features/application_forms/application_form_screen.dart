@@ -400,9 +400,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     );
     if (config == null) return;
 
-    final client = ref.read(supabaseClientProvider);
-    if (client == null || !mounted) return;
-    final currentUserId = client.auth.currentUser?.id;
+    final profile = await ref.read(currentUserProfileProvider.future);
+    final currentUserId = profile?.id;
+    if (!mounted) return;
     if ((currentUserId ?? '').isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Oturum bulunamadı.')),
@@ -410,13 +410,15 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       return;
     }
 
-    final assignedTo = config.assignedTo?.trim().isNotEmpty ?? false
-        ? config.assignedTo!.trim()
+    final isAdmin = profile?.role == 'admin';
+    final assignedTo = isAdmin
+        ? (config.assignedTo?.trim().isNotEmpty ?? false
+            ? config.assignedTo!.trim()
+            : currentUserId!)
         : currentUserId!;
     final scheduledDate = config.scheduledDate == null
         ? null
         : DateFormat('yyyy-MM-dd').format(config.scheduledDate!);
-    final createdBy = currentUserId;
     final descriptionTemplate = config.description.trim();
 
     var createdCount = 0;
@@ -441,9 +443,6 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
             : null,
         'contact_phone': null,
         'location_link': null,
-        'status': 'open',
-        'is_active': true,
-        'created_by': createdBy,
       };
 
       try {
@@ -2962,39 +2961,65 @@ class _ApplicationWorkOrderDialogState
   }
 
   Future<void> _loadData() async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      return;
-    }
-
     final isAdmin = ref.read(isAdminProvider);
     try {
-      final typesRows = await client
-          .from('work_order_types')
-          .select('id,name')
-          .eq('is_active', true)
-          .order('sort_order')
-          .order('name')
-          .limit(100);
+      List<Map<String, dynamic>> typesRows;
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'definition_work_order_types'},
+        );
+        typesRows = ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .toList(growable: false);
+      } else {
+        if (client == null) {
+          if (!mounted) return;
+          setState(() => _loading = false);
+          return;
+        }
+        final rows = await client
+            .from('work_order_types')
+            .select('id,name')
+            .eq('is_active', true)
+            .order('sort_order')
+            .order('name')
+            .limit(100);
+        typesRows = (rows as List).cast<Map<String, dynamic>>();
+      }
+
       List<_PersonnelChoice> personnel = const [];
       if (isAdmin) {
-        final userRows = await client
-            .from('users')
-            .select('id,full_name,role')
-            .order('full_name')
-            .limit(200);
-        personnel = (userRows as List)
-            .map((row) => row as Map<String, dynamic>)
-            .where((row) => (row['role'] ?? '').toString() != 'admin')
-            .map(_PersonnelChoice.fromJson)
-            .toList(growable: false);
+        if (apiClient != null) {
+          final response = await apiClient.getJson(
+            '/data',
+            queryParameters: {'resource': 'personnel_users'},
+          );
+          final rows = ((response['items'] as List?) ?? const [])
+              .whereType<Map<String, dynamic>>()
+              .where((row) => (row['role'] ?? '').toString() != 'admin')
+              .toList(growable: false);
+          personnel =
+              rows.map(_PersonnelChoice.fromJson).toList(growable: false);
+        } else {
+          final userRows = await client!
+              .from('users')
+              .select('id,full_name,role')
+              .order('full_name')
+              .limit(200);
+          personnel = (userRows as List)
+              .map((row) => row as Map<String, dynamic>)
+              .where((row) => (row['role'] ?? '').toString() != 'admin')
+              .map(_PersonnelChoice.fromJson)
+              .toList(growable: false);
+        }
       }
 
       if (!mounted) return;
-      final parsedTypes = (typesRows as List)
-          .map((row) => _WorkOrderTypeChoice.fromJson(row as Map<String, dynamic>))
+      final parsedTypes = typesRows
+          .map(_WorkOrderTypeChoice.fromJson)
           .toList(growable: false);
       setState(() {
         _types = parsedTypes;
