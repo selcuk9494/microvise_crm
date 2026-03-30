@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../api/api_client.dart';
 import '../supabase/supabase_providers.dart';
 
 const kPagePanel = 'panel';
@@ -67,6 +68,12 @@ const actionPermissionLabels = <String, String>{
 };
 
 final currentUserProfileProvider = FutureProvider<UserProfile?>((ref) async {
+  final apiClient = ref.watch(apiClientProvider);
+  if (apiClient != null) {
+    final row = await apiClient.getJson('/me');
+    return UserProfile.fromJson(row);
+  }
+
   final client = ref.watch(supabaseClientProvider);
   final user = client?.auth.currentUser;
   if (client == null || user == null) return null;
