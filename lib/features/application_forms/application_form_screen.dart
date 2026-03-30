@@ -531,8 +531,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   Future<void> _exportForTaxOffice(List<ApplicationFormRecord> records) async {
     if (records.isEmpty) return;
 
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null || !mounted) return;
+    if ((apiClient == null && client == null) || !mounted) return;
 
     final customerIds = records
         .map((record) => record.customerId)
@@ -542,13 +543,29 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
 
     final customerMap = <String, Map<String, dynamic>>{};
     if (customerIds.isNotEmpty) {
-      final rows = await client
-          .from('customers')
-          .select('id,vkn,tckn_ms')
-          .inFilter('id', customerIds);
-      for (final row in rows as List) {
-        final item = row as Map<String, dynamic>;
-        customerMap[item['id'].toString()] = item;
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {
+            'resource': 'form_customers_bulk',
+            'ids': customerIds.join(','),
+          },
+        );
+        final rows = (response['items'] as List?) ?? const [];
+        for (final row in rows) {
+          if (row is Map<String, dynamic>) {
+            customerMap[row['id'].toString()] = row;
+          }
+        }
+      } else {
+        final rows = await client!
+            .from('customers')
+            .select('id,vkn,tckn_ms')
+            .inFilter('id', customerIds);
+        for (final row in rows as List) {
+          final item = row as Map<String, dynamic>;
+          customerMap[item['id'].toString()] = item;
+        }
       }
     }
 
@@ -628,8 +645,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   Future<void> _exportForTsm(List<ApplicationFormRecord> records) async {
     if (records.isEmpty) return;
 
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null || !mounted) return;
+    if ((apiClient == null && client == null) || !mounted) return;
 
     final customerIds = records
         .map((record) => record.customerId)
@@ -639,13 +657,29 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
 
     final customerMap = <String, Map<String, dynamic>>{};
     if (customerIds.isNotEmpty) {
-      final rows = await client
-          .from('customers')
-          .select('id,vkn,tckn_ms,phone_1,phone_2,phone_3')
-          .inFilter('id', customerIds);
-      for (final row in rows as List) {
-        final item = row as Map<String, dynamic>;
-        customerMap[item['id'].toString()] = item;
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {
+            'resource': 'form_customers_bulk',
+            'ids': customerIds.join(','),
+          },
+        );
+        final rows = (response['items'] as List?) ?? const [];
+        for (final row in rows) {
+          if (row is Map<String, dynamic>) {
+            customerMap[row['id'].toString()] = row;
+          }
+        }
+      } else {
+        final rows = await client!
+            .from('customers')
+            .select('id,vkn,tckn_ms,phone_1,phone_2,phone_3')
+            .inFilter('id', customerIds);
+        for (final row in rows as List) {
+          final item = row as Map<String, dynamic>;
+          customerMap[item['id'].toString()] = item;
+        }
       }
     }
 
@@ -1684,8 +1718,9 @@ class _ApplicationFormDialogState
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
 
     final customers = ref.read(applicationFormCustomersProvider).asData?.value;
     final cities = ref.read(cityDefinitionsProvider).asData?.value;
@@ -1748,6 +1783,8 @@ class _ApplicationFormDialogState
 
     setState(() => _saving = true);
     try {
+      final profile = await ref.read(currentUserProfileProvider.future);
+      final createdBy = profile?.id;
       final basePayload = {
         'application_date': DateFormat('yyyy-MM-dd').format(_applicationDate),
         'customer_id': customer?.id,
@@ -1791,26 +1828,134 @@ class _ApplicationFormDialogState
 
       if (widget.isEdit) {
         final primaryRegistry = registryNumbers.first;
-      final inserted = await client
-            .from('application_forms')
-            .update({
-              ...basePayload,
-              'stock_registry_number': primaryRegistry.isEmpty
-                  ? null
-                  : primaryRegistry,
-            })
-            .eq('id', widget.initialRecord!.id)
-            .select(
-              'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
-            )
-            .single();
-        await _syncSerialInventoryForEdit(
-          client: client,
-          applicationFormId: widget.initialRecord!.id,
-          previousProductId: widget.initialRecord!.stockProductId,
-          previousRegistryNumber: widget.initialRecord!.stockRegistryNumber,
-          nextSerial: selectedSerials.first,
-        );
+        Map<String, dynamic> inserted;
+        if (apiClient != null) {
+          final response = await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'upsert',
+              'table': 'application_forms',
+              'returning': 'row',
+              'values': {
+                'id': widget.initialRecord!.id,
+                ...basePayload,
+                'stock_registry_number':
+                    primaryRegistry.isEmpty ? null : primaryRegistry,
+              },
+            },
+          );
+          inserted = (response['row'] as Map?)?.cast<String, dynamic>() ?? {};
+
+          final previousProduct = (widget.initialRecord!.stockProductId ?? '').trim();
+          final previousSerial =
+              (widget.initialRecord!.stockRegistryNumber ?? '').trim().toUpperCase();
+          final nextSerial = selectedSerials.first;
+          final nextProduct = nextSerial.productId.trim();
+          final nextRegistry =
+              nextSerial.serialNumber.trim().toUpperCase();
+
+          final sameSelection = previousProduct.isNotEmpty &&
+              previousProduct == nextProduct &&
+              previousSerial.isNotEmpty &&
+              previousSerial == nextRegistry;
+
+          if (!sameSelection) {
+            if (previousProduct.isNotEmpty && previousSerial.isNotEmpty) {
+              await apiClient.postJson(
+                '/mutate',
+                body: {
+                  'op': 'updateWhere',
+                  'table': 'product_serial_inventory',
+                  'filters': [
+                    {'col': 'product_id', 'op': 'eq', 'value': previousProduct},
+                    {'col': 'serial_number', 'op': 'eq', 'value': previousSerial},
+                    {
+                      'col': 'consumed_by_application_form_id',
+                      'op': 'eq',
+                      'value': widget.initialRecord!.id,
+                    },
+                  ],
+                  'values': {
+                    'consumed_by_application_form_id': null,
+                    'consumed_at': null,
+                  },
+                },
+              );
+              await apiClient.postJson(
+                '/mutate',
+                body: {
+                  'op': 'insertMany',
+                  'table': 'stock_movements',
+                  'rows': [
+                    {
+                      'product_id': previousProduct,
+                      'movement_type': 'in',
+                      'quantity': 1,
+                      'reference_type': 'application_form_edit',
+                      'notes': 'Başvuru düzenlemesinde seri serbest bırakıldı',
+                      'created_by': createdBy,
+                    },
+                  ],
+                },
+              );
+            }
+
+            if (!nextSerial.id.startsWith('existing:') &&
+                !nextSerial.id.startsWith('manual:')) {
+              await apiClient.postJson(
+                '/mutate',
+                body: {
+                  'op': 'updateWhere',
+                  'table': 'product_serial_inventory',
+                  'filters': [
+                    {'col': 'id', 'op': 'eq', 'value': nextSerial.id},
+                  ],
+                  'values': {
+                    'consumed_by_application_form_id': widget.initialRecord!.id,
+                    'consumed_at': DateTime.now().toUtc().toIso8601String(),
+                  },
+                },
+              );
+              await apiClient.postJson(
+                '/mutate',
+                body: {
+                  'op': 'insertMany',
+                  'table': 'stock_movements',
+                  'rows': [
+                    {
+                      'product_id': nextProduct,
+                      'movement_type': 'out',
+                      'quantity': 1,
+                      'reference_type': 'application_form_edit',
+                      'notes': 'Başvuru düzenlemesinde seri yeniden atandı',
+                      'created_by': createdBy,
+                    },
+                  ],
+                },
+              );
+            }
+          }
+        } else {
+          inserted = await client!
+              .from('application_forms')
+              .update({
+                ...basePayload,
+                'stock_registry_number':
+                    primaryRegistry.isEmpty ? null : primaryRegistry,
+              })
+              .eq('id', widget.initialRecord!.id)
+              .select(
+                'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
+              )
+              .single();
+          await _syncSerialInventoryForEdit(
+            client: client,
+            applicationFormId: widget.initialRecord!.id,
+            previousProductId: widget.initialRecord!.stockProductId,
+            previousRegistryNumber: widget.initialRecord!.stockRegistryNumber,
+            nextSerial: selectedSerials.first,
+          );
+        }
         ref.invalidate(applicationFormsProvider);
         ref.invalidate(productSerialInventoryProvider(_selectedStockProductId));
         ref.invalidate(productSerialInventorySummaryProvider);
@@ -1832,40 +1977,143 @@ class _ApplicationFormDialogState
           )
           .toList(growable: false);
 
-      final insertedRows = await client
-          .from('application_forms')
-          .insert(payloads)
-          .select(
-            'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
+      final List<ApplicationFormRecord> insertedRecords;
+      if (apiClient != null) {
+        final rows = <Map<String, dynamic>>[];
+        for (final payload in payloads) {
+          final response = await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'upsert',
+              'table': 'application_forms',
+              'returning': 'row',
+              'values': {...payload, 'is_active': true},
+            },
           );
+          final row = (response['row'] as Map?)?.cast<String, dynamic>();
+          if (row != null && row.isNotEmpty) rows.add(row);
+        }
+        insertedRecords =
+            rows.map(ApplicationFormRecord.fromJson).toList(growable: false);
 
-      final insertedRecords = (insertedRows as List)
-          .map(
-            (row) => ApplicationFormRecord.fromJson(row as Map<String, dynamic>),
-          )
-          .toList(growable: false);
+        final consumedAt = DateTime.now().toUtc().toIso8601String();
+        for (var index = 0; index < insertedRecords.length; index++) {
+          if (index >= selectedSerials.length) break;
+          final serial = selectedSerials[index];
+          if (serial.id.startsWith('existing:') || serial.id.startsWith('manual:')) {
+            continue;
+          }
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'updateWhere',
+              'table': 'product_serial_inventory',
+              'filters': [
+                {'col': 'id', 'op': 'eq', 'value': serial.id},
+              ],
+              'values': {
+                'consumed_by_application_form_id': insertedRecords[index].id,
+                'consumed_at': consumedAt,
+              },
+            },
+          );
+        }
 
-      await _consumeSerialInventoryForApplications(
-        client: client,
-        insertedRecords: insertedRecords,
-        selectedSerials: selectedSerials,
-      );
+        final byProduct = <String, int>{};
+        for (final serial in selectedSerials) {
+          byProduct.update(
+            serial.productId,
+            (value) => value + 1,
+            ifAbsent: () => 1,
+          );
+        }
+        if (byProduct.isNotEmpty) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'insertMany',
+              'table': 'stock_movements',
+              'rows': byProduct.entries
+                  .map(
+                    (entry) => {
+                      'product_id': entry.key,
+                      'movement_type': 'out',
+                      'quantity': entry.value.toDouble(),
+                      'reference_type': 'application_form',
+                      'notes': 'Başvuru formu seri tüketimi',
+                      'created_by': createdBy,
+                    },
+                  )
+                  .toList(growable: false),
+            },
+          );
+        }
 
-      for (final inserted in insertedRecords) {
         final modelName = model?.name.trim();
-        await enqueueInvoiceItem(
-          client,
-          customerId: customer?.id,
-          itemType: 'application_form',
-          sourceTable: 'application_forms',
-          sourceId: inserted.id,
-          description:
-              'Başvuru Formu - ${_customerController.text.trim()}'
-              '${modelName != null && modelName.isNotEmpty ? ' / $modelName' : ''}'
-              '${inserted.stockRegistryNumber?.trim().isNotEmpty ?? false ? ' / ${inserted.stockRegistryNumber!.trim()}' : ''}',
-          sourceEvent: 'application_form_created',
-          sourceLabel: 'Başvuru Formu',
+        for (final inserted in insertedRecords) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'insertMany',
+              'table': 'invoice_items',
+              'rows': [
+                {
+                  'customer_id': customer?.id,
+                  'item_type': 'application_form',
+                  'source_table': 'application_forms',
+                  'source_id': inserted.id,
+                  'description':
+                      'Başvuru Formu - ${_customerController.text.trim()}'
+                      '${modelName != null && modelName.isNotEmpty ? ' / $modelName' : ''}'
+                      '${inserted.stockRegistryNumber?.trim().isNotEmpty ?? false ? ' / ${inserted.stockRegistryNumber!.trim()}' : ''}',
+                  'amount': null,
+                  'currency': 'TRY',
+                  'status': 'pending',
+                  'is_active': true,
+                  'source_event': 'application_form_created',
+                  'source_label': 'Başvuru Formu',
+                },
+              ],
+            },
+          );
+        }
+      } else {
+        final insertedRows = await client!
+            .from('application_forms')
+            .insert(payloads)
+            .select(
+              'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
+            );
+
+        insertedRecords = (insertedRows as List)
+            .map(
+              (row) =>
+                  ApplicationFormRecord.fromJson(row as Map<String, dynamic>),
+            )
+            .toList(growable: false);
+
+        await _consumeSerialInventoryForApplications(
+          client: client,
+          insertedRecords: insertedRecords,
+          selectedSerials: selectedSerials,
         );
+
+        for (final inserted in insertedRecords) {
+          final modelName = model?.name.trim();
+          await enqueueInvoiceItem(
+            client,
+            customerId: customer?.id,
+            itemType: 'application_form',
+            sourceTable: 'application_forms',
+            sourceId: inserted.id,
+            description:
+                'Başvuru Formu - ${_customerController.text.trim()}'
+                '${modelName != null && modelName.isNotEmpty ? ' / $modelName' : ''}'
+                '${inserted.stockRegistryNumber?.trim().isNotEmpty ?? false ? ' / ${inserted.stockRegistryNumber!.trim()}' : ''}',
+            sourceEvent: 'application_form_created',
+            sourceLabel: 'Başvuru Formu',
+          );
+        }
       }
 
       ref.invalidate(applicationFormsProvider);

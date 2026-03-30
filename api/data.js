@@ -396,6 +396,33 @@ module.exports = async (req, res) => {
         return ok(res, { items: result.rows });
       }
 
+      case 'form_customers_bulk': {
+        const idsRaw = String(req.query.ids || '').trim();
+        if (!idsRaw) return ok(res, { items: [] });
+        const ids = idsRaw
+          .split(',')
+          .map((id) => id.trim())
+          .filter((id) => id.length > 0)
+          .slice(0, 500);
+        if (!ids.length) return ok(res, { items: [] });
+
+        const result = await query(
+          `
+            select
+              id,
+              vkn,
+              tckn_ms,
+              phone_1,
+              phone_2,
+              phone_3
+            from public.customers
+            where id::text = any($1::text[])
+          `,
+          [ids],
+        );
+        return ok(res, { items: result.rows });
+      }
+
       case 'form_stock_products': {
         const result = await query(
           `
