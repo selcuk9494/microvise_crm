@@ -3,8 +3,8 @@
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "build/web",
   "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1.js" },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
-
