@@ -43,6 +43,7 @@ class AppConfig {
   static String? get apiBaseUrl {
     if (_envApiBaseUrl.isNotEmpty) return _envApiBaseUrl;
     if (kIsWeb) return '/api';
-    return null;
+    if (kDebugMode) return null;
+    return 'https://microvisecrmflutter.vercel.app/api';
   }
 }
