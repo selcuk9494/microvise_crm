@@ -1,10 +1,33 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/api/api_client.dart';
 import '../../core/format/app_date_time.dart';
 import '../../core/supabase/supabase_providers.dart';
 
 final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
+  final apiClient = ref.watch(apiClientProvider);
+  if (apiClient != null) {
+    final row = await apiClient.getJson('/dashboard/summary');
+    return DashboardMetrics(
+      totalCustomers: _intValue(row['total_customers']),
+      openWorkOrders: _intValue(row['open_work_orders']),
+      inProgressWorkOrders: _intValue(row['in_progress_work_orders']),
+      completedWorkOrders: _intValue(row['completed_work_orders']),
+      todayWorkOrders: _intValue(row['today_work_orders']),
+      expiringSoon: _intValue(row['expiring_soon']),
+      totalProducts: _intValue(row['total_products']),
+      lowStockProducts: _intValue(row['low_stock_products']),
+      revenue: _doubleValue(row['revenue']),
+      lastMonthRevenue: _doubleValue(row['last_month_revenue']),
+      todayCollections: _doubleValue(row['today_collections']),
+      totalReceivable: _doubleValue(row['total_receivable']),
+      totalPayable: _doubleValue(row['total_payable']),
+      openInvoices: _intValue(row['open_invoices']),
+      totalInvoiceAmount: _doubleValue(row['total_invoice_amount']),
+    );
+  }
+
   final client = ref.watch(supabaseClientProvider);
   if (client == null) return DashboardMetrics.zero();
 

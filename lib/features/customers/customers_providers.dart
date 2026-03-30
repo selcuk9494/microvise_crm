@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/api/api_client.dart';
 import '../../core/supabase/supabase_providers.dart';
 import 'customer_model.dart';
 
@@ -95,7 +96,41 @@ class CustomerPageData {
 }
 
 final customersProvider = FutureProvider<CustomerPageData>((ref) async {
+  final apiClient = ref.watch(apiClientProvider);
   final client = ref.watch(supabaseClientProvider);
+  final filters = ref.watch(customerFiltersProvider);
+  final page = ref.watch(customerPageProvider);
+  final sort = ref.watch(customerSortProvider);
+  final showPassive = ref.watch(customerShowPassiveProvider);
+  final search = filters.search.trim();
+  final city = filters.city;
+
+  if (apiClient != null) {
+    final response = await apiClient.getJson(
+      '/customers',
+      queryParameters: {
+        'page': '$page',
+        'pageSize': '$customerPageSize',
+        'sort': sort.name,
+        'showPassive': showPassive.toString(),
+        if (search.isNotEmpty) 'search': search,
+        if (city != null && city.isNotEmpty) 'city': city,
+      },
+    );
+
+    final items = ((response['items'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(Customer.fromJson)
+        .toList(growable: false);
+
+    return CustomerPageData(
+      items: items,
+      page: (response['page'] as num?)?.toInt() ?? page,
+      hasNextPage: response['hasNextPage'] as bool? ?? false,
+      totalCount: (response['totalCount'] as num?)?.toInt() ?? items.length,
+    );
+  }
+
   if (client == null) {
     return const CustomerPageData(
       items: [],
@@ -105,12 +140,6 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
     );
   }
 
-  final filters = ref.watch(customerFiltersProvider);
-  final page = ref.watch(customerPageProvider);
-  final sort = ref.watch(customerSortProvider);
-  final showPassive = ref.watch(customerShowPassiveProvider);
-  final search = filters.search.trim();
-  final city = filters.city;
   final start = (page - 1) * customerPageSize;
 
   var totalCountQuery = client.from('customers').count();

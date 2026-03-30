@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class AppConfig {
   static const _defaultSupabaseUrl = 'https://xvbczyhvmmcvqezjjpbn.supabase.co';
   static const _defaultSupabasePublishableKey =
@@ -8,6 +10,10 @@ class AppConfig {
   );
   static const _envSupabaseAnonKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
+    defaultValue: '',
+  );
+  static const _envApiBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
     defaultValue: '',
   );
 
@@ -27,4 +33,10 @@ class AppConfig {
 
   static bool get isSupabaseConfigured =>
       supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
+
+  static String? get apiBaseUrl {
+    if (_envApiBaseUrl.isNotEmpty) return _envApiBaseUrl;
+    if (kIsWeb) return '/api';
+    return null;
+  }
 }

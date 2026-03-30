@@ -1,17 +1,83 @@
 const { getAuthenticatedUser, hasPageAccess } = require('./_lib/auth');
 const { query } = require('./_lib/db');
-const { ok, forbidden, unauthorized, methodNotAllowed, serverError } = require('./_lib/http');
+const {
+  ok,
+  badRequest,
+  forbidden,
+  unauthorized,
+  methodNotAllowed,
+  serverError,
+} = require('./_lib/http');
+
+async function readJson(req) {
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  if (!chunks.length) return {};
+  const text = Buffer.concat(chunks).toString('utf8').trim();
+  if (!text) return {};
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
 
 module.exports = async (req, res) => {
-  if (req.method !== 'GET') {
-    return methodNotAllowed(res, 'GET');
-  }
-
   try {
     const user = await getAuthenticatedUser(req);
     if (!user) return unauthorized(res);
     if (!hasPageAccess(user, 'is_emirleri')) {
       return forbidden(res, 'İş emirlerine erişim yetkiniz yok.');
+    }
+
+    if (req.method === 'PATCH') {
+      const body = await readJson(req);
+      const id = String(body.id || '').trim();
+      if (!id) return badRequest(res, 'id zorunludur.');
+
+      const status =
+        body.status == null ? null : String(body.status || '').trim() || null;
+      const sortOrder =
+        body.sort_order == null
+          ? null
+          : Number.isFinite(Number(body.sort_order))
+            ? Number(body.sort_order)
+            : null;
+      const isActive =
+        typeof body.is_active === 'boolean' ? body.is_active : null;
+
+      if (status == null && sortOrder == null && isActive == null) {
+        return badRequest(res, 'Güncellenecek alan bulunamadı.');
+      }
+
+      const values = [status, sortOrder, isActive, id];
+      let assignedSql = '';
+      if (user.role !== 'admin') {
+        values.push(user.id);
+        assignedSql = `and assigned_to = $${values.length}`;
+      }
+
+      await query(
+        `
+          update public.work_orders
+          set
+            status = coalesce($1, status),
+            sort_order = coalesce($2, sort_order),
+            is_active = coalesce($3, is_active)
+          where id = $4
+            ${assignedSql}
+        `,
+        values,
+      );
+
+      return ok(res, { ok: true });
+    }
+
+    if (req.method !== 'GET') {
+      return methodNotAllowed(res, 'GET, PATCH');
     }
 
     const values = [];
