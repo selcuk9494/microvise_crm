@@ -6,6 +6,33 @@ const { URL } = require('url');
 const rootDir = path.resolve(__dirname, '..');
 const webDir = path.join(rootDir, 'build', 'web');
 
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  const content = fs.readFileSync(filePath, 'utf8');
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if (!key) continue;
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (process.env[key] == null) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadEnvFile(path.join(rootDir, '.env.local'));
+loadEnvFile(path.join(rootDir, '.env'));
+
 function contentTypeFor(filePath) {
   const ext = path.extname(filePath).toLowerCase();
   switch (ext) {
