@@ -5,7 +5,6 @@ import 'package:gap/gap.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
-import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_section_card.dart';
 import 'work_order_model.dart';
@@ -85,48 +84,18 @@ class _CreateWorkOrderDialogState
 
   Future<void> _loadCustomers() async {
     final apiClient = ref.read(apiClientProvider);
-    final client = ref.read(supabaseClientProvider);
 
     try {
-      if (apiClient != null) {
-        final response = await apiClient.getJson(
-          '/data',
-          queryParameters: {'resource': 'customers_basic'},
-        );
-        final items = ((response['items'] as List?) ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map(_CustomerOption.fromJson)
-            .toList(growable: false);
-        items.sort((a, b) => _sortKey(a.name).compareTo(_sortKey(b.name)));
-        if (!mounted) return;
-        setState(() => _customers = items);
-        return;
-      }
-
-      if (client == null) return;
-      final items = <_CustomerOption>[];
-      var from = 0;
-      const pageSize = 500;
-
-      while (true) {
-        final rows = await client
-            .from('customers')
-            .select('id,name,city,address,is_active')
-            .eq('is_active', true)
-            .order('name')
-            .range(from, from + pageSize - 1);
-
-        final page = (rows as List)
-            .map((e) => _CustomerOption.fromJson(e as Map<String, dynamic>))
-            .toList(growable: false);
-        items.addAll(page);
-
-        if (page.length < pageSize) break;
-        from += pageSize;
-      }
-
+      if (apiClient == null) return;
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'customers_basic'},
+      );
+      final items = ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(_CustomerOption.fromJson)
+          .toList(growable: false);
       items.sort((a, b) => _sortKey(a.name).compareTo(_sortKey(b.name)));
-
       if (!mounted) return;
       setState(() => _customers = items);
     } catch (_) {
@@ -137,38 +106,19 @@ class _CreateWorkOrderDialogState
 
   Future<void> _loadCities() async {
     final apiClient = ref.read(apiClientProvider);
-    final client = ref.read(supabaseClientProvider);
 
     try {
-      if (apiClient != null) {
-        final response = await apiClient.getJson(
-          '/data',
-          queryParameters: {'resource': 'definition_cities'},
-        );
-        final items = ((response['items'] as List?) ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map((row) => row['name']?.toString().trim())
-            .whereType<String>()
-            .where((name) => name.isNotEmpty)
-            .toList(growable: false);
-        if (!mounted) return;
-        setState(() => _cities = items);
-        return;
-      }
-
-      if (client == null) return;
-      final rows = await client
-          .from('cities')
-          .select('name')
-          .eq('is_active', true)
-          .order('name');
-
-      final items = (rows as List)
+      if (apiClient == null) return;
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'definition_cities'},
+      );
+      final items = ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
           .map((row) => row['name']?.toString().trim())
           .whereType<String>()
           .where((name) => name.isNotEmpty)
           .toList(growable: false);
-
       if (!mounted) return;
       setState(() => _cities = items);
     } catch (_) {
@@ -179,39 +129,20 @@ class _CreateWorkOrderDialogState
 
   Future<void> _loadBranches(String customerId) async {
     final apiClient = ref.read(apiClientProvider);
-    final client = ref.read(supabaseClientProvider);
 
     try {
-      if (apiClient != null) {
-        final response = await apiClient.getJson(
-          '/data',
-          queryParameters: {
-            'resource': 'customer_branches',
-            'customerId': customerId,
-          },
-        );
-        final items = ((response['items'] as List?) ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map(_BranchOption.fromJson)
-            .toList(growable: false);
-        if (!mounted) return;
-        setState(() => _branches = items);
-        return;
-      }
-
-      if (client == null) return;
-      final rows = await client
-          .from('branches')
-          .select('id,name,is_active')
-          .eq('customer_id', customerId)
-          .eq('is_active', true)
-          .order('name')
-          .limit(100);
-
-      final items = (rows as List)
-          .map((e) => _BranchOption.fromJson(e as Map<String, dynamic>))
+      if (apiClient == null) return;
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {
+          'resource': 'customer_branches',
+          'customerId': customerId,
+        },
+      );
+      final items = ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(_BranchOption.fromJson)
           .toList(growable: false);
-
       if (!mounted) return;
       setState(() => _branches = items);
     } catch (_) {
@@ -222,36 +153,18 @@ class _CreateWorkOrderDialogState
 
   Future<void> _loadUsers() async {
     final apiClient = ref.read(apiClientProvider);
-    final client = ref.read(supabaseClientProvider);
 
     try {
-      if (apiClient != null) {
-        final response = await apiClient.getJson(
-          '/data',
-          queryParameters: {'resource': 'personnel_users'},
-        );
-        final items = ((response['items'] as List?) ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map(_UserOption.fromJson)
-            .where((u) => u.role != 'admin')
-            .toList(growable: false);
-        if (!mounted) return;
-        setState(() => _users = items);
-        return;
-      }
-
-      if (client == null) return;
-      final rows = await client
-          .from('users')
-          .select('id,full_name,role')
-          .order('full_name')
-          .limit(200);
-
-      final items = (rows as List)
-          .map((e) => _UserOption.fromJson(e as Map<String, dynamic>))
+      if (apiClient == null) return;
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'personnel_users'},
+      );
+      final items = ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(_UserOption.fromJson)
           .where((u) => u.role != 'admin')
           .toList(growable: false);
-
       if (!mounted) return;
       setState(() => _users = items);
     } catch (_) {
@@ -262,43 +175,17 @@ class _CreateWorkOrderDialogState
 
   Future<void> _loadWorkOrderTypes() async {
     final apiClient = ref.read(apiClientProvider);
-    final client = ref.read(supabaseClientProvider);
 
     try {
-      if (apiClient != null) {
-        final response = await apiClient.getJson(
-          '/data',
-          queryParameters: {'resource': 'definition_work_order_types'},
-        );
-        final items = ((response['items'] as List?) ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map(_WorkOrderTypeOption.fromJson)
-            .toList(growable: false);
-        if (!mounted) return;
-        setState(() {
-          _workOrderTypes = items;
-          if (items.length == 1) {
-            _selectedWorkOrderTypeId = items.first.id;
-          }
-        });
-        return;
-      }
-
-      if (client == null) return;
-      final rows = await client
-          .from('work_order_types')
-          .select(
-            'id,name,description,location_info,contact_name,contact_phone',
-          )
-          .eq('is_active', true)
-          .order('sort_order')
-          .order('name')
-          .limit(100);
-
-      final items = (rows as List)
-          .map((e) => _WorkOrderTypeOption.fromJson(e as Map<String, dynamic>))
+      if (apiClient == null) return;
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'definition_work_order_types'},
+      );
+      final items = ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(_WorkOrderTypeOption.fromJson)
           .toList(growable: false);
-
       if (!mounted) return;
       setState(() {
         _workOrderTypes = items;
@@ -344,15 +231,15 @@ class _CreateWorkOrderDialogState
     }
 
     final apiClient = ref.read(apiClientProvider);
-    final client = ref.read(supabaseClientProvider);
-    if (apiClient == null && client == null) return;
+    if (apiClient == null) return;
 
     final profile = await ref.read(currentUserProfileProvider.future);
     if (!mounted) return;
     final isAdmin = profile?.role == 'admin';
 
-    final assignedTo =
-        isAdmin ? _assignedTo : (apiClient != null ? profile?.id : client?.auth.currentUser?.id);
+    final assignedTo = isAdmin
+        ? ((_assignedTo ?? '').trim().isNotEmpty ? _assignedTo : profile?.id)
+        : profile?.id;
     if (assignedTo == null || assignedTo.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Personel ataması gerekli.')),
@@ -392,32 +279,12 @@ class _CreateWorkOrderDialogState
       };
 
       if (widget.initialOrder == null) {
-        if (apiClient != null) {
-          await apiClient.postJson('/work-orders', body: payload);
-        } else {
-          await _saveWorkOrderPayload(
-            client,
-            payload: {
-              ...payload,
-              'status': 'open',
-              'is_active': true,
-              'created_by': client!.auth.currentUser?.id,
-            },
-          );
-        }
+        await apiClient.postJson('/work-orders', body: payload);
       } else {
-        if (apiClient != null) {
-          await apiClient.patchJson(
-            '/work-orders',
-            body: {'id': widget.initialOrder!.id, ...payload},
-          );
-        } else {
-          await _saveWorkOrderPayload(
-            client,
-            payload: payload,
-            workOrderId: widget.initialOrder!.id,
-          );
-        }
+        await apiClient.patchJson(
+          '/work-orders',
+          body: {'id': widget.initialOrder!.id, ...payload},
+        );
       }
 
       if (!mounted) return;
@@ -438,48 +305,6 @@ class _CreateWorkOrderDialogState
       ).showSnackBar(SnackBar(content: Text('İş emri oluşturulamadı: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  Future<void> _saveWorkOrderPayload(
-    dynamic client, {
-    required Map<String, dynamic> payload,
-    String? workOrderId,
-  }) async {
-    final safePayload = Map<String, dynamic>.from(payload);
-    const fallbackColumns = {
-      'address',
-      'city',
-      'contact_phone',
-      'location_link',
-      'work_order_type_id',
-    };
-
-    while (true) {
-      try {
-        if (workOrderId == null) {
-          await client.from('work_orders').insert(safePayload);
-        } else {
-          await client
-              .from('work_orders')
-              .update(safePayload)
-              .eq('id', workOrderId);
-        }
-        return;
-      } catch (e) {
-        final message = e.toString();
-        final matchedColumn = fallbackColumns.firstWhere(
-          (column) =>
-              message.contains("'$column' column") ||
-              message.contains('column "$column"') ||
-              message.contains("Could not find the '$column' column"),
-          orElse: () => '',
-        );
-        if (matchedColumn.isEmpty || !safePayload.containsKey(matchedColumn)) {
-          rethrow;
-        }
-        safePayload.remove(matchedColumn);
-      }
     }
   }
 

@@ -4,7 +4,8 @@ import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
-import '../../core/supabase/supabase_providers.dart';
+import '../../core/api/api_client.dart';
+import '../../core/auth/user_profile_provider.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
@@ -19,14 +20,9 @@ class InvoicesScreen extends ConsumerStatefulWidget {
   ConsumerState<InvoicesScreen> createState() => _InvoicesScreenState();
 }
 
-class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
-    with SingleTickerProviderStateMixin {
+class _InvoicesScreenState extends ConsumerState<InvoicesScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final _money = NumberFormat.currency(
-    locale: 'tr_TR',
-    symbol: '₺',
-    decimalDigits: 2,
-  );
+  final _money = NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 2);
   InvoiceFilter _filter = const InvoiceFilter();
 
   @override
@@ -111,16 +107,11 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              Icons.receipt_long_rounded,
-                              size: 48,
-                              color: const Color(0xFF94A3B8),
-                            ),
+                            Icon(Icons.receipt_long_rounded, size: 48, color: const Color(0xFF94A3B8)),
                             const Gap(12),
                             Text(
                               'Fatura bulunmuyor',
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: const Color(0xFF64748B)),
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
                             ),
                           ],
                         ),
@@ -132,7 +123,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                 return ListView.separated(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   itemCount: invoices.length,
-                  separatorBuilder: (context, index) => const Gap(10),
+                  separatorBuilder: (_, _) => const Gap(10),
                   itemBuilder: (context, index) {
                     final invoice = invoices[index];
                     return _InvoiceCard(
@@ -144,12 +135,10 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stackTrace) => Center(
+              error: (_, _) => Center(
                 child: Text(
                   'Faturalar yüklenemedi',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
                 ),
               ),
             ),
@@ -160,6 +149,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
   }
 
   Future<void> _showInvoiceTypeDialog(BuildContext context) async {
+    final navigator = Navigator.of(context);
     final type = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -175,10 +165,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                   color: AppTheme.success.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  Icons.arrow_upward_rounded,
-                  color: AppTheme.success,
-                ),
+                child: Icon(Icons.arrow_upward_rounded, color: AppTheme.success),
               ),
               title: const Text('Satış Faturası'),
               subtitle: const Text('Müşteriye kesilen fatura'),
@@ -193,10 +180,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                   color: AppTheme.error.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  Icons.arrow_downward_rounded,
-                  color: AppTheme.error,
-                ),
+                child: Icon(Icons.arrow_downward_rounded, color: AppTheme.error),
               ),
               title: const Text('Alış Faturası'),
               subtitle: const Text('Tedarikçiden alınan fatura'),
@@ -205,17 +189,14 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('İptal'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('İptal')),
         ],
       ),
     );
 
-    if (type == null || !context.mounted) return;
-
-    await Navigator.of(context).push(
+    if (type == null || !mounted) return;
+    
+    await navigator.push(
       MaterialPageRoute(
         builder: (context) => InvoiceFormScreen(invoiceType: type),
       ),
@@ -229,7 +210,6 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
         builder: (context) => InvoiceDetailScreen(invoiceId: invoice.id),
       ),
     );
-    if (!mounted) return;
     ref.invalidate(invoicesProvider);
   }
 }
@@ -248,9 +228,7 @@ class _FilterBar extends StatelessWidget {
       child: Row(
         children: [
           _FilterChip(
-            label: filter.status == null
-                ? 'Tüm Durumlar'
-                : _statusLabel(filter.status!),
+            label: filter.status == null ? 'Tüm Durumlar' : _statusLabel(filter.status!),
             selected: filter.status != null,
             onTap: () => _showStatusFilter(context),
           ),
@@ -266,9 +244,7 @@ class _FilterBar extends StatelessWidget {
             selected: filter.startDate != null || filter.endDate != null,
             onTap: () => _showDateFilter(context),
           ),
-          if (filter.status != null ||
-              filter.customerId != null ||
-              filter.startDate != null) ...[
+          if (filter.status != null || filter.customerId != null || filter.startDate != null) ...[
             const Gap(8),
             ActionChip(
               label: const Text('Temizle'),
@@ -298,38 +274,21 @@ class _FilterBar extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              title: const Text('Tümü'),
-              onTap: () => Navigator.pop(context, ''),
-            ),
-            ListTile(
-              title: const Text('Açık'),
-              onTap: () => Navigator.pop(context, 'open'),
-            ),
-            ListTile(
-              title: const Text('Kısmi Ödendi'),
-              onTap: () => Navigator.pop(context, 'partial'),
-            ),
-            ListTile(
-              title: const Text('Ödendi'),
-              onTap: () => Navigator.pop(context, 'paid'),
-            ),
-            ListTile(
-              title: const Text('İptal'),
-              onTap: () => Navigator.pop(context, 'cancelled'),
-            ),
+            ListTile(title: const Text('Tümü'), onTap: () => Navigator.pop(context, '')),
+            ListTile(title: const Text('Açık'), onTap: () => Navigator.pop(context, 'open')),
+            ListTile(title: const Text('Kısmi Ödendi'), onTap: () => Navigator.pop(context, 'partial')),
+            ListTile(title: const Text('Ödendi'), onTap: () => Navigator.pop(context, 'paid')),
+            ListTile(title: const Text('İptal'), onTap: () => Navigator.pop(context, 'cancelled')),
           ],
         ),
       ),
     );
 
     if (status == null) return;
-    onFilterChanged(
-      filter.copyWith(
-        status: status.isEmpty ? null : status,
-        clearStatus: status.isEmpty,
-      ),
-    );
+    onFilterChanged(filter.copyWith(
+      status: status.isEmpty ? null : status,
+      clearStatus: status.isEmpty,
+    ));
   }
 
   Future<void> _showCustomerFilter(BuildContext context) async {
@@ -348,18 +307,15 @@ class _FilterBar extends StatelessWidget {
     );
 
     if (range == null) return;
-    onFilterChanged(
-      filter.copyWith(startDate: range.start, endDate: range.end),
-    );
+    onFilterChanged(filter.copyWith(
+      startDate: range.start,
+      endDate: range.end,
+    ));
   }
 }
 
 class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
+  const _FilterChip({required this.label, required this.selected, required this.onTap});
 
   final String label;
   final bool selected;
@@ -369,23 +325,15 @@ class _FilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return ActionChip(
       label: Text(label),
-      backgroundColor: selected
-          ? AppTheme.primary.withValues(alpha: 0.1)
-          : null,
-      side: selected
-          ? BorderSide(color: AppTheme.primary.withValues(alpha: 0.3))
-          : null,
+      backgroundColor: selected ? AppTheme.primary.withValues(alpha: 0.1) : null,
+      side: selected ? BorderSide(color: AppTheme.primary.withValues(alpha: 0.3)) : null,
       onPressed: onTap,
     );
   }
 }
 
 class _InvoiceCard extends StatelessWidget {
-  const _InvoiceCard({
-    required this.invoice,
-    required this.money,
-    required this.onTap,
-  });
+  const _InvoiceCard({required this.invoice, required this.money, required this.onTap});
 
   final Invoice invoice;
   final NumberFormat money;
@@ -430,9 +378,7 @@ class _InvoiceCard extends StatelessWidget {
                 invoice.invoiceType == 'sales'
                     ? Icons.arrow_upward_rounded
                     : Icons.arrow_downward_rounded,
-                color: invoice.invoiceType == 'sales'
-                    ? AppTheme.success
-                    : AppTheme.error,
+                color: invoice.invoiceType == 'sales' ? AppTheme.success : AppTheme.error,
                 size: 22,
               ),
             ),
@@ -446,8 +392,7 @@ class _InvoiceCard extends StatelessWidget {
                       Expanded(
                         child: Text(
                           invoice.invoiceNumber,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
                         ),
                       ),
                       AppBadge(label: statusLabel, tone: statusTone),
@@ -458,24 +403,16 @@ class _InvoiceCard extends StatelessWidget {
                     invoice.customerName ?? '-',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF64748B),
-                    ),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
                   ),
                   const Gap(2),
                   Row(
                     children: [
-                      Icon(
-                        Icons.calendar_today_rounded,
-                        size: 12,
-                        color: const Color(0xFF94A3B8),
-                      ),
+                      Icon(Icons.calendar_today_rounded, size: 12, color: const Color(0xFF94A3B8)),
                       const Gap(4),
                       Text(
                         dateText,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF94A3B8),
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF94A3B8)),
                       ),
                     ],
                   ),
@@ -488,18 +425,13 @@ class _InvoiceCard extends StatelessWidget {
               children: [
                 Text(
                   '$currencySymbol${money.format(invoice.grandTotal).replaceAll('₺', '').trim()}',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
-                if (invoice.remainingAmount > 0 &&
-                    invoice.status != 'paid') ...[
+                if (invoice.remainingAmount > 0 && invoice.status != 'paid') ...[
                   const Gap(2),
                   Text(
                     'Kalan: $currencySymbol${money.format(invoice.remainingAmount).replaceAll('₺', '').trim()}',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: AppTheme.error),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTheme.error),
                   ),
                 ],
               ],
@@ -518,16 +450,11 @@ class InvoiceDetailScreen extends ConsumerStatefulWidget {
   final String invoiceId;
 
   @override
-  ConsumerState<InvoiceDetailScreen> createState() =>
-      _InvoiceDetailScreenState();
+  ConsumerState<InvoiceDetailScreen> createState() => _InvoiceDetailScreenState();
 }
 
 class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
-  final _money = NumberFormat.currency(
-    locale: 'tr_TR',
-    symbol: '₺',
-    decimalDigits: 2,
-  );
+  final _money = NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 2);
 
   @override
   Widget build(BuildContext context) {
@@ -566,7 +493,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
           return _buildDetail(context, invoice);
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stackTrace) => const Center(child: Text('Hata oluştu')),
+        error: (_, _) => const Center(child: Text('Hata oluştu')),
       ),
     );
   }
@@ -596,16 +523,12 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                       children: [
                         Text(
                           invoice.invoiceNumber,
-                          style: Theme.of(context).textTheme.headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const Gap(4),
                         Text(
-                          invoice.invoiceType == 'sales'
-                              ? 'Satış Faturası'
-                              : 'Alış Faturası',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: const Color(0xFF64748B)),
+                          invoice.invoiceType == 'sales' ? 'Satış Faturası' : 'Alış Faturası',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
                         ),
                       ],
                     ),
@@ -618,22 +541,10 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
               const Gap(16),
               _InfoRow(label: 'Cari', value: invoice.customerName ?? '-'),
               const Gap(8),
-              _InfoRow(
-                label: 'Fatura Tarihi',
-                value: DateFormat(
-                  'd MMMM y',
-                  'tr_TR',
-                ).format(invoice.invoiceDate),
-              ),
+              _InfoRow(label: 'Fatura Tarihi', value: DateFormat('d MMMM y', 'tr_TR').format(invoice.invoiceDate)),
               if (invoice.dueDate != null) ...[
                 const Gap(8),
-                _InfoRow(
-                  label: 'Vade Tarihi',
-                  value: DateFormat(
-                    'd MMMM y',
-                    'tr_TR',
-                  ).format(invoice.dueDate!),
-                ),
+                _InfoRow(label: 'Vade Tarihi', value: DateFormat('d MMMM y', 'tr_TR').format(invoice.dueDate!)),
               ],
               const Gap(8),
               _InfoRow(label: 'Para Birimi', value: invoice.currency),
@@ -650,86 +561,59 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
               Text('Kalemler', style: Theme.of(context).textTheme.titleSmall),
               const Gap(12),
               if (invoice.items.isEmpty)
-                Text(
-                  'Kalem bulunmuyor',
-                  style: Theme.of(context).textTheme.bodySmall,
-                )
+                Text('Kalem bulunmuyor', style: Theme.of(context).textTheme.bodySmall)
               else
-                ...invoice.items.map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item.description,
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                              Text(
-                                '${item.quantity} ${item.unit} x $currencySymbol${_money.format(item.unitPrice).replaceAll('₺', '').trim()}',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: const Color(0xFF64748B)),
-                              ),
-                            ],
+                ...invoice.items.map((item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(item.description, style: Theme.of(context).textTheme.bodyMedium),
+                                Text(
+                                  '${item.quantity} ${item.unit} x $currencySymbol${_money.format(item.unitPrice).replaceAll('₺', '').trim()}',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        Expanded(
-                          flex: 1,
-                          child: Text(
-                            '$currencySymbol${_money.format(item.lineTotal).replaceAll('₺', '').trim()}',
-                            textAlign: TextAlign.end,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w600),
+                          Expanded(
+                            flex: 1,
+                            child: Text(
+                              '$currencySymbol${_money.format(item.lineTotal).replaceAll('₺', '').trim()}',
+                              textAlign: TextAlign.end,
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                        ],
+                      ),
+                    )),
               const Divider(),
               const Gap(8),
-              _TotalRow(
-                label: 'Ara Toplam',
-                value:
-                    '$currencySymbol${_money.format(invoice.subtotal).replaceAll('₺', '').trim()}',
-              ),
-              _TotalRow(
-                label: 'KDV Toplam',
-                value:
-                    '$currencySymbol${_money.format(invoice.taxTotal).replaceAll('₺', '').trim()}',
-              ),
+              _TotalRow(label: 'Ara Toplam', value: '$currencySymbol${_money.format(invoice.subtotal).replaceAll('₺', '').trim()}'),
+              _TotalRow(label: 'KDV Toplam', value: '$currencySymbol${_money.format(invoice.taxTotal).replaceAll('₺', '').trim()}'),
               if (invoice.discountTotal > 0)
-                _TotalRow(
-                  label: 'İndirim',
-                  value:
-                      '-$currencySymbol${_money.format(invoice.discountTotal).replaceAll('₺', '').trim()}',
-                ),
+                _TotalRow(label: 'İndirim', value: '-$currencySymbol${_money.format(invoice.discountTotal).replaceAll('₺', '').trim()}'),
               const Gap(8),
               _TotalRow(
                 label: 'Genel Toplam',
-                value:
-                    '$currencySymbol${_money.format(invoice.grandTotal).replaceAll('₺', '').trim()}',
+                value: '$currencySymbol${_money.format(invoice.grandTotal).replaceAll('₺', '').trim()}',
                 isTotal: true,
               ),
               const Gap(8),
               _TotalRow(
                 label: 'Ödenen',
-                value:
-                    '$currencySymbol${_money.format(invoice.paidAmount).replaceAll('₺', '').trim()}',
+                value: '$currencySymbol${_money.format(invoice.paidAmount).replaceAll('₺', '').trim()}',
                 color: AppTheme.success,
               ),
               _TotalRow(
                 label: 'Kalan',
-                value:
-                    '$currencySymbol${_money.format(invoice.remainingAmount).replaceAll('₺', '').trim()}',
-                color: invoice.remainingAmount > 0
-                    ? AppTheme.error
-                    : AppTheme.success,
+                value: '$currencySymbol${_money.format(invoice.remainingAmount).replaceAll('₺', '').trim()}',
+                color: invoice.remainingAmount > 0 ? AppTheme.error : AppTheme.success,
               ),
             ],
           ),
@@ -743,10 +627,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
               children: [
                 Text('Notlar', style: Theme.of(context).textTheme.titleSmall),
                 const Gap(8),
-                Text(
-                  invoice.notes!,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
+                Text(invoice.notes!, style: Theme.of(context).textTheme.bodyMedium),
               ],
             ),
           ),
@@ -763,22 +644,10 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     );
   }
 
-  Future<void> _handleMenuAction(String action) async {
+  void _handleMenuAction(String action) {
     switch (action) {
       case 'edit':
-        final invoice = ref.read(invoiceDetailProvider(widget.invoiceId)).value;
-        if (invoice == null) return;
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => InvoiceFormScreen(
-              invoiceType: invoice.invoiceType,
-              editInvoice: invoice,
-            ),
-          ),
-        );
-        if (!mounted) return;
-        ref.invalidate(invoiceDetailProvider(widget.invoiceId));
-        ref.invalidate(invoicesProvider);
+        // TODO: Edit
         break;
       case 'payment':
         final invoiceAsync = ref.read(invoiceDetailProvider(widget.invoiceId));
@@ -792,28 +661,22 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   }
 
   Future<void> _addPayment(BuildContext context, Invoice invoice) async {
-    final amountController = TextEditingController(
-      text: invoice.remainingAmount.toStringAsFixed(2),
-    );
+    final messenger = ScaffoldMessenger.of(context);
+    final amountController = TextEditingController(text: invoice.remainingAmount.toStringAsFixed(2));
     String currency = invoice.currency;
     String method = 'cash';
 
-    final messenger = ScaffoldMessenger.of(context);
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: Text(
-            invoice.invoiceType == 'sales' ? 'Tahsilat Ekle' : 'Ödeme Ekle',
-          ),
+          title: Text(invoice.invoiceType == 'sales' ? 'Tahsilat Ekle' : 'Ödeme Ekle'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: amountController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(labelText: 'Tutar'),
               ),
               const Gap(12),
@@ -834,11 +697,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                 items: const [
                   DropdownMenuItem(value: 'cash', child: Text('Nakit')),
                   DropdownMenuItem(value: 'bank', child: Text('Havale/EFT')),
-                  DropdownMenuItem(value: 'pos', child: Text('POS')),
-                  DropdownMenuItem(
-                    value: 'credit_card',
-                    child: Text('Kredi Kartı'),
-                  ),
+                  DropdownMenuItem(value: 'credit_card', child: Text('Kredi Kartı')),
                   DropdownMenuItem(value: 'check', child: Text('Çek')),
                 ],
                 onChanged: (v) => setState(() => method = v ?? 'cash'),
@@ -847,14 +706,8 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('İptal'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Kaydet'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('İptal')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Kaydet')),
           ],
         ),
       ),
@@ -862,49 +715,62 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
 
     if (result != true || !mounted) return;
 
-    final amount =
-        double.tryParse(amountController.text.replaceAll(',', '.')) ?? 0;
+    final amount = double.tryParse(amountController.text.replaceAll(',', '.')) ?? 0;
     if (amount <= 0) return;
 
-    final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
 
     try {
-      await client.from('transactions').insert({
-        'customer_id': invoice.customerId,
-        'transaction_type': invoice.invoiceType == 'sales'
-            ? 'collection'
-            : 'payment',
-        'amount': amount,
-        'currency': currency,
-        'payment_method': method,
-        'invoice_id': invoice.id,
-        'transaction_date': DateTime.now().toIso8601String().substring(0, 10),
-        'created_by': client.auth.currentUser?.id,
-      });
+      final profile = await ref.read(currentUserProfileProvider.future);
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'insertMany',
+          'table': 'transactions',
+          'rows': [
+            {
+              'customer_id': invoice.customerId,
+              'transaction_type':
+                  invoice.invoiceType == 'sales' ? 'collection' : 'payment',
+              'amount': amount,
+              'currency': currency,
+              'payment_method': method,
+              'invoice_id': invoice.id,
+              'transaction_date':
+                  DateTime.now().toIso8601String().substring(0, 10),
+              'created_by': profile?.id,
+              'is_active': true,
+            },
+          ],
+        },
+      );
 
       if (!mounted) return;
-      messenger.showSnackBar(const SnackBar(content: Text('Ödeme kaydedildi')));
-      ref.invalidate(invoiceDetailProvider(widget.invoiceId));
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Ödeme kaydedildi')),
+        );
+        ref.invalidate(invoiceDetailProvider(widget.invoiceId));
+      }
     } catch (e) {
-      if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text('Hata: $e')));
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Hata: $e')),
+        );
+      }
     }
   }
 
   Future<void> _cancelInvoice() async {
+    final messenger = ScaffoldMessenger.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Faturayı İptal Et'),
-        content: const Text(
-          'Bu faturayı iptal etmek istediğinizden emin misiniz?',
-        ),
+        content: const Text('Bu faturayı iptal etmek istediğinizden emin misiniz?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Vazgeç'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppTheme.error),
             onPressed: () => Navigator.pop(context, true),
@@ -916,25 +782,29 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
 
     if (confirm != true || !mounted) return;
 
-    final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
 
     try {
-      await client
-          .from('invoices')
-          .update({'status': 'cancelled'})
-          .eq('id', widget.invoiceId);
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'invoices',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': widget.invoiceId},
+          ],
+          'values': {'status': 'cancelled'},
+        },
+      );
+      if (!mounted) return;
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Fatura iptal edildi')));
+        messenger.showSnackBar(const SnackBar(content: Text('Fatura iptal edildi')));
         ref.invalidate(invoiceDetailProvider(widget.invoiceId));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Hata: $e')));
+        messenger.showSnackBar(SnackBar(content: Text('Hata: $e')));
       }
     }
   }
@@ -947,9 +817,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
 
   void _sendEmail(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('E-posta gönderme özelliği yakında eklenecek'),
-      ),
+      const SnackBar(content: Text('E-posta gönderme özelliği yakında eklenecek')),
     );
   }
 }
@@ -979,10 +847,7 @@ class _StatusBadgeLarge extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: color, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -1002,9 +867,7 @@ class _InfoRow extends StatelessWidget {
           width: 120,
           child: Text(
             label,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
           ),
         ),
         Expanded(
@@ -1016,12 +879,7 @@ class _InfoRow extends StatelessWidget {
 }
 
 class _TotalRow extends StatelessWidget {
-  const _TotalRow({
-    required this.label,
-    required this.value,
-    this.isTotal = false,
-    this.color,
-  });
+  const _TotalRow({required this.label, required this.value, this.isTotal = false, this.color});
 
   final String label;
   final String value;
@@ -1038,16 +896,16 @@ class _TotalRow extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
-              color: color,
-            ),
+                  fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
+                  color: color,
+                ),
           ),
           Text(
             value,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: isTotal ? FontWeight.w700 : FontWeight.w600,
-              color: color,
-            ),
+                  fontWeight: isTotal ? FontWeight.w700 : FontWeight.w600,
+                  color: color,
+                ),
           ),
         ],
       ),

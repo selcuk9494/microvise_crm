@@ -118,10 +118,10 @@ class _MobileShell extends ConsumerWidget {
       _navItems.firstWhere((e) => e.path == '/panel'),
       if (allowedPages.contains('musteriler'))
         _navItems.firstWhere((e) => e.path == '/musteriler'),
+      if (allowedPages.contains('formlar'))
+        _navItems.firstWhere((e) => e.path == '/formlar'),
       if (allowedPages.contains('is_emirleri'))
         _navItems.firstWhere((e) => e.path == '/is-emirleri'),
-      if (allowedPages.contains('raporlar'))
-        _navItems.firstWhere((e) => e.path == '/raporlar'),
     ];
 
     int currentIndexForLocation() {
@@ -657,6 +657,12 @@ final _navItems = <_NavItem>[
     label: 'Müşteriler',
     icon: PhosphorIcons.users(PhosphorIconsStyle.regular),
     pageKey: 'musteriler',
+  ),
+  _NavItem(
+    path: '/formlar',
+    label: 'Formlar',
+    icon: PhosphorIcons.fileText(PhosphorIconsStyle.regular),
+    pageKey: 'formlar',
   ),
   _NavItem(
     path: '/is-emirleri',

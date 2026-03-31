@@ -328,7 +328,15 @@ module.exports = async (req, res) => {
 
     if (search) {
       values.push(`%${search}%`);
-      conditions.push(`c.name ilike $${values.length}`);
+      conditions.push(
+        `(c.name ilike $${values.length}
+          or c.vkn ilike $${values.length}
+          or c.tckn_ms ilike $${values.length}
+          or c.phone_1 ilike $${values.length}
+          or c.phone_2 ilike $${values.length}
+          or c.phone_3 ilike $${values.length}
+          or c.email ilike $${values.length})`,
+      );
     }
 
     const whereSql = conditions.length

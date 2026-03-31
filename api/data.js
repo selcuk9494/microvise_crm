@@ -1019,6 +1019,42 @@ module.exports = async (req, res) => {
         return ok(res, { items: result.rows });
       }
 
+      case 'customers_basic': {
+        if (
+          !requireAnyPage(
+            user,
+            ['musteriler', 'is_emirleri', 'servis', 'faturalama', 'formlar'],
+            res,
+          )
+        )
+          return;
+        const result = await query(
+          `
+            select id,name,city,address,is_active
+            from public.customers
+            where is_active = true
+            order by name asc
+          `,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'customer_branches': {
+        if (!requireAnyPage(user, ['musteriler', 'is_emirleri'], res)) return;
+        const customerId = String(req.query.customerId || '').trim();
+        if (!customerId) return ok(res, { items: [] });
+        const result = await query(
+          `
+            select id,name,is_active
+            from public.branches
+            where customer_id = $1 and is_active = true
+            order by name asc
+          `,
+          [customerId],
+        );
+        return ok(res, { items: result.rows });
+      }
+
       case 'products_lines': {
         const search = String(req.query.search || '').trim();
         const showPassive = parseBoolean(req.query.showPassive, false);
