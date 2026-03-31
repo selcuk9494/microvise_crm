@@ -7,5 +7,4 @@ flutter build web --release \
   --dart-define=API_BASE_URL=/api \
   --dart-define=DISABLE_SUPABASE=true
 
-npx vercel dev --prebuilt --listen 3000
-
+node ./scripts/local_server.js
