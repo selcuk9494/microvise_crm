@@ -317,8 +317,7 @@ module.exports = async (req, res) => {
     const values = [];
 
     if (!showPassive) {
-      values.push(true);
-      conditions.push(`c.is_active = $${values.length}`);
+      conditions.push(`coalesce(c.is_active, true) = true`);
     }
 
     if (city) {
