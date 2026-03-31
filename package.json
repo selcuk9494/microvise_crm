@@ -5,6 +5,7 @@
     "pg": "^8.16.3"
   },
   "scripts": {
-    "vercel-build": "bash ./scripts/vercel_build.sh"
+    "vercel-build": "bash ./scripts/vercel_build.sh",
+    "local-web": "bash ./scripts/local_web.sh"
   }
 }
