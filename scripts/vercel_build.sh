@@ -1,17 +1,21 @@
 set -euo pipefail
 
 FLUTTER_VERSION="3.41.2"
-FLUTTER_DIR=".flutter"
+CACHE_DIR="${VERCEL_CACHE_DIR:-$PWD/.vercel/cache}"
+FLUTTER_DIR="$CACHE_DIR/flutter/$FLUTTER_VERSION"
 
 if [ ! -d "$FLUTTER_DIR" ]; then
   echo "Flutter indiriliyor ($FLUTTER_VERSION)..."
+  mkdir -p "$CACHE_DIR/flutter"
   curl -fsSL "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" -o flutter.tar.xz
-  tar -xJf flutter.tar.xz
+  tar -xJf flutter.tar.xz -C "$CACHE_DIR/flutter"
   rm flutter.tar.xz
-  mv flutter "$FLUTTER_DIR"
+  mv "$CACHE_DIR/flutter/flutter" "$FLUTTER_DIR"
 fi
 
-export PATH="$PWD/$FLUTTER_DIR/bin:$PATH"
+export PATH="$FLUTTER_DIR/bin:$PATH"
+export PUB_CACHE="$CACHE_DIR/.pub-cache"
+mkdir -p "$PUB_CACHE"
 
 export GIT_CONFIG_GLOBAL="$PWD/.vercel_gitconfig"
 if command -v git >/dev/null 2>&1; then
