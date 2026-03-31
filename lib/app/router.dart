@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../app/app_config.dart';
 import '../core/auth/auth_providers.dart';
+import '../core/auth/user_profile_provider.dart';
 import '../core/routing/go_router_refresh_stream.dart';
 import '../core/supabase/supabase_providers.dart';
 import '../features/auth/login_screen.dart';
@@ -176,6 +177,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       if (!isLoggedIn) return isLoggingIn ? null : '/giris';
       if (isLoggingIn || isSetup) return '/panel';
+
+      final location = state.matchedLocation;
+      String? requiredPage;
+      if (location.startsWith('/musteriler')) requiredPage = 'musteriler';
+      if (location.startsWith('/is-emirleri')) requiredPage = 'is_emirleri';
+      if (location.startsWith('/servis')) requiredPage = 'servis';
+      if (location.startsWith('/raporlar')) requiredPage = 'raporlar';
+      if (location.startsWith('/urunler')) requiredPage = 'urunler';
+      if (location.startsWith('/faturalama')) requiredPage = 'faturalama';
+      if (location.startsWith('/tanimlamalar')) requiredPage = 'tanimlamalar';
+      if (location.startsWith('/personel')) requiredPage = 'personel';
+      if (location.startsWith('/panel')) requiredPage = 'panel';
+
+      if (requiredPage != null) {
+        final pages = ref.read(currentUserPagePermissionsProvider);
+        if (!pages.contains(requiredPage)) return '/panel';
+      }
 
       return null;
     },

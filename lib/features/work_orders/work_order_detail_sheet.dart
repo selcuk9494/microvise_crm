@@ -11,6 +11,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../customers/customer_detail_screen.dart';
+import '../dashboard/dashboard_providers.dart';
 import 'work_order_model.dart';
 import 'currency_service.dart';
 
@@ -250,6 +251,31 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             '/mutate',
             body: {'op': 'insertMany', 'table': 'payments', 'rows': paymentRows},
           );
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'insertMany',
+              'table': 'invoice_items',
+              'rows': paymentRows
+                  .map(
+                    (row) => {
+                      'customer_id': customer.id,
+                      'item_type': 'work_order_payment',
+                      'source_table': 'work_orders',
+                      'source_id': widget.order.id,
+                      'description': 'İş Emri Ödemesi - ${widget.order.title}',
+                      'amount': row['amount'],
+                      'currency': row['currency'],
+                      'status': 'pending',
+                      'is_active': true,
+                      'created_by': profile?.id,
+                      'source_event': 'work_order_payment',
+                      'source_label': 'İş Emri Ödemesi',
+                    },
+                  )
+                  .toList(growable: false),
+            },
+          );
         } else {
           await client!.from('payments').insert(paymentRows);
         }
@@ -280,6 +306,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       }
 
       if (!mounted) return;
+      ref.invalidate(dashboardMetricsProvider);
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('İş emri kapatıldı.')),

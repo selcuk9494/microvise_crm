@@ -651,6 +651,50 @@ module.exports = async (req, res) => {
         return ok(res, { items: result.rows });
       }
 
+      case 'invoice_items_queue': {
+        if (!requireAnyPage(user, ['faturalama'], res)) return;
+        const result = await query(
+          `
+            select
+              ii.id,
+              ii.customer_id,
+              ii.item_type,
+              ii.source_table,
+              ii.source_id,
+              ii.description,
+              ii.amount,
+              ii.currency,
+              ii.status,
+              ii.created_at,
+              ii.invoiced_at,
+              ii.created_by,
+              ii.approved_by,
+              ii.approved_at,
+              ii.updated_by,
+              ii.updated_at,
+              ii.deactivated_by,
+              ii.deactivated_at,
+              ii.is_active,
+              ii.source_event,
+              ii.source_label,
+              c.name as customer_label,
+              u1.full_name as created_by_label,
+              u2.full_name as approved_by_label,
+              u3.full_name as updated_by_label,
+              u4.full_name as deactivated_by_label
+            from public.invoice_items ii
+            left join public.customers c on c.id = ii.customer_id
+            left join public.users u1 on u1.id = ii.created_by
+            left join public.users u2 on u2.id = ii.approved_by
+            left join public.users u3 on u3.id = ii.updated_by
+            left join public.users u4 on u4.id = ii.deactivated_by
+            order by ii.created_at desc
+            limit 600
+          `,
+        );
+        return ok(res, { items: result.rows });
+      }
+
       case 'customers_lookup': {
         const result = await query(
           `select id,name,is_active from public.customers order by name asc`,

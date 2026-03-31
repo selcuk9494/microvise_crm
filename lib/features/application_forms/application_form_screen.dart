@@ -1296,12 +1296,20 @@ class _ApplicationFormDialogState
       text: initial?.accountingOffice ?? '',
     );
     _invoiceNumberController = TextEditingController(
-      text: initial?.invoiceNumber ?? '',
+      text: widget.duplicateMode ? '' : (initial?.invoiceNumber ?? ''),
     );
     _manualSerialsController = TextEditingController();
-    _applicationDate = initial?.applicationDate ?? DateTime.now();
-    _okcStartDate = initial?.okcStartDate ?? DateTime.now();
+    _applicationDate =
+        widget.duplicateMode ? DateTime.now() : (initial?.applicationDate ?? DateTime.now());
+    _okcStartDate =
+        widget.duplicateMode ? DateTime.now() : (initial?.okcStartDate ?? DateTime.now());
     _selectedCustomerId = initial?.customerId;
+    if (widget.duplicateMode) {
+      _fileRegistryController.text = '';
+      _manualSerialsController.text = '';
+      _selectedStockProductId = null;
+      _selectedSerialInventory = const [];
+    }
     _loadInitialSelections();
   }
 
@@ -1351,35 +1359,37 @@ class _ApplicationFormDialogState
           )
           .map((item) => item.id)
           .firstOrNull;
-      _selectedStockProductId ??=
-          stockProducts
-              .where((item) => item.id == initial.stockProductId)
-              .map((item) => item.id)
-              .firstOrNull ??
-          stockProducts
-              .where(
-                (item) =>
-                    _sortKey(item.name) ==
-                        _sortKey(initial.stockProductName ?? '') ||
-                    _sortKey(item.code ?? '') ==
-                        _sortKey(initial.stockRegistryNumber ?? ''),
-              )
-              .map((item) => item.id)
-              .firstOrNull;
-      if ((initial.stockRegistryNumber?.trim().isNotEmpty ?? false) &&
-          _selectedSerialInventory.isEmpty) {
-        _selectedSerialInventory = [
-          ProductSerialInventoryRecord(
-            id: 'existing:${initial.id}',
-            productId: _selectedStockProductId ?? '',
-            serialNumber: initial.stockRegistryNumber!.trim(),
-            notes: null,
-            isActive: true,
-            consumedByApplicationFormId: initial.id,
-            consumedAt: initial.createdAt,
-            createdAt: initial.createdAt,
-          ),
-        ];
+      if (!widget.duplicateMode) {
+        _selectedStockProductId ??=
+            stockProducts
+                .where((item) => item.id == initial.stockProductId)
+                .map((item) => item.id)
+                .firstOrNull ??
+            stockProducts
+                .where(
+                  (item) =>
+                      _sortKey(item.name) ==
+                          _sortKey(initial.stockProductName ?? '') ||
+                      _sortKey(item.code ?? '') ==
+                          _sortKey(initial.stockRegistryNumber ?? ''),
+                )
+                .map((item) => item.id)
+                .firstOrNull;
+        if ((initial.stockRegistryNumber?.trim().isNotEmpty ?? false) &&
+            _selectedSerialInventory.isEmpty) {
+          _selectedSerialInventory = [
+            ProductSerialInventoryRecord(
+              id: 'existing:${initial.id}',
+              productId: _selectedStockProductId ?? '',
+              serialNumber: initial.stockRegistryNumber!.trim(),
+              notes: null,
+              isActive: true,
+              consumedByApplicationFormId: initial.id,
+              consumedAt: initial.createdAt,
+              createdAt: initial.createdAt,
+            ),
+          ];
+        }
       }
       if (_selectedBusinessActivityIds.isEmpty) {
         final selectedNames = (initial.businessActivityName ?? '')

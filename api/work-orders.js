@@ -223,7 +223,7 @@ module.exports = async (req, res) => {
     let assignedFilterSql = '';
     if (user.role !== 'admin') {
       values.push(user.id);
-      assignedFilterSql = `and w.assigned_to = $${values.length}`;
+      assignedFilterSql = `and (w.assigned_to = $${values.length} or w.created_by = $${values.length})`;
     }
 
     const result = await query(

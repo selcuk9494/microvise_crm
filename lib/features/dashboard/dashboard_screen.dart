@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
@@ -169,29 +170,34 @@ class _MetricsGrid extends StatelessWidget {
             title: 'Toplam Müşteri',
             value: metrics.totalCustomers.toString(),
             icon: Icons.people_alt_rounded,
+            onTap: () => context.go('/musteriler'),
           ),
           _MetricTile(
             title: 'Açık İş Emirleri',
             value: metrics.openWorkOrders.toString(),
             icon: Icons.assignment_rounded,
             tone: metrics.openWorkOrders > 0 ? _MetricTone.warning : _MetricTone.neutral,
+            onTap: () => context.go('/is-emirleri'),
           ),
           _MetricTile(
             title: 'Devam Eden',
             value: metrics.inProgressWorkOrders.toString(),
             icon: Icons.timelapse_rounded,
             tone: _MetricTone.primary,
+            onTap: () => context.go('/is-emirleri'),
           ),
           _MetricTile(
             title: 'Bugünkü İşler',
             value: metrics.todayWorkOrders.toString(),
             icon: Icons.today_rounded,
+            onTap: () => context.go('/is-emirleri'),
           ),
           _MetricTile(
             title: 'Süresi Dolanlar',
             value: metrics.expiringSoon.toString(),
             icon: Icons.warning_rounded,
             tone: metrics.expiringSoon > 0 ? _MetricTone.warning : _MetricTone.neutral,
+            onTap: () => context.go('/urunler'),
           ),
           _MetricTile(
             title: 'Gelir (Bu Ay)',
@@ -200,12 +206,14 @@ class _MetricsGrid extends StatelessWidget {
             tone: _MetricTone.success,
             subtitle: revenueChangeText,
             subtitleColor: revenueChange >= 0 ? AppTheme.success : AppTheme.error,
+            onTap: () => context.go('/raporlar'),
           ),
           _MetricTile(
             title: 'Açık Faturalar',
             value: metrics.openInvoices.toString(),
             icon: Icons.receipt_long_rounded,
             subtitle: money.format(metrics.totalInvoiceAmount),
+            onTap: () => context.go('/faturalama'),
           ),
           _MetricTile(
             title: 'Fatura Kuyruğu',
@@ -213,12 +221,14 @@ class _MetricsGrid extends StatelessWidget {
             icon: Icons.receipt_rounded,
             tone:
                 metrics.invoiceQueuePending > 0 ? _MetricTone.warning : _MetricTone.neutral,
+            onTap: () => context.go('/faturalama'),
           ),
           _MetricTile(
             title: 'Düşük Stok',
             value: metrics.lowStockProducts.toString(),
             icon: Icons.inventory_2_rounded,
             tone: metrics.lowStockProducts > 0 ? _MetricTone.warning : _MetricTone.success,
+            onTap: () => context.go('/urunler'),
           ),
         ];
 
@@ -231,6 +241,7 @@ class _MetricsGrid extends StatelessWidget {
                 width: itemWidth,
                 child: AppCard(
                   padding: const EdgeInsets.all(16),
+                  onTap: item.onTap,
                   child: item,
                 ),
               ),
@@ -249,6 +260,7 @@ class _MetricTile extends StatelessWidget {
     this.tone = _MetricTone.neutral,
     this.subtitle,
     this.subtitleColor,
+    this.onTap,
   });
 
   final String title;
@@ -257,6 +269,7 @@ class _MetricTile extends StatelessWidget {
   final _MetricTone tone;
   final String? subtitle;
   final Color? subtitleColor;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -281,16 +294,22 @@ class _MetricTile extends StatelessWidget {
                     ?.copyWith(color: const Color(0xFF64748B)),
               ),
             ),
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: accent.withValues(alpha: 0.18)),
-              ),
-              child: Icon(icon, size: 18, color: accent),
-            ),
+            onTap == null
+                ? Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: accent.withValues(alpha: 0.18)),
+                    ),
+                    child: Icon(icon, size: 18, color: accent),
+                  )
+                : const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 20,
+                    color: Color(0xFF94A3B8),
+                  ),
           ],
         ),
         const Gap(10),
