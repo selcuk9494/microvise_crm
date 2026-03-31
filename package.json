@@ -6,6 +6,7 @@
   },
   "scripts": {
     "vercel-build": "bash ./scripts/vercel_build.sh",
-    "local-web": "bash ./scripts/local_web.sh"
+    "local-web": "bash ./scripts/local_web_run.sh",
+    "local-web-prebuilt": "bash ./scripts/local_web.sh"
   }
 }
