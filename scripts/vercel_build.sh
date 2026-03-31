@@ -20,7 +20,10 @@ mkdir -p "$PUB_CACHE"
 export GIT_CONFIG_GLOBAL="$PWD/.vercel_gitconfig"
 if command -v git >/dev/null 2>&1; then
   git config --global --add safe.directory "$PWD"
-  git config --global --add safe.directory "$PWD/$FLUTTER_DIR"
+  # Allow Flutter SDK directory in Vercel cache (avoids "dubious ownership")
+  git config --global --add safe.directory "$FLUTTER_DIR"
+  # Also allow its parent dir to be safe on some environments
+  git config --global --add safe.directory "$(dirname "$FLUTTER_DIR")"
 fi
 
 flutter --version
