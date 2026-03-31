@@ -4,39 +4,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 import 'package:signature/signature.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
-import '../../core/supabase/supabase_providers.dart';
+import '../../core/auth/user_profile_provider.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../dashboard/dashboard_providers.dart';
 
 final serviceDetailProvider =
     FutureProvider.family<ServiceDetail, String>((ref, serviceId) async {
   final apiClient = ref.watch(apiClientProvider);
-  if (apiClient != null) {
-    final row = await apiClient.getJson(
-      '/data',
-      queryParameters: {'resource': 'service_detail', 'serviceId': serviceId},
-    );
-    if (row.isEmpty) throw Exception('Servis kaydı bulunamadı.');
-    return ServiceDetail.fromJson(row);
-  }
-
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) throw Exception('Supabase yapılandırılmamış.');
-
-  final row = await client
-      .from('service_records')
-      .select(
-        'id,title,status,created_at,notes,currency,total_amount,steps,parts,labor,customer_id,work_order_id,customers(name,email)',
-      )
-      .eq('id', serviceId)
-      .maybeSingle();
-
-  if (row == null) throw Exception('Servis kaydı bulunamadı.');
+  if (apiClient == null) throw Exception('API bağlantısı yok.');
+  final row = await apiClient.getJson(
+    '/data',
+    queryParameters: {'resource': 'service_detail', 'serviceId': serviceId},
+  );
+  if (row.isEmpty) throw Exception('Servis kaydı bulunamadı.');
   return ServiceDetail.fromJson(row);
 });
 
@@ -111,8 +96,8 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   }
 
   Future<void> _showCloseDialog(BuildContext context, ServiceDetail detail) async {
-    final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
 
     final payments = [_PaymentDraft()];
     final notesController = TextEditingController(text: detail.notes ?? '');
@@ -275,6 +260,8 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                                 : () async {
                                     setState(() => _closing = true);
                                     try {
+                                      final profile =
+                                          await ref.read(currentUserProfileProvider.future);
                                       final now = DateTime.now();
                                       final sig = await _signature.toPngBytes();
                                       final sigUrl = sig == null || sig.isEmpty
@@ -282,15 +269,25 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                                           : 'data:image/png;base64,${base64Encode(sig)}';
 
                                       final total = detail.totalAmount ?? 0;
-                                      await client.from('service_records').update({
-                                        'status': 'done',
-                                        'notes': notesController.text.trim().isEmpty
-                                            ? null
-                                            : notesController.text.trim(),
-                                        'currency': currencyController.value,
-                                        'total_amount': total,
-                                        'signature_url': sigUrl,
-                                      }).eq('id', detail.id);
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'updateWhere',
+                                          'table': 'service_records',
+                                          'filters': [
+                                            {'col': 'id', 'op': 'eq', 'value': detail.id},
+                                          ],
+                                          'values': {
+                                            'status': 'done',
+                                            'notes': notesController.text.trim().isEmpty
+                                                ? null
+                                                : notesController.text.trim(),
+                                            'currency': currencyController.value,
+                                            'total_amount': total,
+                                            'signature_url': sigUrl,
+                                          },
+                                        },
+                                      );
 
                                       final paymentRows = <Map<String, dynamic>>[];
                                       for (final p in payments) {
@@ -302,40 +299,26 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                                           'amount': amount,
                                           'currency': currencyController.value,
                                           'paid_at': now.toIso8601String(),
-                                          'created_by': client.auth.currentUser?.id,
+                                          'created_by': profile?.id,
                                           'is_active': true,
                                         });
                                       }
                                       if (paymentRows.isNotEmpty) {
-                                        await client.from('payments').insert(paymentRows);
-                                      }
-
-                                      final email = detail.customerEmail;
-                                      if (email != null &&
-                                          email.trim().isNotEmpty &&
-                                          sigUrl != null) {
-                                        try {
-                                          await client.functions.invoke(
-                                            'send_work_order_closed_email',
-                                            body: {
-                                              'to': email,
-                                              'customerName': detail.customerName ?? '',
-                                              'workOrderTitle': detail.title,
-                                              'signatureDataUrl': sigUrl,
-                                            },
-                                          );
-                                        } catch (_) {}
+                                        await apiClient.postJson(
+                                          '/mutate',
+                                          body: {
+                                            'op': 'insertMany',
+                                            'table': 'payments',
+                                            'rows': paymentRows,
+                                          },
+                                        );
                                       }
 
                                       if (!context.mounted) return;
+                                      ref.invalidate(dashboardMetricsProvider);
                                       Navigator.of(context).pop();
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(content: Text('Servis kapatıldı.')),
-                                      );
-                                    } on AuthException catch (e) {
-                                      if (!context.mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Hata: ${e.message}')),
                                       );
                                     } catch (_) {
                                       if (!context.mounted) return;
@@ -413,17 +396,27 @@ class _BodyState extends ConsumerState<_Body> {
   }
 
   Future<void> _save() async {
-    final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
 
     setState(() => _saving = true);
     try {
-      await client.from('service_records').update({
-        'steps': _steps,
-        'parts': _parts.map((e) => e.toJson()).toList(),
-        'labor': _labor.map((e) => e.toJson()).toList(),
-        'total_amount': _total,
-      }).eq('id', widget.detail.id);
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'service_records',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': widget.detail.id},
+          ],
+          'values': {
+            'steps': _steps,
+            'parts': _parts.map((e) => e.toJson()).toList(),
+            'labor': _labor.map((e) => e.toJson()).toList(),
+            'total_amount': _total,
+          },
+        },
+      );
 
       widget.onChanged();
       if (!mounted) return;

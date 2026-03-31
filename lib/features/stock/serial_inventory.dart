@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/supabase/supabase_providers.dart';
+import '../../core/api/api_client.dart';
 
 class ProductSerialInventoryRecord {
   const ProductSerialInventoryRecord({
@@ -98,107 +98,53 @@ final productSerialInventoryProvider =
       ref,
       productId,
     ) async {
-      final client = ref.watch(supabaseClientProvider);
-      if (client == null || (productId ?? '').trim().isEmpty) return const [];
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient == null || (productId ?? '').trim().isEmpty) return const [];
 
-      final rows = await client
-          .from('product_serial_inventory')
-          .select(
-            'id,product_id,serial_number,notes,is_active,consumed_by_application_form_id,consumed_at,created_at',
-          )
-          .eq('product_id', productId!.trim())
-          .eq('is_active', true)
-          .isFilter('consumed_at', null)
-          .order('serial_number');
-
-      return (rows as List)
-          .map(
-            (row) => ProductSerialInventoryRecord.fromJson(
-              row as Map<String, dynamic>,
-            ),
-          )
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {
+          'resource': 'product_serial_inventory',
+          'productId': productId!.trim(),
+          'includeConsumed': 'false',
+        },
+      );
+      return ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(ProductSerialInventoryRecord.fromJson)
           .toList(growable: false);
     });
 
 final productSerialInventoryRecordsProvider =
     FutureProvider.autoDispose<List<ProductSerialInventoryRecord>>((ref) async {
-      final client = ref.watch(supabaseClientProvider);
-      if (client == null) return const [];
-
-      final rows = await client
-          .from('product_serial_inventory')
-          .select(
-            'id,product_id,serial_number,notes,is_active,consumed_by_application_form_id,consumed_at,created_at,products(name,code)',
-          )
-          .order('created_at', ascending: false)
-          .limit(1000);
-
-      return (rows as List)
-          .map(
-            (row) => ProductSerialInventoryRecord.fromJson(
-              row as Map<String, dynamic>,
-            ),
-          )
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient == null) return const [];
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'product_serial_inventory', 'includeConsumed': 'true'},
+      );
+      return ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(ProductSerialInventoryRecord.fromJson)
           .toList(growable: false);
     });
 
 final productSerialInventorySummaryProvider =
     FutureProvider.autoDispose<Map<String, ProductSerialInventorySummary>>((ref) async {
-      final client = ref.watch(supabaseClientProvider);
-      if (client == null) return const {};
-
-      try {
-        final rows = await client
-            .from('product_serial_inventory_summary')
-            .select('product_id,total_count,available_count,consumed_count');
-
-        return {
-          for (final row in (rows as List).cast<Map<String, dynamic>>())
-            row['product_id'].toString(): ProductSerialInventorySummary(
-              productId: row['product_id'].toString(),
-              totalCount: (row['total_count'] as num?)?.toInt() ?? 0,
-              availableCount: (row['available_count'] as num?)?.toInt() ?? 0,
-              consumedCount: (row['consumed_count'] as num?)?.toInt() ?? 0,
-            ),
-        };
-      } catch (_) {
-        const pageSize = 1000;
-        var from = 0;
-        final rows = <Map<String, dynamic>>[];
-
-        while (true) {
-          final batch = await client
-              .from('product_serial_inventory')
-              .select('product_id,consumed_at,is_active')
-              .eq('is_active', true)
-              .range(from, from + pageSize - 1);
-          final parsed = (batch as List)
-              .map((row) => row as Map<String, dynamic>)
-              .toList(growable: false);
-          rows.addAll(parsed);
-          if (parsed.length < pageSize) break;
-          from += pageSize;
-        }
-
-        final summary = <String, ProductSerialInventorySummary>{};
-        for (final row in rows) {
-          final productId = row['product_id'].toString();
-          final current = summary[productId] ??
-              const ProductSerialInventorySummary(
-                productId: '',
-                totalCount: 0,
-                availableCount: 0,
-                consumedCount: 0,
-              );
-          final isConsumed = row['consumed_at'] != null;
-          summary[productId] = ProductSerialInventorySummary(
-            productId: productId,
-            totalCount: current.totalCount + 1,
-            availableCount: current.availableCount + (isConsumed ? 0 : 1),
-            consumedCount: current.consumedCount + (isConsumed ? 1 : 0),
-          );
-        }
-
-        return summary;
-      }
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient == null) return const {};
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'product_serial_inventory_summary'},
+      );
+      final rows = (response['items'] as List?) ?? const [];
+      return {
+        for (final row in rows.whereType<Map<String, dynamic>>())
+          row['product_id'].toString(): ProductSerialInventorySummary(
+            productId: row['product_id'].toString(),
+            totalCount: (row['total_count'] as num?)?.toInt() ?? 0,
+            availableCount: (row['available_count'] as num?)?.toInt() ?? 0,
+            consumedCount: (row['consumed_count'] as num?)?.toInt() ?? 0,
+          ),
+      };
     });

@@ -6,19 +6,14 @@ import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
-import '../../core/format/app_date_time.dart';
-import '../../core/supabase/supabase_providers.dart';
+import '../../core/api/api_client.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
-import '../../core/ui/app_section_card.dart';
-import '../../core/ui/compact_stat_card.dart';
-import '../../core/ui/empty_state_card.dart';
-import '../../core/ui/smart_filter_bar.dart';
 
 final reportsFiltersProvider =
     NotifierProvider<ReportsFiltersNotifier, ReportsFilters>(
-      ReportsFiltersNotifier.new,
-    );
+  ReportsFiltersNotifier.new,
+);
 
 class ReportsFiltersNotifier extends Notifier<ReportsFilters> {
   @override
@@ -29,13 +24,7 @@ class ReportsFiltersNotifier extends Notifier<ReportsFilters> {
   }
 
   void setUser(String? userId) {
-    state = state.copyWith(
-      userId: userId?.trim().isEmpty ?? true ? null : userId,
-    );
-  }
-
-  void clear() {
-    state = ReportsFilters.last30Days();
+    state = state.copyWith(userId: userId?.trim().isEmpty ?? true ? null : userId);
   }
 }
 
@@ -55,7 +44,7 @@ class ReportsFilters {
   }
 
   DateTime get from {
-    final now = appNow();
+    final now = DateTime.now();
     return switch (preset) {
       ReportsPreset.last7Days => now.subtract(const Duration(days: 7)),
       ReportsPreset.last30Days => now.subtract(const Duration(days: 30)),
@@ -65,78 +54,70 @@ class ReportsFilters {
 }
 
 final reportsUsersProvider = FutureProvider<List<ReportUser>>((ref) async {
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
-  final rows = await client
-      .from('users')
-      .select('id,full_name,role')
-      .order('full_name');
-  return (rows as List)
-      .map((e) => ReportUser.fromJson(e as Map<String, dynamic>))
+  final apiClient = ref.watch(apiClientProvider);
+  if (apiClient == null) return const [];
+  final response = await apiClient.getJson(
+    '/data',
+    queryParameters: {'resource': 'reports_users'},
+  );
+  return ((response['items'] as List?) ?? const [])
+      .whereType<Map<String, dynamic>>()
+      .map(ReportUser.fromJson)
       .toList(growable: false);
 });
 
 final reportsDataProvider = FutureProvider<ReportsData>((ref) async {
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return ReportsData.empty();
+  final apiClient = ref.watch(apiClientProvider);
+  if (apiClient == null) return ReportsData.empty();
 
   final filters = ref.watch(reportsFiltersProvider);
   final from = filters.from;
 
-  var paymentsQ = client
-      .from('payments')
-      .select('paid_at,amount,currency,payment_method,customers(name)')
-      .gte('paid_at', from.toIso8601String())
-      .eq('is_active', true);
-  if (filters.userId != null) {
-    paymentsQ = paymentsQ.eq('created_by', filters.userId!);
-  }
-  final payments = await paymentsQ;
+  final paymentsResponse = await apiClient.getJson(
+    '/data',
+    queryParameters: {
+      'resource': 'reports_payments',
+      'from': from.toIso8601String(),
+      if (filters.userId != null) 'userId': filters.userId!,
+    },
+  );
+  final payments = (paymentsResponse['items'] as List?) ?? const [];
 
   final revenueByDay = <DateTime, double>{};
   final revenueByCustomer = <String, double>{};
-  final dailyPayments = <DateTime, _DailyPaymentAccumulator>{};
-  for (final row in (payments as List)) {
-    final paidAt = parseAppDateTime(row['paid_at']?.toString());
+  for (final row in payments.whereType<Map<String, dynamic>>()) {
+    final paidAt = DateTime.tryParse(row['paid_at']?.toString() ?? '')?.toLocal();
     final amountRaw = row['amount'];
     final amount = amountRaw is num
         ? amountRaw.toDouble()
         : double.tryParse(amountRaw?.toString() ?? '');
     if (paidAt == null || amount == null) continue;
-    final day = normalizeAppDate(paidAt);
+    final day = DateTime(paidAt.year, paidAt.month, paidAt.day);
     revenueByDay.update(day, (v) => v + amount, ifAbsent: () => amount);
-    dailyPayments
-        .putIfAbsent(day, _DailyPaymentAccumulator.new)
-        .add(amount, row['payment_method']?.toString());
-    final customer = (row['customers'] as Map<String, dynamic>?)?['name']
-        ?.toString();
+    final customer = (row['customers'] as Map<String, dynamic>?)?['name']?.toString();
     if (customer != null && customer.trim().isNotEmpty) {
-      revenueByCustomer.update(
-        customer,
-        (v) => v + amount,
-        ifAbsent: () => amount,
-      );
+      revenueByCustomer.update(customer, (v) => v + amount, ifAbsent: () => amount);
     }
   }
 
-  var workQ = client
-      .from('work_orders')
-      .select('status,created_at')
-      .gte('created_at', from.toIso8601String())
-      .eq('is_active', true);
-  if (filters.userId != null) {
-    workQ = workQ.eq('assigned_to', filters.userId!);
-  }
-  final workOrders = await workQ;
+  final workOrdersResponse = await apiClient.getJson(
+    '/data',
+    queryParameters: {
+      'resource': 'reports_work_orders',
+      'from': from.toIso8601String(),
+      if (filters.userId != null) 'userId': filters.userId!,
+    },
+  );
+  final workOrders = (workOrdersResponse['items'] as List?) ?? const [];
   int open = 0, inProgress = 0, done = 0;
-  for (final row in (workOrders as List)) {
+  for (final row in workOrders.whereType<Map<String, dynamic>>()) {
     final status = row['status']?.toString();
     if (status == 'open') open++;
     if (status == 'in_progress') inProgress++;
     if (status == 'done') done++;
   }
 
-    final now = appNow();
+  final now = DateTime.now();
   final points = <ReportPoint>[];
   final days = switch (filters.preset) {
     ReportsPreset.last7Days => 7,
@@ -144,47 +125,17 @@ final reportsDataProvider = FutureProvider<ReportsData>((ref) async {
     ReportsPreset.thisMonth => now.day,
   };
   for (int i = days - 1; i >= 0; i--) {
-    final day = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).subtract(Duration(days: i));
+    final day = DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
     points.add(ReportPoint(day: day, value: revenueByDay[day] ?? 0));
   }
 
   final topCustomers = revenueByCustomer.entries.toList()
     ..sort((a, b) => b.value.compareTo(a.value));
-  final totalRevenue = revenueByDay.values.fold<double>(
-    0,
-    (sum, value) => sum + value,
-  );
-  final dailyPaymentReports =
-      dailyPayments.entries
-          .map(
-            (entry) => DailyPaymentReport(
-              day: entry.key,
-              total: entry.value.total,
-              count: entry.value.count,
-              methodCounts: entry.value.methodCounts,
-            ),
-          )
-          .toList(growable: false)
-        ..sort((a, b) => b.day.compareTo(a.day));
-  final totalWorkOrders = open + inProgress + done;
-  final completedRate = totalWorkOrders == 0 ? 0.0 : done / totalWorkOrders;
 
   return ReportsData(
     revenueTrend: points,
-    workOrderStatus: WorkOrderStatusReport(
-      open: open,
-      inProgress: inProgress,
-      done: done,
-    ),
+    workOrderStatus: WorkOrderStatusReport(open: open, inProgress: inProgress, done: done),
     topCustomers: topCustomers.take(6).toList(growable: false),
-    dailyPayments: dailyPaymentReports.take(10).toList(growable: false),
-    totalRevenue: totalRevenue,
-    totalWorkOrders: totalWorkOrders,
-    completedRate: completedRate,
   );
 });
 
@@ -196,334 +147,190 @@ class ReportsScreen extends ConsumerWidget {
     final filters = ref.watch(reportsFiltersProvider);
     final usersAsync = ref.watch(reportsUsersProvider);
     final dataAsync = ref.watch(reportsDataProvider);
-    final money = NumberFormat.currency(
-      locale: 'tr_TR',
-      symbol: '₺',
-      decimalDigits: 0,
-    );
+    final money = NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0);
 
     return AppPageLayout(
       title: 'Raporlar',
-      subtitle: 'Gelir, operasyon ve ödeme akışlarını tek bakışta izleyin.',
+      subtitle: 'Gelir ve iş emri performansı.',
       body: Column(
         children: [
-          SmartFilterBar(
-            title: 'Rapor Filtreleri',
-            subtitle: 'Tarih aralığı ve personel bazlı görünümü daraltın.',
-            trailing: Wrap(
-              spacing: 8,
+          AppCard(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
+                SizedBox(
+                  width: 220,
+                  child: DropdownButtonFormField<ReportsPreset>(
+                    initialValue: filters.preset,
+                    items: const [
+                      DropdownMenuItem(
+                        value: ReportsPreset.last7Days,
+                        child: Text('Son 7 Gün'),
+                      ),
+                      DropdownMenuItem(
+                        value: ReportsPreset.last30Days,
+                        child: Text('Son 30 Gün'),
+                      ),
+                      DropdownMenuItem(
+                        value: ReportsPreset.thisMonth,
+                        child: Text('Bu Ay'),
+                      ),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      ref.read(reportsFiltersProvider.notifier).setPreset(v);
+                    },
+                    decoration: const InputDecoration(labelText: 'Tarih'),
+                  ),
+                ),
+                const Gap(12),
+                SizedBox(
+                  width: 260,
+                  child: usersAsync.when(
+                    data: (users) => DropdownButtonFormField<String>(
+                      initialValue: filters.userId,
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: null,
+                          child: Text('Tüm Personel'),
+                        ),
+                        ...users
+                            .where((u) => u.role != 'admin')
+                            .map(
+                              (u) => DropdownMenuItem<String>(
+                                value: u.id,
+                                child: Text(u.fullName ?? 'Personel'),
+                              ),
+                            ),
+                      ],
+                      onChanged: (v) =>
+                          ref.read(reportsFiltersProvider.notifier).setUser(v),
+                      decoration: const InputDecoration(labelText: 'Personel'),
+                    ),
+                    loading: () => const _DropdownLoading(),
+                    error: (_, _) => DropdownButtonFormField<String>(
+                      initialValue: filters.userId,
+                      items: const [
+                        DropdownMenuItem<String>(
+                          value: null,
+                          child: Text('Tüm Personel'),
+                        ),
+                      ],
+                      onChanged: (v) =>
+                          ref.read(reportsFiltersProvider.notifier).setUser(v),
+                      decoration: const InputDecoration(labelText: 'Personel'),
+                    ),
+                  ),
+                ),
+                const Spacer(),
                 OutlinedButton.icon(
                   onPressed: () => ref.invalidate(reportsDataProvider),
                   icon: const Icon(Icons.refresh_rounded, size: 18),
                   label: const Text('Yenile'),
                 ),
-                TextButton(
-                  onPressed: () =>
-                      ref.read(reportsFiltersProvider.notifier).clear(),
-                  child: const Text('Sıfırla'),
-                ),
               ],
             ),
-            children: [
-              SizedBox(
-                width: 220,
-                child: DropdownButtonFormField<ReportsPreset>(
-                  initialValue: filters.preset,
-                  items: const [
-                    DropdownMenuItem(
-                      value: ReportsPreset.last7Days,
-                      child: Text('Son 7 Gün'),
-                    ),
-                    DropdownMenuItem(
-                      value: ReportsPreset.last30Days,
-                      child: Text('Son 30 Gün'),
-                    ),
-                    DropdownMenuItem(
-                      value: ReportsPreset.thisMonth,
-                      child: Text('Bu Ay'),
-                    ),
-                  ],
-                  onChanged: (v) {
-                    if (v == null) return;
-                    ref.read(reportsFiltersProvider.notifier).setPreset(v);
-                  },
-                  decoration: const InputDecoration(
-                    hintText: 'Tarih aralığı',
-                    prefixIcon: Icon(Icons.date_range_rounded),
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: 260,
-                child: usersAsync.when(
-                  data: (users) => DropdownButtonFormField<String>(
-                    initialValue: filters.userId,
-                    items: [
-                      const DropdownMenuItem<String>(
-                        value: null,
-                        child: Text('Tüm Personel'),
-                      ),
-                      ...users
-                          .where((u) => u.role != 'admin')
-                          .map(
-                            (u) => DropdownMenuItem<String>(
-                              value: u.id,
-                              child: Text(u.fullName ?? 'Personel'),
-                            ),
-                          ),
-                    ],
-                    onChanged: (v) =>
-                        ref.read(reportsFiltersProvider.notifier).setUser(v),
-                    decoration: const InputDecoration(
-                      hintText: 'Personel',
-                      prefixIcon: Icon(Icons.person_search_rounded),
-                    ),
-                  ),
-                  loading: () => const _DropdownLoading(),
-                  error: (error, stackTrace) => DropdownButtonFormField<String>(
-                    initialValue: filters.userId,
-                    items: const [
-                      DropdownMenuItem<String>(
-                        value: null,
-                        child: Text('Tüm Personel'),
-                      ),
-                    ],
-                    onChanged: (v) =>
-                        ref.read(reportsFiltersProvider.notifier).setUser(v),
-                    decoration: const InputDecoration(
-                      hintText: 'Personel',
-                      prefixIcon: Icon(Icons.person_search_rounded),
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ),
           const Gap(14),
           dataAsync.when(
             data: (data) => LayoutBuilder(
               builder: (context, constraints) {
                 final twoCols = constraints.maxWidth >= 980;
-                final sidePanel = Column(
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    AppSectionCard(
-                      title: 'İş Emri Durumu',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [_StatusBars(status: data.workOrderStatus)],
-                      ),
-                    ),
-                    const Gap(16),
-                    AppSectionCard(
-                      title: 'Günlük Ödeme Raporu',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Gap(12),
-                          if (data.dailyPayments.isEmpty)
+                    Expanded(
+                      flex: 3,
+                      child: AppCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Gelir Trend', style: Theme.of(context).textTheme.titleMedium),
+                            const Gap(6),
                             Text(
-                              'Bu aralıkta ödeme kaydı yok.',
-                              style: Theme.of(context).textTheme.bodySmall
+                              'Seçilen tarih aralığında günlük toplam.',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
                                   ?.copyWith(color: const Color(0xFF64748B)),
-                            )
-                          else
-                            for (final item in data.dailyPayments)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            DateFormat(
-                                              'd MMMM y',
-                                              'tr_TR',
-                                            ).format(item.day),
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodyMedium
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                          ),
-                                        ),
-                                        Text(
-                                          money.format(item.total),
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                color: AppTheme.success,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                        ),
-                                      ],
-                                    ),
-                                    const Gap(4),
-                                    Text(
-                                      '${item.count} ödeme',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: const Color(0xFF64748B),
-                                          ),
-                                    ),
-                                    if (item.methodCounts.isNotEmpty) ...[
-                                      const Gap(6),
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: item.methodCounts.entries
-                                            .map(
-                                              (entry) => _MethodBadge(
-                                                label:
-                                                    '${_paymentMethodLabel(entry.key)} • ${entry.value}',
-                                              ),
-                                            )
-                                            .toList(growable: false),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                        ],
+                            ),
+                            const Gap(16),
+                            SizedBox(
+                              height: 260,
+                              child: _TrendChart(points: data.revenueTrend),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const Gap(16),
-                    AppSectionCard(
-                      title: 'En Çok Gelir Getirenler',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Gap(12),
-                          if (data.topCustomers.isEmpty)
-                            Text(
-                              'Bu aralıkta gelir kaydı yok.',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: const Color(0xFF64748B)),
-                            )
-                          else
-                            for (final entry in data.topCustomers)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        entry.key,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                      ),
-                                    ),
-                                    Text(
-                                      money.format(entry.value),
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: const Color(0xFF64748B),
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                        ],
-                      ),
-                    ),
-                  ],
-                );
-
-                return Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: CompactStatCard(
-                            label: 'Toplam Gelir',
-                            value: money.format(data.totalRevenue),
-                            icon: Icons.payments_rounded,
-                            color: AppTheme.success,
-                          ),
-                        ),
-                        const Gap(12),
-                        Expanded(
-                          child: CompactStatCard(
-                            label: 'İş Emirleri',
-                            value: '${data.totalWorkOrders}',
-                            icon: Icons.assignment_turned_in_rounded,
-                            color: AppTheme.primary,
-                          ),
-                        ),
-                        const Gap(12),
-                        Expanded(
-                          child: CompactStatCard(
-                            label: 'Tamamlanma',
-                            value: '%${(data.completedRate * 100).round()}',
-                            icon: Icons.insights_rounded,
-                            color: AppTheme.warning,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Gap(16),
+                    if (twoCols) const Gap(16),
                     if (twoCols)
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: AppSectionCard(
-                              title: 'Gelir Trend',
-                              subtitle:
-                                  'Seçilen tarih aralığında günlük toplam.',
+                      Expanded(
+                        flex: 2,
+                        child: Column(
+                          children: [
+                            AppCard(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Gap(4),
-                                  SizedBox(
-                                    height: 260,
-                                    child: _TrendChart(
-                                      points: data.revenueTrend,
-                                    ),
+                                  Text(
+                                    'İş Emri Durumu',
+                                    style: Theme.of(context).textTheme.titleMedium,
                                   ),
+                                  const Gap(12),
+                                  _StatusBars(status: data.workOrderStatus),
                                 ],
                               ),
                             ),
-                          ),
-                          const Gap(16),
-                          Expanded(flex: 2, child: sidePanel),
-                        ],
-                      )
-                    else
-                      Column(
-                        children: [
-                          AppSectionCard(
-                            title: 'Gelir Trend',
-                            subtitle: 'Seçilen tarih aralığında günlük toplam.',
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Gap(4),
-                                SizedBox(
-                                  height: 260,
-                                  child: _TrendChart(points: data.revenueTrend),
-                                ),
-                              ],
+                            const Gap(16),
+                            AppCard(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'En Çok Gelir Getirenler',
+                                    style: Theme.of(context).textTheme.titleMedium,
+                                  ),
+                                  const Gap(12),
+                                  if (data.topCustomers.isEmpty)
+                                    Text(
+                                      'Bu aralıkta gelir kaydı yok.',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(color: const Color(0xFF64748B)),
+                                    )
+                                  else
+                                    for (final e in data.topCustomers)
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 10),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                e.key,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                              ),
+                                            ),
+                                            Text(
+                                              money.format(e.value),
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall
+                                                  ?.copyWith(color: const Color(0xFF64748B)),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                ],
+                              ),
                             ),
-                          ),
-                          const Gap(16),
-                          sidePanel,
-                        ],
+                          ],
+                        ),
                       ),
                   ],
                 );
@@ -531,12 +338,21 @@ class ReportsScreen extends ConsumerWidget {
             ),
             loading: () => Skeletonizer(
               enabled: true,
-              child: AppCard(child: SizedBox(height: 320)),
+              child: AppCard(
+                child: SizedBox(height: 320),
+              ),
             ),
-            error: (error, stackTrace) => const EmptyStateCard(
-              icon: Icons.bar_chart_rounded,
-              title: 'Raporlar yüklenemedi',
-              message: 'Veri kaynağına ulaşılamadı. Lütfen tekrar deneyin.',
+            error: (_, _) => AppCard(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Text(
+                  'Raporlar yüklenemedi.',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: const Color(0xFF64748B)),
+                ),
+              ),
             ),
           ),
         ],
@@ -557,9 +373,10 @@ class _TrendChart extends StatelessWidget {
       return Center(
         child: Text(
           'Bu aralıkta gelir kaydı yok.',
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+          style: Theme.of(context)
+              .textTheme
+              .bodyMedium
+              ?.copyWith(color: const Color(0xFF64748B)),
         ),
       );
     }
@@ -600,10 +417,7 @@ class _StatusBars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = (status.open + status.inProgress + status.done).clamp(
-      1,
-      1 << 30,
-    );
+    final total = (status.open + status.inProgress + status.done).clamp(1, 1 << 30);
     return Column(
       children: [
         _StatusRow(
@@ -652,10 +466,10 @@ class _StatusRow extends StatelessWidget {
           width: 56,
           child: Text(
             label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: const Color(0xFF64748B),
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: const Color(0xFF64748B), fontWeight: FontWeight.w600),
           ),
         ),
         Expanded(
@@ -676,9 +490,9 @@ class _StatusRow extends StatelessWidget {
             '$count',
             textAlign: TextAlign.right,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF0F172A),
-            ),
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF0F172A),
+                ),
           ),
         ),
       ],
@@ -698,7 +512,7 @@ class _DropdownLoading extends StatelessWidget {
         items: const [
           DropdownMenuItem<String>(value: null, child: Text('Tüm Personel')),
         ],
-        onChanged: (value) {},
+        onChanged: (_) {},
         decoration: const InputDecoration(labelText: 'Personel'),
       ),
     );
@@ -710,29 +524,17 @@ class ReportsData {
     required this.revenueTrend,
     required this.workOrderStatus,
     required this.topCustomers,
-    required this.dailyPayments,
-    required this.totalRevenue,
-    required this.totalWorkOrders,
-    required this.completedRate,
   });
 
   final List<ReportPoint> revenueTrend;
   final WorkOrderStatusReport workOrderStatus;
   final List<MapEntry<String, double>> topCustomers;
-  final List<DailyPaymentReport> dailyPayments;
-  final double totalRevenue;
-  final int totalWorkOrders;
-  final double completedRate;
 
   factory ReportsData.empty() => const ReportsData(
-    revenueTrend: [],
-    workOrderStatus: WorkOrderStatusReport(open: 0, inProgress: 0, done: 0),
-    topCustomers: [],
-    dailyPayments: [],
-    totalRevenue: 0,
-    totalWorkOrders: 0,
-    completedRate: 0,
-  );
+        revenueTrend: [],
+        workOrderStatus: WorkOrderStatusReport(open: 0, inProgress: 0, done: 0),
+        topCustomers: [],
+      );
 }
 
 class ReportPoint {
@@ -754,76 +556,8 @@ class WorkOrderStatusReport {
   final int done;
 }
 
-class DailyPaymentReport {
-  const DailyPaymentReport({
-    required this.day,
-    required this.total,
-    required this.count,
-    required this.methodCounts,
-  });
-
-  final DateTime day;
-  final double total;
-  final int count;
-  final Map<String, int> methodCounts;
-}
-
-class _DailyPaymentAccumulator {
-  double total = 0;
-  int count = 0;
-  final Map<String, int> methodCounts = {};
-
-  void add(double amount, String? method) {
-    total += amount;
-    count += 1;
-    if (method == null || method.trim().isEmpty) return;
-    methodCounts.update(method, (value) => value + 1, ifAbsent: () => 1);
-  }
-}
-
-class _MethodBadge extends StatelessWidget {
-  const _MethodBadge({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: const Color(0xFF475569),
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
-
-String _paymentMethodLabel(String? method) {
-  return switch (method) {
-    'cash' => 'Nakit',
-    'bank' => 'Havale/EFT',
-    'pos' => 'POS',
-    'credit_card' => 'Kredi Kartı',
-    'check' => 'Çek',
-    'other' => 'Diğer',
-    _ => 'Belirsiz',
-  };
-}
-
 class ReportUser {
-  const ReportUser({
-    required this.id,
-    required this.fullName,
-    required this.role,
-  });
+  const ReportUser({required this.id, required this.fullName, required this.role});
 
   final String id;
   final String? fullName;

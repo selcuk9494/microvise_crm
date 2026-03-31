@@ -320,6 +320,17 @@ module.exports = async (req, res) => {
         return ok(res, result.rows[0] || null);
       }
 
+      case 'customer_device_by_serial': {
+        if (!requireAnyPage(user, ['servis'], res)) return;
+        const serial = String(req.query.serial || '').trim();
+        if (!serial) return ok(res, null);
+        const result = await query(
+          `select id,customer_id,serial_no,is_active from public.customer_devices where serial_no = $1 limit 1`,
+          [serial],
+        );
+        return ok(res, result.rows[0] || null);
+      }
+
       case 'definition_device_brands': {
         const result = await query(
           `select id,name,is_active,created_at from public.device_brands order by name asc`,
@@ -691,6 +702,312 @@ module.exports = async (req, res) => {
             order by ii.created_at desc
             limit 600
           `,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'invoices_list': {
+        if (!requireAnyPage(user, ['faturalama'], res)) return;
+        const invoiceType = String(req.query.invoiceType || '').trim();
+        const status = String(req.query.status || '').trim();
+        const customerId = String(req.query.customerId || '').trim();
+        const startDate = String(req.query.startDate || '').trim();
+        const endDate = String(req.query.endDate || '').trim();
+        const includePassive = parseBoolean(req.query.includePassive, false);
+
+        const values = [];
+        let whereSql = 'where true';
+        if (!includePassive) {
+          values.push(true);
+          whereSql += ` and i.is_active = $${values.length}`;
+        }
+        if (invoiceType) {
+          values.push(invoiceType);
+          whereSql += ` and i.invoice_type = $${values.length}`;
+        }
+        if (status) {
+          values.push(status);
+          whereSql += ` and i.status = $${values.length}`;
+        }
+        if (customerId) {
+          values.push(customerId);
+          whereSql += ` and i.customer_id = $${values.length}`;
+        }
+        if (startDate) {
+          values.push(startDate);
+          whereSql += ` and i.invoice_date >= $${values.length}::date`;
+        }
+        if (endDate) {
+          values.push(endDate);
+          whereSql += ` and i.invoice_date <= $${values.length}::date`;
+        }
+
+        const result = await query(
+          `
+            select
+              i.*,
+              json_build_object('name', c.name) as customers
+            from public.invoices i
+            left join public.customers c on c.id = i.customer_id
+            ${whereSql}
+            order by i.invoice_date desc
+            limit 800
+          `,
+          values,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'customer_open_invoices': {
+        if (!requireAnyPage(user, ['faturalama', 'musteriler'], res)) return;
+        const customerId = String(req.query.customerId || '').trim();
+        if (!customerId) return badRequest(res, 'customerId zorunludur.');
+        const result = await query(
+          `
+            select
+              i.*,
+              json_build_object('name', c.name) as customers
+            from public.invoices i
+            left join public.customers c on c.id = i.customer_id
+            where i.customer_id = $1
+              and i.is_active = true
+              and i.status in ('open','partial')
+            order by i.invoice_date desc
+          `,
+          [customerId],
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'invoice_detail': {
+        if (!requireAnyPage(user, ['faturalama'], res)) return;
+        const id = String(req.query.invoiceId || '').trim();
+        if (!id) return badRequest(res, 'invoiceId zorunludur.');
+        const result = await query(
+          `
+            select
+              i.*,
+              json_build_object('name', c.name) as customers,
+              coalesce(
+                (
+                  select json_agg(ii order by ii.sort_order asc)
+                  from public.invoice_items ii
+                  where ii.invoice_id = i.id
+                ),
+                '[]'::json
+              ) as invoice_items
+            from public.invoices i
+            left join public.customers c on c.id = i.customer_id
+            where i.id = $1
+            limit 1
+          `,
+          [id],
+        );
+        return ok(res, result.rows[0] || null);
+      }
+
+      case 'account_balances': {
+        if (!requireAnyPage(user, ['faturalama'], res)) return;
+        const result = await query(
+          `select * from public.account_balances order by name asc`,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'transactions_list': {
+        if (!requireAnyPage(user, ['faturalama'], res)) return;
+        const customerId = String(req.query.customerId || '').trim();
+        const invoiceId = String(req.query.invoiceId || '').trim();
+        const transactionType = String(req.query.transactionType || '').trim();
+        const startDate = String(req.query.startDate || '').trim();
+        const endDate = String(req.query.endDate || '').trim();
+        const includePassive = parseBoolean(req.query.includePassive, false);
+
+        const values = [];
+        let whereSql = 'where true';
+        if (!includePassive) {
+          values.push(true);
+          whereSql += ` and t.is_active = $${values.length}`;
+        }
+        if (customerId) {
+          values.push(customerId);
+          whereSql += ` and t.customer_id = $${values.length}`;
+        }
+        if (invoiceId) {
+          values.push(invoiceId);
+          whereSql += ` and t.invoice_id = $${values.length}`;
+        }
+        if (transactionType) {
+          values.push(transactionType);
+          whereSql += ` and t.transaction_type = $${values.length}`;
+        }
+        if (startDate) {
+          values.push(startDate);
+          whereSql += ` and t.transaction_date >= $${values.length}::date`;
+        }
+        if (endDate) {
+          values.push(endDate);
+          whereSql += ` and t.transaction_date <= $${values.length}::date`;
+        }
+
+        const result = await query(
+          `
+            select
+              t.*,
+              json_build_object('name', c.name) as customers,
+              json_build_object('invoice_number', i.invoice_number) as invoices
+            from public.transactions t
+            left join public.customers c on c.id = t.customer_id
+            left join public.invoices i on i.id = t.invoice_id
+            ${whereSql}
+            order by t.transaction_date desc, t.created_at desc
+            limit 1200
+          `,
+          values,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'reports_users': {
+        if (!requireAnyPage(user, ['raporlar'], res)) return;
+        const result = await query(
+          `select id,full_name,role from public.users order by full_name asc`,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'reports_payments': {
+        if (!requireAnyPage(user, ['raporlar'], res)) return;
+        const from = String(req.query.from || '').trim();
+        const userId = String(req.query.userId || '').trim();
+        const values = [];
+        let whereSql = `where p.is_active = true`;
+        if (from) {
+          values.push(from);
+          whereSql += ` and p.paid_at >= $${values.length}::timestamptz`;
+        }
+        if (userId) {
+          values.push(userId);
+          whereSql += ` and p.created_by = $${values.length}`;
+        }
+        const result = await query(
+          `
+            select
+              p.paid_at,
+              p.amount,
+              p.currency,
+              p.payment_method,
+              json_build_object('name', c.name) as customers
+            from public.payments p
+            left join public.customers c on c.id = p.customer_id
+            ${whereSql}
+            order by p.paid_at asc
+            limit 50000
+          `,
+          values,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'reports_work_orders': {
+        if (!requireAnyPage(user, ['raporlar'], res)) return;
+        const from = String(req.query.from || '').trim();
+        const userId = String(req.query.userId || '').trim();
+        const values = [];
+        let whereSql = `where w.is_active = true`;
+        if (from) {
+          values.push(from);
+          whereSql += ` and w.created_at >= $${values.length}::timestamptz`;
+        }
+        if (userId) {
+          values.push(userId);
+          whereSql += ` and w.assigned_to = $${values.length}`;
+        }
+        const result = await query(
+          `
+            select w.status, w.created_at
+            from public.work_orders w
+            ${whereSql}
+            order by w.created_at asc
+            limit 50000
+          `,
+          values,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'invoice_number': {
+        if (!requireAnyPage(user, ['faturalama'], res)) return;
+        const invoiceType = String(req.query.invoiceType || '').trim();
+        if (!invoiceType) return badRequest(res, 'invoiceType zorunludur.');
+        const result = await query(
+          `select public.generate_invoice_number($1) as value`,
+          [invoiceType],
+        );
+        return ok(res, { value: result.rows[0]?.value || '' });
+      }
+
+      case 'products_list': {
+        if (!requireAnyPage(user, ['urunler', 'faturalama', 'formlar'], res)) return;
+        const category = String(req.query.category || '').trim();
+        const values = [];
+        let whereSql = 'where p.is_active = true';
+        if (category) {
+          values.push(category);
+          whereSql += ` and p.category = $${values.length}`;
+        }
+        const result = await query(
+          `
+            select p.*
+            from public.products p
+            ${whereSql}
+            order by p.name asc
+            limit 1200
+          `,
+          values,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'stock_levels': {
+        if (!requireAnyPage(user, ['urunler', 'faturalama'], res)) return;
+        const result = await query(`select * from public.stock_levels`);
+        return ok(res, { items: result.rows });
+      }
+
+      case 'product_serial_inventory': {
+        if (!requireAnyPage(user, ['urunler', 'formlar'], res)) return;
+        const productId = String(req.query.productId || '').trim();
+        const includeConsumed = parseBoolean(req.query.includeConsumed, false);
+        const values = [];
+        let whereSql = 'where psi.is_active = true';
+        if (productId) {
+          values.push(productId);
+          whereSql += ` and psi.product_id = $${values.length}`;
+        }
+        if (!includeConsumed) {
+          whereSql += ` and psi.consumed_at is null`;
+        }
+        const result = await query(
+          `
+            select
+              psi.*,
+              json_build_object('name', p.name, 'code', p.code) as products
+            from public.product_serial_inventory psi
+            left join public.products p on p.id = psi.product_id
+            ${whereSql}
+            order by psi.created_at desc
+            limit 2000
+          `,
+          values,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'product_serial_inventory_summary': {
+        if (!requireAnyPage(user, ['urunler', 'formlar'], res)) return;
+        const result = await query(
+          `select product_id,total_count,available_count,consumed_count from public.product_serial_inventory_summary`,
         );
         return ok(res, { items: result.rows });
       }

@@ -7,42 +7,21 @@ import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
-import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 
 final serviceRecordsProvider = FutureProvider<List<ServiceRecord>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
-  if (apiClient != null) {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: {'resource': 'service_list'},
-    );
-    return ((response['items'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(ServiceRecord.fromJson)
-        .toList(growable: false);
-  }
-
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
-
-  final rows = await client
-      .from('service_records')
-      .select('id,title,status,created_at,customers(name)')
-      .eq('is_active', true)
-      .order('created_at', ascending: false)
-      .limit(25);
-
-  return (rows as List).map((e) {
-    final map = e as Map<String, dynamic>;
-    final customers = map['customers'] as Map<String, dynamic>?;
-    return ServiceRecord.fromJson({
-      ...map,
-      'customer_name': customers?['name'],
-    });
-  }).toList(growable: false);
+  if (apiClient == null) return const [];
+  final response = await apiClient.getJson(
+    '/data',
+    queryParameters: {'resource': 'service_list'},
+  );
+  return ((response['items'] as List?) ?? const [])
+      .whereType<Map<String, dynamic>>()
+      .map(ServiceRecord.fromJson)
+      .toList(growable: false);
 });
 
 class ServiceScreen extends ConsumerWidget {
@@ -218,9 +197,6 @@ class _ServiceRow extends StatelessWidget {
 }
 
 Future<void> _showCreateServiceDialog(BuildContext context, WidgetRef ref) async {
-  final client = ref.read(supabaseClientProvider);
-  if (client == null) return;
-
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
@@ -252,20 +228,20 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
   }
 
   Future<void> _loadCustomers() async {
-    final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
-
     try {
-      final rows = await client
-          .from('customers')
-          .select('id,name,is_active')
-          .eq('is_active', true)
-          .order('name')
-          .limit(200);
+      final apiClient = ref.read(apiClientProvider);
+      if (apiClient == null) return;
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'customers_lookup'},
+      );
+      final rows = (response['items'] as List?) ?? const [];
       if (!mounted) return;
       setState(() {
-        _customers = (rows as List)
-            .map((e) => _CustomerOption.fromJson(e as Map<String, dynamic>))
+        _customers = rows
+            .whereType<Map<String, dynamic>>()
+            .where((e) => (e['is_active'] as bool?) ?? true)
+            .map(_CustomerOption.fromJson)
             .toList(growable: false);
       });
     } catch (_) {
@@ -286,8 +262,8 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
     final ok = _formKey.currentState?.validate() ?? false;
     if (!ok) return;
 
-    final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
 
     final customerId = _selectedCustomerId;
     if (customerId == null) return;
@@ -299,35 +275,49 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
 
       String? deviceId;
       if (serial.isNotEmpty) {
-        final existing = await client
-            .from('customer_devices')
-            .select('id')
-            .eq('serial_no', serial)
-            .maybeSingle();
-        if (existing != null) {
-          deviceId = existing['id'].toString();
+        final existing = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'customer_device_by_serial', 'serial': serial},
+        );
+        if (existing.isNotEmpty) {
+          deviceId = existing['id']?.toString();
         } else {
-          final inserted = await client.from('customer_devices').insert({
-            'customer_id': customerId,
-            'serial_no': serial,
-            'is_active': true,
-          }).select('id').single();
-          deviceId = inserted['id'].toString();
+          final inserted = await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'upsert',
+              'table': 'customer_devices',
+              'returning': 'row',
+              'values': {
+                'customer_id': customerId,
+                'serial_no': serial,
+                'is_active': true,
+              },
+            },
+          );
+          deviceId = inserted['id']?.toString();
         }
       }
 
-      await client.from('service_records').insert({
-        'customer_id': customerId,
-        'device_id': deviceId,
-        'title': title.isEmpty ? 'Servis Kaydı' : title,
-        'status': 'open',
-        'steps': const [],
-        'parts': const [],
-        'labor': const [],
-        'currency': 'TRY',
-        'is_active': true,
-        'created_by': client.auth.currentUser?.id,
-      });
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'service_records',
+          'values': {
+            'customer_id': customerId,
+            'device_id': deviceId,
+            'title': title.isEmpty ? 'Servis Kaydı' : title,
+            'status': 'open',
+            'steps': const [],
+            'parts': const [],
+            'labor': const [],
+            'currency': 'TRY',
+            'is_active': true,
+          },
+        },
+      );
+      ref.invalidate(serviceRecordsProvider);
 
       if (!mounted) return;
       Navigator.of(context).pop();
