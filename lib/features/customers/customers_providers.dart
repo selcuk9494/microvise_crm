@@ -262,6 +262,20 @@ final customerCitiesProvider = FutureProvider<List<String>>((ref) async {
   }
 });
 
+final customersLookupProvider = FutureProvider<List<Customer>>((ref) async {
+  final apiClient = ref.watch(apiClientProvider);
+  if (apiClient == null) return const [];
+  final response = await apiClient.getJson(
+    '/data',
+    queryParameters: {'resource': 'customers_lookup'},
+  );
+  return ((response['items'] as List?) ?? const [])
+      .whereType<Map<String, dynamic>>()
+      .map(Customer.fromJson)
+      .where((c) => c.isActive)
+      .toList(growable: false);
+});
+
 final customerLocationsProvider =
     FutureProvider.family<List<CustomerLocation>, String>((
       ref,
