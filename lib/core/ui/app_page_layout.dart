@@ -63,72 +63,116 @@ class _AppPageLayoutState extends State<AppPageLayout> {
     final topPadding = width >= 720 ? 14.0 : 10.0;
 
     if (isMobile) {
+      final hasExtras = (widget.subtitle?.trim().isNotEmpty ?? false) ||
+          (normalizedActions != null && normalizedActions.isNotEmpty);
+      final expandedHeight = hasExtras ? 190.0 : kToolbarHeight;
+
       return Scaffold(
         backgroundColor: AppTheme.background,
-        appBar: AppBar(
-          backgroundColor: AppTheme.background,
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          title: Text(
-            widget.title,
-            style: Theme.of(context)
-                .textTheme
-                .titleLarge
-                ?.copyWith(fontWeight: FontWeight.w800),
-          ),
-        ),
-        body: SafeArea(
-          bottom: false,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  AppTheme.backgroundAlt.withValues(alpha: 0.82),
-                  AppTheme.background,
-                  AppTheme.background,
-                ],
-              ),
+        body: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppTheme.backgroundAlt.withValues(alpha: 0.82),
+                AppTheme.background,
+                AppTheme.background,
+              ],
             ),
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                10,
-                horizontalPadding,
-                16,
+          ),
+          child: NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) => [
+              SliverAppBar(
+                backgroundColor: AppTheme.background,
+                surfaceTintColor: Colors.transparent,
+                elevation: 0,
+                pinned: true,
+                floating: false,
+                expandedHeight: expandedHeight,
+                title: Text(
+                  widget.title,
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                flexibleSpace: hasExtras
+                    ? LayoutBuilder(
+                        builder: (context, constraints) {
+                          if (constraints.maxHeight <= kToolbarHeight + 1) {
+                            return const SizedBox.shrink();
+                          }
+                          final t = ((constraints.maxHeight - kToolbarHeight) /
+                                  (expandedHeight - kToolbarHeight))
+                              .clamp(0.0, 1.0);
+                          final opacity = Curves.easeOut.transform(t);
+
+                          return ClipRect(
+                            child: Align(
+                              alignment: Alignment.bottomLeft,
+                              child: Opacity(
+                                opacity: opacity,
+                                child: Padding(
+                                  padding: EdgeInsets.fromLTRB(
+                                    horizontalPadding,
+                                    0,
+                                    horizontalPadding,
+                                    10,
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      if (widget.subtitle != null)
+                                        Text(
+                                          widget.subtitle!,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.copyWith(
+                                                color: AppTheme.textMuted,
+                                              ),
+                                        ),
+                                      if (normalizedActions != null &&
+                                          normalizedActions.isNotEmpty) ...[
+                                        const SizedBox(height: 10),
+                                        SingleChildScrollView(
+                                          scrollDirection: Axis.horizontal,
+                                          child: Row(
+                                            children: [
+                                              for (final w
+                                                  in normalizedActions) ...[
+                                                w,
+                                                const SizedBox(width: 10),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      )
+                    : null,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (widget.subtitle != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Text(
-                        widget.subtitle!,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(color: AppTheme.textMuted),
-                      ),
-                    ),
-                  if (normalizedActions != null && normalizedActions.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            for (final w in normalizedActions) ...[
-                              w,
-                              const SizedBox(width: 10),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  Expanded(child: widget.body),
-                ],
+            ],
+            body: SafeArea(
+              top: false,
+              bottom: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  10,
+                  horizontalPadding,
+                  16,
+                ),
+                child: widget.body,
               ),
             ),
           ),

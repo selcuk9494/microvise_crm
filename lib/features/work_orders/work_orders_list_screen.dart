@@ -62,37 +62,52 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
   Widget build(BuildContext context) {
     final boardAsync = ref.watch(workOrdersBoardProvider);
     final profileAsync = ref.watch(currentUserProfileProvider);
+    final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
+    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
+    final canDelete = ref.watch(hasActionAccessProvider(kActionDeleteRecords));
     const allowedStatuses = {'all', 'open', 'in_progress', 'done', 'cancelled'};
     if (!allowedStatuses.contains(_statusFilter)) {
       _statusFilter = 'all';
     }
     if (_statusFilter != 'open') _reorderMode = false;
+    if (!canEdit) _reorderMode = false;
 
     return AppPageLayout(
       title: 'İş Emirleri',
-      subtitle: 'Tüm iş emirlerini tek ekranda arayın ve yönetin.',
-      actions: [
-        OutlinedButton.icon(
-          onPressed: () => ref.read(workOrdersBoardProvider.notifier).refresh(),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
-          label: const Text('Yenile'),
-        ),
-        const Gap(10),
-        OutlinedButton.icon(
-          onPressed: () => context.go('/is-emirleri/tahsilatlar'),
-          icon: const Icon(Icons.payments_outlined, size: 18),
-          label: const Text('Tahsilatlar'),
-        ),
-        const Gap(10),
-        FilledButton.icon(
-          onPressed: () async {
-            await showCreateWorkOrderDialog(context, ref);
-            ref.read(workOrdersBoardProvider.notifier).refresh();
-          },
-          icon: const Icon(Icons.add_rounded, size: 18),
-          label: const Text('Yeni İş Emri'),
-        ),
-      ],
+      subtitle: _reorderMode ? null : 'Tüm iş emirlerini tek ekranda arayın ve yönetin.',
+      actions: _reorderMode
+          ? [
+              FilledButton.tonalIcon(
+                onPressed: () => setState(() => _reorderMode = false),
+                icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                label: const Text('Sıralama Bitti'),
+              ),
+            ]
+          : [
+              OutlinedButton.icon(
+                onPressed: () =>
+                    ref.read(workOrdersBoardProvider.notifier).refresh(),
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Yenile'),
+              ),
+              const Gap(10),
+              OutlinedButton.icon(
+                onPressed: () => context.go('/is-emirleri/tahsilatlar'),
+                icon: const Icon(Icons.payments_outlined, size: 18),
+                label: const Text('Tahsilatlar'),
+              ),
+              const Gap(10),
+              FilledButton.icon(
+                onPressed: canEdit
+                    ? () async {
+                        await showCreateWorkOrderDialog(context, ref);
+                        ref.read(workOrdersBoardProvider.notifier).refresh();
+                      }
+                    : null,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Yeni İş Emri'),
+              ),
+            ],
       body: boardAsync.when(
         data: (items) {
           int byStatus(String status) =>
@@ -164,11 +179,10 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
             return haystack.contains(search);
           }).toList(growable: false);
 
-          return Column(
-            children: [
-              AppCard(
-                padding: const EdgeInsets.all(12),
-                child: LayoutBuilder(
+          final isMobile = MediaQuery.sizeOf(context).width < 720;
+          final headerCard = AppCard(
+            padding: const EdgeInsets.all(12),
+            child: LayoutBuilder(
                   builder: (context, constraints) {
                     final wide = constraints.maxWidth >= 980;
                     final compact = constraints.maxWidth < 720;
@@ -256,7 +270,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                     title: const Text('Pasif kayıtları göster'),
                                     contentPadding: EdgeInsets.zero,
                                   ),
-                                  if (_statusFilter == 'open') ...[
+                                  if (canEdit && _statusFilter == 'open') ...[
                                     SwitchListTile(
                                       value: _reorderMode,
                                       onChanged: (v) {
@@ -382,60 +396,23 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                       setState(() => _statusFilter = next.trim());
                                     },
                                   ),
-                                  if (_statusFilter == 'open')
-                                    FilledButton.tonalIcon(
-                                      onPressed: () => setState(
-                                        () => _reorderMode = !_reorderMode,
-                                      ),
-                                      icon: Icon(
-                                        _reorderMode
-                                            ? Icons.check_circle_outline_rounded
-                                            : Icons.drag_handle_rounded,
-                                        size: 18,
-                                      ),
-                                      label: Text(
-                                        _reorderMode
-                                            ? 'Sıralama: Açık'
-                                            : 'Sıralama: Kapalı',
-                                      ),
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor: const Color(0xFF0EA5E9)
-                                            .withValues(alpha: 0.12),
-                                        foregroundColor: const Color(0xFF0C4A6E),
-                                        minimumSize: const Size(0, 40),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 14,
-                                          vertical: 10,
-                                        ),
-                                      ),
+                                  if (_showPassive)
+                                    const AppBadge(
+                                      label: 'Pasif: Açık',
+                                      tone: AppBadgeTone.neutral,
                                     ),
-                                  FilledButton.tonalIcon(
-                                    onPressed: () {
-                                      _searchController.clear();
-                                      setState(() => _statusFilter = 'open');
-                                      setState(() => _showPassive = false);
-                                      setState(() => _reorderMode = false);
-                                      setState(() {
-                                        _fromDate = null;
-                                        _toDate = null;
-                                      });
-                                    },
-                                    icon: const Icon(
-                                      Icons.delete_outline_rounded,
-                                      size: 18,
+                                  if (_fromDate != null)
+                                    AppBadge(
+                                      label:
+                                          'Baş: ${DateFormat('y-MM-dd').format(_fromDate!)}',
+                                      tone: AppBadgeTone.neutral,
                                     ),
-                                    label: const Text('Temizle'),
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: const Color(0xFFEF4444)
-                                          .withValues(alpha: 0.12),
-                                      foregroundColor: const Color(0xFF7F1D1D),
-                                      minimumSize: const Size(0, 40),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 10,
-                                      ),
+                                  if (_toDate != null)
+                                    AppBadge(
+                                      label:
+                                          'Bit: ${DateFormat('y-MM-dd').format(_toDate!)}',
+                                      tone: AppBadgeTone.neutral,
                                     ),
-                                  ),
                                 ],
                               ),
                             ],
@@ -659,75 +636,106 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                     );
                   },
                 ),
-              ),
-              const Gap(12),
-              Expanded(
-                child: filtered.isEmpty
-                    ? AppCard(
-                        child: Center(
-                          child: Text(
-                            'Kayıt bulunamadı.',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(color: AppTheme.textMuted),
-                          ),
-                        ),
-                      )
-                    : _WorkOrdersList(
-                        items: filtered,
-                        canReorder:
-                            _reorderMode &&
-                            _statusFilter == 'open' &&
-                            search.trim().isEmpty,
-                        onReorder: (nextOpenOrderList) => ref
-                            .read(workOrdersBoardProvider.notifier)
-                            .reorderOpenOrders(nextOpenOrderList),
-                        onOpen: (order) async {
-                          await showWorkOrderDetailSheet(
-                            context,
-                            ref,
-                            order: order,
-                          );
-                          ref.read(workOrdersBoardProvider.notifier).refresh();
-                        },
-                        onCancel: (order) {
-                          ref
-                              .read(workOrdersBoardProvider.notifier)
-                              .updateStatus(workOrderId: order.id, newStatus: 'cancelled');
-                        },
-                        onToggleActive: (order) {
-                          ref
-                              .read(workOrdersBoardProvider.notifier)
-                              .setActive(workOrderId: order.id, isActive: !order.isActive);
-                        },
-                        onDelete: (order) async {
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            barrierDismissible: false,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Silme Onayı'),
-                              content: Text('#${_shortId(order.id)} silinsin mi?'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.of(context).pop(false),
-                                  child: const Text('Vazgeç'),
-                                ),
-                                FilledButton(
-                                  onPressed: () => Navigator.of(context).pop(true),
-                                  child: const Text('Sil'),
-                                ),
-                              ],
-                            ),
-                          );
-                          if (confirm == true) {
-                            await ref
-                                .read(workOrdersBoardProvider.notifier)
-                                .deleteWorkOrder(order.id);
-                          }
-                        },
+          );
+
+          Widget buildList({Widget? header}) {
+            if (filtered.isEmpty) {
+              return ListView(
+                padding: const EdgeInsets.only(bottom: 120),
+                children: [
+                  if (header != null) ...[header, const Gap(12)],
+                  AppCard(
+                    child: Center(
+                      child: Text(
+                        'Kayıt bulunamadı.',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: AppTheme.textMuted),
                       ),
-              ),
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            return _WorkOrdersList(
+              header: header,
+              items: filtered,
+              canReorder:
+                  _reorderMode && _statusFilter == 'open' && search.trim().isEmpty,
+              canEdit: canEdit,
+              canArchive: canArchive,
+              canDelete: canDelete,
+              onReorder: (nextOpenOrderList) => ref
+                  .read(workOrdersBoardProvider.notifier)
+                  .reorderOpenOrders(nextOpenOrderList),
+              onOpen: (order) async {
+                await showWorkOrderDetailSheet(
+                  context,
+                  ref,
+                  order: order,
+                );
+                ref.read(workOrdersBoardProvider.notifier).refresh();
+              },
+              onEdit: (order) async {
+                await showCreateWorkOrderDialog(
+                  context,
+                  ref,
+                  initialOrder: order,
+                );
+                ref.read(workOrdersBoardProvider.notifier).refresh();
+              },
+              onCancel: (order) {
+                if (!canEdit) return;
+                ref
+                    .read(workOrdersBoardProvider.notifier)
+                    .updateStatus(workOrderId: order.id, newStatus: 'cancelled');
+              },
+              onToggleActive: (order) {
+                if (!canArchive) return;
+                ref
+                    .read(workOrdersBoardProvider.notifier)
+                    .setActive(workOrderId: order.id, isActive: !order.isActive);
+              },
+              onDelete: (order) async {
+                if (!canDelete) return;
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Silme Onayı'),
+                    content: Text('#${_shortId(order.id)} silinsin mi?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: const Text('Vazgeç'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        child: const Text('Sil'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await ref
+                      .read(workOrdersBoardProvider.notifier)
+                      .deleteWorkOrder(order.id);
+                }
+              },
+            );
+          }
+
+          if (isMobile) {
+            return buildList(header: _reorderMode ? null : headerCard);
+          }
+
+          return Column(
+            children: [
+              headerCard,
+              const Gap(12),
+              Expanded(child: buildList()),
             ],
           );
         },
@@ -897,19 +905,29 @@ String _statusLabel(String value) {
 
 class _WorkOrdersList extends StatelessWidget {
   const _WorkOrdersList({
+    required this.header,
     required this.items,
     required this.canReorder,
+    required this.canEdit,
+    required this.canArchive,
+    required this.canDelete,
     required this.onReorder,
     required this.onOpen,
+    required this.onEdit,
     required this.onCancel,
     required this.onToggleActive,
     required this.onDelete,
   });
 
+  final Widget? header;
   final List<WorkOrder> items;
   final bool canReorder;
+  final bool canEdit;
+  final bool canArchive;
+  final bool canDelete;
   final ValueChanged<List<WorkOrder>> onReorder;
   final ValueChanged<WorkOrder> onOpen;
+  final ValueChanged<WorkOrder> onEdit;
   final ValueChanged<WorkOrder> onCancel;
   final ValueChanged<WorkOrder> onToggleActive;
   final ValueChanged<WorkOrder> onDelete;
@@ -919,12 +937,28 @@ class _WorkOrdersList extends StatelessWidget {
     final sorted = [...items]
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
+    final hasHeader = header != null;
+    final headerCount = hasHeader ? 1 : 0;
+
     if (canReorder) {
       return ReorderableListView.builder(
         buildDefaultDragHandles: false,
         padding: const EdgeInsets.only(bottom: 120),
-        itemCount: sorted.length,
+        itemCount: sorted.length + headerCount,
         onReorder: (oldIndex, newIndex) {
+          if (hasHeader) {
+            if (oldIndex == 0) return;
+            if (newIndex == 0) newIndex = 1;
+            final from = oldIndex - 1;
+            var to = newIndex - 1;
+            if (to > from) to -= 1;
+            final next = [...sorted];
+            final item = next.removeAt(from);
+            next.insert(to, item);
+            onReorder(next);
+            return;
+          }
+
           if (newIndex > oldIndex) newIndex -= 1;
           final next = [...sorted];
           final item = next.removeAt(oldIndex);
@@ -932,17 +966,29 @@ class _WorkOrdersList extends StatelessWidget {
           onReorder(next);
         },
         itemBuilder: (context, index) {
-          final order = sorted[index];
+          if (hasHeader && index == 0) {
+            return KeyedSubtree(
+              key: const ValueKey('wo:list:header'),
+              child: header!,
+            );
+          }
+          final effectiveIndex = index - headerCount;
+          final order = sorted[effectiveIndex];
           return _WorkOrderCard(
             key: ValueKey('wo:${order.id}'),
             order: order,
-            indexNumber: index + 1,
-            reorderIndex: index,
+            indexNumber: effectiveIndex + 1,
+            reorderIndex: effectiveIndex,
             reorderable: true,
             onOpen: () => onOpen(order),
+            onEdit: canEdit ? () => onEdit(order) : null,
             onCancel: () => onCancel(order),
             onToggleActive: () => onToggleActive(order),
             onDelete: () => onDelete(order),
+            showEdit: canEdit,
+            showCancel: canEdit,
+            showToggleActive: canArchive,
+            showDelete: canDelete,
           );
         },
       );
@@ -950,20 +996,31 @@ class _WorkOrdersList extends StatelessWidget {
 
     return ListView.separated(
       padding: const EdgeInsets.only(bottom: 120),
-      itemCount: sorted.length,
-      separatorBuilder: (context, index) => const Gap(10),
+      itemCount: sorted.length + headerCount,
+      separatorBuilder: (context, index) {
+        if (hasHeader && index == 0) return const Gap(12);
+        return const Gap(10);
+      },
       itemBuilder: (context, index) {
-        final order = sorted[index];
-        final indexNumber = order.status == 'open' ? order.sortOrder + 1 : null;
+        if (hasHeader && index == 0) return header!;
+        final effectiveIndex = index - headerCount;
+        final order = sorted[effectiveIndex];
+        final indexNumber =
+            order.status == 'open' ? order.sortOrder + 1 : null;
         return _WorkOrderCard(
           order: order,
           indexNumber: indexNumber,
-          reorderIndex: index,
+          reorderIndex: effectiveIndex,
           reorderable: false,
           onOpen: () => onOpen(order),
+          onEdit: canEdit ? () => onEdit(order) : null,
           onCancel: () => onCancel(order),
           onToggleActive: () => onToggleActive(order),
           onDelete: () => onDelete(order),
+          showEdit: canEdit,
+          showCancel: canEdit,
+          showToggleActive: canArchive,
+          showDelete: canDelete,
         );
       },
     );
@@ -978,9 +1035,14 @@ class _WorkOrderCard extends StatelessWidget {
     required this.reorderIndex,
     required this.reorderable,
     required this.onOpen,
+    required this.onEdit,
     required this.onCancel,
     required this.onToggleActive,
     required this.onDelete,
+    required this.showEdit,
+    required this.showCancel,
+    required this.showToggleActive,
+    required this.showDelete,
   });
 
   final WorkOrder order;
@@ -988,9 +1050,14 @@ class _WorkOrderCard extends StatelessWidget {
   final int reorderIndex;
   final bool reorderable;
   final VoidCallback onOpen;
+  final VoidCallback? onEdit;
   final VoidCallback onCancel;
   final VoidCallback onToggleActive;
   final VoidCallback onDelete;
+  final bool showEdit;
+  final bool showCancel;
+  final bool showToggleActive;
+  final bool showDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -1025,9 +1092,21 @@ class _WorkOrderCard extends StatelessWidget {
         .bodySmall
         ?.copyWith(color: AppTheme.textMuted);
 
+    final openBackgrounds = [
+      const Color(0xFFF0F9FF),
+      const Color(0xFFECFDF5),
+      const Color(0xFFFFFBEB),
+      const Color(0xFFFDF2F8),
+      const Color(0xFFF5F3FF),
+    ];
+    final backgroundColor = order.status == 'open'
+        ? openBackgrounds[reorderIndex % openBackgrounds.length]
+        : null;
+
     return AppCard(
       onTap: onOpen,
       padding: const EdgeInsets.all(14),
+      color: backgroundColor,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1118,21 +1197,29 @@ class _WorkOrderCard extends StatelessWidget {
             const Gap(10),
             PopupMenuButton<String>(
               itemBuilder: (context) => [
-                const PopupMenuItem(value: 'open', child: Text('Düzenle')),
-                const PopupMenuItem(value: 'cancel', child: Text('İptal Et')),
-                PopupMenuItem(
-                  value: 'toggle',
-                  child: Text(order.isActive ? 'Pasife Al' : 'Aktifleştir'),
-                ),
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: Text('Sil'),
-                ),
+                const PopupMenuItem(value: 'detail', child: Text('Detay')),
+                if (showEdit)
+                  const PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+                if (showCancel)
+                  const PopupMenuItem(value: 'cancel', child: Text('İptal Et')),
+                if (showToggleActive)
+                  PopupMenuItem(
+                    value: 'toggle',
+                    child: Text(order.isActive ? 'Pasife Al' : 'Aktifleştir'),
+                  ),
+                if (showDelete)
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Text('Sil'),
+                  ),
               ],
               onSelected: (value) {
                 switch (value) {
-                  case 'open':
+                  case 'detail':
                     onOpen();
+                    break;
+                  case 'edit':
+                    onEdit?.call();
                     break;
                   case 'cancel':
                     onCancel();

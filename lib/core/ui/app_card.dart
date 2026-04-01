@@ -7,11 +7,13 @@ class AppCard extends StatefulWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(14),
+    this.color,
     this.onTap,
   });
 
   final Widget child;
   final EdgeInsets padding;
+  final Color? color;
   final VoidCallback? onTap;
 
   @override
@@ -52,7 +54,7 @@ class _AppCardState extends State<AppCard> {
           0,
         ),
         decoration: BoxDecoration(
-          color: Theme.of(context).cardTheme.color ?? AppTheme.surface,
+          color: widget.color ?? Theme.of(context).cardTheme.color ?? AppTheme.surface,
           borderRadius: const BorderRadius.all(
             Radius.circular(AppTheme.radiusMd),
           ),

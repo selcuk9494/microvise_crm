@@ -17,12 +17,12 @@ class FormsScreen extends StatelessWidget {
     return AppPageLayout(
       title: 'Formlar',
       subtitle: 'Başvuru, hurda ve devir formlarını yönetin.',
-      body: Column(
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 120),
         children: [
           AppSectionCard(
             title: 'Form Merkezi',
-            subtitle:
-                'Resmi form akışlarını tek merkezden yönetin ve yazdırın.',
+            subtitle: 'Resmi form akışlarını tek merkezden yönetin ve yazdırın.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

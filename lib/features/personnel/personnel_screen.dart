@@ -26,13 +26,24 @@ final personnelUsersProvider = FutureProvider<List<PersonnelUser>>((ref) async {
   final client = ref.watch(supabaseClientProvider);
   if (client == null) return const [];
 
-  final rows = await client
-      .from('users')
-      .select('id,full_name,role,created_at')
-      .order('created_at', ascending: false);
+  List rows;
+  try {
+    rows = await client
+        .from('users')
+        .select(
+          'id,full_name,role,email,page_permissions,action_permissions,created_at',
+        )
+        .order('created_at', ascending: false);
+  } catch (_) {
+    rows = await client
+        .from('users')
+        .select('id,full_name,role,email,created_at')
+        .order('created_at', ascending: false);
+  }
 
-  return (rows as List)
-      .map((e) => PersonnelUser.fromJson(e as Map<String, dynamic>))
+  return rows
+      .whereType<Map<String, dynamic>>()
+      .map(PersonnelUser.fromJson)
       .toList(growable: false);
 });
 
@@ -403,6 +414,228 @@ class _UserRow extends ConsumerStatefulWidget {
 
 class _UserRowState extends ConsumerState<_UserRow> {
   bool _saving = false;
+
+  Future<void> _editPermissions() async {
+    final user = widget.user;
+    var selectedPages = <String>{
+      if (user.role == 'admin')
+        ...allPagePermissions
+      else if (user.pagePermissions.isEmpty)
+        ...defaultPersonnelPagePermissions
+      else
+        ...user.pagePermissions,
+    };
+    var selectedActions = <String>{
+      if (user.role == 'admin')
+        ...allActionPermissions
+      else if (user.actionPermissions.isEmpty)
+        ...allActionPermissions
+      else
+        ...user.actionPermissions,
+    };
+
+    bool saving = false;
+    final saved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.all(24),
+        backgroundColor: Colors.transparent,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720, maxHeight: 760),
+          child: AppCard(
+            padding: const EdgeInsets.all(20),
+            child: StatefulBuilder(
+              builder: (context, setDialogState) {
+                void togglePage(String key, bool value) {
+                  setDialogState(() {
+                    if (value) {
+                      selectedPages.add(key);
+                    } else {
+                      selectedPages.remove(key);
+                    }
+                  });
+                }
+
+                void toggleAction(String key, bool value) {
+                  setDialogState(() {
+                    if (value) {
+                      selectedActions.add(key);
+                    } else {
+                      selectedActions.remove(key);
+                    }
+                  });
+                }
+
+                Future<void> save() async {
+                  final apiClient = ref.read(apiClientProvider);
+                  final client = ref.read(supabaseClientProvider);
+                  if (apiClient == null && client == null) return;
+
+                  setDialogState(() => saving = true);
+                  try {
+                    final pageList =
+                        selectedPages.toList(growable: false)..sort();
+                    final actionList =
+                        selectedActions.toList(growable: false)..sort();
+
+                    if (apiClient != null) {
+                      await apiClient.patchJson(
+                        '/personnel/users',
+                        body: {
+                          'id': user.id,
+                          'email': user.email ?? '',
+                          'full_name': user.fullName ?? '',
+                          'role': user.role,
+                          'page_permissions': pageList,
+                          'action_permissions': actionList,
+                        },
+                      );
+                    } else {
+                      await client!.from('users').update({
+                        'page_permissions': pageList,
+                        'action_permissions': actionList,
+                      }).eq('id', user.id);
+                    }
+
+                    if (!context.mounted) return;
+                    Navigator.of(context).pop(true);
+                  } catch (_) {
+                    if (!context.mounted) return;
+                    Navigator.of(context).pop(false);
+                  } finally {
+                    setDialogState(() => saving = false);
+                  }
+                }
+
+                final pages = allPagePermissions.toList(growable: false)
+                  ..sort((a, b) => (pagePermissionLabels[a] ?? a)
+                      .compareTo(pagePermissionLabels[b] ?? b));
+                final actions = allActionPermissions.toList(growable: false)
+                  ..sort((a, b) => (actionPermissionLabels[a] ?? a)
+                      .compareTo(actionPermissionLabels[b] ?? b));
+
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Yetkiler',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Kapat',
+                          onPressed: saving
+                              ? null
+                              : () => Navigator.of(context).pop(false),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+                    const Gap(10),
+                    Text(
+                      (user.fullName ?? '').trim().isEmpty
+                          ? user.id
+                          : user.fullName!.trim(),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: const Color(0xFF64748B)),
+                    ),
+                    const Gap(16),
+                    Expanded(
+                      child: ListView(
+                        children: [
+                          Text(
+                            'Menüler',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          const Gap(6),
+                          for (final key in pages)
+                            CheckboxListTile(
+                              value: selectedPages.contains(key),
+                              onChanged: saving
+                                  ? null
+                                  : (v) => togglePage(key, v ?? false),
+                              title: Text(pagePermissionLabels[key] ?? key),
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          const Gap(12),
+                          Text(
+                            'İşlemler',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          const Gap(6),
+                          for (final key in actions)
+                            CheckboxListTile(
+                              value: selectedActions.contains(key),
+                              onChanged: saving
+                                  ? null
+                                  : (v) => toggleAction(key, v ?? false),
+                              title: Text(actionPermissionLabels[key] ?? key),
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                        ],
+                      ),
+                    ),
+                    const Gap(12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: saving
+                                ? null
+                                : () => Navigator.of(context).pop(false),
+                            child: const Text('Vazgeç'),
+                          ),
+                        ),
+                        const Gap(12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: saving ? null : save,
+                            child: saving
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text('Kaydet'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (saved == true) {
+      ref.invalidate(personnelUsersProvider);
+      ref.invalidate(currentUserProfileProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Yetkiler güncellendi.')),
+      );
+    } else if (saved == false) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Yetkiler güncellenemedi.')),
+      );
+    }
+  }
 
   Future<void> _editUser() async {
     final nameController =
@@ -829,6 +1062,12 @@ class _UserRowState extends ConsumerState<_UserRow> {
           ),
           const Gap(2),
           IconButton(
+            tooltip: 'Yetkiler',
+            onPressed: _saving ? null : _editPermissions,
+            icon: const Icon(Icons.admin_panel_settings_outlined),
+          ),
+          const Gap(2),
+          IconButton(
             tooltip: 'Şifre',
             onPressed: _saving ? null : _setPassword,
             icon: const Icon(Icons.key_rounded),
@@ -1059,12 +1298,16 @@ class PersonnelUser {
     required this.fullName,
     required this.role,
     required this.email,
+    required this.pagePermissions,
+    required this.actionPermissions,
   });
 
   final String id;
   final String? fullName;
   final String role;
   final String? email;
+  final List<String> pagePermissions;
+  final List<String> actionPermissions;
 
   factory PersonnelUser.fromJson(Map<String, dynamic> json) {
     return PersonnelUser(
@@ -1072,6 +1315,12 @@ class PersonnelUser {
       fullName: json['full_name']?.toString(),
       role: (json['role'] ?? 'personel').toString(),
       email: json['email']?.toString(),
+      pagePermissions: ((json['page_permissions'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(growable: false),
+      actionPermissions: ((json['action_permissions'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(growable: false),
     );
   }
 }

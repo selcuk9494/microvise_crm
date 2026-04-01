@@ -994,158 +994,124 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
             );
           }
 
-          return Column(
-            children: [
-              AppCard(
-                padding: const EdgeInsets.all(12),
-                child: isMobile
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+          final filterCard = AppCard(
+            padding: const EdgeInsets.all(12),
+            child: isMobile
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: _customerFilterController,
-                                  onChanged: (_) => setState(() {}),
-                                  decoration: const InputDecoration(
-                                    prefixIcon:
-                                        Icon(Icons.person_search_rounded),
-                                    hintText: 'Müşteri ara',
-                                  ),
-                                ),
+                          Expanded(
+                            child: TextField(
+                              controller: _customerFilterController,
+                              onChanged: (_) => setState(() {}),
+                              decoration: const InputDecoration(
+                                prefixIcon: Icon(Icons.person_search_rounded),
+                                hintText: 'Müşteri ara',
                               ),
-                              const Gap(10),
-                              IconButton.filledTonal(
-                                onPressed: openMobileFiltersSheet,
-                                icon: const Icon(Icons.tune_rounded),
-                              ),
-                            ],
-                          ),
-                          if (_registryFilterController.text.trim().isNotEmpty ||
-                              _fromDate != null ||
-                              _toDate != null) ...[
-                            const Gap(10),
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: [
-                                if (_registryFilterController.text
-                                    .trim()
-                                    .isNotEmpty)
-                                  AppBadge(
-                                    label: 'Sicil: Var',
-                                    tone: AppBadgeTone.primary,
-                                  ),
-                                if (_fromDate != null)
-                                  AppBadge(
-                                    label:
-                                        'Başlangıç: ${_dateFormat.format(_fromDate!)}',
-                                    tone: AppBadgeTone.neutral,
-                                  ),
-                                if (_toDate != null)
-                                  AppBadge(
-                                    label:
-                                        'Bitiş: ${_dateFormat.format(_toDate!)}',
-                                    tone: AppBadgeTone.neutral,
-                                  ),
-                              ],
                             ),
-                          ],
-                        ],
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Filtreler',
-                            style: Theme.of(context).textTheme.titleMedium,
                           ),
-                          const Gap(12),
-                          Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
-                            children: [
-                              SizedBox(
-                                width: isMobile ? double.infinity : 280,
-                                child: TextField(
-                                  controller: _customerFilterController,
-                                  onChanged: (_) => setState(() {}),
-                                  decoration: const InputDecoration(
-                                    labelText: 'Müşteri',
-                                    hintText: 'Müşteri adına göre ara',
-                                    prefixIcon:
-                                        Icon(Icons.person_search_rounded),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(
-                                width: isMobile ? double.infinity : 240,
-                                child: TextField(
-                                  controller: _registryFilterController,
-                                  onChanged: (_) => setState(() {}),
-                                  decoration: const InputDecoration(
-                                    labelText: 'Cihaz / Sicil No',
-                                    hintText: 'Dosya veya cihaz sicili',
-                                    prefixIcon:
-                                        Icon(Icons.confirmation_num_rounded),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(
-                                width: isMobile ? double.infinity : 180,
-                                child: _FilterDateField(
-                                  label: 'Başlangıç Tarihi',
-                                  value: _fromDate,
-                                  format: _dateFormat,
-                                  onTap: () => _pickFilterDate(
-                                    currentValue: _fromDate,
-                                    onSelected: (value) =>
-                                        setState(() => _fromDate = value),
-                                  ),
-                                  onClear: _fromDate == null
-                                      ? null
-                                      : () => setState(() => _fromDate = null),
-                                ),
-                              ),
-                              SizedBox(
-                                width: isMobile ? double.infinity : 180,
-                                child: _FilterDateField(
-                                  label: 'Bitiş Tarihi',
-                                  value: _toDate,
-                                  format: _dateFormat,
-                                  onTap: () => _pickFilterDate(
-                                    currentValue: _toDate,
-                                    onSelected: (value) =>
-                                        setState(() => _toDate = value),
-                                  ),
-                                  onClear: _toDate == null
-                                      ? null
-                                      : () => setState(() => _toDate = null),
-                                ),
-                              ),
-                              OutlinedButton.icon(
-                                onPressed: () {
-                                  setState(() {
-                                    _customerFilterController.clear();
-                                    _registryFilterController.clear();
-                                    _fromDate = null;
-                                    _toDate = null;
-                                    _todayOnly = false;
-                                  });
-                                },
-                                icon: const Icon(Icons.filter_alt_off_rounded),
-                                label: const Text('Temizle'),
-                              ),
-                            ],
+                          const Gap(10),
+                          IconButton.filledTonal(
+                            onPressed: openMobileFiltersSheet,
+                            icon: const Icon(Icons.tune_rounded),
                           ),
                         ],
                       ),
-              ),
-              const Gap(12),
-              AppCard(
-                padding: const EdgeInsets.all(12),
-                child: Wrap(
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Filtreler',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const Gap(12),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          SizedBox(
+                            width: isMobile ? double.infinity : 280,
+                            child: TextField(
+                              controller: _customerFilterController,
+                              onChanged: (_) => setState(() {}),
+                              decoration: const InputDecoration(
+                                labelText: 'Müşteri',
+                                hintText: 'Müşteri adına göre ara',
+                                prefixIcon: Icon(Icons.person_search_rounded),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: isMobile ? double.infinity : 240,
+                            child: TextField(
+                              controller: _registryFilterController,
+                              onChanged: (_) => setState(() {}),
+                              decoration: const InputDecoration(
+                                labelText: 'Cihaz / Sicil No',
+                                hintText: 'Dosya veya cihaz sicili',
+                                prefixIcon:
+                                    Icon(Icons.confirmation_num_rounded),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: isMobile ? double.infinity : 180,
+                            child: _FilterDateField(
+                              label: 'Başlangıç Tarihi',
+                              value: _fromDate,
+                              format: _dateFormat,
+                              onTap: () => _pickFilterDate(
+                                currentValue: _fromDate,
+                                onSelected: (value) =>
+                                    setState(() => _fromDate = value),
+                              ),
+                              onClear: _fromDate == null
+                                  ? null
+                                  : () => setState(() => _fromDate = null),
+                            ),
+                          ),
+                          SizedBox(
+                            width: isMobile ? double.infinity : 180,
+                            child: _FilterDateField(
+                              label: 'Bitiş Tarihi',
+                              value: _toDate,
+                              format: _dateFormat,
+                              onTap: () => _pickFilterDate(
+                                currentValue: _toDate,
+                                onSelected: (value) =>
+                                    setState(() => _toDate = value),
+                              ),
+                              onClear: _toDate == null
+                                  ? null
+                                  : () => setState(() => _toDate = null),
+                            ),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _customerFilterController.clear();
+                                _registryFilterController.clear();
+                                _fromDate = null;
+                                _toDate = null;
+                                _todayOnly = false;
+                              });
+                            },
+                            icon: const Icon(Icons.filter_alt_off_rounded),
+                            label: const Text('Temizle'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+          );
+
+          final statsCard = AppCard(
+            padding: const EdgeInsets.all(12),
+            child: Wrap(
                   alignment: WrapAlignment.spaceBetween,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   spacing: 10,
@@ -1179,61 +1145,176 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        if (filtered.isNotEmpty)
-                          OutlinedButton.icon(
-                            onPressed: () {
-                              setState(() {
-                                if (allFilteredSelected) {
-                                  for (final record in filtered) {
-                                    _selectedRecordIds.remove(record.id);
+                        if (!isMobile) ...[
+                          if (filtered.isNotEmpty)
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  if (allFilteredSelected) {
+                                    for (final record in filtered) {
+                                      _selectedRecordIds.remove(record.id);
+                                    }
+                                  } else {
+                                    for (final record in filtered) {
+                                      _selectedRecordIds.add(record.id);
+                                    }
                                   }
-                                } else {
-                                  for (final record in filtered) {
-                                    _selectedRecordIds.add(record.id);
-                                  }
-                                }
-                              });
+                                });
+                              },
+                              icon: Icon(
+                                allFilteredSelected
+                                    ? Icons.deselect_rounded
+                                    : Icons.select_all_rounded,
+                                size: 18,
+                              ),
+                              label: Text(
+                                allFilteredSelected
+                                    ? 'Seçimi Temizle'
+                                    : 'Tümünü Seç',
+                              ),
+                            ),
+                          FilterChip(
+                            selected: _showPassive,
+                            onSelected: (value) =>
+                                setState(() => _showPassive = value),
+                            label: const Text('Pasifleri Göster'),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          if (selectedRecords.isNotEmpty) ...[
+                            FilledButton.icon(
+                              onPressed: () =>
+                                  _openCreateWorkOrdersDialog(selectedRecords),
+                              icon: const Icon(Icons.playlist_add_rounded,
+                                  size: 18),
+                              label: Text(
+                                'İş Emri Oluştur (${selectedRecords.length})',
+                              ),
+                            ),
+                            FilledButton.icon(
+                              onPressed: () =>
+                                  _exportForTaxOffice(selectedRecords),
+                              icon: const Icon(Icons.download_rounded, size: 18),
+                              label: Text(
+                                'Vergi Dairesine Gönder (${selectedRecords.length})',
+                              ),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: () => _exportForTsm(selectedRecords),
+                              icon: const Icon(Icons.table_chart_rounded,
+                                  size: 18),
+                              label: Text(
+                                'TSM\'e Gönder (${selectedRecords.length})',
+                              ),
+                            ),
+                          ],
+                        ] else ...[
+                          FilledButton.tonalIcon(
+                            onPressed: () async {
+                              await showModalBottomSheet<void>(
+                                context: context,
+                                showDragHandle: true,
+                                builder: (context) => SafeArea(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'İşlemler',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium,
+                                        ),
+                                        const Gap(12),
+                                        SwitchListTile(
+                                          value: _showPassive,
+                                          onChanged: (v) {
+                                            setState(() => _showPassive = v);
+                                            Navigator.of(context).pop();
+                                          },
+                                          title: const Text('Pasifleri Göster'),
+                                          contentPadding: EdgeInsets.zero,
+                                        ),
+                                        if (filtered.isNotEmpty) ...[
+                                          ListTile(
+                                            leading: Icon(
+                                              allFilteredSelected
+                                                  ? Icons.deselect_rounded
+                                                  : Icons.select_all_rounded,
+                                            ),
+                                            title: Text(
+                                              allFilteredSelected
+                                                  ? 'Seçimi Temizle'
+                                                  : 'Tümünü Seç',
+                                            ),
+                                            onTap: () {
+                                              setState(() {
+                                                if (allFilteredSelected) {
+                                                  for (final record in filtered) {
+                                                    _selectedRecordIds
+                                                        .remove(record.id);
+                                                  }
+                                                } else {
+                                                  for (final record in filtered) {
+                                                    _selectedRecordIds
+                                                        .add(record.id);
+                                                  }
+                                                }
+                                              });
+                                              Navigator.of(context).pop();
+                                            },
+                                          ),
+                                        ],
+                                        if (selectedRecords.isNotEmpty) ...[
+                                          ListTile(
+                                            leading: const Icon(
+                                                Icons.playlist_add_rounded),
+                                            title: Text(
+                                              'İş Emri Oluştur (${selectedRecords.length})',
+                                            ),
+                                            onTap: () {
+                                              Navigator.of(context).pop();
+                                              _openCreateWorkOrdersDialog(
+                                                selectedRecords,
+                                              );
+                                            },
+                                          ),
+                                          ListTile(
+                                            leading: const Icon(
+                                                Icons.download_rounded),
+                                            title: Text(
+                                              'Vergi Dairesine Gönder (${selectedRecords.length})',
+                                            ),
+                                            onTap: () {
+                                              Navigator.of(context).pop();
+                                              _exportForTaxOffice(selectedRecords);
+                                            },
+                                          ),
+                                          ListTile(
+                                            leading: const Icon(
+                                                Icons.table_chart_rounded),
+                                            title: Text(
+                                              'TSM\'e Gönder (${selectedRecords.length})',
+                                            ),
+                                            onTap: () {
+                                              Navigator.of(context).pop();
+                                              _exportForTsm(selectedRecords);
+                                            },
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
                             },
-                            icon: Icon(
-                              allFilteredSelected
-                                  ? Icons.deselect_rounded
-                                  : Icons.select_all_rounded,
-                              size: 18,
-                            ),
+                            icon: const Icon(Icons.more_horiz_rounded, size: 18),
                             label: Text(
-                              allFilteredSelected
-                                  ? 'Seçimi Temizle'
-                                  : 'Tümünü Seç',
-                            ),
-                          ),
-                        FilterChip(
-                          selected: _showPassive,
-                          onSelected: (value) =>
-                              setState(() => _showPassive = value),
-                          label: const Text('Pasifleri Göster'),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        if (selectedRecords.isNotEmpty) ...[
-                          FilledButton.icon(
-                            onPressed: () =>
-                                _openCreateWorkOrdersDialog(selectedRecords),
-                            icon: const Icon(Icons.playlist_add_rounded, size: 18),
-                            label: Text(
-                              'İş Emri Oluştur (${selectedRecords.length})',
-                            ),
-                          ),
-                          FilledButton.icon(
-                            onPressed: () => _exportForTaxOffice(selectedRecords),
-                            icon: const Icon(Icons.download_rounded, size: 18),
-                            label: Text(
-                              'Vergi Dairesine Gönder (${selectedRecords.length})',
-                            ),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: () => _exportForTsm(selectedRecords),
-                            icon: const Icon(Icons.table_chart_rounded, size: 18),
-                            label: Text(
-                              'TSM\'e Gönder (${selectedRecords.length})',
+                              selectedRecords.isEmpty
+                                  ? 'İşlemler'
+                                  : 'İşlemler (${selectedRecords.length})',
                             ),
                           ),
                         ],
@@ -1241,7 +1322,49 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                     ),
                   ],
                 ),
-              ),
+          );
+
+          if (isMobile) {
+            return ListView.separated(
+              padding: const EdgeInsets.only(bottom: 120),
+              itemCount: filtered.length + 2,
+              separatorBuilder: (context, index) => const Gap(12),
+              itemBuilder: (context, index) {
+                if (index == 0) return filterCard;
+                if (index == 1) return statsCard;
+                final r = filtered[index - 2];
+                return _ApplicationRecordCard(
+                  record: r,
+                  canEdit: canEdit,
+                  canArchive: canArchive,
+                  canDeletePermanently: canDeletePermanently,
+                  selected: _selectedRecordIds.contains(r.id),
+                  onSelectionChanged: (selected) {
+                    setState(() {
+                      if (selected) {
+                        _selectedRecordIds.add(r.id);
+                      } else {
+                        _selectedRecordIds.remove(r.id);
+                      }
+                    });
+                  },
+                  onPrintKdv: () => _print(r, kind: ApplicationPrintKind.kdv),
+                  onPrintKdv4a: () => _print(r, kind: ApplicationPrintKind.kdv4a),
+                  onCreateWorkOrder: () => _openCreateWorkOrdersDialog([r]),
+                  onEdit: () => _openEditDialog(r),
+                  onDuplicate: () => _openDuplicateDialog(r),
+                  onToggleActive: () => _setRecordActive(r, !r.isActive),
+                  onDeletePermanently: () => _deleteRecordPermanently(r),
+                );
+              },
+            );
+          }
+
+          return Column(
+            children: [
+              filterCard,
+              const Gap(12),
+              statsCard,
               const Gap(12),
               if (filtered.isEmpty)
                 const Padding(

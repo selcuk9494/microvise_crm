@@ -285,9 +285,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           label: const Text('Yeni Müşteri'),
         ),
       ],
-      body: Column(
-        children: [
-          AppCard(
+      body: Builder(
+        builder: (context) {
+          final filterCard = AppCard(
             padding: const EdgeInsets.all(12),
             child: isMobile
                 ? citiesAsync.when(
@@ -658,66 +658,158 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       ),
                     ],
                   ),
-          ),
-          const Gap(12),
-          Expanded(
-            child: pageDataAsync.when(
-              data: (pageData) {
-                if (pageData.items.isEmpty) {
-                  return const EmptyStateCard(
-                    icon: Icons.people_alt_rounded,
-                    title: 'Müşteri yok',
-                    message: 'Filtrelere uygun müşteri bulunamadı.',
-                  );
-                }
+          );
 
-                if (isMobile) {
-                  return _CustomersListMobile(
-                    items: pageData.items,
-                    isAdmin: isAdmin,
-                    canEdit: canEdit,
-                    canArchive: canArchive,
-                    canDelete: canDelete,
-                    onChanged: () => ref.invalidate(customersProvider),
-                  );
-                }
+          Widget buildDesktop() {
+            return Column(
+              children: [
+                filterCard,
+                const Gap(12),
+                Expanded(
+                  child: pageDataAsync.when(
+                    data: (pageData) {
+                      if (pageData.items.isEmpty) {
+                        return const EmptyStateCard(
+                          icon: Icons.people_alt_rounded,
+                          title: 'Müşteri yok',
+                          message: 'Filtrelere uygun müşteri bulunamadı.',
+                        );
+                      }
 
-                return _CustomersTable(
-                  items: pageData.items,
-                  isAdmin: isAdmin,
-                  canEdit: canEdit,
-                  canArchive: canArchive,
-                  canDelete: canDelete,
-                  compact: compactView,
-                  page: pageData.page,
-                  totalPages: pageData.totalPages,
-                  totalCount: pageData.totalCount,
-                  hasNextPage: pageData.hasNextPage,
-                  onPrevious: page <= 1
-                      ? null
-                      : () => ref.read(customerPageProvider.notifier).previous(),
-                  onNext: pageData.hasNextPage
-                      ? () => ref.read(customerPageProvider.notifier).next()
-                      : null,
-                  onChanged: () => ref.invalidate(customersProvider),
-                );
-              },
-              loading: () => const AppCard(child: SizedBox(height: 240)),
-              error: (error, _) => AppCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    'Müşteri listesi yüklenemedi: $error',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: AppTheme.textMuted),
+                      return _CustomersTable(
+                        items: pageData.items,
+                        isAdmin: isAdmin,
+                        canEdit: canEdit,
+                        canArchive: canArchive,
+                        canDelete: canDelete,
+                        compact: compactView,
+                        page: pageData.page,
+                        totalPages: pageData.totalPages,
+                        totalCount: pageData.totalCount,
+                        hasNextPage: pageData.hasNextPage,
+                        onPrevious: page <= 1
+                            ? null
+                            : () => ref
+                                .read(customerPageProvider.notifier)
+                                .previous(),
+                        onNext: pageData.hasNextPage
+                            ? () =>
+                                ref.read(customerPageProvider.notifier).next()
+                            : null,
+                        onChanged: () => ref.invalidate(customersProvider),
+                      );
+                    },
+                    loading: () => const AppCard(child: SizedBox(height: 240)),
+                    error: (error, _) => AppCard(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          'Müşteri listesi yüklenemedi: $error',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(color: AppTheme.textMuted),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
+              ],
+            );
+          }
+
+          Widget buildMobile() {
+            return pageDataAsync.when(
+              data: (pageData) {
+                final items = pageData.items;
+
+                return ListView(
+                  padding: const EdgeInsets.only(bottom: 120),
+                  children: [
+                    filterCard,
+                    const Gap(12),
+                    if (items.isEmpty)
+                      const EmptyStateCard(
+                        icon: Icons.people_alt_rounded,
+                        title: 'Müşteri yok',
+                        message: 'Filtrelere uygun müşteri bulunamadı.',
+                      )
+                    else
+                      _CustomersListMobile(
+                        items: items,
+                        isAdmin: isAdmin,
+                        canEdit: canEdit,
+                        canArchive: canArchive,
+                        canDelete: canDelete,
+                        onChanged: () => ref.invalidate(customersProvider),
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                      ),
+                    const Gap(12),
+                    AppCard(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: page <= 1
+                                  ? null
+                                  : () => ref
+                                      .read(customerPageProvider.notifier)
+                                      .previous(),
+                              child: const Text('Önceki'),
+                            ),
+                          ),
+                          const Gap(10),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: pageData.hasNextPage
+                                  ? () => ref
+                                      .read(customerPageProvider.notifier)
+                                      .next()
+                                  : null,
+                              child: const Text('Sonraki'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+              loading: () => ListView(
+                padding: const EdgeInsets.only(bottom: 120),
+                children: [
+                  filterCard,
+                  const Gap(12),
+                  const AppCard(child: SizedBox(height: 240)),
+                ],
               ),
-            ),
-          ),
-        ],
+              error: (error, _) => ListView(
+                padding: const EdgeInsets.only(bottom: 120),
+                children: [
+                  filterCard,
+                  const Gap(12),
+                  AppCard(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        'Müşteri listesi yüklenemedi: $error',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: AppTheme.textMuted),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return isMobile ? buildMobile() : buildDesktop();
+        },
       ),
     );
   }
@@ -731,6 +823,9 @@ class _CustomersListMobile extends StatelessWidget {
     required this.canArchive,
     required this.canDelete,
     required this.onChanged,
+    this.padding = const EdgeInsets.only(bottom: 120),
+    this.shrinkWrap = false,
+    this.physics,
   });
 
   final List<Customer> items;
@@ -739,11 +834,16 @@ class _CustomersListMobile extends StatelessWidget {
   final bool canArchive;
   final bool canDelete;
   final VoidCallback onChanged;
+  final EdgeInsetsGeometry padding;
+  final bool shrinkWrap;
+  final ScrollPhysics? physics;
 
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
-      padding: const EdgeInsets.only(bottom: 120),
+      padding: padding,
+      shrinkWrap: shrinkWrap,
+      physics: physics,
       itemCount: items.length,
       separatorBuilder: (context, index) => const Gap(10),
       itemBuilder: (context, index) {
