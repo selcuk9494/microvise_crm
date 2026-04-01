@@ -13,6 +13,8 @@ import '../../core/ui/app_card.dart';
 import '../dashboard/dashboard_providers.dart';
 import '../work_orders/work_order_detail_sheet.dart';
 import '../work_orders/work_order_model.dart';
+import 'customer_form_dialog.dart';
+import 'customers_providers.dart';
 
 final customerDetailProvider =
     FutureProvider.family<CustomerDetail, String>((ref, customerId) async {
@@ -265,6 +267,8 @@ class _Content extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
+
     return DefaultTabController(
       length: 5,
       child: CustomScrollView(
@@ -313,7 +317,35 @@ class _Content extends ConsumerWidget {
                     ),
                   ),
                   FilledButton.icon(
-                    onPressed: () {},
+                    onPressed: canEdit
+                        ? () async {
+                            final updated = await showEditCustomerDialog(
+                              context,
+                              initialData: CustomerFormData(
+                                id: detail.id,
+                                name: detail.name,
+                                city: detail.city,
+                                address: detail.address,
+                                directorName: detail.directorName,
+                                email: detail.email,
+                                vkn: detail.vkn,
+                                tcknMs: detail.tcknMs,
+                                phone1Title: detail.phone1Title,
+                                phone1: detail.phone1,
+                                phone2Title: detail.phone2Title,
+                                phone2: detail.phone2,
+                                phone3Title: detail.phone3Title,
+                                phone3: detail.phone3,
+                                notes: detail.notes,
+                                isActive: detail.isActive,
+                                locations: const [],
+                              ),
+                            );
+                            if (!updated) return;
+                            ref.invalidate(customerDetailProvider(detail.id));
+                            ref.invalidate(customersProvider);
+                          }
+                        : null,
                     icon: const Icon(Icons.edit_rounded, size: 18),
                     label: const Text('Düzenle'),
                   ),

@@ -9,6 +9,7 @@ import '../../core/auth/auth_providers.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_breakpoints.dart';
+import '../../core/ui/app_card.dart';
 
 class _FormsNavExpandedNotifier extends Notifier<bool> {
   @override
@@ -229,12 +230,103 @@ class _MobileShell extends ConsumerWidget {
                 active: currentIndex == 3,
                 onTap: () => context.go(items[3].path),
               ),
+            _BottomItem(
+              label: 'Hesap',
+              icon: Icons.person_rounded,
+              active: false,
+              onTap: () => _showMobileAccountSheet(context, ref),
+            ),
             const Gap(8),
           ],
         ),
       ),
     );
   }
+}
+
+Future<void> _showMobileAccountSheet(BuildContext context, WidgetRef ref) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    backgroundColor: AppTheme.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) => Padding(
+      padding: const EdgeInsets.all(16),
+      child: Consumer(
+        builder: (context, ref, _) {
+          final profile = ref.watch(currentUserProfileProvider).value;
+          final name = (profile?.fullName ?? '').trim();
+          final role = (profile?.role ?? 'personel').trim();
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Hesap', style: Theme.of(context).textTheme.titleMedium),
+              const Gap(12),
+              AppCard(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
+                      child: const Icon(
+                        Icons.person_rounded,
+                        color: AppTheme.primary,
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            name.isEmpty ? 'Kullanıcı' : name,
+                            style:
+                                Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                          ),
+                          Text(
+                            role == 'admin' ? 'Admin' : 'Personel',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: const Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Gap(12),
+              FilledButton.tonalIcon(
+                onPressed: () async {
+                  ref.read(apiAccessTokenProvider.notifier).clear(persist: true);
+                  final client = ref.read(supabaseClientProvider);
+                  await client?.auth.signOut();
+                  if (!context.mounted) return;
+                  Navigator.of(context).pop();
+                  context.go('/login');
+                },
+                icon: Icon(
+                  PhosphorIcons.signOut(PhosphorIconsStyle.regular),
+                  size: 18,
+                ),
+                label: const Text('Çıkış Yap'),
+              ),
+              const Gap(8),
+            ],
+          );
+        },
+      ),
+    ),
+  );
 }
 
 class _BrandHeader extends StatelessWidget {

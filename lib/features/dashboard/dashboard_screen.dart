@@ -33,25 +33,32 @@ class DashboardScreen extends ConsumerWidget {
     return AppPageLayout(
       title: 'Panel',
       subtitle: 'Genel görünüm, bugün ve yaklaşan işler.',
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 120),
-        children: [
-          Skeletonizer(
-            enabled: metricsAsync.isLoading,
-            child: _MetricsGrid(
-              money: money,
-              metrics: metricsAsync.value ?? DashboardMetrics.zero(),
-              canSeeCustomers: canSeeCustomers,
-              canSeeWorkOrders: canSeeWorkOrders,
-              canSeeProducts: canSeeProducts,
-              canSeeBilling: canSeeBilling,
-              canSeeReports: canSeeReports,
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(dashboardMetricsProvider);
+          ref.invalidate(dashboardRevenueSeriesProvider);
+          ref.invalidate(dashboardActivitiesProvider);
+          await ref.read(dashboardMetricsProvider.future);
+        },
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 120),
+          children: [
+            Skeletonizer(
+              enabled: metricsAsync.isLoading,
+              child: _MetricsGrid(
+                money: money,
+                metrics: metricsAsync.value ?? DashboardMetrics.zero(),
+                canSeeCustomers: canSeeCustomers,
+                canSeeWorkOrders: canSeeWorkOrders,
+                canSeeProducts: canSeeProducts,
+                canSeeBilling: canSeeBilling,
+                canSeeReports: canSeeReports,
+              ),
             ),
-          ),
-          const Gap(16),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final twoCols = constraints.maxWidth >= 980;
+            const Gap(16),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final twoCols = constraints.maxWidth >= 980;
 
               final revenueCard = AppCard(
                 child: Column(
@@ -217,43 +224,46 @@ class DashboardScreen extends ConsumerWidget {
                 ),
               );
 
-              if (!twoCols) {
-                return Column(
+                if (!twoCols) {
+                  return Column(
+                    children: [
+                      if (canSeeReports) revenueCard,
+                      if (canSeeReports && canSeeWorkOrders) const Gap(16),
+                      if (canSeeWorkOrders) workOrderStatusCard,
+                      if ((canSeeWorkOrders || canSeeService) &&
+                          (canSeeReports || canSeeWorkOrders)) const Gap(16),
+                      if (canSeeWorkOrders || canSeeService) activityCard,
+                    ],
+                  );
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (canSeeReports) revenueCard,
-                    if (canSeeReports && canSeeWorkOrders) const Gap(16),
-                    if (canSeeWorkOrders) workOrderStatusCard,
-                    if ((canSeeWorkOrders || canSeeService) &&
-                        (canSeeReports || canSeeWorkOrders)) const Gap(16),
-                    if (canSeeWorkOrders || canSeeService) activityCard,
+                    Expanded(
+                      flex: 3,
+                      child:
+                          canSeeReports ? revenueCard : const SizedBox.shrink(),
+                    ),
+                    const Gap(16),
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        children: [
+                          if (canSeeWorkOrders) workOrderStatusCard,
+                          if (canSeeWorkOrders &&
+                              (canSeeWorkOrders || canSeeService))
+                            const Gap(16),
+                          if (canSeeWorkOrders || canSeeService) activityCard,
+                        ],
+                      ),
+                    ),
                   ],
                 );
-              }
-
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: canSeeReports ? revenueCard : const SizedBox.shrink(),
-                  ),
-                  const Gap(16),
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      children: [
-                        if (canSeeWorkOrders) workOrderStatusCard,
-                        if (canSeeWorkOrders && (canSeeWorkOrders || canSeeService))
-                          const Gap(16),
-                        if (canSeeWorkOrders || canSeeService) activityCard,
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -52,7 +52,9 @@ class BillingScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isAdmin = ref.watch(isAdminProvider);
+    final canView = ref.watch(hasPageAccessProvider(kPageBilling));
+    final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
+    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
     final itemsAsync = ref.watch(invoiceItemsProvider);
     final money =
         NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 2);
@@ -69,12 +71,12 @@ class BillingScreen extends ConsumerWidget {
       ],
       body: Column(
         children: [
-          if (!isAdmin)
+          if (!canView)
             AppCard(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  'Bu sayfa sadece admin için erişilebilir.',
+                  'Bu sayfaya erişiminiz yok.',
                   style: Theme.of(context)
                       .textTheme
                       .bodyMedium
@@ -136,6 +138,8 @@ class BillingScreen extends ConsumerWidget {
                         itemBuilder: (context, index) => _InvoiceRow(
                           item: items[index],
                           money: money,
+                          canEdit: canEdit,
+                          canArchive: canArchive,
                         ),
                       ),
                     ],
@@ -163,10 +167,17 @@ class BillingScreen extends ConsumerWidget {
 }
 
 class _InvoiceRow extends ConsumerStatefulWidget {
-  const _InvoiceRow({required this.item, required this.money});
+  const _InvoiceRow({
+    required this.item,
+    required this.money,
+    required this.canEdit,
+    required this.canArchive,
+  });
 
   final InvoiceItem item;
   final NumberFormat money;
+  final bool canEdit;
+  final bool canArchive;
 
   @override
   ConsumerState<_InvoiceRow> createState() => _InvoiceRowState();
@@ -176,8 +187,10 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
   bool _saving = false;
 
   Future<void> _toggleInvoiced() async {
+    if (!widget.canEdit) return;
     final apiClient = ref.read(apiClientProvider);
-    if (apiClient == null) return;
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
 
     setState(() => _saving = true);
     try {
@@ -186,24 +199,41 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
       final userId = profile?.id;
       final now = DateTime.now().toIso8601String();
 
-      await apiClient.postJson(
-        '/mutate',
-        body: {
-          'op': 'updateWhere',
-          'table': 'invoice_items',
-          'filters': [
-            {'col': 'id', 'op': 'eq', 'value': widget.item.id},
-          ],
-          'values': {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'invoice_items',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.item.id},
+            ],
+            'values': {
+              'status': nextStatus,
+              'invoiced_at': nextStatus == 'invoiced' ? now : null,
+              'approved_by': nextStatus == 'invoiced' ? userId : null,
+              'approved_at': nextStatus == 'invoiced' ? now : null,
+              'updated_by': userId,
+              'updated_at': now,
+            },
+          },
+        );
+      } else {
+        try {
+          await client!.from('invoice_items').update({
             'status': nextStatus,
             'invoiced_at': nextStatus == 'invoiced' ? now : null,
             'approved_by': nextStatus == 'invoiced' ? userId : null,
             'approved_at': nextStatus == 'invoiced' ? now : null,
             'updated_by': userId,
             'updated_at': now,
-          },
-        },
-      );
+          }).eq('id', widget.item.id);
+        } catch (_) {
+          await client!.from('invoice_items').update({
+            'status': nextStatus,
+          }).eq('id', widget.item.id);
+        }
+      }
       ref.invalidate(invoiceItemsProvider);
     } catch (_) {
       if (!mounted) return;
@@ -216,8 +246,10 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
   }
 
   Future<void> _toggleActive() async {
+    if (!widget.canArchive) return;
     final apiClient = ref.read(apiClientProvider);
-    if (apiClient == null) return;
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
 
     setState(() => _saving = true);
     try {
@@ -226,23 +258,39 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
       final now = DateTime.now().toIso8601String();
       final nextActive = !widget.item.isActive;
 
-      await apiClient.postJson(
-        '/mutate',
-        body: {
-          'op': 'updateWhere',
-          'table': 'invoice_items',
-          'filters': [
-            {'col': 'id', 'op': 'eq', 'value': widget.item.id},
-          ],
-          'values': {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'invoice_items',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.item.id},
+            ],
+            'values': {
+              'is_active': nextActive,
+              'deactivated_by': nextActive ? null : userId,
+              'deactivated_at': nextActive ? null : now,
+              'updated_by': userId,
+              'updated_at': now,
+            },
+          },
+        );
+      } else {
+        try {
+          await client!.from('invoice_items').update({
             'is_active': nextActive,
             'deactivated_by': nextActive ? null : userId,
             'deactivated_at': nextActive ? null : now,
             'updated_by': userId,
             'updated_at': now,
-          },
-        },
-      );
+          }).eq('id', widget.item.id);
+        } catch (_) {
+          await client!.from('invoice_items').update({
+            'is_active': nextActive,
+          }).eq('id', widget.item.id);
+        }
+      }
       ref.invalidate(invoiceItemsProvider);
     } catch (_) {
       if (!mounted) return;
