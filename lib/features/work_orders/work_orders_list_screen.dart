@@ -171,166 +171,446 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final wide = constraints.maxWidth >= 980;
+                    final compact = constraints.maxWidth < 720;
 
-                    final controls = Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 260,
-                          child: TextField(
-                            controller: _searchController,
-                            onChanged: (_) => setState(() {}),
-                            decoration: const InputDecoration(
-                              prefixIcon: Icon(Icons.search_rounded),
-                              hintText: 'Ara',
-                            ),
-                          ),
-                        ),
-                        _StatusPill(
-                          label: 'Durum: ${_statusLabel(_statusFilter)}',
-                          backgroundColor:
-                              const Color(0xFF7C3AED).withValues(alpha: 0.12),
-                          foregroundColor: const Color(0xFF4C1D95),
-                          icon: Icons.circle_rounded,
-                          onTap: () async {
-                            final next = await showModalBottomSheet<String>(
-                              context: context,
-                              showDragHandle: true,
-                              builder: (context) => SafeArea(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: const [
-                                    _StatusSheetItem(
-                                      value: 'all',
-                                      label: 'Tümü',
-                                    ),
-                                    _StatusSheetItem(
-                                      value: 'open',
-                                      label: 'Açık',
-                                    ),
-                                    _StatusSheetItem(
-                                      value: 'in_progress',
-                                      label: 'Yapılıyor',
-                                    ),
-                                    _StatusSheetItem(
-                                      value: 'done',
-                                      label: 'Kapalı',
-                                    ),
-                                    _StatusSheetItem(
-                                      value: 'cancelled',
-                                      label: 'İptal',
+                    Future<void> openFiltersSheet() async {
+                      await showModalBottomSheet<void>(
+                        context: context,
+                        showDragHandle: true,
+                        isScrollControlled: true,
+                        builder: (context) => StatefulBuilder(
+                          builder: (context, setSheetState) => SafeArea(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Filtreler',
+                                    style:
+                                        Theme.of(context).textTheme.titleMedium,
+                                  ),
+                                  const Gap(12),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          onPressed: () async {
+                                            final picked = await showDatePicker(
+                                              context: context,
+                                              initialDate:
+                                                  _fromDate ?? DateTime.now(),
+                                              firstDate: DateTime(2020),
+                                              lastDate: DateTime(2100),
+                                            );
+                                            if (picked == null) return;
+                                            setState(() => _fromDate = picked);
+                                            setSheetState(() {});
+                                          },
+                                          icon: const Icon(Icons.event_rounded,
+                                              size: 18),
+                                          label: Text(
+                                            _fromDate == null
+                                                ? 'Başlangıç'
+                                                : DateFormat('y-MM-dd')
+                                                    .format(_fromDate!),
+                                          ),
+                                        ),
+                                      ),
+                                      const Gap(10),
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          onPressed: () async {
+                                            final picked = await showDatePicker(
+                                              context: context,
+                                              initialDate: _toDate ??
+                                                  (_fromDate ?? DateTime.now()),
+                                              firstDate: DateTime(2020),
+                                              lastDate: DateTime(2100),
+                                            );
+                                            if (picked == null) return;
+                                            setState(() => _toDate = picked);
+                                            setSheetState(() {});
+                                          },
+                                          icon: const Icon(
+                                              Icons.event_available_rounded,
+                                              size: 18),
+                                          label: Text(
+                                            _toDate == null
+                                                ? 'Bitiş'
+                                                : DateFormat('y-MM-dd')
+                                                    .format(_toDate!),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const Gap(10),
+                                  SwitchListTile(
+                                    value: _showPassive,
+                                    onChanged: (v) {
+                                      setState(() => _showPassive = v);
+                                      setSheetState(() {});
+                                    },
+                                    title: const Text('Pasif kayıtları göster'),
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                  if (_statusFilter == 'open') ...[
+                                    SwitchListTile(
+                                      value: _reorderMode,
+                                      onChanged: (v) {
+                                        setState(() => _reorderMode = v);
+                                        setSheetState(() {});
+                                      },
+                                      title: const Text('Sürükle-bırak sıralama'),
+                                      contentPadding: EdgeInsets.zero,
                                     ),
                                   ],
-                                ),
+                                  const Gap(10),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: FilledButton.tonalIcon(
+                                          onPressed: () {
+                                            _searchController.clear();
+                                            setState(() => _statusFilter = 'open');
+                                            setState(() => _showPassive = false);
+                                            setState(() => _reorderMode = false);
+                                            setState(() {
+                                              _fromDate = null;
+                                              _toDate = null;
+                                            });
+                                            Navigator.of(context).pop();
+                                          },
+                                          icon: const Icon(
+                                              Icons.delete_outline_rounded,
+                                              size: 18),
+                                          label: const Text('Temizle'),
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor:
+                                                const Color(0xFFEF4444)
+                                                    .withValues(alpha: 0.12),
+                                            foregroundColor:
+                                                const Color(0xFF7F1D1D),
+                                            minimumSize: const Size(0, 44),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
-                            );
-                            if (next == null || next.trim().isEmpty) return;
-                            setState(() => _statusFilter = next.trim());
-                          },
-                        ),
-                    if (_statusFilter == 'open')
-                      FilledButton.tonalIcon(
-                        onPressed: () => setState(() => _reorderMode = !_reorderMode),
-                        icon: Icon(
-                          _reorderMode
-                              ? Icons.check_circle_outline_rounded
-                              : Icons.drag_handle_rounded,
-                          size: 18,
-                        ),
-                        label: Text(
-                          _reorderMode ? 'Sıralama: Açık' : 'Sıralama: Kapalı',
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor:
-                              const Color(0xFF0EA5E9).withValues(alpha: 0.12),
-                          foregroundColor: const Color(0xFF0C4A6E),
-                          minimumSize: const Size(0, 40),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
-                          ),
-                        ),
-                      ),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final picked = await showDatePicker(
-                          context: context,
-                          initialDate: _fromDate ?? DateTime.now(),
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2100),
-                        );
-                        if (picked == null) return;
-                        setState(() => _fromDate = picked);
-                      },
-                      icon: const Icon(Icons.event_rounded, size: 18),
-                      label: Text(
-                        _fromDate == null
-                            ? 'Başlangıç'
-                            : DateFormat('y-MM-dd').format(_fromDate!),
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final picked = await showDatePicker(
-                          context: context,
-                          initialDate: _toDate ?? (_fromDate ?? DateTime.now()),
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2100),
-                        );
-                        if (picked == null) return;
-                        setState(() => _toDate = picked);
-                      },
-                      icon: const Icon(Icons.event_available_rounded, size: 18),
-                      label: Text(
-                        _toDate == null
-                            ? 'Bitiş'
-                            : DateFormat('y-MM-dd').format(_toDate!),
-                      ),
-                    ),
-                    FilledButton.tonalIcon(
-                      onPressed: () => setState(() => _showPassive = !_showPassive),
-                      icon: const Icon(Icons.visibility_rounded, size: 18),
-                      label: Text(_showPassive ? 'Kayıt: Tümü' : 'Kayıt: Aktif'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor:
-                            const Color(0xFF16A34A).withValues(alpha: 0.12),
-                        foregroundColor: const Color(0xFF14532D),
-                        minimumSize: const Size(0, 40),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                      ),
-                    ),
-                        FilledButton.tonalIcon(
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _statusFilter = 'open');
-                            setState(() => _showPassive = false);
-                            setState(() => _reorderMode = false);
-                            setState(() {
-                              _fromDate = null;
-                              _toDate = null;
-                            });
-                          },
-                          icon:
-                              const Icon(Icons.delete_outline_rounded, size: 18),
-                          label: const Text('Temizle'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor:
-                                const Color(0xFFEF4444).withValues(alpha: 0.12),
-                            foregroundColor: const Color(0xFF7F1D1D),
-                            minimumSize: const Size(0, 40),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
                             ),
                           ),
                         ),
-                      ],
-                    );
+                      );
+                    }
+
+                    final controls = compact
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _searchController,
+                                      onChanged: (_) => setState(() {}),
+                                      decoration: const InputDecoration(
+                                        prefixIcon: Icon(Icons.search_rounded),
+                                        hintText: 'Ara',
+                                      ),
+                                    ),
+                                  ),
+                                  const Gap(10),
+                                  IconButton.filledTonal(
+                                    onPressed: openFiltersSheet,
+                                    icon: const Icon(Icons.tune_rounded),
+                                  ),
+                                ],
+                              ),
+                              const Gap(10),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                children: [
+                                  _StatusPill(
+                                    label:
+                                        'Durum: ${_statusLabel(_statusFilter)}',
+                                    backgroundColor: const Color(0xFF7C3AED)
+                                        .withValues(alpha: 0.12),
+                                    foregroundColor: const Color(0xFF4C1D95),
+                                    icon: Icons.circle_rounded,
+                                    onTap: () async {
+                                      final next =
+                                          await showModalBottomSheet<String>(
+                                        context: context,
+                                        showDragHandle: true,
+                                        builder: (context) => SafeArea(
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: const [
+                                              _StatusSheetItem(
+                                                value: 'all',
+                                                label: 'Tümü',
+                                              ),
+                                              _StatusSheetItem(
+                                                value: 'open',
+                                                label: 'Açık',
+                                              ),
+                                              _StatusSheetItem(
+                                                value: 'in_progress',
+                                                label: 'Yapılıyor',
+                                              ),
+                                              _StatusSheetItem(
+                                                value: 'done',
+                                                label: 'Kapalı',
+                                              ),
+                                              _StatusSheetItem(
+                                                value: 'cancelled',
+                                                label: 'İptal',
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                      if (next == null ||
+                                          next.trim().isEmpty) {
+                                        return;
+                                      }
+                                      setState(() => _statusFilter = next.trim());
+                                    },
+                                  ),
+                                  if (_statusFilter == 'open')
+                                    FilledButton.tonalIcon(
+                                      onPressed: () => setState(
+                                        () => _reorderMode = !_reorderMode,
+                                      ),
+                                      icon: Icon(
+                                        _reorderMode
+                                            ? Icons.check_circle_outline_rounded
+                                            : Icons.drag_handle_rounded,
+                                        size: 18,
+                                      ),
+                                      label: Text(
+                                        _reorderMode
+                                            ? 'Sıralama: Açık'
+                                            : 'Sıralama: Kapalı',
+                                      ),
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: const Color(0xFF0EA5E9)
+                                            .withValues(alpha: 0.12),
+                                        foregroundColor: const Color(0xFF0C4A6E),
+                                        minimumSize: const Size(0, 40),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 10,
+                                        ),
+                                      ),
+                                    ),
+                                  FilledButton.tonalIcon(
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _statusFilter = 'open');
+                                      setState(() => _showPassive = false);
+                                      setState(() => _reorderMode = false);
+                                      setState(() {
+                                        _fromDate = null;
+                                        _toDate = null;
+                                      });
+                                    },
+                                    icon: const Icon(
+                                      Icons.delete_outline_rounded,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Temizle'),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: const Color(0xFFEF4444)
+                                          .withValues(alpha: 0.12),
+                                      foregroundColor: const Color(0xFF7F1D1D),
+                                      minimumSize: const Size(0, 40),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 10,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          )
+                        : Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 260,
+                                child: TextField(
+                                  controller: _searchController,
+                                  onChanged: (_) => setState(() {}),
+                                  decoration: const InputDecoration(
+                                    prefixIcon: Icon(Icons.search_rounded),
+                                    hintText: 'Ara',
+                                  ),
+                                ),
+                              ),
+                              _StatusPill(
+                                label: 'Durum: ${_statusLabel(_statusFilter)}',
+                                backgroundColor: const Color(0xFF7C3AED)
+                                    .withValues(alpha: 0.12),
+                                foregroundColor: const Color(0xFF4C1D95),
+                                icon: Icons.circle_rounded,
+                                onTap: () async {
+                                  final next =
+                                      await showModalBottomSheet<String>(
+                                    context: context,
+                                    showDragHandle: true,
+                                    builder: (context) => SafeArea(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: const [
+                                          _StatusSheetItem(
+                                            value: 'all',
+                                            label: 'Tümü',
+                                          ),
+                                          _StatusSheetItem(
+                                            value: 'open',
+                                            label: 'Açık',
+                                          ),
+                                          _StatusSheetItem(
+                                            value: 'in_progress',
+                                            label: 'Yapılıyor',
+                                          ),
+                                          _StatusSheetItem(
+                                            value: 'done',
+                                            label: 'Kapalı',
+                                          ),
+                                          _StatusSheetItem(
+                                            value: 'cancelled',
+                                            label: 'İptal',
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                  if (next == null || next.trim().isEmpty) {
+                                    return;
+                                  }
+                                  setState(() => _statusFilter = next.trim());
+                                },
+                              ),
+                              if (_statusFilter == 'open')
+                                FilledButton.tonalIcon(
+                                  onPressed: () =>
+                                      setState(() => _reorderMode = !_reorderMode),
+                                  icon: Icon(
+                                    _reorderMode
+                                        ? Icons.check_circle_outline_rounded
+                                        : Icons.drag_handle_rounded,
+                                    size: 18,
+                                  ),
+                                  label: Text(
+                                    _reorderMode
+                                        ? 'Sıralama: Açık'
+                                        : 'Sıralama: Kapalı',
+                                  ),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFF0EA5E9)
+                                        .withValues(alpha: 0.12),
+                                    foregroundColor: const Color(0xFF0C4A6E),
+                                    minimumSize: const Size(0, 40),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 10,
+                                    ),
+                                  ),
+                                ),
+                              OutlinedButton.icon(
+                                onPressed: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: _fromDate ?? DateTime.now(),
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2100),
+                                  );
+                                  if (picked == null) return;
+                                  setState(() => _fromDate = picked);
+                                },
+                                icon: const Icon(Icons.event_rounded, size: 18),
+                                label: Text(
+                                  _fromDate == null
+                                      ? 'Başlangıç'
+                                      : DateFormat('y-MM-dd').format(_fromDate!),
+                                ),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate:
+                                        _toDate ?? (_fromDate ?? DateTime.now()),
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2100),
+                                  );
+                                  if (picked == null) return;
+                                  setState(() => _toDate = picked);
+                                },
+                                icon: const Icon(Icons.event_available_rounded,
+                                    size: 18),
+                                label: Text(
+                                  _toDate == null
+                                      ? 'Bitiş'
+                                      : DateFormat('y-MM-dd').format(_toDate!),
+                                ),
+                              ),
+                              FilledButton.tonalIcon(
+                                onPressed: () =>
+                                    setState(() => _showPassive = !_showPassive),
+                                icon:
+                                    const Icon(Icons.visibility_rounded, size: 18),
+                                label: Text(
+                                  _showPassive ? 'Kayıt: Tümü' : 'Kayıt: Aktif',
+                                ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFF16A34A)
+                                      .withValues(alpha: 0.12),
+                                  foregroundColor: const Color(0xFF14532D),
+                                  minimumSize: const Size(0, 40),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 10,
+                                  ),
+                                ),
+                              ),
+                              FilledButton.tonalIcon(
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _statusFilter = 'open');
+                                  setState(() => _showPassive = false);
+                                  setState(() => _reorderMode = false);
+                                  setState(() {
+                                    _fromDate = null;
+                                    _toDate = null;
+                                  });
+                                },
+                                icon: const Icon(Icons.delete_outline_rounded,
+                                    size: 18),
+                                label: const Text('Temizle'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFFEF4444)
+                                      .withValues(alpha: 0.12),
+                                  foregroundColor: const Color(0xFF7F1D1D),
+                                  minimumSize: const Size(0, 40),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 10,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
 
                     final stats = Wrap(
                       spacing: 10,
@@ -642,7 +922,7 @@ class _WorkOrdersList extends StatelessWidget {
     if (canReorder) {
       return ReorderableListView.builder(
         buildDefaultDragHandles: false,
-        padding: EdgeInsets.zero,
+        padding: const EdgeInsets.only(bottom: 120),
         itemCount: sorted.length,
         onReorder: (oldIndex, newIndex) {
           if (newIndex > oldIndex) newIndex -= 1;
@@ -669,7 +949,7 @@ class _WorkOrdersList extends StatelessWidget {
     }
 
     return ListView.separated(
-      padding: EdgeInsets.zero,
+      padding: const EdgeInsets.only(bottom: 120),
       itemCount: sorted.length,
       separatorBuilder: (context, index) => const Gap(10),
       itemBuilder: (context, index) {

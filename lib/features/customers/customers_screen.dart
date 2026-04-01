@@ -289,146 +289,375 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         children: [
           AppCard(
             padding: const EdgeInsets.all(12),
-            child: Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                FilledButton.tonalIcon(
-                  onPressed: () =>
-                      ref.read(customerCompactViewProvider.notifier).toggle(),
-                  icon: Icon(
-                    compactView
-                        ? Icons.view_agenda_rounded
-                        : Icons.view_compact_alt_rounded,
-                    size: 18,
-                  ),
-                  label: Text(compactView ? 'Geniş Görünüm' : 'Sık Görünüm'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
-                    foregroundColor: AppTheme.primaryDark,
-                    minimumSize: const Size(0, 40),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
+            child: isMobile
+                ? citiesAsync.when(
+                    data: (cities) => Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _searchController,
+                                onChanged: (value) {
+                                  ref
+                                      .read(customerFiltersProvider.notifier)
+                                      .setSearch(value);
+                                  ref
+                                      .read(customerPageProvider.notifier)
+                                      .reset();
+                                },
+                                decoration: const InputDecoration(
+                                  prefixIcon: Icon(Icons.search_rounded),
+                                  hintText: 'Ara',
+                                ),
+                              ),
+                            ),
+                            const Gap(10),
+                            IconButton.filledTonal(
+                              onPressed: () async {
+                                await showModalBottomSheet<void>(
+                                  context: context,
+                                  showDragHandle: true,
+                                  builder: (context) => SafeArea(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Filtreler',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleMedium,
+                                          ),
+                                          const Gap(12),
+                                          DropdownButtonFormField<String?>(
+                                            initialValue: filters.city,
+                                            items: [
+                                              const DropdownMenuItem(
+                                                value: null,
+                                                child: Text('Şehir: Tümü'),
+                                              ),
+                                              for (final c in cities)
+                                                DropdownMenuItem(
+                                                  value: c,
+                                                  child: Text(c),
+                                                ),
+                                            ],
+                                            onChanged: (value) {
+                                              ref
+                                                  .read(customerFiltersProvider
+                                                      .notifier)
+                                                  .setCity(value);
+                                              ref
+                                                  .read(customerPageProvider
+                                                      .notifier)
+                                                  .reset();
+                                            },
+                                            decoration: const InputDecoration(
+                                              labelText: 'Şehir',
+                                            ),
+                                          ),
+                                          const Gap(10),
+                                          SwitchListTile(
+                                            value: showPassive,
+                                            onChanged: (v) {
+                                              ref
+                                                  .read(
+                                                    customerShowPassiveProvider
+                                                        .notifier,
+                                                  )
+                                                  .set(v);
+                                              ref
+                                                  .read(customerPageProvider
+                                                      .notifier)
+                                                  .reset();
+                                            },
+                                            title: const Text(
+                                              'Pasif kayıtları göster',
+                                            ),
+                                            contentPadding: EdgeInsets.zero,
+                                          ),
+                                          const Gap(10),
+                                          DropdownButtonFormField<
+                                              CustomerSortOption>(
+                                            initialValue: sort,
+                                            items: const [
+                                              DropdownMenuItem(
+                                                value: CustomerSortOption.id,
+                                                child: Text('En eski'),
+                                              ),
+                                              DropdownMenuItem(
+                                                value:
+                                                    CustomerSortOption.nameAsc,
+                                                child: Text('A-Z'),
+                                              ),
+                                              DropdownMenuItem(
+                                                value:
+                                                    CustomerSortOption.nameDesc,
+                                                child: Text('Z-A'),
+                                              ),
+                                            ],
+                                            onChanged: (value) {
+                                              if (value == null) return;
+                                              ref
+                                                  .read(customerSortProvider
+                                                      .notifier)
+                                                  .set(value);
+                                            },
+                                            decoration: const InputDecoration(
+                                              labelText: 'Sıralama',
+                                            ),
+                                          ),
+                                          const Gap(10),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: FilledButton.tonalIcon(
+                                                  onPressed: () {
+                                                    ref
+                                                        .read(
+                                                          customerFiltersProvider
+                                                              .notifier,
+                                                        )
+                                                        .setSearch('');
+                                                    ref
+                                                        .read(
+                                                          customerFiltersProvider
+                                                              .notifier,
+                                                        )
+                                                        .setCity(null);
+                                                    ref
+                                                        .read(
+                                                          customerShowPassiveProvider
+                                                              .notifier,
+                                                        )
+                                                        .set(false);
+                                                    ref
+                                                        .read(
+                                                          customerSortProvider
+                                                              .notifier,
+                                                        )
+                                                        .set(
+                                                          CustomerSortOption.id,
+                                                        );
+                                                    ref
+                                                        .read(
+                                                          customerPageProvider
+                                                              .notifier,
+                                                        )
+                                                        .reset();
+                                                    ref.invalidate(
+                                                      customersProvider,
+                                                    );
+                                                    Navigator.of(context).pop();
+                                                  },
+                                                  icon: const Icon(
+                                                    Icons.delete_outline_rounded,
+                                                    size: 18,
+                                                  ),
+                                                  label: const Text('Temizle'),
+                                                  style: FilledButton.styleFrom(
+                                                    backgroundColor:
+                                                        const Color(0xFFEF4444)
+                                                            .withValues(
+                                                      alpha: 0.12,
+                                                    ),
+                                                    foregroundColor:
+                                                        const Color(0xFF7F1D1D),
+                                                    minimumSize:
+                                                        const Size(0, 44),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.tune_rounded),
+                            ),
+                          ],
+                        ),
+                        const Gap(10),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            AppBadge(
+                              label: showPassive ? 'Durum: Tümü' : 'Durum: Aktif',
+                              tone: showPassive
+                                  ? AppBadgeTone.neutral
+                                  : AppBadgeTone.success,
+                            ),
+                            if ((filters.city ?? '').trim().isNotEmpty)
+                              AppBadge(
+                                label: (filters.city ?? '').trim(),
+                                tone: AppBadgeTone.primary,
+                              ),
+                          ],
+                        ),
+                      ],
                     ),
-                  ),
-                ),
-                SizedBox(
-                  width: 260,
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (value) {
-                      ref.read(customerFiltersProvider.notifier).setSearch(value);
-                      ref.read(customerPageProvider.notifier).reset();
-                    },
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search_rounded),
-                      hintText: 'Ara',
-                    ),
-                  ),
-                ),
-                citiesAsync.when(
-                  data: (cities) => _PillDropdown<String?>(
-                    value: filters.city,
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('Şehir: Tümü')),
-                      for (final c in cities)
-                        DropdownMenuItem(value: c, child: Text(c)),
+                    loading: () => const SizedBox.shrink(),
+                    error: (error, stackTrace) => const SizedBox.shrink(),
+                  )
+                : Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      FilledButton.tonalIcon(
+                        onPressed: () => ref
+                            .read(customerCompactViewProvider.notifier)
+                            .toggle(),
+                        icon: Icon(
+                          compactView
+                              ? Icons.view_agenda_rounded
+                              : Icons.view_compact_alt_rounded,
+                          size: 18,
+                        ),
+                        label:
+                            Text(compactView ? 'Geniş Görünüm' : 'Sık Görünüm'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor:
+                              AppTheme.primary.withValues(alpha: 0.12),
+                          foregroundColor: AppTheme.primaryDark,
+                          minimumSize: const Size(0, 40),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 260,
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (value) {
+                            ref
+                                .read(customerFiltersProvider.notifier)
+                                .setSearch(value);
+                            ref.read(customerPageProvider.notifier).reset();
+                          },
+                          decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.search_rounded),
+                            hintText: 'Ara',
+                          ),
+                        ),
+                      ),
+                      citiesAsync.when(
+                        data: (cities) => _PillDropdown<String?>(
+                          value: filters.city,
+                          items: [
+                            const DropdownMenuItem(
+                              value: null,
+                              child: Text('Şehir: Tümü'),
+                            ),
+                            for (final c in cities)
+                              DropdownMenuItem(value: c, child: Text(c)),
+                          ],
+                          onChanged: (value) {
+                            ref
+                                .read(customerFiltersProvider.notifier)
+                                .setCity(value);
+                            ref.read(customerPageProvider.notifier).reset();
+                          },
+                          backgroundColor:
+                              const Color(0xFF16A34A).withValues(alpha: 0.12),
+                          foregroundColor: const Color(0xFF14532D),
+                          icon: Icons.location_city_rounded,
+                          labelBuilder: (value) => Text(
+                            'Şehir: ${value?.trim().isNotEmpty ?? false ? value!.trim() : 'Tümü'}',
+                          ),
+                        ),
+                        loading: () => const SizedBox.shrink(),
+                        error: (_, _) => const SizedBox.shrink(),
+                      ),
+                      FilledButton.tonalIcon(
+                        onPressed: () {
+                          ref
+                              .read(customerShowPassiveProvider.notifier)
+                              .set(!showPassive);
+                          ref.read(customerPageProvider.notifier).reset();
+                        },
+                        icon: const Icon(Icons.circle_rounded, size: 12),
+                        label: Text(showPassive ? 'Durum: Tümü' : 'Durum: Aktif'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor:
+                              const Color(0xFF7C3AED).withValues(alpha: 0.12),
+                          foregroundColor: const Color(0xFF4C1D95),
+                          minimumSize: const Size(0, 40),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
+                      _PillDropdown<CustomerSortOption>(
+                        value: sort,
+                        items: const [
+                          DropdownMenuItem(
+                            value: CustomerSortOption.id,
+                            child: Text('Sıralama: En eski'),
+                          ),
+                          DropdownMenuItem(
+                            value: CustomerSortOption.nameAsc,
+                            child: Text('Sıralama: A-Z'),
+                          ),
+                          DropdownMenuItem(
+                            value: CustomerSortOption.nameDesc,
+                            child: Text('Sıralama: Z-A'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          ref.read(customerSortProvider.notifier).set(value);
+                        },
+                        backgroundColor:
+                            const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                        foregroundColor: const Color(0xFF7C2D12),
+                        icon: Icons.sort_rounded,
+                        labelBuilder: (value) => Text(
+                          switch (value ?? CustomerSortOption.id) {
+                            CustomerSortOption.id => 'Sıralama: En eski',
+                            CustomerSortOption.nameAsc => 'Sıralama: A-Z',
+                            CustomerSortOption.nameDesc => 'Sıralama: Z-A',
+                          },
+                        ),
+                      ),
+                      FilledButton.tonalIcon(
+                        onPressed: () {
+                          ref.read(customerFiltersProvider.notifier).setSearch('');
+                          ref.read(customerFiltersProvider.notifier).setCity(null);
+                          ref.read(customerShowPassiveProvider.notifier).set(false);
+                          ref
+                              .read(customerSortProvider.notifier)
+                              .set(CustomerSortOption.id);
+                          ref.read(customerPageProvider.notifier).reset();
+                          ref.invalidate(customersProvider);
+                        },
+                        icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                        label: const Text('Temizle'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor:
+                              const Color(0xFFEF4444).withValues(alpha: 0.12),
+                          foregroundColor: const Color(0xFF7F1D1D),
+                          minimumSize: const Size(0, 40),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
                     ],
-                    onChanged: (value) {
-                      ref.read(customerFiltersProvider.notifier).setCity(value);
-                      ref.read(customerPageProvider.notifier).reset();
-                    },
-                    backgroundColor:
-                        const Color(0xFF16A34A).withValues(alpha: 0.12),
-                    foregroundColor: const Color(0xFF14532D),
-                    icon: Icons.location_city_rounded,
-                    labelBuilder: (value) => Text(
-                      'Şehir: ${value?.trim().isNotEmpty ?? false ? value!.trim() : 'Tümü'}',
-                    ),
                   ),
-                  loading: () => const SizedBox.shrink(),
-                  error: (_, _) => const SizedBox.shrink(),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: () {
-                    ref
-                        .read(customerShowPassiveProvider.notifier)
-                        .set(!showPassive);
-                    ref.read(customerPageProvider.notifier).reset();
-                  },
-                  icon: const Icon(Icons.circle_rounded, size: 12),
-                  label: Text(showPassive ? 'Durum: Tümü' : 'Durum: Aktif'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor:
-                        const Color(0xFF7C3AED).withValues(alpha: 0.12),
-                    foregroundColor: const Color(0xFF4C1D95),
-                    minimumSize: const Size(0, 40),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-                _PillDropdown<CustomerSortOption>(
-                  value: sort,
-                  items: const [
-                    DropdownMenuItem(
-                      value: CustomerSortOption.id,
-                      child: Text('Sıralama: En eski'),
-                    ),
-                    DropdownMenuItem(
-                      value: CustomerSortOption.nameAsc,
-                      child: Text('Sıralama: A-Z'),
-                    ),
-                    DropdownMenuItem(
-                      value: CustomerSortOption.nameDesc,
-                      child: Text('Sıralama: Z-A'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    ref.read(customerSortProvider.notifier).set(value);
-                  },
-                  backgroundColor:
-                      const Color(0xFFF59E0B).withValues(alpha: 0.12),
-                  foregroundColor: const Color(0xFF7C2D12),
-                  icon: Icons.sort_rounded,
-                  labelBuilder: (value) => Text(
-                    switch (value ?? CustomerSortOption.id) {
-                      CustomerSortOption.id => 'Sıralama: En eski',
-                      CustomerSortOption.nameAsc => 'Sıralama: A-Z',
-                      CustomerSortOption.nameDesc => 'Sıralama: Z-A',
-                    },
-                  ),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: () {
-                    ref.read(customerFiltersProvider.notifier).setSearch('');
-                    ref.read(customerFiltersProvider.notifier).setCity(null);
-                    ref.read(customerShowPassiveProvider.notifier).set(false);
-                    ref.read(customerSortProvider.notifier).set(
-                          CustomerSortOption.id,
-                        );
-                    ref.read(customerPageProvider.notifier).reset();
-                    ref.invalidate(customersProvider);
-                  },
-                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                  label: const Text('Temizle'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor:
-                        const Color(0xFFEF4444).withValues(alpha: 0.12),
-                    foregroundColor: const Color(0xFF7F1D1D),
-                    minimumSize: const Size(0, 40),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ),
           const Gap(12),
           Expanded(
@@ -514,7 +743,7 @@ class _CustomersListMobile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
-      padding: EdgeInsets.zero,
+      padding: const EdgeInsets.only(bottom: 120),
       itemCount: items.length,
       separatorBuilder: (context, index) => const Gap(10),
       itemBuilder: (context, index) {

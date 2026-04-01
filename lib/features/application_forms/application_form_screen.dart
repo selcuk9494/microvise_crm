@@ -888,81 +888,89 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
           final todayCount = baseFiltered
               .where((item) => _isSameDay(item.applicationDate, DateTime.now()))
               .length;
-          return Column(
-            children: [
-              AppCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Filtreler',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const Gap(12),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        SizedBox(
-                          width: isMobile ? double.infinity : 280,
-                          child: TextField(
-                            controller: _customerFilterController,
-                            onChanged: (_) => setState(() {}),
-                            decoration: const InputDecoration(
-                              labelText: 'Müşteri',
-                              hintText: 'Müşteri adına göre ara',
-                              prefixIcon: Icon(Icons.person_search_rounded),
+
+          Future<void> openMobileFiltersSheet() async {
+            await showModalBottomSheet<void>(
+              context: context,
+              showDragHandle: true,
+              isScrollControlled: true,
+              builder: (context) => SafeArea(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    16,
+                    16 + MediaQuery.viewInsetsOf(context).bottom,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Filtreler',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const Gap(12),
+                      TextField(
+                        controller: _customerFilterController,
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(
+                          labelText: 'Müşteri',
+                          hintText: 'Müşteri adına göre ara',
+                          prefixIcon: Icon(Icons.person_search_rounded),
+                        ),
+                      ),
+                      const Gap(10),
+                      TextField(
+                        controller: _registryFilterController,
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(
+                          labelText: 'Cihaz / Sicil No',
+                          hintText: 'Dosya veya cihaz sicili',
+                          prefixIcon: Icon(Icons.confirmation_num_rounded),
+                        ),
+                      ),
+                      const Gap(10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _FilterDateField(
+                              label: 'Başlangıç Tarihi',
+                              value: _fromDate,
+                              format: _dateFormat,
+                              onTap: () => _pickFilterDate(
+                                currentValue: _fromDate,
+                                onSelected: (value) =>
+                                    setState(() => _fromDate = value),
+                              ),
+                              onClear: _fromDate == null
+                                  ? null
+                                  : () => setState(() => _fromDate = null),
                             ),
                           ),
-                        ),
-                        SizedBox(
-                          width: isMobile ? double.infinity : 240,
-                          child: TextField(
-                            controller: _registryFilterController,
-                            onChanged: (_) => setState(() {}),
-                            decoration: const InputDecoration(
-                              labelText: 'Cihaz / Sicil No',
-                              hintText: 'Dosya veya cihaz sicili',
-                              prefixIcon: Icon(Icons.confirmation_num_rounded),
+                          const Gap(10),
+                          Expanded(
+                            child: _FilterDateField(
+                              label: 'Bitiş Tarihi',
+                              value: _toDate,
+                              format: _dateFormat,
+                              onTap: () => _pickFilterDate(
+                                currentValue: _toDate,
+                                onSelected: (value) =>
+                                    setState(() => _toDate = value),
+                              ),
+                              onClear: _toDate == null
+                                  ? null
+                                  : () => setState(() => _toDate = null),
                             ),
                           ),
-                        ),
-                        SizedBox(
-                          width: isMobile ? double.infinity : 180,
-                          child: _FilterDateField(
-                            label: 'Başlangıç Tarihi',
-                            value: _fromDate,
-                            format: _dateFormat,
-                            onTap: () => _pickFilterDate(
-                              currentValue: _fromDate,
-                              onSelected: (value) =>
-                                  setState(() => _fromDate = value),
-                            ),
-                            onClear: _fromDate == null
-                                ? null
-                                : () => setState(() => _fromDate = null),
-                          ),
-                        ),
-                        SizedBox(
-                          width: isMobile ? double.infinity : 180,
-                          child: _FilterDateField(
-                            label: 'Bitiş Tarihi',
-                            value: _toDate,
-                            format: _dateFormat,
-                            onTap: () => _pickFilterDate(
-                              currentValue: _toDate,
-                              onSelected: (value) =>
-                                  setState(() => _toDate = value),
-                            ),
-                            onClear: _toDate == null
-                                ? null
-                                : () => setState(() => _toDate = null),
-                          ),
-                        ),
-                        if (isMobile)
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
+                        ],
+                      ),
+                      const Gap(10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.tonalIcon(
                               onPressed: () {
                                 setState(() {
                                   _customerFilterController.clear();
@@ -971,29 +979,168 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                   _toDate = null;
                                   _todayOnly = false;
                                 });
+                                Navigator.of(context).pop();
                               },
                               icon: const Icon(Icons.filter_alt_off_rounded),
                               label: const Text('Temizle'),
                             ),
-                          )
-                        else
-                          OutlinedButton.icon(
-                            onPressed: () {
-                              setState(() {
-                                _customerFilterController.clear();
-                                _registryFilterController.clear();
-                                _fromDate = null;
-                                _toDate = null;
-                                _todayOnly = false;
-                              });
-                            },
-                            icon: const Icon(Icons.filter_alt_off_rounded),
-                            label: const Text('Temizle'),
                           ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
+              ),
+            );
+          }
+
+          return Column(
+            children: [
+              AppCard(
+                padding: const EdgeInsets.all(12),
+                child: isMobile
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _customerFilterController,
+                                  onChanged: (_) => setState(() {}),
+                                  decoration: const InputDecoration(
+                                    prefixIcon:
+                                        Icon(Icons.person_search_rounded),
+                                    hintText: 'Müşteri ara',
+                                  ),
+                                ),
+                              ),
+                              const Gap(10),
+                              IconButton.filledTonal(
+                                onPressed: openMobileFiltersSheet,
+                                icon: const Icon(Icons.tune_rounded),
+                              ),
+                            ],
+                          ),
+                          if (_registryFilterController.text.trim().isNotEmpty ||
+                              _fromDate != null ||
+                              _toDate != null) ...[
+                            const Gap(10),
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: [
+                                if (_registryFilterController.text
+                                    .trim()
+                                    .isNotEmpty)
+                                  AppBadge(
+                                    label: 'Sicil: Var',
+                                    tone: AppBadgeTone.primary,
+                                  ),
+                                if (_fromDate != null)
+                                  AppBadge(
+                                    label:
+                                        'Başlangıç: ${_dateFormat.format(_fromDate!)}',
+                                    tone: AppBadgeTone.neutral,
+                                  ),
+                                if (_toDate != null)
+                                  AppBadge(
+                                    label:
+                                        'Bitiş: ${_dateFormat.format(_toDate!)}',
+                                    tone: AppBadgeTone.neutral,
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Filtreler',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const Gap(12),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: [
+                              SizedBox(
+                                width: isMobile ? double.infinity : 280,
+                                child: TextField(
+                                  controller: _customerFilterController,
+                                  onChanged: (_) => setState(() {}),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Müşteri',
+                                    hintText: 'Müşteri adına göre ara',
+                                    prefixIcon:
+                                        Icon(Icons.person_search_rounded),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: isMobile ? double.infinity : 240,
+                                child: TextField(
+                                  controller: _registryFilterController,
+                                  onChanged: (_) => setState(() {}),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Cihaz / Sicil No',
+                                    hintText: 'Dosya veya cihaz sicili',
+                                    prefixIcon:
+                                        Icon(Icons.confirmation_num_rounded),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: isMobile ? double.infinity : 180,
+                                child: _FilterDateField(
+                                  label: 'Başlangıç Tarihi',
+                                  value: _fromDate,
+                                  format: _dateFormat,
+                                  onTap: () => _pickFilterDate(
+                                    currentValue: _fromDate,
+                                    onSelected: (value) =>
+                                        setState(() => _fromDate = value),
+                                  ),
+                                  onClear: _fromDate == null
+                                      ? null
+                                      : () => setState(() => _fromDate = null),
+                                ),
+                              ),
+                              SizedBox(
+                                width: isMobile ? double.infinity : 180,
+                                child: _FilterDateField(
+                                  label: 'Bitiş Tarihi',
+                                  value: _toDate,
+                                  format: _dateFormat,
+                                  onTap: () => _pickFilterDate(
+                                    currentValue: _toDate,
+                                    onSelected: (value) =>
+                                        setState(() => _toDate = value),
+                                  ),
+                                  onClear: _toDate == null
+                                      ? null
+                                      : () => setState(() => _toDate = null),
+                                ),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _customerFilterController.clear();
+                                    _registryFilterController.clear();
+                                    _fromDate = null;
+                                    _toDate = null;
+                                    _todayOnly = false;
+                                  });
+                                },
+                                icon: const Icon(Icons.filter_alt_off_rounded),
+                                label: const Text('Temizle'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
               ),
               const Gap(12),
               AppCard(
@@ -1104,49 +1251,52 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                   ),
                 )
               else
-                Column(
-                  children: [
-                    for (var index = 0; index < filtered.length; index++) ...[
-                      _ApplicationRecordCard(
-                        record: filtered[index],
-                        canEdit: canEdit,
-                        canArchive: canArchive,
-                        canDeletePermanently: canDeletePermanently,
-                        selected: _selectedRecordIds.contains(
-                          filtered[index].id,
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 120),
+                  child: Column(
+                    children: [
+                      for (var index = 0; index < filtered.length; index++) ...[
+                        _ApplicationRecordCard(
+                          record: filtered[index],
+                          canEdit: canEdit,
+                          canArchive: canArchive,
+                          canDeletePermanently: canDeletePermanently,
+                          selected: _selectedRecordIds.contains(
+                            filtered[index].id,
+                          ),
+                          onSelectionChanged: (selected) {
+                            setState(() {
+                              if (selected) {
+                                _selectedRecordIds.add(filtered[index].id);
+                              } else {
+                                _selectedRecordIds.remove(filtered[index].id);
+                              }
+                            });
+                          },
+                          onPrintKdv: () => _print(
+                            filtered[index],
+                            kind: ApplicationPrintKind.kdv,
+                          ),
+                          onPrintKdv4a: () => _print(
+                            filtered[index],
+                            kind: ApplicationPrintKind.kdv4a,
+                          ),
+                          onCreateWorkOrder: () =>
+                              _openCreateWorkOrdersDialog([filtered[index]]),
+                          onEdit: () => _openEditDialog(filtered[index]),
+                          onDuplicate: () =>
+                              _openDuplicateDialog(filtered[index]),
+                          onToggleActive: () => _setRecordActive(
+                            filtered[index],
+                            !filtered[index].isActive,
+                          ),
+                          onDeletePermanently: () =>
+                              _deleteRecordPermanently(filtered[index]),
                         ),
-                        onSelectionChanged: (selected) {
-                          setState(() {
-                            if (selected) {
-                              _selectedRecordIds.add(filtered[index].id);
-                            } else {
-                              _selectedRecordIds.remove(filtered[index].id);
-                            }
-                          });
-                        },
-                        onPrintKdv: () => _print(
-                          filtered[index],
-                          kind: ApplicationPrintKind.kdv,
-                        ),
-                        onPrintKdv4a: () => _print(
-                          filtered[index],
-                          kind: ApplicationPrintKind.kdv4a,
-                        ),
-                        onCreateWorkOrder: () =>
-                            _openCreateWorkOrdersDialog([filtered[index]]),
-                        onEdit: () => _openEditDialog(filtered[index]),
-                        onDuplicate: () =>
-                            _openDuplicateDialog(filtered[index]),
-                        onToggleActive: () => _setRecordActive(
-                          filtered[index],
-                          !filtered[index].isActive,
-                        ),
-                        onDeletePermanently: () =>
-                            _deleteRecordPermanently(filtered[index]),
-                      ),
-                      if (index != filtered.length - 1) const Gap(12),
+                        if (index != filtered.length - 1) const Gap(12),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
             ],
           );
