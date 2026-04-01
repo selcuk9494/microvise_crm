@@ -49,6 +49,8 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
   String _statusFilter = 'open';
   bool _showPassive = false;
   bool _reorderMode = false;
+  DateTime? _fromDate;
+  DateTime? _toDate;
 
   @override
   void dispose() {
@@ -60,12 +62,10 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
   Widget build(BuildContext context) {
     final boardAsync = ref.watch(workOrdersBoardProvider);
     final profileAsync = ref.watch(currentUserProfileProvider);
-    final isMobile = MediaQuery.sizeOf(context).width < 900;
     const allowedStatuses = {'all', 'open', 'in_progress', 'done', 'cancelled'};
     if (!allowedStatuses.contains(_statusFilter)) {
       _statusFilter = 'all';
     }
-    if (!isMobile) _reorderMode = false;
     if (_statusFilter != 'open') _reorderMode = false;
 
     return AppPageLayout(
@@ -141,6 +141,18 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
             if (!_showPassive && !item.isActive) return false;
             if (_statusFilter != 'all' && item.status != _statusFilter) {
               return false;
+            }
+            if (_fromDate != null) {
+              final d = item.createdAt ?? item.scheduledDate;
+              if (d == null) return false;
+              final start = DateTime(_fromDate!.year, _fromDate!.month, _fromDate!.day);
+              if (d.isBefore(start)) return false;
+            }
+            if (_toDate != null) {
+              final d = item.createdAt ?? item.scheduledDate;
+              if (d == null) return false;
+              final end = DateTime(_toDate!.year, _toDate!.month, _toDate!.day, 23, 59, 59);
+              if (d.isAfter(end)) return false;
             }
             if (search.isEmpty) return true;
             final haystack = [
@@ -218,7 +230,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                             setState(() => _statusFilter = next.trim());
                           },
                         ),
-                    if (isMobile && _statusFilter == 'open')
+                    if (_statusFilter == 'open')
                       FilledButton.tonalIcon(
                         onPressed: () => setState(() => _reorderMode = !_reorderMode),
                         icon: Icon(
@@ -241,6 +253,42 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                           ),
                         ),
                       ),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: _fromDate ?? DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked == null) return;
+                        setState(() => _fromDate = picked);
+                      },
+                      icon: const Icon(Icons.event_rounded, size: 18),
+                      label: Text(
+                        _fromDate == null
+                            ? 'Başlangıç'
+                            : DateFormat('y-MM-dd').format(_fromDate!),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: _toDate ?? (_fromDate ?? DateTime.now()),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked == null) return;
+                        setState(() => _toDate = picked);
+                      },
+                      icon: const Icon(Icons.event_available_rounded, size: 18),
+                      label: Text(
+                        _toDate == null
+                            ? 'Bitiş'
+                            : DateFormat('y-MM-dd').format(_toDate!),
+                      ),
+                    ),
                     FilledButton.tonalIcon(
                       onPressed: () => setState(() => _showPassive = !_showPassive),
                       icon: const Icon(Icons.visibility_rounded, size: 18),
@@ -262,6 +310,10 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                             setState(() => _statusFilter = 'open');
                             setState(() => _showPassive = false);
                             setState(() => _reorderMode = false);
+                            setState(() {
+                              _fromDate = null;
+                              _toDate = null;
+                            });
                           },
                           icon:
                               const Icon(Icons.delete_outline_rounded, size: 18),
@@ -344,7 +396,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                       )
                     : _WorkOrdersList(
                         items: filtered,
-                        canReorder: isMobile &&
+                        canReorder:
                             _reorderMode &&
                             _statusFilter == 'open' &&
                             search.trim().isEmpty,
@@ -358,6 +410,41 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                             order: order,
                           );
                           ref.read(workOrdersBoardProvider.notifier).refresh();
+                        },
+                        onCancel: (order) {
+                          ref
+                              .read(workOrdersBoardProvider.notifier)
+                              .updateStatus(workOrderId: order.id, newStatus: 'cancelled');
+                        },
+                        onToggleActive: (order) {
+                          ref
+                              .read(workOrdersBoardProvider.notifier)
+                              .setActive(workOrderId: order.id, isActive: !order.isActive);
+                        },
+                        onDelete: (order) async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Silme Onayı'),
+                              content: Text('#${_shortId(order.id)} silinsin mi?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(false),
+                                  child: const Text('Vazgeç'),
+                                ),
+                                FilledButton(
+                                  onPressed: () => Navigator.of(context).pop(true),
+                                  child: const Text('Sil'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirm == true) {
+                            await ref
+                                .read(workOrdersBoardProvider.notifier)
+                                .deleteWorkOrder(order.id);
+                          }
                         },
                       ),
               ),
@@ -534,12 +621,18 @@ class _WorkOrdersList extends StatelessWidget {
     required this.canReorder,
     required this.onReorder,
     required this.onOpen,
+    required this.onCancel,
+    required this.onToggleActive,
+    required this.onDelete,
   });
 
   final List<WorkOrder> items;
   final bool canReorder;
   final ValueChanged<List<WorkOrder>> onReorder;
   final ValueChanged<WorkOrder> onOpen;
+  final ValueChanged<WorkOrder> onCancel;
+  final ValueChanged<WorkOrder> onToggleActive;
+  final ValueChanged<WorkOrder> onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -567,6 +660,9 @@ class _WorkOrdersList extends StatelessWidget {
             reorderIndex: index,
             reorderable: true,
             onOpen: () => onOpen(order),
+            onCancel: () => onCancel(order),
+            onToggleActive: () => onToggleActive(order),
+            onDelete: () => onDelete(order),
           );
         },
       );
@@ -585,6 +681,9 @@ class _WorkOrdersList extends StatelessWidget {
           reorderIndex: index,
           reorderable: false,
           onOpen: () => onOpen(order),
+          onCancel: () => onCancel(order),
+          onToggleActive: () => onToggleActive(order),
+          onDelete: () => onDelete(order),
         );
       },
     );
@@ -599,6 +698,9 @@ class _WorkOrderCard extends StatelessWidget {
     required this.reorderIndex,
     required this.reorderable,
     required this.onOpen,
+    required this.onCancel,
+    required this.onToggleActive,
+    required this.onDelete,
   });
 
   final WorkOrder order;
@@ -606,6 +708,9 @@ class _WorkOrderCard extends StatelessWidget {
   final int reorderIndex;
   final bool reorderable;
   final VoidCallback onOpen;
+  final VoidCallback onCancel;
+  final VoidCallback onToggleActive;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -729,7 +834,39 @@ class _WorkOrderCard extends StatelessWidget {
               index: reorderIndex,
               child: const Icon(Icons.drag_handle_rounded),
             ),
-          ],
+          ] else ...[
+            const Gap(10),
+            PopupMenuButton<String>(
+              itemBuilder: (context) => [
+                const PopupMenuItem(value: 'open', child: Text('Düzenle')),
+                const PopupMenuItem(value: 'cancel', child: Text('İptal Et')),
+                PopupMenuItem(
+                  value: 'toggle',
+                  child: Text(order.isActive ? 'Pasife Al' : 'Aktifleştir'),
+                ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Text('Sil'),
+                ),
+              ],
+              onSelected: (value) {
+                switch (value) {
+                  case 'open':
+                    onOpen();
+                    break;
+                  case 'cancel':
+                    onCancel();
+                    break;
+                  case 'toggle':
+                    onToggleActive();
+                    break;
+                  case 'delete':
+                    onDelete();
+                    break;
+                }
+              },
+            ),
+          ]
         ],
       ),
     );

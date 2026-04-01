@@ -62,6 +62,80 @@ class _AppPageLayoutState extends State<AppPageLayout> {
         : AppTheme.pagePaddingMobile.horizontal / 2;
     final topPadding = width >= 720 ? 14.0 : 10.0;
 
+    if (isMobile) {
+      return Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: AppBar(
+          backgroundColor: AppTheme.background,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          title: Text(
+            widget.title,
+            style: Theme.of(context)
+                .textTheme
+                .titleLarge
+                ?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ),
+        body: SafeArea(
+          bottom: false,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  AppTheme.backgroundAlt.withValues(alpha: 0.82),
+                  AppTheme.background,
+                  AppTheme.background,
+                ],
+              ),
+            ),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                10,
+                horizontalPadding,
+                16,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (widget.subtitle != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Text(
+                        widget.subtitle!,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: AppTheme.textMuted),
+                      ),
+                    ),
+                  if (normalizedActions != null && normalizedActions.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final w in normalizedActions) ...[
+                              w,
+                              const SizedBox(width: 10),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  Expanded(child: widget.body),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: SafeArea(

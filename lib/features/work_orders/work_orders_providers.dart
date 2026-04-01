@@ -256,4 +256,39 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
       state = AsyncData(current);
     }
   }
+
+  Future<void> deleteWorkOrder(String workOrderId) async {
+    final current = state.asData?.value;
+    if (current == null) return;
+    final next = [for (final w in current) if (w.id != workOrderId) w];
+    state = AsyncData(next);
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient != null) {
+      try {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'deleteWhere',
+            'table': 'work_orders',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': workOrderId},
+            ],
+          },
+        );
+        return;
+      } catch (_) {
+        state = AsyncData(current);
+        return;
+      }
+    }
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+    try {
+      await client.from('work_orders').delete().eq('id', workOrderId);
+    } catch (_) {
+      state = AsyncData(current);
+    }
+  }
 }
