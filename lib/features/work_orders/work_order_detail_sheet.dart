@@ -587,6 +587,17 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         ? DateFormat('d MMMM y', 'tr_TR').format(widget.order.scheduledDate!)
         : 'Tarih belirlenmedi';
 
+    final address = (widget.order.address ?? '').trim();
+    final city = (widget.order.city ?? '').trim();
+    final addressText = [
+      if (address.isNotEmpty) address,
+      if (city.isNotEmpty) city,
+    ].join(' • ');
+    final branchName = (widget.order.branchName ?? '').trim();
+    final assigned = (widget.order.assignedPersonnelName ?? '').trim();
+    final description = (widget.order.description ?? '').trim();
+    final closeNotes = (widget.order.closeNotes ?? '').trim();
+
     return AppCard(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -598,6 +609,22 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           _InfoRow(icon: Icons.business_rounded, label: 'Müşteri', value: customer.name),
           const Gap(8),
           _InfoRow(icon: Icons.calendar_today_rounded, label: 'Planlanan Tarih', value: dateText),
+          if (branchName.isNotEmpty) ...[
+            const Gap(8),
+            _InfoRow(icon: Icons.store_mall_directory_rounded, label: 'Şube', value: branchName),
+          ],
+          if (assigned.isNotEmpty) ...[
+            const Gap(8),
+            _InfoRow(icon: Icons.badge_rounded, label: 'Atanan', value: assigned),
+          ],
+          if (addressText.isNotEmpty) ...[
+            const Gap(8),
+            _InfoRow(icon: Icons.home_work_rounded, label: 'Adres', value: addressText),
+          ],
+          if (description.isNotEmpty) ...[
+            const Gap(8),
+            _InfoRow(icon: Icons.notes_rounded, label: 'Açıklama', value: description),
+          ],
           if ((widget.order.locationLink ?? '').trim().isNotEmpty) ...[
             const Gap(8),
             Row(
@@ -625,6 +652,10 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           if (customer.phone1?.isNotEmpty ?? false) ...[
             const Gap(8),
             _InfoRow(icon: Icons.phone_rounded, label: 'Telefon', value: customer.phone1!),
+          ],
+          if (closeNotes.isNotEmpty) ...[
+            const Gap(8),
+            _InfoRow(icon: Icons.fact_check_rounded, label: 'Kapanış', value: closeNotes),
           ],
         ],
       ),

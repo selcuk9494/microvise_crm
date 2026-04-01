@@ -35,15 +35,21 @@ class ApiAccessTokenNotifier extends Notifier<String?> {
   @override
   String? build() => TokenStorage.read();
 
-  void set(String? token) {
+  void set(String? token, {bool persist = true}) {
     final trimmed = token?.trim();
     final value = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
-    TokenStorage.write(value);
+    if (persist) {
+      TokenStorage.write(value);
+    } else {
+      TokenStorage.write(null);
+    }
     state = value;
   }
 
-  void clear() {
-    TokenStorage.write(null);
+  void clear({bool persist = true}) {
+    if (persist) {
+      TokenStorage.write(null);
+    }
     state = null;
   }
 }

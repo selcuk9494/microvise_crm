@@ -2,7 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 
 import '../../core/api/api_client.dart';
+import '../../core/auth/auth_providers.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/storage/app_cache.dart';
 import '../../core/supabase/supabase_providers.dart';
 import 'work_order_model.dart';
 
@@ -12,38 +14,65 @@ final workOrdersBoardProvider =
     );
 
 class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
+  String? _cacheKey;
+
   @override
   Future<List<WorkOrder>> build() async {
     final apiClient = ref.watch(apiClientProvider);
     final client = ref.watch(supabaseClientProvider);
 
+    _cacheKey = _makeCacheKey(apiClient, client);
+    final cached = _tryReadCache();
+    if (cached != null) {
+      unawaited(_refreshFromRemoteAndCache());
+      return cached;
+    }
+
     if (apiClient != null) {
-      try {
-        final response = await apiClient
-            .getJson(
-              '/work-orders',
-              queryParameters: {'pageSize': '200'},
-            )
-            .timeout(const Duration(seconds: 30));
-        return ((response['items'] as List?) ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map(WorkOrder.fromJson)
-            .toList(growable: false);
-      } on TimeoutException {
-        final response = await apiClient
-            .getJson(
-              '/work-orders',
-              queryParameters: {'pageSize': '80'},
-            )
-            .timeout(const Duration(seconds: 30));
-        return ((response['items'] as List?) ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map(WorkOrder.fromJson)
-            .toList(growable: false);
-      }
+      final initial = await _fetchApi(pageSize: 80);
+      unawaited(_persistCache(initial));
+      unawaited(_refreshFromRemoteAndCache());
+      return initial;
     }
 
     if (client == null) return const [];
+    final items = await _fetchSupabase();
+    unawaited(_persistCache(items));
+    return items;
+  }
+
+  Future<List<WorkOrder>> _fetchApi({required int pageSize}) async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return const [];
+    try {
+      final response = await apiClient
+          .getJson(
+            '/work-orders',
+            queryParameters: {'pageSize': '$pageSize'},
+          )
+          .timeout(const Duration(seconds: 30));
+      return ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(WorkOrder.fromJson)
+          .toList(growable: false);
+    } on TimeoutException {
+      final response = await apiClient
+          .getJson(
+            '/work-orders',
+            queryParameters: {'pageSize': '80'},
+          )
+          .timeout(const Duration(seconds: 30));
+      return ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(WorkOrder.fromJson)
+          .toList(growable: false);
+    }
+  }
+
+  Future<List<WorkOrder>> _fetchSupabase() async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return const [];
+
     final profile = await ref.watch(currentUserProfileProvider.future);
     final isAdmin = profile?.role == 'admin';
 
@@ -124,6 +153,61 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     return sortedItems;
   }
 
+  List<WorkOrder>? _tryReadCache() {
+    final key = _cacheKey;
+    if (key == null || key.isEmpty) return null;
+    final entry = AppCache.readJson<List<WorkOrder>>(
+      key,
+      decode: (json) {
+        final list = (json as List?) ?? const [];
+        return list
+            .whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .map(WorkOrder.fromJson)
+            .toList(growable: false);
+      },
+    );
+    return entry?.value;
+  }
+
+  Future<void> _persistCache(List<WorkOrder> items) async {
+    final key = _cacheKey;
+    if (key == null || key.isEmpty) return;
+    await AppCache.writeJson(
+      key,
+      items.map((e) => e.toJson()).toList(growable: false),
+    );
+  }
+
+  Future<void> _refreshFromRemoteAndCache() async {
+    if (!ref.mounted) return;
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      final items =
+          apiClient != null ? await _fetchApi(pageSize: 200) : await _fetchSupabase();
+      if (!ref.mounted) return;
+      state = AsyncData(items);
+      await _persistCache(items);
+    } catch (_) {}
+  }
+
+  String _makeCacheKey(ApiClient? apiClient, dynamic supabaseClient) {
+    final token = ref.read(accessTokenProvider) ?? '';
+    final tokenHash = _hashString(token);
+    final base = apiClient?.baseUrl ?? 'supabase';
+    final userId = supabaseClient?.auth.currentUser?.id?.toString() ?? '';
+    return 'cache:v1:work_orders:$base:$userId:$tokenHash';
+  }
+
+  int _hashString(String input) {
+    var hash = 0x811C9DC5;
+    for (final codeUnit in input.codeUnits) {
+      hash ^= codeUnit;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    return hash;
+  }
+
   Future<void> refresh() async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(build);
@@ -141,6 +225,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
         if (w.id == workOrderId) w.copyWith(status: newStatus) else w,
     ];
     state = AsyncData(next);
+    unawaited(_persistCache(next));
 
     final apiClient = ref.read(apiClientProvider);
     if (apiClient != null) {
@@ -152,6 +237,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
         return;
       } catch (_) {
         state = AsyncData(current);
+        unawaited(_persistCache(current));
         return;
       }
     }
@@ -166,6 +252,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
           .eq('id', workOrderId);
     } catch (_) {
       state = AsyncData(current);
+      unawaited(_persistCache(current));
     }
   }
 
@@ -183,6 +270,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
       ...current.where((item) => !openIds.contains(item.id)),
     ];
     state = AsyncData(next);
+    unawaited(_persistCache(next));
 
     final apiClient = ref.read(apiClientProvider);
     if (apiClient != null) {
@@ -197,6 +285,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
         return;
       } catch (_) {
         state = AsyncData(current);
+        unawaited(_persistCache(current));
         return;
       }
     }
@@ -214,6 +303,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
       await refresh();
     } catch (_) {
       state = AsyncData(current);
+      unawaited(_persistCache(current));
     }
   }
 
@@ -229,6 +319,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
         if (w.id == workOrderId) w.copyWith(isActive: isActive) else w,
     ];
     state = AsyncData(next);
+    unawaited(_persistCache(next));
 
     final apiClient = ref.read(apiClientProvider);
     if (apiClient != null) {
@@ -240,6 +331,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
         return;
       } catch (_) {
         state = AsyncData(current);
+        unawaited(_persistCache(current));
         return;
       }
     }
@@ -254,6 +346,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
           .eq('id', workOrderId);
     } catch (_) {
       state = AsyncData(current);
+      unawaited(_persistCache(current));
     }
   }
 
@@ -262,6 +355,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     if (current == null) return;
     final next = [for (final w in current) if (w.id != workOrderId) w];
     state = AsyncData(next);
+    unawaited(_persistCache(next));
 
     final apiClient = ref.read(apiClientProvider);
     if (apiClient != null) {
@@ -279,6 +373,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
         return;
       } catch (_) {
         state = AsyncData(current);
+        unawaited(_persistCache(current));
         return;
       }
     }
@@ -289,6 +384,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
       await client.from('work_orders').delete().eq('id', workOrderId);
     } catch (_) {
       state = AsyncData(current);
+      unawaited(_persistCache(current));
     }
   }
 }

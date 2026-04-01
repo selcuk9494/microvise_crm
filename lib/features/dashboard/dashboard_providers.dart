@@ -1,15 +1,51 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/auth/auth_providers.dart';
+import '../../core/auth/user_profile_provider.dart';
 import '../../core/format/app_date_time.dart';
+import '../../core/storage/app_cache.dart';
 import '../../core/supabase/supabase_providers.dart';
 
 final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
+  final canSeeCustomers = ref.watch(hasPageAccessProvider(kPageCustomers));
+  final canSeeWorkOrders = ref.watch(hasPageAccessProvider(kPageWorkOrders));
+  final canSeeProducts = ref.watch(hasPageAccessProvider(kPageProducts));
+  final canSeeBilling = ref.watch(hasPageAccessProvider(kPageBilling));
+  final canSeeReports = ref.watch(hasPageAccessProvider(kPageReports));
+  final cacheKey = _makeDashboardCacheKey(ref, apiClient);
+  final cached = AppCache.readJson<DashboardMetrics>(
+    cacheKey,
+    decode: (json) => DashboardMetrics.fromJsonMap(
+      (json as Map).cast<String, dynamic>(),
+    ),
+  );
+  if (cached != null) {
+    final ageMs = DateTime.now().millisecondsSinceEpoch - cached.savedAtMs;
+    if (apiClient != null && ageMs > 2 * 60 * 1000) {
+      unawaited(
+        _refreshDashboardMetricsAndInvalidate(
+          ref: ref,
+          cacheKey: cacheKey,
+        ),
+      );
+    }
+    return _maskDashboardMetrics(
+      cached.value,
+      canSeeCustomers: canSeeCustomers,
+      canSeeWorkOrders: canSeeWorkOrders,
+      canSeeProducts: canSeeProducts,
+      canSeeBilling: canSeeBilling,
+      canSeeReports: canSeeReports,
+    );
+  }
+
   if (apiClient != null) {
     final row = await apiClient.getJson('/dashboard/summary');
-    return DashboardMetrics(
+    final metrics = DashboardMetrics(
       totalCustomers: _intValue(row['total_customers']),
       openWorkOrders: _intValue(row['open_work_orders']),
       inProgressWorkOrders: _intValue(row['in_progress_work_orders']),
@@ -26,6 +62,15 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
       openInvoices: _intValue(row['open_invoices']),
       totalInvoiceAmount: _doubleValue(row['total_invoice_amount']),
       invoiceQueuePending: _intValue(row['invoice_queue_pending']),
+    );
+    unawaited(AppCache.writeJson(cacheKey, metrics.toJsonMap()));
+    return _maskDashboardMetrics(
+      metrics,
+      canSeeCustomers: canSeeCustomers,
+      canSeeWorkOrders: canSeeWorkOrders,
+      canSeeProducts: canSeeProducts,
+      canSeeBilling: canSeeBilling,
+      canSeeReports: canSeeReports,
     );
   }
 
@@ -113,7 +158,7 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
     invoiceQueuePending = 0;
   }
 
-  return DashboardMetrics(
+  final metrics = DashboardMetrics(
     totalCustomers: totalCustomers,
     openWorkOrders: openWorkOrders,
     inProgressWorkOrders: inProgressWorkOrders,
@@ -131,10 +176,97 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
     totalInvoiceAmount: totalInvoiceAmount,
     invoiceQueuePending: invoiceQueuePending,
   );
+  unawaited(AppCache.writeJson(cacheKey, metrics.toJsonMap()));
+  return _maskDashboardMetrics(
+    metrics,
+    canSeeCustomers: canSeeCustomers,
+    canSeeWorkOrders: canSeeWorkOrders,
+    canSeeProducts: canSeeProducts,
+    canSeeBilling: canSeeBilling,
+    canSeeReports: canSeeReports,
+  );
 });
+
+DashboardMetrics _maskDashboardMetrics(
+  DashboardMetrics metrics, {
+  required bool canSeeCustomers,
+  required bool canSeeWorkOrders,
+  required bool canSeeProducts,
+  required bool canSeeBilling,
+  required bool canSeeReports,
+}) {
+  return DashboardMetrics(
+    totalCustomers: canSeeCustomers ? metrics.totalCustomers : 0,
+    openWorkOrders: canSeeWorkOrders ? metrics.openWorkOrders : 0,
+    inProgressWorkOrders: canSeeWorkOrders ? metrics.inProgressWorkOrders : 0,
+    completedWorkOrders: canSeeWorkOrders ? metrics.completedWorkOrders : 0,
+    todayWorkOrders: canSeeWorkOrders ? metrics.todayWorkOrders : 0,
+    expiringSoon: canSeeProducts ? metrics.expiringSoon : 0,
+    totalProducts: canSeeProducts ? metrics.totalProducts : 0,
+    lowStockProducts: canSeeProducts ? metrics.lowStockProducts : 0,
+    revenue: canSeeReports ? metrics.revenue : 0,
+    lastMonthRevenue: canSeeReports ? metrics.lastMonthRevenue : 0,
+    todayCollections: canSeeReports ? metrics.todayCollections : 0,
+    totalReceivable: canSeeReports ? metrics.totalReceivable : 0,
+    totalPayable: canSeeReports ? metrics.totalPayable : 0,
+    openInvoices: canSeeBilling ? metrics.openInvoices : 0,
+    totalInvoiceAmount: canSeeBilling ? metrics.totalInvoiceAmount : 0,
+    invoiceQueuePending: canSeeBilling ? metrics.invoiceQueuePending : 0,
+  );
+}
+
+Future<void> _refreshDashboardMetricsAndInvalidate({
+  required Ref ref,
+  required String cacheKey,
+}) async {
+  final apiClient = ref.read(apiClientProvider);
+  if (apiClient == null) return;
+  try {
+    final row = await apiClient.getJson('/dashboard/summary');
+    final metrics = DashboardMetrics(
+      totalCustomers: _intValue(row['total_customers']),
+      openWorkOrders: _intValue(row['open_work_orders']),
+      inProgressWorkOrders: _intValue(row['in_progress_work_orders']),
+      completedWorkOrders: _intValue(row['completed_work_orders']),
+      todayWorkOrders: _intValue(row['today_work_orders']),
+      expiringSoon: _intValue(row['expiring_soon']),
+      totalProducts: _intValue(row['total_products']),
+      lowStockProducts: _intValue(row['low_stock_products']),
+      revenue: _doubleValue(row['revenue']),
+      lastMonthRevenue: _doubleValue(row['last_month_revenue']),
+      todayCollections: _doubleValue(row['today_collections']),
+      totalReceivable: _doubleValue(row['total_receivable']),
+      totalPayable: _doubleValue(row['total_payable']),
+      openInvoices: _intValue(row['open_invoices']),
+      totalInvoiceAmount: _doubleValue(row['total_invoice_amount']),
+      invoiceQueuePending: _intValue(row['invoice_queue_pending']),
+    );
+
+    await AppCache.writeJson(cacheKey, metrics.toJsonMap());
+    ref.invalidate(dashboardMetricsProvider);
+  } catch (_) {}
+}
+
+String _makeDashboardCacheKey(Ref ref, ApiClient? apiClient) {
+  final token = ref.read(accessTokenProvider) ?? '';
+  final tokenHash = _hashString(token);
+  final base = apiClient?.baseUrl ?? 'supabase';
+  return 'cache:v1:dashboard_metrics:$base:$tokenHash';
+}
+
+int _hashString(String input) {
+  var hash = 0x811C9DC5;
+  for (final codeUnit in input.codeUnits) {
+    hash ^= codeUnit;
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+  }
+  return hash;
+}
 
 final dashboardRevenueSeriesProvider =
     FutureProvider<List<DashboardDailyPoint>>((ref) async {
+  final canSeeReports = ref.watch(hasPageAccessProvider(kPageReports));
+  if (!canSeeReports) return const [];
   final client = ref.watch(supabaseClientProvider);
   if (client == null) return const [];
 
@@ -170,33 +302,42 @@ final dashboardRevenueSeriesProvider =
 
 final dashboardActivitiesProvider =
     FutureProvider<List<DashboardActivity>>((ref) async {
+  final canSeeWorkOrders = ref.watch(hasPageAccessProvider(kPageWorkOrders));
+  final canSeeService = ref.watch(hasPageAccessProvider(kPageService));
+  if (!canSeeWorkOrders && !canSeeService) return const [];
   final client = ref.watch(supabaseClientProvider);
   if (client == null) return const [];
 
-  final workRows = await client
-      .from('work_orders')
-      .select('id,title,created_at,customers(name)')
-      .eq('is_active', true)
-      .order('created_at', ascending: false)
-      .limit(6);
+  final workRows = canSeeWorkOrders
+      ? await client
+          .from('work_orders')
+          .select('id,title,created_at,customers(name)')
+          .eq('is_active', true)
+          .order('created_at', ascending: false)
+          .limit(6)
+          .then((value) => (value as List).cast<Map<String, dynamic>>())
+      : <Map<String, dynamic>>[];
 
-  final serviceRows = await client
-      .from('service_records')
-      .select('id,title,created_at,customers(name)')
-      .eq('is_active', true)
-      .order('created_at', ascending: false)
-      .limit(6);
+  final serviceRows = canSeeService
+      ? await client
+          .from('service_records')
+          .select('id,title,created_at,customers(name)')
+          .eq('is_active', true)
+          .order('created_at', ascending: false)
+          .limit(6)
+          .then((value) => (value as List).cast<Map<String, dynamic>>())
+      : <Map<String, dynamic>>[];
 
   final activities = <DashboardActivity>[
-    for (final row in (workRows as List))
+    for (final row in workRows)
       DashboardActivity.fromJoinRow(
         type: DashboardActivityType.workOrder,
-        row: row as Map<String, dynamic>,
+        row: row,
       ),
-    for (final row in (serviceRows as List))
+    for (final row in serviceRows)
       DashboardActivity.fromJoinRow(
         type: DashboardActivityType.service,
-        row: row as Map<String, dynamic>,
+        row: row,
       ),
   ];
 
@@ -426,6 +567,48 @@ class DashboardMetrics {
         totalInvoiceAmount: 0,
         invoiceQueuePending: 0,
       );
+
+  factory DashboardMetrics.fromJsonMap(Map<String, dynamic> json) {
+    return DashboardMetrics(
+      totalCustomers: _intValue(json['totalCustomers']),
+      openWorkOrders: _intValue(json['openWorkOrders']),
+      inProgressWorkOrders: _intValue(json['inProgressWorkOrders']),
+      completedWorkOrders: _intValue(json['completedWorkOrders']),
+      todayWorkOrders: _intValue(json['todayWorkOrders']),
+      expiringSoon: _intValue(json['expiringSoon']),
+      totalProducts: _intValue(json['totalProducts']),
+      lowStockProducts: _intValue(json['lowStockProducts']),
+      revenue: _doubleValue(json['revenue']),
+      lastMonthRevenue: _doubleValue(json['lastMonthRevenue']),
+      todayCollections: _doubleValue(json['todayCollections']),
+      totalReceivable: _doubleValue(json['totalReceivable']),
+      totalPayable: _doubleValue(json['totalPayable']),
+      openInvoices: _intValue(json['openInvoices']),
+      totalInvoiceAmount: _doubleValue(json['totalInvoiceAmount']),
+      invoiceQueuePending: _intValue(json['invoiceQueuePending']),
+    );
+  }
+
+  Map<String, dynamic> toJsonMap() {
+    return {
+      'totalCustomers': totalCustomers,
+      'openWorkOrders': openWorkOrders,
+      'inProgressWorkOrders': inProgressWorkOrders,
+      'completedWorkOrders': completedWorkOrders,
+      'todayWorkOrders': todayWorkOrders,
+      'expiringSoon': expiringSoon,
+      'totalProducts': totalProducts,
+      'lowStockProducts': lowStockProducts,
+      'revenue': revenue,
+      'lastMonthRevenue': lastMonthRevenue,
+      'todayCollections': todayCollections,
+      'totalReceivable': totalReceivable,
+      'totalPayable': totalPayable,
+      'openInvoices': openInvoices,
+      'totalInvoiceAmount': totalInvoiceAmount,
+      'invoiceQueuePending': invoiceQueuePending,
+    };
+  }
 }
 
 class DashboardDailyPoint {

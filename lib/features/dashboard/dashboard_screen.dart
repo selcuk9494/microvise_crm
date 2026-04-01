@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/auth/user_profile_provider.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import 'dashboard_providers.dart';
@@ -17,7 +18,16 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final metricsAsync = ref.watch(dashboardMetricsProvider);
-    final seriesAsync = ref.watch(dashboardRevenueSeriesProvider);
+    final canSeeCustomers = ref.watch(hasPageAccessProvider(kPageCustomers));
+    final canSeeWorkOrders = ref.watch(hasPageAccessProvider(kPageWorkOrders));
+    final canSeeService = ref.watch(hasPageAccessProvider(kPageService));
+    final canSeeProducts = ref.watch(hasPageAccessProvider(kPageProducts));
+    final canSeeBilling = ref.watch(hasPageAccessProvider(kPageBilling));
+    final canSeeReports = ref.watch(hasPageAccessProvider(kPageReports));
+
+    final seriesAsync = canSeeReports
+        ? ref.watch(dashboardRevenueSeriesProvider)
+        : const AsyncValue<List<DashboardDailyPoint>>.data([]);
     final money = NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0);
 
     return AppPageLayout(
@@ -31,6 +41,11 @@ class DashboardScreen extends ConsumerWidget {
             child: _MetricsGrid(
               money: money,
               metrics: metricsAsync.value ?? DashboardMetrics.zero(),
+              canSeeCustomers: canSeeCustomers,
+              canSeeWorkOrders: canSeeWorkOrders,
+              canSeeProducts: canSeeProducts,
+              canSeeBilling: canSeeBilling,
+              canSeeReports: canSeeReports,
             ),
           ),
           const Gap(16),
@@ -205,11 +220,12 @@ class DashboardScreen extends ConsumerWidget {
               if (!twoCols) {
                 return Column(
                   children: [
-                    revenueCard,
-                    const Gap(16),
-                    workOrderStatusCard,
-                    const Gap(16),
-                    activityCard,
+                    if (canSeeReports) revenueCard,
+                    if (canSeeReports && canSeeWorkOrders) const Gap(16),
+                    if (canSeeWorkOrders) workOrderStatusCard,
+                    if ((canSeeWorkOrders || canSeeService) &&
+                        (canSeeReports || canSeeWorkOrders)) const Gap(16),
+                    if (canSeeWorkOrders || canSeeService) activityCard,
                   ],
                 );
               }
@@ -217,15 +233,19 @@ class DashboardScreen extends ConsumerWidget {
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(flex: 3, child: revenueCard),
+                  Expanded(
+                    flex: 3,
+                    child: canSeeReports ? revenueCard : const SizedBox.shrink(),
+                  ),
                   const Gap(16),
                   Expanded(
                     flex: 2,
                     child: Column(
                       children: [
-                        workOrderStatusCard,
-                        const Gap(16),
-                        activityCard,
+                        if (canSeeWorkOrders) workOrderStatusCard,
+                        if (canSeeWorkOrders && (canSeeWorkOrders || canSeeService))
+                          const Gap(16),
+                        if (canSeeWorkOrders || canSeeService) activityCard,
                       ],
                     ),
                   ),
@@ -240,10 +260,23 @@ class DashboardScreen extends ConsumerWidget {
 }
 
 class _MetricsGrid extends StatelessWidget {
-  const _MetricsGrid({required this.metrics, required this.money});
+  const _MetricsGrid({
+    required this.metrics,
+    required this.money,
+    required this.canSeeCustomers,
+    required this.canSeeWorkOrders,
+    required this.canSeeProducts,
+    required this.canSeeBilling,
+    required this.canSeeReports,
+  });
 
   final DashboardMetrics metrics;
   final NumberFormat money;
+  final bool canSeeCustomers;
+  final bool canSeeWorkOrders;
+  final bool canSeeProducts;
+  final bool canSeeBilling;
+  final bool canSeeReports;
 
   @override
   Widget build(BuildContext context) {
@@ -265,71 +298,88 @@ class _MetricsGrid extends StatelessWidget {
         final spacing = 12.0;
         final itemWidth = (width - (columns - 1) * spacing) / columns;
 
-        final items = [
-          _MetricTile(
-            title: 'Toplam Müşteri',
-            value: metrics.totalCustomers.toString(),
-            icon: Icons.people_alt_rounded,
-            onTap: () => context.go('/musteriler'),
-          ),
-          _MetricTile(
-            title: 'Açık İş Emirleri',
-            value: metrics.openWorkOrders.toString(),
-            icon: Icons.assignment_rounded,
-            tone: metrics.openWorkOrders > 0 ? _MetricTone.warning : _MetricTone.neutral,
-            onTap: () => context.go('/is-emirleri'),
-          ),
-          _MetricTile(
-            title: 'Devam Eden',
-            value: metrics.inProgressWorkOrders.toString(),
-            icon: Icons.timelapse_rounded,
-            tone: _MetricTone.primary,
-            onTap: () => context.go('/is-emirleri'),
-          ),
-          _MetricTile(
-            title: 'Bugünkü İşler',
-            value: metrics.todayWorkOrders.toString(),
-            icon: Icons.today_rounded,
-            onTap: () => context.go('/is-emirleri'),
-          ),
-          _MetricTile(
-            title: 'Süresi Dolanlar',
-            value: metrics.expiringSoon.toString(),
-            icon: Icons.warning_rounded,
-            tone: metrics.expiringSoon > 0 ? _MetricTone.warning : _MetricTone.neutral,
-            onTap: () => context.go('/urunler'),
-          ),
-          _MetricTile(
-            title: 'Gelir (Bu Ay)',
-            value: money.format(metrics.revenue),
-            icon: Icons.payments_rounded,
-            tone: _MetricTone.success,
-            subtitle: revenueChangeText,
-            subtitleColor: revenueChange >= 0 ? AppTheme.success : AppTheme.error,
-            onTap: () => context.go('/raporlar'),
-          ),
-          _MetricTile(
-            title: 'Açık Faturalar',
-            value: metrics.openInvoices.toString(),
-            icon: Icons.receipt_long_rounded,
-            subtitle: money.format(metrics.totalInvoiceAmount),
-            onTap: () => context.go('/faturalama'),
-          ),
-          _MetricTile(
-            title: 'Fatura Kuyruğu',
-            value: metrics.invoiceQueuePending.toString(),
-            icon: Icons.receipt_rounded,
-            tone:
-                metrics.invoiceQueuePending > 0 ? _MetricTone.warning : _MetricTone.neutral,
-            onTap: () => context.go('/faturalama'),
-          ),
-          _MetricTile(
-            title: 'Düşük Stok',
-            value: metrics.lowStockProducts.toString(),
-            icon: Icons.inventory_2_rounded,
-            tone: metrics.lowStockProducts > 0 ? _MetricTone.warning : _MetricTone.success,
-            onTap: () => context.go('/urunler'),
-          ),
+        final items = <_MetricTile>[
+          if (canSeeCustomers)
+            _MetricTile(
+              title: 'Toplam Müşteri',
+              value: metrics.totalCustomers.toString(),
+              icon: Icons.people_alt_rounded,
+              onTap: () => context.go('/musteriler'),
+            ),
+          if (canSeeWorkOrders)
+            _MetricTile(
+              title: 'Açık İş Emirleri',
+              value: metrics.openWorkOrders.toString(),
+              icon: Icons.assignment_rounded,
+              tone: metrics.openWorkOrders > 0
+                  ? _MetricTone.warning
+                  : _MetricTone.neutral,
+              onTap: () => context.go('/is-emirleri'),
+            ),
+          if (canSeeWorkOrders)
+            _MetricTile(
+              title: 'Devam Eden',
+              value: metrics.inProgressWorkOrders.toString(),
+              icon: Icons.timelapse_rounded,
+              tone: _MetricTone.primary,
+              onTap: () => context.go('/is-emirleri'),
+            ),
+          if (canSeeWorkOrders)
+            _MetricTile(
+              title: 'Bugünkü İşler',
+              value: metrics.todayWorkOrders.toString(),
+              icon: Icons.today_rounded,
+              onTap: () => context.go('/is-emirleri'),
+            ),
+          if (canSeeProducts)
+            _MetricTile(
+              title: 'Süresi Dolanlar',
+              value: metrics.expiringSoon.toString(),
+              icon: Icons.warning_rounded,
+              tone: metrics.expiringSoon > 0
+                  ? _MetricTone.warning
+                  : _MetricTone.neutral,
+              onTap: () => context.go('/urunler'),
+            ),
+          if (canSeeReports)
+            _MetricTile(
+              title: 'Gelir (Bu Ay)',
+              value: money.format(metrics.revenue),
+              icon: Icons.payments_rounded,
+              tone: _MetricTone.success,
+              subtitle: revenueChangeText,
+              subtitleColor:
+                  revenueChange >= 0 ? AppTheme.success : AppTheme.error,
+              onTap: () => context.go('/raporlar'),
+            ),
+          if (canSeeBilling)
+            _MetricTile(
+              title: 'Açık Faturalar',
+              value: metrics.openInvoices.toString(),
+              icon: Icons.receipt_long_rounded,
+              subtitle: money.format(metrics.totalInvoiceAmount),
+              onTap: () => context.go('/faturalama'),
+            ),
+          if (canSeeBilling)
+            _MetricTile(
+              title: 'Fatura Kuyruğu',
+              value: metrics.invoiceQueuePending.toString(),
+              icon: Icons.receipt_rounded,
+              tone: metrics.invoiceQueuePending > 0
+                  ? _MetricTone.warning
+                  : _MetricTone.neutral,
+              onTap: () => context.go('/faturalama'),
+            ),
+          if (canSeeProducts)
+            _MetricTile(
+              title: 'Düşük Stok',
+              value: metrics.lowStockProducts.toString(),
+              icon: Icons.inventory_2_rounded,
+              tone: metrics.lowStockProducts > 0
+                  ? _MetricTone.warning
+                  : _MetricTone.success,
+              onTap: () => context.go('/urunler'),
+            ),
         ];
 
         return Wrap(

@@ -6,11 +6,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app/app.dart';
 import 'app/app_config.dart';
+import 'core/storage/app_cache.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   Intl.defaultLocale = 'tr_TR';
   await initializeDateFormatting('tr_TR');
+  await AppCache.init();
 
   if (AppConfig.isSupabaseConfigured) {
     await Supabase.initialize(

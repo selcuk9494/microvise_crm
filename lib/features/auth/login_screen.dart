@@ -8,6 +8,7 @@ import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/auth_providers.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/storage/app_cache.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_card.dart';
 
@@ -22,6 +23,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _loading = false;
+  bool _rememberMe = AppCache.readBool('auth:remember_me', defaultValue: true);
 
   @override
   void dispose() {
@@ -58,7 +60,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         if (token.isEmpty) {
           throw Exception('Giriş başarısız.');
         }
-        ref.read(apiAccessTokenProvider.notifier).set(token);
+        ref
+            .read(apiAccessTokenProvider.notifier)
+            .set(token, persist: _rememberMe);
       } else {
         if (client == null) throw Exception('Giriş yapılamadı.');
         await client.auth.signInWithPassword(email: email, password: password);
@@ -164,6 +168,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         onSubmitted: (_) => _signIn(),
                       ),
                       const Gap(16),
+                      CheckboxListTile(
+                        value: _rememberMe,
+                        onChanged: _loading
+                            ? null
+                            : (value) {
+                                setState(() => _rememberMe = value ?? true);
+                                AppCache.writeBool(
+                                  'auth:remember_me',
+                                  _rememberMe,
+                                );
+                              },
+                        title: const Text('Beni hatırla'),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                      ),
+                      const Gap(6),
                       Row(
                         children: [
                           Expanded(

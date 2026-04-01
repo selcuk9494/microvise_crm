@@ -117,6 +117,34 @@ class WorkOrder {
       isActive: isActive ?? this.isActive,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'customer_id': customerId,
+      'customer_name': customerName,
+      'description': description,
+      'address': address,
+      'city': city,
+      'status': status,
+      'branch_id': branchId,
+      'branch_name': branchName,
+      'assigned_to': assignedTo,
+      'assigned_personnel_name': assignedPersonnelName,
+      'scheduled_date': scheduledDate?.toIso8601String(),
+      'created_at': createdAt?.toIso8601String(),
+      'closed_at': closedAt?.toIso8601String(),
+      'work_order_type_id': workOrderTypeId,
+      'work_order_type_name': workOrderTypeName,
+      'contact_phone': contactPhone,
+      'location_link': locationLink,
+      'close_notes': closeNotes,
+      'sort_order': sortOrder,
+      'payments': payments.map((p) => p.toJson()).toList(growable: false),
+      'is_active': isActive,
+    };
+  }
 }
 
 class WorkOrderPayment {
@@ -149,5 +177,16 @@ class WorkOrderPayment {
       paymentMethod: json['payment_method']?.toString(),
       isActive: (json['is_active'] as bool?) ?? true,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'amount': amount,
+      'currency': currency,
+      'paid_at': paidAt?.toIso8601String(),
+      'description': description,
+      'payment_method': paymentMethod,
+      'is_active': isActive,
+    };
   }
 }

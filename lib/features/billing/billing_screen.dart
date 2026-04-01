@@ -6,21 +6,44 @@ import 'package:intl/intl.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 
 final invoiceItemsProvider = FutureProvider<List<InvoiceItem>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
-  if (apiClient == null) return const [];
+  if (apiClient != null) {
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {'resource': 'invoice_items_queue'},
+    );
+    return ((response['items'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(InvoiceItem.fromJson)
+        .toList(growable: false);
+  }
 
-  final response = await apiClient.getJson(
-    '/data',
-    queryParameters: {'resource': 'invoice_items_queue'},
-  );
-  return ((response['items'] as List?) ?? const [])
-      .whereType<Map<String, dynamic>>()
-      .map(InvoiceItem.fromJson)
+  final client = ref.watch(supabaseClientProvider);
+  if (client == null) return const [];
+  final rows = await client
+      .from('invoice_items')
+      .select(
+        'id,customer_id,item_type,description,amount,currency,status,is_active,created_at,customers(name)',
+      )
+      .order('created_at', ascending: false)
+      .limit(600);
+
+  return (rows as List)
+      .whereType<Map>()
+      .map((e) => e.cast<String, dynamic>())
+      .map((row) {
+        final customers = row['customers'] as Map<String, dynamic>?;
+        return InvoiceItem.fromJson({
+          ...row,
+          'customer_label': customers?['name'],
+        });
+      })
       .toList(growable: false);
 });
 
