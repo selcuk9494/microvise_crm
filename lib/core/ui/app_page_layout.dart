@@ -3,7 +3,7 @@ import 'package:gap/gap.dart';
 
 import '../../app/theme/app_theme.dart';
 
-class AppPageLayout extends StatelessWidget {
+class AppPageLayout extends StatefulWidget {
   const AppPageLayout({
     super.key,
     required this.title,
@@ -18,10 +18,34 @@ class AppPageLayout extends StatelessWidget {
   final List<Widget>? actions;
 
   @override
+  State<AppPageLayout> createState() => _AppPageLayoutState();
+}
+
+class _AppPageLayoutState extends State<AppPageLayout> {
+  final ScrollController _primaryScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _primaryScrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollBy(double deltaDy) {
+    if (!_primaryScrollController.hasClients) return;
+    final position = _primaryScrollController.position;
+    final next = (position.pixels - deltaDy).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (next == position.pixels) return;
+    _primaryScrollController.jumpTo(next);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final isMobile = width < 720;
-    final normalizedActions = actions
+    final normalizedActions = widget.actions
         ?.map(
           (widget) => widget is Gap
               ? SizedBox(
@@ -42,133 +66,142 @@ class AppPageLayout extends StatelessWidget {
       backgroundColor: AppTheme.background,
       body: SafeArea(
         bottom: false,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                AppTheme.backgroundAlt.withValues(alpha: 0.82),
-                AppTheme.background,
-                AppTheme.background,
-              ],
+        child: PrimaryScrollController(
+          controller: _primaryScrollController,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  AppTheme.backgroundAlt.withValues(alpha: 0.82),
+                  AppTheme.background,
+                  AppTheme.background,
+                ],
+              ),
             ),
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  horizontalPadding,
-                  topPadding,
-                  horizontalPadding,
-                  6,
-                ),
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: width >= 720 ? 18 : 14,
-                    vertical: width >= 720 ? 12 : 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                    border: Border.all(color: AppTheme.border),
-                    boxShadow: AppTheme.cardShadow,
-                  ),
-                  child: isMobile
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineSmall
-                                  ?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                            if (subtitle != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 6),
-                                child: Text(
-                                  subtitle!,
+            child: Column(
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onVerticalDragUpdate: (details) => _scrollBy(details.delta.dy),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      topPadding,
+                      horizontalPadding,
+                      6,
+                    ),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: width >= 720 ? 18 : 14,
+                        vertical: width >= 720 ? 12 : 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                        border: Border.all(color: AppTheme.border),
+                        boxShadow: AppTheme.cardShadow,
+                      ),
+                      child: isMobile
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.title,
                                   style: Theme.of(context)
                                       .textTheme
-                                      .bodyMedium
-                                      ?.copyWith(color: AppTheme.textMuted),
+                                      .headlineSmall
+                                      ?.copyWith(fontWeight: FontWeight.w800),
                                 ),
-                              ),
-                            if (normalizedActions != null) ...[
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: normalizedActions,
-                              ),
-                            ],
-                          ],
-                        )
-                      : Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    title,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .headlineSmall
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                  ),
-                                  if (subtitle != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4),
-                                      child: Text(
-                                        subtitle!,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.copyWith(
-                                              color: AppTheme.textMuted,
-                                              fontSize: 13,
-                                            ),
-                                      ),
+                                if (widget.subtitle != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Text(
+                                      widget.subtitle!,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(color: AppTheme.textMuted),
                                     ),
-                                ],
-                              ),
-                            ),
-                            if (normalizedActions != null)
-                              Flexible(
-                                child: Align(
-                                  alignment: Alignment.topRight,
-                                  child: Wrap(
+                                  ),
+                                if (normalizedActions != null) ...[
+                                  const SizedBox(height: 8),
+                                  Wrap(
                                     spacing: 8,
                                     runSpacing: 8,
-                                    alignment: WrapAlignment.end,
-                                    crossAxisAlignment:
-                                        WrapCrossAlignment.center,
                                     children: normalizedActions,
                                   ),
+                                ],
+                              ],
+                            )
+                          : Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        widget.title,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .headlineSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
+                                      if (widget.subtitle != null)
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(top: 4),
+                                          child: Text(
+                                            widget.subtitle!,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.copyWith(
+                                                  color: AppTheme.textMuted,
+                                                  fontSize: 13,
+                                                ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                          ],
-                        ),
-                ),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    horizontalPadding,
-                    6,
-                    horizontalPadding,
-                    16,
+                                if (normalizedActions != null)
+                                  Flexible(
+                                    child: Align(
+                                      alignment: Alignment.topRight,
+                                      child: Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        alignment: WrapAlignment.end,
+                                        crossAxisAlignment:
+                                            WrapCrossAlignment.center,
+                                        children: normalizedActions,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                    ),
                   ),
-                  child: body,
                 ),
-              ),
-            ],
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      6,
+                      horizontalPadding,
+                      16,
+                    ),
+                    child: widget.body,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

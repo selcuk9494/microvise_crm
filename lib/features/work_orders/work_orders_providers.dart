@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
@@ -17,16 +18,29 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     final client = ref.watch(supabaseClientProvider);
 
     if (apiClient != null) {
-      final response = await apiClient
-          .getJson(
-            '/work-orders',
-            queryParameters: {'pageSize': '500'},
-          )
-          .timeout(const Duration(seconds: 12));
-      return ((response['items'] as List?) ?? const [])
-          .whereType<Map<String, dynamic>>()
-          .map(WorkOrder.fromJson)
-          .toList(growable: false);
+      try {
+        final response = await apiClient
+            .getJson(
+              '/work-orders',
+              queryParameters: {'pageSize': '200'},
+            )
+            .timeout(const Duration(seconds: 30));
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(WorkOrder.fromJson)
+            .toList(growable: false);
+      } on TimeoutException {
+        final response = await apiClient
+            .getJson(
+              '/work-orders',
+              queryParameters: {'pageSize': '80'},
+            )
+            .timeout(const Duration(seconds: 30));
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(WorkOrder.fromJson)
+            .toList(growable: false);
+      }
     }
 
     if (client == null) return const [];
