@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 import 'package:signature/signature.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/platform/current_position.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
@@ -14,6 +16,47 @@ import '../customers/customer_detail_screen.dart';
 import '../dashboard/dashboard_providers.dart';
 import 'work_order_model.dart';
 import 'currency_service.dart';
+
+class _CloseNoteOption {
+  const _CloseNoteOption({required this.id, required this.name});
+
+  final String id;
+  final String name;
+
+  factory _CloseNoteOption.fromJson(Map<String, dynamic> json) {
+    return _CloseNoteOption(
+      id: json['id'].toString(),
+      name: (json['name'] ?? '').toString(),
+    );
+  }
+}
+
+final workOrderCloseNotesDefinitionProvider =
+    FutureProvider<List<_CloseNoteOption>>((ref) async {
+  final apiClient = ref.watch(apiClientProvider);
+  if (apiClient != null) {
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {'resource': 'definition_work_order_close_notes'},
+    );
+    return ((response['items'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .map(_CloseNoteOption.fromJson)
+        .toList(growable: false);
+  }
+
+  final client = ref.watch(supabaseClientProvider);
+  if (client == null) return const [];
+  final rows = await client
+      .from('work_order_close_notes')
+      .select('id,name,is_active,sort_order')
+      .eq('is_active', true)
+      .order('sort_order');
+  return (rows as List)
+      .map((e) => _CloseNoteOption.fromJson(e as Map<String, dynamic>))
+      .toList(growable: false);
+});
 
 Future<void> showWorkOrderDetailSheet(
   BuildContext context,
@@ -41,9 +84,7 @@ class _WorkOrderDetailSheet extends ConsumerStatefulWidget {
 
 class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   final _notesController = TextEditingController();
-  final _latController = TextEditingController();
-  final _lngController = TextEditingController();
-  final _addressController = TextEditingController();
+  final _locationLinkController = TextEditingController();
 
   final SignatureController _signatureController = SignatureController(
     penStrokeWidth: 2.5,
@@ -51,9 +92,11 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   );
 
   bool _saving = false;
+  bool _fetchingLocation = false;
   bool _addLine = false;
   bool _addGmp3 = false;
   bool _isClosing = false;
+  String? _selectedCloseNoteId;
 
   final _lineNumberController = TextEditingController();
   final _lineSimController = TextEditingController();
@@ -70,6 +113,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   void initState() {
     super.initState();
     _loadExchangeRates();
+    _locationLinkController.text = widget.order.locationLink ?? '';
   }
 
   Future<void> _loadExchangeRates() async {
@@ -89,9 +133,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   @override
   void dispose() {
     _notesController.dispose();
-    _latController.dispose();
-    _lngController.dispose();
-    _addressController.dispose();
+    _locationLinkController.dispose();
     _signatureController.dispose();
     _lineNumberController.dispose();
     _lineSimController.dispose();
@@ -100,6 +142,84 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       p.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _fetchLocation() async {
+    setState(() => _fetchingLocation = true);
+    try {
+      final result = await fetchCurrentPosition();
+      if (result == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Konum alınamadı. İzinleri ve konum servislerini kontrol edin.',
+            ),
+          ),
+        );
+        return;
+      }
+      final lat = result.latitude.toStringAsFixed(6);
+      final lng = result.longitude.toStringAsFixed(6);
+      _locationLinkController.text = 'https://maps.google.com/?q=$lat,$lng';
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Konum alındı.')),
+      );
+    } finally {
+      if (mounted) setState(() => _fetchingLocation = false);
+    }
+  }
+
+  String? _resolvedLocationLink() {
+    final raw = _locationLinkController.text.trim();
+    if (raw.isNotEmpty) return raw;
+    final rawFromOrder = (widget.order.locationLink ?? '').trim();
+    if (rawFromOrder.isNotEmpty) return rawFromOrder;
+    return null;
+  }
+
+  ({double lat, double lng})? _extractLatLng(String link) {
+    final qIndex = link.indexOf('?q=');
+    if (qIndex != -1) {
+      final q = link.substring(qIndex + 3);
+      final parts = q.split(',');
+      if (parts.length >= 2) {
+        final lat = double.tryParse(parts[0].trim());
+        final lng = double.tryParse(parts[1].trim());
+        if (lat != null && lng != null) return (lat: lat, lng: lng);
+      }
+    }
+    final parts = link.split(',');
+    if (parts.length >= 2) {
+      final lat = double.tryParse(parts[0].replaceAll(RegExp(r'[^0-9.+-]'), ''));
+      final lng = double.tryParse(parts[1].replaceAll(RegExp(r'[^0-9.+-]'), ''));
+      if (lat != null && lng != null) return (lat: lat, lng: lng);
+    }
+    return null;
+  }
+
+  Future<void> _openDirections() async {
+    final link = _resolvedLocationLink();
+    if (link == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Konum linki yok.')),
+      );
+      return;
+    }
+    final coords = _extractLatLng(link);
+    final url = coords == null
+        ? Uri.parse(link)
+        : Uri.parse(
+            'https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}',
+          );
+    final ok = await launchUrl(url, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Harita açılamadı.')),
+      );
+    }
   }
 
   Future<void> _updateStatus(String newStatus) async {
@@ -146,37 +266,6 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       final profile = await ref.read(currentUserProfileProvider.future);
 
       final branchId = _selectedBranchId ?? widget.order.branchId;
-      if (branchId != null) {
-        final lat = double.tryParse(_latController.text.trim());
-        final lng = double.tryParse(_lngController.text.trim());
-        final address = _addressController.text.trim();
-        final latMap = lat == null ? null : {'location_lat': lat};
-        final lngMap = lng == null ? null : {'location_lng': lng};
-        final addressMap =
-            address.isEmpty ? null : {'address': address};
-
-        if (lat != null || lng != null || address.isNotEmpty) {
-          if (apiClient != null) {
-            await apiClient.postJson(
-              '/mutate',
-              body: {
-                'op': 'updateWhere',
-                'table': 'branches',
-                'filters': [
-                  {'col': 'id', 'op': 'eq', 'value': branchId},
-                ],
-                'values': {...?latMap, ...?lngMap, ...?addressMap},
-              },
-            );
-          } else {
-            await client!.from('branches').update({
-              ...?latMap,
-              ...?lngMap,
-              ...?addressMap,
-            }).eq('id', branchId);
-          }
-        }
-      }
 
       if (_addLine) {
         final number = _lineNumberController.text.trim();
@@ -235,12 +324,15 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       for (final p in _payments) {
         final amount = p.amount;
         if (amount == null) continue;
+        final description = p.descriptionController.text.trim();
         paymentRows.add({
           'customer_id': customer.id,
           'work_order_id': widget.order.id,
           'amount': amount,
           'currency': p.currency,
           'exchange_rate': p.currency == 'TRY' ? 1.0 : _exchangeRates[p.currency],
+          'payment_method': p.method,
+          'description': description.isEmpty ? null : description,
           'paid_at': now.toIso8601String(),
           'is_active': true,
         });
@@ -286,6 +378,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         'branch_id': branchId,
         'closed_at': now.toIso8601String(),
         'closed_by': profile?.id,
+        'location_link': _resolvedLocationLink(),
         'close_notes':
             _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
       };
@@ -374,10 +467,16 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                       if (_isClosing || isDone) ...[
                         _buildPaymentsCard(context),
                         const Gap(12),
+                        if (isDone) ...[
+                          _buildLocationCard(context),
+                          const Gap(12),
+                        ],
                         if (!isDone) ...[
                           _buildSignatureCard(context, customer),
                           const Gap(12),
                           _buildBranchLocationCard(context, branchesAsync),
+                          const Gap(12),
+                          _buildLocationCard(context),
                           const Gap(12),
                           _buildAdditionalSalesCard(context),
                           const Gap(12),
@@ -465,6 +564,26 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           _InfoRow(icon: Icons.business_rounded, label: 'Müşteri', value: customer.name),
           const Gap(8),
           _InfoRow(icon: Icons.calendar_today_rounded, label: 'Planlanan Tarih', value: dateText),
+          if ((widget.order.locationLink ?? '').trim().isNotEmpty) ...[
+            const Gap(8),
+            Row(
+              children: [
+                Expanded(
+                  child: _InfoRow(
+                    icon: Icons.location_on_rounded,
+                    label: 'Konum',
+                    value: 'Hazır',
+                  ),
+                ),
+                const Gap(10),
+                OutlinedButton.icon(
+                  onPressed: _openDirections,
+                  icon: const Icon(Icons.directions_rounded, size: 18),
+                  label: const Text('Tarif Al'),
+                ),
+              ],
+            ),
+          ],
           if (customer.email?.isNotEmpty ?? false) ...[
             const Gap(8),
             _InfoRow(icon: Icons.email_rounded, label: 'E-posta', value: customer.email!),
@@ -473,6 +592,54 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             const Gap(8),
             _InfoRow(icon: Icons.phone_rounded, label: 'Telefon', value: customer.phone1!),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocationCard(BuildContext context) {
+    final isDone = widget.order.status == 'done';
+    final link = _resolvedLocationLink();
+
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('Konum', style: Theme.of(context).textTheme.titleSmall),
+              ),
+              if (!isDone)
+                OutlinedButton.icon(
+                  onPressed: _fetchingLocation ? null : _fetchLocation,
+                  icon: _fetchingLocation
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.my_location_rounded, size: 18),
+                  label: const Text('Konum Al'),
+                ),
+              const Gap(10),
+              OutlinedButton.icon(
+                onPressed: link == null ? null : _openDirections,
+                icon: const Icon(Icons.directions_rounded, size: 18),
+                label: const Text('Tarif Al'),
+              ),
+            ],
+          ),
+          const Gap(10),
+          TextField(
+            controller: _locationLinkController,
+            readOnly: isDone,
+            decoration: const InputDecoration(
+              labelText: 'Konum Linki',
+              hintText: 'Konum al ile otomatik dolar',
+            ),
+          ),
         ],
       ),
     );
@@ -513,7 +680,10 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                   ),
                   onPressed: _saving
                       ? null
-                      : () => setState(() => _isClosing = true),
+                        : () {
+                            ref.invalidate(workOrderCloseNotesDefinitionProvider);
+                            setState(() => _isClosing = true);
+                          },
                   icon: const Icon(Icons.check_circle_rounded, size: 18),
                   label: const Text('Kapat'),
                 ),
@@ -699,8 +869,6 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Şube & Konum', style: Theme.of(context).textTheme.titleSmall),
-          const Gap(10),
           branchesAsync.when(
             data: (branches) => DropdownButtonFormField<String?>(
               initialValue: _selectedBranchId ?? widget.order.branchId,
@@ -722,48 +890,6 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             ),
             loading: () => const SizedBox.shrink(),
             error: (_, _) => const SizedBox.shrink(),
-          ),
-          const Gap(12),
-          TextField(
-            controller: _addressController,
-            minLines: 2,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: 'Adres (güncelle)',
-              hintText: 'Cadde, sokak, no, ilçe...',
-            ),
-          ),
-          const Gap(12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _latController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                    signed: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Konum Lat',
-                    hintText: '41.0',
-                  ),
-                ),
-              ),
-              const Gap(12),
-              Expanded(
-                child: TextField(
-                  controller: _lngController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                    signed: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Konum Lng',
-                    hintText: '29.0',
-                  ),
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -829,20 +955,71 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   }
 
   Widget _buildNotesCard(BuildContext context) {
+    final closeNotesAsync = ref.watch(workOrderCloseNotesDefinitionProvider);
     return AppCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Not', style: Theme.of(context).textTheme.titleSmall),
+          Text('Kapatma Şekli', style: Theme.of(context).textTheme.titleSmall),
           const Gap(10),
+          closeNotesAsync.when(
+            data: (items) {
+              if (items.isEmpty) {
+                return Text(
+                  'Tanımlamalar > Kapanış Açıklaması bölümünden kapatma şekli ekleyin.',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: AppTheme.textMuted),
+                );
+              }
+              return DropdownButtonFormField<String?>(
+                initialValue: _selectedCloseNoteId,
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('Kapatma şekli seç'),
+                  ),
+                  ...items.map(
+                    (e) => DropdownMenuItem<String?>(
+                      value: e.id,
+                      child: Text(e.name),
+                    ),
+                  ),
+                ],
+                onChanged: _saving
+                    ? null
+                    : (value) {
+                        setState(() => _selectedCloseNoteId = value);
+                        final selected = items
+                            .where((e) => e.id == value)
+                            .firstOrNull;
+                        if (selected == null) return;
+                        if (_notesController.text.trim().isEmpty) {
+                          _notesController.text = selected.name;
+                        }
+                      },
+                decoration: const InputDecoration(labelText: 'Seçim'),
+              );
+            },
+            loading: () => const SizedBox.shrink(),
+            error: (error, stackTrace) => Text(
+              'Kapatma şekli listesi yüklenemedi: $error',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: AppTheme.textMuted),
+            ),
+          ),
+          const Gap(12),
           TextField(
             controller: _notesController,
             minLines: 2,
             maxLines: 4,
             decoration: const InputDecoration(
-              labelText: 'Kapanış Notu',
-              hintText: 'İsteğe bağlı',
+              labelText: 'Detay',
+              hintText: 'İsteğe bağlı ek detay yazın',
             ),
           ),
         ],
@@ -933,7 +1110,9 @@ class _PaymentDraft {
   _PaymentDraft();
 
   final amountController = TextEditingController();
+  final descriptionController = TextEditingController();
   String currency = 'TRY';
+  String method = 'cash';
 
   double? get amount {
     final raw = amountController.text.trim().replaceAll(',', '.');
@@ -942,6 +1121,7 @@ class _PaymentDraft {
 
   void dispose() {
     amountController.dispose();
+    descriptionController.dispose();
   }
 }
 
@@ -1015,6 +1195,37 @@ class _PaymentRowState extends State<_PaymentRow> {
                 onPressed: widget.onRemove,
                 icon: const Icon(Icons.delete_outline_rounded),
               ),
+          ],
+        ),
+        const Gap(10),
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: DropdownButtonFormField<String>(
+                initialValue: widget.draft.method,
+                items: const [
+                  DropdownMenuItem(value: 'cash', child: Text('Nakit')),
+                  DropdownMenuItem(value: 'transfer', child: Text('Havale')),
+                  DropdownMenuItem(value: 'cheque', child: Text('Çek')),
+                  DropdownMenuItem(value: 'pos', child: Text('POS')),
+                ],
+                onChanged: (v) =>
+                    setState(() => widget.draft.method = v ?? 'cash'),
+                decoration: const InputDecoration(labelText: 'Ödeme Tipi'),
+              ),
+            ),
+            const Gap(10),
+            Expanded(
+              flex: 5,
+              child: TextField(
+                controller: widget.draft.descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Açıklama',
+                  hintText: 'Örn: Kurulum tahsilatı',
+                ),
+              ),
+            ),
           ],
         ),
         if (tryAmount != null) ...[

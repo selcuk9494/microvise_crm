@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
@@ -16,12 +15,10 @@ import '../../core/ui/app_page_layout.dart';
 import '../billing/invoice_queue_helper.dart';
 import '../customers/web_download_helper.dart'
     if (dart.library.io) '../customers/io_download_helper.dart';
-import '../invoices/invoice_providers.dart';
 import 'application_form_model.dart';
 import '../customers/customer_form_dialog.dart';
 import '../definitions/definitions_screen.dart';
 import 'application_form_print.dart';
-import '../stock/serial_inventory.dart';
 import '../work_orders/work_orders_providers.dart';
 
 final applicationFormCustomersProvider = FutureProvider<List<_CustomerOption>>((
@@ -75,39 +72,6 @@ final applicationFormCustomersProvider = FutureProvider<List<_CustomerOption>>((
   return items;
 });
 
-final applicationFormStockProductsProvider =
-    FutureProvider<List<_StockProductOption>>((ref) async {
-      final apiClient = ref.watch(apiClientProvider);
-      final client = ref.watch(supabaseClientProvider);
-      if (apiClient != null) {
-        final response = await apiClient.getJson(
-          '/data',
-          queryParameters: {'resource': 'form_stock_products'},
-        );
-        final items = ((response['items'] as List?) ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map(_StockProductOption.fromJson)
-            .toList(growable: false);
-        items.sort((a, b) => _sortKey(a.label).compareTo(_sortKey(b.label)));
-        return items;
-      }
-      if (client == null) return const [];
-
-      final rows = await client
-          .from('products')
-          .select('id,code,name,is_active')
-          .eq('is_active', true)
-          .order('name');
-
-      final items = (rows as List)
-          .map(
-            (row) => _StockProductOption.fromJson(row as Map<String, dynamic>),
-          )
-          .toList(growable: false);
-      items.sort((a, b) => _sortKey(a.label).compareTo(_sortKey(b.label)));
-      return items;
-    });
-
 final applicationFormsProvider = FutureProvider<List<ApplicationFormRecord>>((
   ref,
 ) async {
@@ -116,7 +80,7 @@ final applicationFormsProvider = FutureProvider<List<ApplicationFormRecord>>((
   if (apiClient != null) {
     final response = await apiClient.getJson(
       '/data',
-      queryParameters: {'resource': 'form_application_list'},
+      queryParameters: {'resource': 'form_application_list', 'showPassive': 'true'},
     );
     return ((response['items'] as List?) ?? const [])
         .whereType<Map<String, dynamic>>()
@@ -152,7 +116,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   final _dateFormat = DateFormat('dd.MM.yyyy', 'tr_TR');
   final Set<String> _selectedRecordIds = <String>{};
   bool _showPassive = false;
-  bool _todayOnly = false;
+  bool _todayOnly = true;
   DateTime? _fromDate;
   DateTime? _toDate;
 
@@ -291,34 +255,43 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   ) async {
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (apiClient != null) {
-      await apiClient.postJson(
-        '/mutate',
-        body: {
-          'op': 'upsert',
-          'table': 'application_forms',
-          'returning': 'row',
-          'values': {'id': record.id, 'is_active': active},
-        },
-      );
-    } else {
-      if (client == null) return;
-      await client
-          .from('application_forms')
-          .update({'is_active': active})
-          .eq('id', record.id);
-    }
-    ref.invalidate(applicationFormsProvider);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          active
-              ? 'Başvuru yeniden aktifleştirildi.'
-              : 'Başvuru pasife alındı.',
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'application_forms',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': record.id},
+            ],
+            'values': {'is_active': active},
+          },
+        );
+      } else {
+        if (client == null) return;
+        await client
+            .from('application_forms')
+            .update({'is_active': active})
+            .eq('id', record.id);
+      }
+      ref.invalidate(applicationFormsProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            active
+                ? 'Başvuru yeniden aktifleştirildi.'
+                : 'Başvuru pasife alındı.',
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İşlem başarısız: $e')),
+      );
+    }
   }
 
   Future<void> _deleteRecordPermanently(ApplicationFormRecord record) async {
@@ -345,20 +318,27 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
 
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (apiClient != null) {
-      await apiClient.postJson(
-        '/mutate',
-        body: {'op': 'delete', 'table': 'application_forms', 'id': record.id},
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {'op': 'delete', 'table': 'application_forms', 'id': record.id},
+        );
+      } else {
+        if (client == null) return;
+        await client.from('application_forms').delete().eq('id', record.id);
+      }
+      ref.invalidate(applicationFormsProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Başvuru kalıcı olarak silindi.')),
       );
-    } else {
-      if (client == null) return;
-      await client.from('application_forms').delete().eq('id', record.id);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Silinemedi: $e')),
+      );
     }
-    ref.invalidate(applicationFormsProvider);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Başvuru kalıcı olarak silindi.')),
-    );
   }
 
   String _defaultWorkOrderDescription(ApplicationFormRecord record) {
@@ -888,7 +868,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       body: recordsAsync.when(
         data: (records) {
           final baseFiltered = _filterRecords(records, includeTodayOnly: false)
-              .where((item) => _showPassive || item.isActive)
+              .where((item) => _showPassive ? !item.isActive : item.isActive)
               .toList(growable: false);
           final filtered = _todayOnly
               ? baseFiltered
@@ -1262,6 +1242,7 @@ class _ApplicationFormDialogState
   late final TextEditingController _directorController;
   late final TextEditingController _accountingOfficeController;
   late final TextEditingController _invoiceNumberController;
+  late final TextEditingController _productNameController;
   late final TextEditingController _manualSerialsController;
   DateTime _applicationDate = DateTime.now();
   DateTime _okcStartDate = DateTime.now();
@@ -1270,10 +1251,9 @@ class _ApplicationFormDialogState
   String? _selectedCityId;
   String? _selectedModelId;
   String? _selectedFiscalSymbolId;
-  String? _selectedStockProductId;
   List<String> _selectedBusinessActivityIds = [];
-  List<ProductSerialInventoryRecord> _selectedSerialInventory = const [];
   bool _saving = false;
+  String? _autoFilledProductForSerial;
 
   @override
   void initState() {
@@ -1298,6 +1278,7 @@ class _ApplicationFormDialogState
     _invoiceNumberController = TextEditingController(
       text: widget.duplicateMode ? '' : (initial?.invoiceNumber ?? ''),
     );
+    _productNameController = TextEditingController(text: 'ÖKC');
     _manualSerialsController = TextEditingController();
     _applicationDate =
         widget.duplicateMode ? DateTime.now() : (initial?.applicationDate ?? DateTime.now());
@@ -1307,8 +1288,6 @@ class _ApplicationFormDialogState
     if (widget.duplicateMode) {
       _fileRegistryController.text = '';
       _manualSerialsController.text = '';
-      _selectedStockProductId = null;
-      _selectedSerialInventory = const [];
     }
     _loadInitialSelections();
   }
@@ -1321,9 +1300,6 @@ class _ApplicationFormDialogState
     final cities = await ref.read(cityDefinitionsProvider.future);
     final models = await ref.read(deviceModelsProvider.future);
     final fiscalSymbols = await ref.read(fiscalSymbolsProvider.future);
-    final stockProducts = await ref.read(
-      applicationFormStockProductsProvider.future,
-    );
     final activities = await ref.read(businessActivityTypesProvider.future);
 
     if (!mounted) return;
@@ -1360,35 +1336,9 @@ class _ApplicationFormDialogState
           .map((item) => item.id)
           .firstOrNull;
       if (!widget.duplicateMode) {
-        _selectedStockProductId ??=
-            stockProducts
-                .where((item) => item.id == initial.stockProductId)
-                .map((item) => item.id)
-                .firstOrNull ??
-            stockProducts
-                .where(
-                  (item) =>
-                      _sortKey(item.name) ==
-                          _sortKey(initial.stockProductName ?? '') ||
-                      _sortKey(item.code ?? '') ==
-                          _sortKey(initial.stockRegistryNumber ?? ''),
-                )
-                .map((item) => item.id)
-                .firstOrNull;
         if ((initial.stockRegistryNumber?.trim().isNotEmpty ?? false) &&
-            _selectedSerialInventory.isEmpty) {
-          _selectedSerialInventory = [
-            ProductSerialInventoryRecord(
-              id: 'existing:${initial.id}',
-              productId: _selectedStockProductId ?? '',
-              serialNumber: initial.stockRegistryNumber!.trim(),
-              notes: null,
-              isActive: true,
-              consumedByApplicationFormId: initial.id,
-              consumedAt: initial.createdAt,
-              createdAt: initial.createdAt,
-            ),
-          ];
+            _manualSerialsController.text.trim().isEmpty) {
+          _manualSerialsController.text = initial.stockRegistryNumber!.trim();
         }
       }
       if (_selectedBusinessActivityIds.isEmpty) {
@@ -1414,6 +1364,7 @@ class _ApplicationFormDialogState
     _directorController.dispose();
     _accountingOfficeController.dispose();
     _invoiceNumberController.dispose();
+    _productNameController.dispose();
     _manualSerialsController.dispose();
     super.dispose();
   }
@@ -1538,197 +1489,76 @@ class _ApplicationFormDialogState
       .toSet()
       .toList(growable: false);
 
-  List<ProductSerialInventoryRecord> get _resolvedSerialSelections {
-    final bySerial = <String, ProductSerialInventoryRecord>{};
-    for (final item in _selectedSerialInventory) {
-      final serial = item.serialNumber.trim().toUpperCase();
-      if (serial.isEmpty) continue;
-      bySerial[serial] = item.copyWith(serialNumber: serial);
-    }
-    for (final serial in _manualRegistryNumbers) {
-      bySerial.putIfAbsent(
-        serial,
-        () => ProductSerialInventoryRecord(
-          id: 'manual:$serial',
-          productId: _selectedStockProductId ?? '',
-          serialNumber: serial,
-          isActive: true,
-        ),
+  String? get _primaryRegistryNumber {
+    final items = _manualRegistryNumbers;
+    if (items.isEmpty) return null;
+    return items.first;
+  }
+
+  Future<void> _saveSerialToTracking({
+    required String serialNumber,
+    required String productName,
+  }) async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    setState(() => _saving = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'serial_tracking',
+          'values': {
+            'product_name': productName.trim(),
+            'serial_number': serialNumber.trim().toUpperCase(),
+            'is_active': true,
+          },
+        },
       );
-    }
-    return bySerial.values.toList(growable: false);
-  }
-
-  void _removeSelectedSerial(ProductSerialInventoryRecord serial) {
-    setState(() {
-      if (serial.id.startsWith('manual:')) {
-        final nextManuals = _manualRegistryNumbers
-            .where((item) => item != serial.serialNumber.trim().toUpperCase())
-            .toList(growable: false);
-        _manualSerialsController.text = nextManuals.join('\n');
-      } else {
-        _selectedSerialInventory = _selectedSerialInventory
-            .where((item) => item.id != serial.id)
-            .toList(growable: false);
-      }
-    });
-  }
-
-  void _openProductsPage() {
-    Navigator.of(context).pop();
-    context.go('/urunler');
-  }
-
-  String get _serialSelectionLabel {
-    final selected = _resolvedSerialSelections
-        .map((item) => item.serialNumber.trim())
-        .where((item) => item.isNotEmpty)
-        .toList(growable: false);
-    if (selected.isEmpty) return 'Seri havuzundan seçin';
-    if (selected.length == 1) return selected.first;
-    return '${selected.length} seri seçildi';
-  }
-
-  Future<void> _pickSerialInventory() async {
-    final productId = _selectedStockProductId?.trim();
-    if (productId == null || productId.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Önce stok ürününü seçin.')),
+        const SnackBar(content: Text('Seri takip kaydı eklendi.')),
       );
-      return;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kaydedilemedi: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
+  }
 
-    final available = await ref.read(productSerialInventoryProvider(productId).future);
-    final existingSelection = _selectedSerialInventory
-        .where((item) => item.serialNumber.trim().isNotEmpty)
+  Future<void> _pickSerialFromTracking() async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {'resource': 'serial_tracking'},
+    );
+    final items = ((response['items'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .map(_SerialTrackingOption.fromJson)
+        .where((item) => item.isActive)
         .toList(growable: false);
-    final options = [
-      ...available,
-      for (final item in existingSelection)
-        if (!available.any((availableItem) => availableItem.id == item.id))
-          item,
-    ];
 
     if (!mounted) return;
-    final selected = await showDialog<List<ProductSerialInventoryRecord>>(
+    final selected = await showDialog<List<_SerialTrackingOption>>(
       context: context,
-      builder: (context) => _SerialInventoryPickerDialog(
-        items: options,
-        selectedIds: existingSelection.map((item) => item.id).toSet(),
+      builder: (context) => _SerialTrackingPickerDialog(
+        items: items,
         allowMultiple: !widget.isEdit,
+        initialSelectedSerials: _manualRegistryNumbers.toSet(),
       ),
     );
-    if (selected == null || !mounted) return;
+    if (selected == null || selected.isEmpty || !mounted) return;
+
     setState(() {
-      _selectedSerialInventory = selected;
+      _manualSerialsController.text =
+          selected.map((e) => e.serialNumber).join('\n');
     });
-  }
-
-  Future<void> _consumeSerialInventoryForApplications({
-    required dynamic client,
-    required List<ApplicationFormRecord> insertedRecords,
-    required List<ProductSerialInventoryRecord> selectedSerials,
-  }) async {
-    if (insertedRecords.isEmpty || selectedSerials.isEmpty) return;
-    final consumedAt = DateTime.now().toUtc().toIso8601String();
-    final userId = client.auth.currentUser?.id;
-
-    for (var index = 0; index < insertedRecords.length; index++) {
-      if (index >= selectedSerials.length) break;
-      final serial = selectedSerials[index];
-      if (serial.id.startsWith('existing:') || serial.id.startsWith('manual:')) {
-        continue;
-      }
-      await client
-          .from('product_serial_inventory')
-          .update({
-            'consumed_by_application_form_id': insertedRecords[index].id,
-            'consumed_at': consumedAt,
-          })
-          .eq('id', serial.id);
-    }
-
-    final byProduct = <String, int>{};
-    for (final serial in selectedSerials) {
-      byProduct.update(serial.productId, (value) => value + 1, ifAbsent: () => 1);
-    }
-    if (byProduct.isEmpty) return;
-
-    await client.from('stock_movements').insert(
-      byProduct.entries
-          .map(
-            (entry) => {
-              'product_id': entry.key,
-              'movement_type': 'out',
-              'quantity': entry.value.toDouble(),
-              'reference_type': 'application_form',
-              'notes': 'Başvuru formu seri tüketimi',
-              'created_by': userId,
-            },
-          )
-          .toList(growable: false),
-    );
-  }
-
-  Future<void> _syncSerialInventoryForEdit({
-    required dynamic client,
-    required String applicationFormId,
-    required String? previousProductId,
-    required String? previousRegistryNumber,
-    required ProductSerialInventoryRecord nextSerial,
-  }) async {
-    final previousProduct = (previousProductId ?? '').trim();
-    final previousSerial = (previousRegistryNumber ?? '').trim().toUpperCase();
-    final nextProduct = nextSerial.productId.trim();
-    final nextRegistry = nextSerial.serialNumber.trim().toUpperCase();
-    final sameSelection =
-        previousProduct.isNotEmpty &&
-        previousProduct == nextProduct &&
-        previousSerial.isNotEmpty &&
-        previousSerial == nextRegistry;
-
-    if (sameSelection) return;
-
-    final userId = client.auth.currentUser?.id;
-    if (previousProduct.isNotEmpty && previousSerial.isNotEmpty) {
-      await client
-          .from('product_serial_inventory')
-          .update({
-            'consumed_by_application_form_id': null,
-            'consumed_at': null,
-          })
-          .eq('product_id', previousProduct)
-          .eq('serial_number', previousSerial)
-          .eq('consumed_by_application_form_id', applicationFormId);
-      await client.from('stock_movements').insert({
-        'product_id': previousProduct,
-        'movement_type': 'in',
-        'quantity': 1,
-        'reference_type': 'application_form_edit',
-        'notes': 'Başvuru düzenlemesinde seri serbest bırakıldı',
-        'created_by': userId,
-      });
-    }
-
-    if (!nextSerial.id.startsWith('existing:') &&
-        !nextSerial.id.startsWith('manual:')) {
-      await client
-          .from('product_serial_inventory')
-          .update({
-            'consumed_by_application_form_id': applicationFormId,
-            'consumed_at': DateTime.now().toUtc().toIso8601String(),
-          })
-          .eq('id', nextSerial.id);
-      await client.from('stock_movements').insert({
-        'product_id': nextProduct,
-        'movement_type': 'out',
-        'quantity': 1,
-        'reference_type': 'application_form_edit',
-        'notes': 'Başvuru düzenlemesinde seri yeniden atandı',
-        'created_by': userId,
-      });
-    }
   }
 
   Future<void> _save() async {
@@ -1741,10 +1571,6 @@ class _ApplicationFormDialogState
     final cities = ref.read(cityDefinitionsProvider).asData?.value;
     final models = ref.read(deviceModelsProvider).asData?.value;
     final fiscalSymbols = ref.read(fiscalSymbolsProvider).asData?.value;
-    final stockProducts = ref
-        .read(applicationFormStockProductsProvider)
-        .asData
-        ?.value;
     final activities = ref.read(businessActivityTypesProvider).asData?.value;
 
     final customer = customers
@@ -1759,23 +1585,16 @@ class _ApplicationFormDialogState
     final fiscal = fiscalSymbols
         ?.where((item) => item.id == _selectedFiscalSymbolId)
         .firstOrNull;
-    final stockProduct = stockProducts
-        ?.where((item) => item.id == _selectedStockProductId)
-        .firstOrNull;
-    final selectedSerials = _resolvedSerialSelections
-        .where((item) => item.serialNumber.trim().isNotEmpty)
-        .toList(growable: false);
-    final registryNumbers = selectedSerials
-        .map((item) => item.serialNumber.trim())
-        .toList(growable: false);
+    final productName = _productNameController.text.trim();
+    final registryNumbers = _manualRegistryNumbers;
     final selectedActivities =
         (activities ?? const <BusinessActivityTypeDefinition>[])
             .where((item) => _selectedBusinessActivityIds.contains(item.id))
             .toList(growable: false);
 
-    if (stockProduct == null) {
+    if (productName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Stok listesinden ürün seçin.')),
+        const SnackBar(content: Text('Ürün ismi girin.')),
       );
       return;
     }
@@ -1798,8 +1617,6 @@ class _ApplicationFormDialogState
 
     setState(() => _saving = true);
     try {
-      final profile = await ref.read(currentUserProfileProvider.future);
-      final createdBy = profile?.id;
       final basePayload = {
         'application_date': DateFormat('yyyy-MM-dd').format(_applicationDate),
         'customer_id': customer?.id,
@@ -1825,8 +1642,8 @@ class _ApplicationFormDialogState
         'fiscal_symbol_name': fiscal?.code?.trim().isNotEmpty ?? false
             ? fiscal!.code!.trim()
             : fiscal?.name,
-        'stock_product_id': stockProduct.id,
-        'stock_product_name': stockProduct.name,
+        'stock_product_id': null,
+        'stock_product_name': productName,
         'accounting_office': _accountingOfficeController.text.trim().isEmpty
             ? null
             : _accountingOfficeController.text.trim(),
@@ -1860,96 +1677,6 @@ class _ApplicationFormDialogState
             },
           );
           inserted = (response['row'] as Map?)?.cast<String, dynamic>() ?? {};
-
-          final previousProduct = (widget.initialRecord!.stockProductId ?? '').trim();
-          final previousSerial =
-              (widget.initialRecord!.stockRegistryNumber ?? '').trim().toUpperCase();
-          final nextSerial = selectedSerials.first;
-          final nextProduct = nextSerial.productId.trim();
-          final nextRegistry =
-              nextSerial.serialNumber.trim().toUpperCase();
-
-          final sameSelection = previousProduct.isNotEmpty &&
-              previousProduct == nextProduct &&
-              previousSerial.isNotEmpty &&
-              previousSerial == nextRegistry;
-
-          if (!sameSelection) {
-            if (previousProduct.isNotEmpty && previousSerial.isNotEmpty) {
-              await apiClient.postJson(
-                '/mutate',
-                body: {
-                  'op': 'updateWhere',
-                  'table': 'product_serial_inventory',
-                  'filters': [
-                    {'col': 'product_id', 'op': 'eq', 'value': previousProduct},
-                    {'col': 'serial_number', 'op': 'eq', 'value': previousSerial},
-                    {
-                      'col': 'consumed_by_application_form_id',
-                      'op': 'eq',
-                      'value': widget.initialRecord!.id,
-                    },
-                  ],
-                  'values': {
-                    'consumed_by_application_form_id': null,
-                    'consumed_at': null,
-                  },
-                },
-              );
-              await apiClient.postJson(
-                '/mutate',
-                body: {
-                  'op': 'insertMany',
-                  'table': 'stock_movements',
-                  'rows': [
-                    {
-                      'product_id': previousProduct,
-                      'movement_type': 'in',
-                      'quantity': 1,
-                      'reference_type': 'application_form_edit',
-                      'notes': 'Başvuru düzenlemesinde seri serbest bırakıldı',
-                      'created_by': createdBy,
-                    },
-                  ],
-                },
-              );
-            }
-
-            if (!nextSerial.id.startsWith('existing:') &&
-                !nextSerial.id.startsWith('manual:')) {
-              await apiClient.postJson(
-                '/mutate',
-                body: {
-                  'op': 'updateWhere',
-                  'table': 'product_serial_inventory',
-                  'filters': [
-                    {'col': 'id', 'op': 'eq', 'value': nextSerial.id},
-                  ],
-                  'values': {
-                    'consumed_by_application_form_id': widget.initialRecord!.id,
-                    'consumed_at': DateTime.now().toUtc().toIso8601String(),
-                  },
-                },
-              );
-              await apiClient.postJson(
-                '/mutate',
-                body: {
-                  'op': 'insertMany',
-                  'table': 'stock_movements',
-                  'rows': [
-                    {
-                      'product_id': nextProduct,
-                      'movement_type': 'out',
-                      'quantity': 1,
-                      'reference_type': 'application_form_edit',
-                      'notes': 'Başvuru düzenlemesinde seri yeniden atandı',
-                      'created_by': createdBy,
-                    },
-                  ],
-                },
-              );
-            }
-          }
         } else {
           inserted = await client!
               .from('application_forms')
@@ -1963,17 +1690,8 @@ class _ApplicationFormDialogState
                 'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
               )
               .single();
-          await _syncSerialInventoryForEdit(
-            client: client,
-            applicationFormId: widget.initialRecord!.id,
-            previousProductId: widget.initialRecord!.stockProductId,
-            previousRegistryNumber: widget.initialRecord!.stockRegistryNumber,
-            nextSerial: selectedSerials.first,
-          );
         }
         ref.invalidate(applicationFormsProvider);
-        ref.invalidate(productSerialInventoryProvider(_selectedStockProductId));
-        ref.invalidate(productSerialInventorySummaryProvider);
         if (!mounted) return;
         Navigator.of(context).pop([ApplicationFormRecord.fromJson(inserted)]);
         return;
@@ -2010,59 +1728,6 @@ class _ApplicationFormDialogState
         }
         insertedRecords =
             rows.map(ApplicationFormRecord.fromJson).toList(growable: false);
-
-        final consumedAt = DateTime.now().toUtc().toIso8601String();
-        for (var index = 0; index < insertedRecords.length; index++) {
-          if (index >= selectedSerials.length) break;
-          final serial = selectedSerials[index];
-          if (serial.id.startsWith('existing:') || serial.id.startsWith('manual:')) {
-            continue;
-          }
-          await apiClient.postJson(
-            '/mutate',
-            body: {
-              'op': 'updateWhere',
-              'table': 'product_serial_inventory',
-              'filters': [
-                {'col': 'id', 'op': 'eq', 'value': serial.id},
-              ],
-              'values': {
-                'consumed_by_application_form_id': insertedRecords[index].id,
-                'consumed_at': consumedAt,
-              },
-            },
-          );
-        }
-
-        final byProduct = <String, int>{};
-        for (final serial in selectedSerials) {
-          byProduct.update(
-            serial.productId,
-            (value) => value + 1,
-            ifAbsent: () => 1,
-          );
-        }
-        if (byProduct.isNotEmpty) {
-          await apiClient.postJson(
-            '/mutate',
-            body: {
-              'op': 'insertMany',
-              'table': 'stock_movements',
-              'rows': byProduct.entries
-                  .map(
-                    (entry) => {
-                      'product_id': entry.key,
-                      'movement_type': 'out',
-                      'quantity': entry.value.toDouble(),
-                      'reference_type': 'application_form',
-                      'notes': 'Başvuru formu seri tüketimi',
-                      'created_by': createdBy,
-                    },
-                  )
-                  .toList(growable: false),
-            },
-          );
-        }
 
         final modelName = model?.name.trim();
         for (final inserted in insertedRecords) {
@@ -2107,12 +1772,6 @@ class _ApplicationFormDialogState
             )
             .toList(growable: false);
 
-        await _consumeSerialInventoryForApplications(
-          client: client,
-          insertedRecords: insertedRecords,
-          selectedSerials: selectedSerials,
-        );
-
         for (final inserted in insertedRecords) {
           final modelName = model?.name.trim();
           await enqueueInvoiceItem(
@@ -2132,9 +1791,6 @@ class _ApplicationFormDialogState
       }
 
       ref.invalidate(applicationFormsProvider);
-      ref.invalidate(productSerialInventoryProvider(_selectedStockProductId));
-      ref.invalidate(productSerialInventorySummaryProvider);
-      ref.invalidate(stockLevelsProvider);
       if (!mounted) return;
       Navigator.of(context).pop(insertedRecords);
     } finally {
@@ -2150,8 +1806,10 @@ class _ApplicationFormDialogState
     final citiesAsync = ref.watch(cityDefinitionsProvider);
     final modelsAsync = ref.watch(deviceModelsProvider);
     final fiscalSymbolsAsync = ref.watch(fiscalSymbolsProvider);
-    final stockProductsAsync = ref.watch(applicationFormStockProductsProvider);
     final activitiesAsync = ref.watch(businessActivityTypesProvider);
+    final serialLookupAsync = _primaryRegistryNumber == null
+        ? const AsyncValue<Map<String, dynamic>?>.data(null)
+        : ref.watch(serialTrackingLookupProvider(_primaryRegistryNumber!));
 
     final formRows = <Widget>[
       _FormRow(
@@ -2265,48 +1923,33 @@ class _ApplicationFormDialogState
         ),
       ),
       _FormRow(
-        label: 'Cihaz Sicil No(ları)',
+        label: 'Ürün ve Sicil No',
         child: _ResponsiveFieldGroup(
-          left: stockProductsAsync.when(
-            data: (items) => _ApplicationDropdown<String>(
-              value: _selectedStockProductId,
-              hintText: 'Stok listesinden seçin',
-              items: items
-                  .map(
-                    (item) => DropdownMenuItem<String>(
-                      value: item.id,
-                      child: Text(item.label),
-                    ),
-                  )
-                  .toList(growable: false),
-              onChanged: (value) {
-                setState(() {
-                  _selectedStockProductId = value;
-                  _selectedSerialInventory = const [];
-                  _manualSerialsController.clear();
-                });
-              },
-            ),
-            loading: () => const _ContentLoading(),
-            error: (error, stackTrace) => const _ContentError(),
+          left: _ApplicationTextField(
+            controller: _productNameController,
+            readOnly: true,
+            enabled: false,
+            validator: (value) => value == null || value.trim().isEmpty
+                ? 'Ürün ismi zorunlu.'
+                : null,
           ),
           right: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _pickSerialInventory,
-                      icon: const Icon(Icons.qr_code_2_rounded, size: 18),
-                      label: Text(_serialSelectionLabel),
-                    ),
-                  ),
-                  const Gap(8),
                   OutlinedButton.icon(
-                    onPressed: _openProductsPage,
-                    icon: const Icon(Icons.inventory_2_rounded, size: 18),
-                    label: const Text('Ürün Ekle'),
+                    onPressed: _saving ? null : _pickSerialFromTracking,
+                    icon: const Icon(Icons.playlist_add_rounded, size: 18),
+                    label: const Text('Seri Seç'),
+                  ),
+                  const Gap(10),
+                  Text(
+                    'Kayıtlı seri havuzundan seçebilir veya manuel girebilirsiniz.',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: AppTheme.textMuted),
                   ),
                 ],
               ),
@@ -2315,46 +1958,144 @@ class _ApplicationFormDialogState
                 controller: _manualSerialsController,
                 minLines: widget.isEdit ? 1 : 2,
                 maxLines: widget.isEdit ? 2 : 3,
-                onChanged: (_) => setState(() {}),
+                onChanged: (_) {
+                  _autoFilledProductForSerial = null;
+                  setState(() {});
+                },
                 decoration: InputDecoration(
-                  labelText: widget.isEdit
-                      ? 'Manuel Sicil No'
-                      : 'Manuel Sicil No(ları)',
+                  labelText:
+                      widget.isEdit ? 'Ürün Sicil No' : 'Ürün Sicil No(ları)',
                   hintText: widget.isEdit
-                      ? 'Havuz dışında tek sicil girin'
-                      : 'Havuz dışında sicilleri alt alta veya virgülle girin',
+                      ? 'Tek sicil no girin'
+                      : 'Sicilleri alt alta veya virgülle girin',
                   alignLabelWithHint: true,
-                  prefixIcon: const Icon(Icons.edit_note_rounded),
+                  prefixIcon: const Icon(Icons.qr_code_2_rounded),
                 ),
+                validator: (value) {
+                  final raw = value?.trim() ?? '';
+                  if (raw.isEmpty) return 'Sicil no zorunlu.';
+                  if (widget.isEdit &&
+                      raw
+                              .split(RegExp(r'[\n,;]+'))
+                              .where((e) => e.trim().isNotEmpty)
+                              .length >
+                          1) {
+                    return 'Düzenlemede tek sicil no girin.';
+                  }
+                  return null;
+                },
               ),
-              if (_resolvedSerialSelections.isNotEmpty) ...[
-                const Gap(8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final serial in _resolvedSerialSelections)
-                      InputChip(
-                        label: Text(serial.serialNumber),
-                        onDeleted: () => _removeSelectedSerial(serial),
-                      ),
-                  ],
-                ),
-              ] else ...[
-                const Gap(8),
-                Text(
-                  widget.isEdit
-                      ? 'Düzenleme modunda tek seri seçilebilir. Havuzdan seçebilir veya manuel yazabilirsiniz.'
-                      : 'Stoktaki hazır seri havuzundan seçebilir veya manuel sicil girebilirsiniz.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
-                ),
-              ],
             ],
           ),
         ),
       ),
+      if (_primaryRegistryNumber != null)
+        _FormRow(
+          label: 'Seri Takip',
+          child: serialLookupAsync.when(
+            data: (match) {
+              final serial = _primaryRegistryNumber!.trim().toUpperCase();
+              if (match != null) {
+                final productName = (match['product_name'] ?? '').toString();
+                final isActive = (match['is_active'] as bool?) ?? true;
+
+                if (_productNameController.text.trim().isEmpty &&
+                    productName.trim().isNotEmpty &&
+                    _autoFilledProductForSerial != serial) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!mounted) return;
+                    if (_productNameController.text.trim().isNotEmpty) return;
+                    _productNameController.text = productName.trim();
+                    _autoFilledProductForSerial = serial;
+                  });
+                }
+
+                return AppCard(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isActive
+                            ? Icons.check_circle_rounded
+                            : Icons.pause_circle_filled_rounded,
+                        color: isActive ? const Color(0xFF16A34A) : const Color(0xFF64748B),
+                      ),
+                      const Gap(10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Seri takipte kayıtlı: $serial',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                            const Gap(4),
+                            Text(
+                              productName.trim().isEmpty ? 'Ürün adı yok' : productName.trim(),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(color: AppTheme.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                      AppBadge(
+                        label: isActive ? 'Aktif' : 'Pasif',
+                        tone: isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              final canQuickAdd = _productNameController.text.trim().isNotEmpty;
+              return AppCard(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline_rounded, color: Color(0xFF64748B)),
+                    const Gap(10),
+                    Expanded(
+                      child: Text(
+                        'Bu sicil numarası seri takipte yok: $serial',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: AppTheme.textMuted),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: canQuickAdd && !_saving
+                          ? () => _saveSerialToTracking(
+                                serialNumber: serial,
+                                productName: _productNameController.text,
+                              )
+                          : null,
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('Seri Takibe Ekle'),
+                    ),
+                  ],
+                ),
+              );
+            },
+            loading: () => const _ContentLoading(),
+            error: (error, _) => AppCard(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  'Seri takip kontrolü yapılamadı: $error',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: AppTheme.textMuted),
+                ),
+              ),
+            ),
+          ),
+        ),
       _FormRow(
         label: 'Mali Sembol ve Firma Kodu',
         child: _ResponsiveFieldGroup(
@@ -2547,6 +2288,229 @@ class _ApplicationFormDialogState
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final serialTrackingLookupProvider =
+    FutureProvider.family<Map<String, dynamic>?, String>((ref, serial) async {
+  final apiClient = ref.watch(apiClientProvider);
+  if (apiClient == null) return null;
+  final response = await apiClient.getJson(
+    '/data',
+    queryParameters: {'resource': 'serial_tracking_lookup', 'serial': serial},
+  );
+  final item = response['item'];
+  return item is Map ? item.cast<String, dynamic>() : null;
+});
+
+class _SerialTrackingOption {
+  const _SerialTrackingOption({
+    required this.id,
+    required this.serialNumber,
+    required this.productName,
+    required this.isActive,
+  });
+
+  final String id;
+  final String serialNumber;
+  final String productName;
+  final bool isActive;
+
+  factory _SerialTrackingOption.fromJson(Map<String, dynamic> json) {
+    return _SerialTrackingOption(
+      id: json['id']?.toString() ?? '',
+      serialNumber: (json['serial_number'] ?? '').toString(),
+      productName: (json['product_name'] ?? '').toString(),
+      isActive: (json['is_active'] as bool?) ?? true,
+    );
+  }
+}
+
+class _SerialTrackingPickerDialog extends StatefulWidget {
+  const _SerialTrackingPickerDialog({
+    required this.items,
+    required this.allowMultiple,
+    required this.initialSelectedSerials,
+  });
+
+  final List<_SerialTrackingOption> items;
+  final bool allowMultiple;
+  final Set<String> initialSelectedSerials;
+
+  @override
+  State<_SerialTrackingPickerDialog> createState() =>
+      _SerialTrackingPickerDialogState();
+}
+
+class _SerialTrackingPickerDialogState extends State<_SerialTrackingPickerDialog> {
+  final _searchController = TextEditingController();
+  late Set<String> _selectedSerials;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedSerials = {...widget.initialSelectedSerials};
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _toggle(_SerialTrackingOption item, bool selected) {
+    final serial = item.serialNumber.trim().toUpperCase();
+    if (serial.isEmpty) return;
+    setState(() {
+      if (!widget.allowMultiple) {
+        _selectedSerials = selected ? {serial} : <String>{};
+        return;
+      }
+      if (selected) {
+        _selectedSerials.add(serial);
+      } else {
+        _selectedSerials.remove(serial);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _sortKey(_searchController.text);
+    final filtered = widget.items.where((item) {
+      if (query.isEmpty) return true;
+      final haystack = _sortKey('${item.serialNumber} ${item.productName}');
+      return haystack.contains(query);
+    }).toList(growable: false);
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 760),
+        child: AppCard(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.allowMultiple ? 'Seri Seç' : 'Seri Seç (Tek)',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const Gap(10),
+              TextField(
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search_rounded),
+                  hintText: 'Sicil no veya ürün adı ara',
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: filtered.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Uygun seri bulunamadı.',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(color: AppTheme.textMuted),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: filtered.length,
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = filtered[index];
+                          final serial =
+                              item.serialNumber.trim().toUpperCase();
+                          final selected = _selectedSerials.contains(serial);
+                          return ListTile(
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            onTap: () => _toggle(item, !selected),
+                            leading: widget.allowMultiple
+                                ? Checkbox(
+                                    value: selected,
+                                    onChanged: (value) =>
+                                        _toggle(item, value ?? false),
+                                  )
+                                : IconButton(
+                                    onPressed: () => _toggle(item, true),
+                                    icon: Icon(
+                                      selected
+                                          ? Icons.radio_button_checked_rounded
+                                          : Icons.radio_button_off_rounded,
+                                      color: selected
+                                          ? AppTheme.primary
+                                          : const Color(0xFF94A3B8),
+                                    ),
+                                  ),
+                            title: Text(
+                              item.serialNumber,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            subtitle: item.productName.trim().isNotEmpty
+                                ? Text(item.productName.trim())
+                                : null,
+                          );
+                        },
+                      ),
+              ),
+              const Gap(12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Vazgeç'),
+                    ),
+                  ),
+                  const Gap(10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        final selectedItems = widget.items
+                            .where(
+                              (item) => _selectedSerials.contains(
+                                item.serialNumber.trim().toUpperCase(),
+                              ),
+                            )
+                            .toList(growable: false);
+                        Navigator.of(context).pop(selectedItems);
+                      },
+                      child: Text(
+                        widget.allowMultiple ? 'Serileri Seç' : 'Seriyi Seç',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
@@ -2793,185 +2757,6 @@ class _ApplicationRecordCard extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SerialInventoryPickerDialog extends StatefulWidget {
-  const _SerialInventoryPickerDialog({
-    required this.items,
-    required this.selectedIds,
-    required this.allowMultiple,
-  });
-
-  final List<ProductSerialInventoryRecord> items;
-  final Set<String> selectedIds;
-  final bool allowMultiple;
-
-  @override
-  State<_SerialInventoryPickerDialog> createState() =>
-      _SerialInventoryPickerDialogState();
-}
-
-class _SerialInventoryPickerDialogState
-    extends State<_SerialInventoryPickerDialog> {
-  final _searchController = TextEditingController();
-  late Set<String> _selectedIds;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedIds = {...widget.selectedIds};
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _toggle(ProductSerialInventoryRecord item, bool selected) {
-    setState(() {
-      if (!widget.allowMultiple) {
-        _selectedIds = selected ? {item.id} : <String>{};
-        return;
-      }
-      if (selected) {
-        _selectedIds.add(item.id);
-      } else {
-        _selectedIds.remove(item.id);
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final query = _sortKey(_searchController.text);
-    final filtered = widget.items.where((item) {
-      if (query.isEmpty) return true;
-      final haystack = _sortKey('${item.serialNumber} ${item.notes ?? ''}');
-      return haystack.contains(query);
-    }).toList(growable: false);
-
-    return Dialog(
-      insetPadding: const EdgeInsets.all(24),
-      backgroundColor: Colors.transparent,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 760),
-        child: AppCard(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      widget.allowMultiple
-                          ? 'Seri stoktan sicil seç'
-                          : 'Seri stoktan sicil seçin',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-              const Gap(10),
-              TextField(
-                controller: _searchController,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search_rounded),
-                  hintText: 'Sicil no veya not ara',
-                ),
-              ),
-              const Gap(12),
-              Expanded(
-                child: filtered.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Uygun seri bulunamadı.',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: AppTheme.textMuted),
-                        ),
-                      )
-                    : ListView.separated(
-                        itemCount: filtered.length,
-                        separatorBuilder: (context, index) =>
-                            const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final item = filtered[index];
-                          final selected = _selectedIds.contains(item.id);
-                          return ListTile(
-                            dense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            onTap: () => _toggle(item, !selected),
-                            leading: widget.allowMultiple
-                                ? Checkbox(
-                                    value: selected,
-                                    onChanged: (value) =>
-                                        _toggle(item, value ?? false),
-                                  )
-                                : IconButton(
-                                    onPressed: () => _toggle(item, true),
-                                    icon: Icon(
-                                      selected
-                                          ? Icons.radio_button_checked_rounded
-                                          : Icons.radio_button_off_rounded,
-                                      color: selected
-                                          ? AppTheme.primary
-                                          : const Color(0xFF94A3B8),
-                                    ),
-                                  ),
-                            title: Text(
-                              item.serialNumber,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                            subtitle: item.notes?.trim().isNotEmpty ?? false
-                                ? Text(item.notes!.trim())
-                                : null,
-                          );
-                        },
-                      ),
-              ),
-              const Gap(12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Vazgeç'),
-                    ),
-                  ),
-                  const Gap(10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () {
-                        final selectedItems = widget.items
-                            .where((item) => _selectedIds.contains(item.id))
-                            .toList(growable: false);
-                        Navigator.of(context).pop(selectedItems);
-                      },
-                      child: Text(
-                        widget.allowMultiple ? 'Serileri Seç' : 'Seriyi Seç',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -3716,12 +3501,16 @@ class _ApplicationTextField extends StatelessWidget {
     this.minLines,
     this.maxLines = 1,
     this.validator,
+    this.readOnly = false,
+    this.enabled = true,
   });
 
   final TextEditingController controller;
   final int? minLines;
   final int maxLines;
   final String? Function(String?)? validator;
+  final bool readOnly;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -3730,6 +3519,8 @@ class _ApplicationTextField extends StatelessWidget {
       minLines: minLines,
       maxLines: maxLines,
       validator: validator,
+      readOnly: readOnly,
+      enabled: enabled,
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
         color: const Color(0xFF111827),
         fontWeight: FontWeight.w600,
@@ -3738,7 +3529,7 @@ class _ApplicationTextField extends StatelessWidget {
       decoration: InputDecoration(
         isDense: true,
         filled: true,
-        fillColor: Colors.white,
+        fillColor: enabled ? Colors.white : const Color(0xFFF1F5F9),
         border: const OutlineInputBorder(),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 15,
@@ -4226,29 +4017,6 @@ class _CustomerOption {
       address: json['address']?.toString(),
       directorName: json['director_name']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
-    );
-  }
-}
-
-class _StockProductOption {
-  const _StockProductOption({
-    required this.id,
-    required this.name,
-    required this.code,
-  });
-
-  final String id;
-  final String name;
-  final String? code;
-
-  String get label =>
-      code?.trim().isNotEmpty ?? false ? '${code!.trim()} - $name' : name;
-
-  factory _StockProductOption.fromJson(Map<String, dynamic> json) {
-    return _StockProductOption(
-      id: json['id'].toString(),
-      name: json['name']?.toString() ?? '',
-      code: json['code']?.toString(),
     );
   }
 }

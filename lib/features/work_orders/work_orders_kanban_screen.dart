@@ -6,10 +6,11 @@ import 'package:go_router/go_router.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/auth/user_profile_provider.dart';
+import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
-import 'work_order_create_dialog.dart';
 import 'work_order_model.dart';
 import 'work_order_close_sheet.dart';
 import 'work_order_detail_sheet.dart';
@@ -23,70 +24,7 @@ class WorkOrdersKanbanScreen extends ConsumerStatefulWidget {
       _WorkOrdersKanbanScreenState();
 }
 
-class _WorkOrderMetaChip extends StatelessWidget {
-  const _WorkOrderMetaChip({
-    required this.icon,
-    required this.label,
-    this.emphasize = false,
-    this.backgroundColor,
-    this.borderColor,
-    this.foregroundColor,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool emphasize;
-  final Color? backgroundColor;
-  final Color? borderColor;
-  final Color? foregroundColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color:
-            backgroundColor ??
-            (emphasize
-                ? AppTheme.primary.withValues(alpha: 0.08)
-                : const Color(0xFFF8FAFC)),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color:
-              borderColor ??
-              (emphasize
-                  ? AppTheme.primary.withValues(alpha: 0.18)
-                  : AppTheme.border),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 14,
-            color:
-                foregroundColor ??
-                (emphasize ? AppTheme.primary : const Color(0xFF64748B)),
-          ),
-          const Gap(6),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color:
-                  foregroundColor ??
-                  (emphasize ? AppTheme.primary : const Color(0xFF475569)),
-              fontWeight: emphasize ? FontWeight.w600 : FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WorkOrdersKanbanScreenState
-    extends ConsumerState<WorkOrdersKanbanScreen> {
+class _WorkOrdersKanbanScreenState extends ConsumerState<WorkOrdersKanbanScreen> {
   bool _handledCreateQuery = false;
 
   @override
@@ -102,7 +40,7 @@ class _WorkOrdersKanbanScreenState
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       context.go('/is-emirleri');
-      await showCreateWorkOrderDialog(context, ref);
+      await _showCreateWorkOrderDialog(context, ref);
       ref.read(workOrdersBoardProvider.notifier).refresh();
     });
   }
@@ -121,9 +59,15 @@ class _WorkOrdersKanbanScreenState
           label: const Text('Yenile'),
         ),
         const Gap(10),
+        OutlinedButton.icon(
+          onPressed: () => context.go('/is-emirleri/tablo'),
+          icon: const Icon(Icons.table_rows_rounded, size: 18),
+          label: const Text('Tablo'),
+        ),
+        const Gap(10),
         FilledButton.icon(
           onPressed: () async {
-            await showCreateWorkOrderDialog(context, ref);
+            await _showCreateWorkOrderDialog(context, ref);
             ref.read(workOrdersBoardProvider.notifier).refresh();
           },
           icon: const Icon(Icons.add_rounded, size: 18),
@@ -131,7 +75,13 @@ class _WorkOrdersKanbanScreenState
         ),
       ],
       body: boardAsync.when(
-        data: (items) => _WorkOrdersStatusView(items: items),
+        data: (items) {
+          final width = MediaQuery.sizeOf(context).width;
+          if (width >= 980) {
+            return _KanbanBoard(items: items);
+          }
+          return _WorkOrdersStatusView(items: items);
+        },
         loading: () => Skeletonizer(
           enabled: true,
           child: _WorkOrdersStatusView(
@@ -172,14 +122,15 @@ class _WorkOrdersKanbanScreenState
             ],
           ),
         ),
-        error: (error, stackTrace) => AppCard(
+        error: (_, _) => AppCard(
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Text(
               'İş emirleri yüklenemedi. Yetki ve bağlantı ayarlarını kontrol edin.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: const Color(0xFF64748B)),
             ),
           ),
         ),
@@ -196,9 +147,8 @@ class _WorkOrdersStatusView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final open = items.where((e) => e.status == 'open').toList(growable: false);
-    final inProgress = items
-        .where((e) => e.status == 'in_progress')
-        .toList(growable: false);
+    final inProgress =
+        items.where((e) => e.status == 'in_progress').toList(growable: false);
     final done = items.where((e) => e.status == 'done').toList(growable: false);
 
     return DefaultTabController(
@@ -247,42 +197,19 @@ class _WorkOrdersList extends ConsumerWidget {
       return Center(
         child: Text(
           'Kayıt yok.',
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+          style: Theme.of(context)
+              .textTheme
+              .bodyMedium
+              ?.copyWith(color: const Color(0xFF64748B)),
         ),
       );
     }
 
-    final refContainer = ProviderScope.containerOf(context);
-    final canReorder = status == 'open';
-    if (!canReorder) {
-      return ListView.separated(
-        padding: const EdgeInsets.all(14),
-        itemCount: items.length,
-        separatorBuilder: (context, index) => const Gap(10),
-        itemBuilder: (context, index) =>
-            _WorkOrderListTile(order: items[index]),
-      );
-    }
-
-    return ReorderableListView.builder(
+    return ListView.separated(
       padding: const EdgeInsets.all(14),
       itemCount: items.length,
-      onReorder: (oldIndex, newIndex) async {
-        final reordered = [...items];
-        if (newIndex > oldIndex) newIndex -= 1;
-        final moved = reordered.removeAt(oldIndex);
-        reordered.insert(newIndex, moved);
-        await refContainer
-            .read(workOrdersBoardProvider.notifier)
-            .reorderOpenOrders(reordered);
-      },
-      itemBuilder: (context, index) => Padding(
-        key: ValueKey(items[index].id),
-        padding: EdgeInsets.only(bottom: index == items.length - 1 ? 0 : 10),
-        child: _WorkOrderListTile(order: items[index]),
-      ),
+      separatorBuilder: (_, _) => const Gap(10),
+      itemBuilder: (context, index) => _WorkOrderListTile(order: items[index]),
     );
   }
 }
@@ -302,11 +229,6 @@ class _WorkOrderListTileState extends ConsumerState<_WorkOrderListTile> {
   @override
   Widget build(BuildContext context) {
     final w = widget.order;
-    final money = NumberFormat.currency(
-      locale: 'tr_TR',
-      symbol: '',
-      decimalDigits: 2,
-    );
     final scheduled = w.scheduledDate == null
         ? null
         : DateFormat('d MMM y', 'tr_TR').format(w.scheduledDate!);
@@ -352,7 +274,6 @@ class _WorkOrderListTileState extends ConsumerState<_WorkOrderListTile> {
             ],
           ),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(
@@ -363,96 +284,23 @@ class _WorkOrderListTileState extends ConsumerState<_WorkOrderListTile> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        decoration: w.isActive
-                            ? null
-                            : TextDecoration.lineThrough,
-                      ),
+                            fontWeight: FontWeight.w800,
+                            decoration: w.isActive
+                                ? null
+                                : TextDecoration.lineThrough,
+                          ),
                     ),
                     const Gap(6),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _WorkOrderMetaChip(
-                          icon: Icons.business_rounded,
-                          label: w.customerName ?? '—',
-                        ),
-                        if (w.city?.trim().isNotEmpty ?? false)
-                          _WorkOrderMetaChip(
-                            icon: Icons.location_city_rounded,
-                            label: w.city!,
-                            emphasize: true,
-                            backgroundColor: _cityTone(
-                              w.city!,
-                            ).withValues(alpha: 0.12),
-                            borderColor: _cityTone(
-                              w.city!,
-                            ).withValues(alpha: 0.24),
-                            foregroundColor: _cityTone(w.city!),
-                          ),
-                        if (w.workOrderTypeName?.trim().isNotEmpty ?? false)
-                          _WorkOrderMetaChip(
-                            icon: Icons.category_rounded,
-                            label: w.workOrderTypeName!,
-                            emphasize: true,
-                          ),
-                        if (w.branchName?.trim().isNotEmpty ?? false)
-                          _WorkOrderMetaChip(
-                            icon: Icons.account_tree_rounded,
-                            label: w.branchName!,
-                          ),
-                        if (scheduled != null)
-                          _WorkOrderMetaChip(
-                            icon: Icons.calendar_today_rounded,
-                            label: scheduled,
-                          ),
-                        if (w.contactPhone?.trim().isNotEmpty ?? false)
-                          _WorkOrderMetaChip(
-                            icon: Icons.phone_rounded,
-                            label: w.contactPhone!,
-                          ),
-                        if (w.locationLink?.trim().isNotEmpty ?? false)
-                          _WorkOrderMetaChip(
-                            icon: Icons.link_rounded,
-                            label: 'Konum',
-                          ),
-                        if (w.status == 'done' && w.payments.isNotEmpty)
-                          _WorkOrderMetaChip(
-                            icon: Icons.payments_rounded,
-                            label: _paymentSummary(w, money),
-                            emphasize: true,
-                            backgroundColor: AppTheme.success.withValues(
-                              alpha: 0.10,
-                            ),
-                            borderColor: AppTheme.success.withValues(
-                              alpha: 0.18,
-                            ),
-                            foregroundColor: AppTheme.success,
-                          ),
-                        if (w.status == 'done' && w.payments.isNotEmpty)
-                          for (final chip in _paymentMethodChips(w))
-                            _WorkOrderMetaChip(
-                              icon: chip.icon,
-                              label: chip.label,
-                              backgroundColor: chip.backgroundColor,
-                              borderColor: chip.borderColor,
-                              foregroundColor: chip.foregroundColor,
-                            ),
-                      ],
+                    Text(
+                      [
+                        w.customerName ?? '—',
+                        ?scheduled,
+                      ].join(' • '),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: const Color(0xFF64748B)),
                     ),
-                    if (w.description?.trim().isNotEmpty ?? false) ...[
-                      const Gap(8),
-                      Text(
-                        w.description!,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF64748B),
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -466,135 +314,137 @@ class _WorkOrderListTileState extends ConsumerState<_WorkOrderListTile> {
   }
 }
 
-Color _cityTone(String city) {
-  const palette = [
-    Color(0xFF2563EB),
-    Color(0xFF16A34A),
-    Color(0xFFEA580C),
-    Color(0xFF9333EA),
-    Color(0xFFDC2626),
-    Color(0xFF0891B2),
-    Color(0xFFCA8A04),
-    Color(0xFF4F46E5),
-  ];
-  final normalized = city.trim().toLowerCase();
-  final hash = normalized.codeUnits.fold<int>(0, (sum, unit) => sum + unit);
-  return palette[hash % palette.length];
-}
+class _KanbanBoard extends ConsumerWidget {
+  const _KanbanBoard({required this.items});
 
-String _paymentSummary(WorkOrder order, NumberFormat money) {
-  final totals = <String, double>{};
-  for (final payment in order.payments) {
-    totals.update(
-      payment.currency,
-      (value) => value + payment.amount,
-      ifAbsent: () => payment.amount,
+  final List<WorkOrder> items;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final open = items.where((e) => e.status == 'open').toList();
+    final inProgress = items.where((e) => e.status == 'in_progress').toList();
+    final done = items.where((e) => e.status == 'done').toList();
+
+    return SizedBox(
+      height: 700,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          const Gap(2),
+          _KanbanColumn(
+            title: 'Açık',
+            tone: AppBadgeTone.warning,
+            status: 'open',
+            items: open,
+          ),
+          const Gap(12),
+          _KanbanColumn(
+            title: 'Devam Ediyor',
+            tone: AppBadgeTone.primary,
+            status: 'in_progress',
+            items: inProgress,
+          ),
+          const Gap(12),
+          _KanbanColumn(
+            title: 'Tamamlandı',
+            tone: AppBadgeTone.success,
+            status: 'done',
+            items: done,
+          ),
+          const Gap(2),
+        ],
+      ),
     );
   }
-  return totals.entries
-      .map((entry) => '${money.format(entry.value)} ${entry.key}')
-      .join(' + ');
 }
 
-List<_PaymentMethodChipData> _paymentMethodChips(WorkOrder order) {
-  final counts = <String, int>{};
-  for (final payment in order.payments) {
-    final method = payment.paymentMethod?.trim();
-    if (method == null || method.isEmpty) continue;
-    counts.update(method, (value) => value + 1, ifAbsent: () => 1);
-  }
+class _KanbanColumn extends ConsumerWidget {
+  const _KanbanColumn({
+    required this.title,
+    required this.tone,
+    required this.status,
+    required this.items,
+  });
 
-  final entries = counts.entries.toList()
-    ..sort((a, b) => a.key.compareTo(b.key));
-  return entries
-      .map((entry) {
-        final tone = _paymentMethodTone(entry.key);
-        return _PaymentMethodChipData(
-          label: '${_paymentMethodText(entry.key)} ${entry.value}',
-          icon: tone.icon,
-          backgroundColor: tone.background,
-          borderColor: tone.border,
-          foregroundColor: tone.foreground,
+  final String title;
+  final AppBadgeTone tone;
+  final String status;
+  final List<WorkOrder> items;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return DragTarget<WorkOrder>(
+      onWillAcceptWithDetails: (details) => details.data.status != status,
+      onAcceptWithDetails: (details) async {
+        await ref.read(workOrdersBoardProvider.notifier).updateStatus(
+              workOrderId: details.data.id,
+              newStatus: status,
+            );
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isOver = candidateData.isNotEmpty;
+        return SizedBox(
+          width: 360,
+          child: AppCard(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    AppBadge(label: items.length.toString(), tone: tone),
+                  ],
+                ),
+                const Gap(10),
+                Expanded(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 140),
+                    curve: Curves.easeOut,
+                    decoration: BoxDecoration(
+                      color: isOver
+                          ? AppTheme.primary.withValues(alpha: 0.06)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isOver
+                            ? AppTheme.primary.withValues(alpha: 0.22)
+                            : AppTheme.border,
+                      ),
+                    ),
+                    padding: const EdgeInsets.all(10),
+                    child: items.isEmpty
+                        ? Center(
+                            child: Text(
+                              'Bu sütunda kayıt yok.',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(color: const Color(0xFF64748B)),
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: items.length,
+                            separatorBuilder: (_, _) => const Gap(10),
+                            itemBuilder: (context, index) {
+                              final w = items[index];
+                              return _WorkOrderCard(order: w);
+                            },
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
-      })
-      .toList(growable: false);
-}
-
-String _paymentMethodText(String method) {
-  return switch (method) {
-    'cash' => 'Nakit',
-    'bank' => 'Havale',
-    'pos' => 'POS',
-    'credit_card' => 'Kart',
-    'check' => 'Çek',
-    'other' => 'Diğer',
-    _ => method,
-  };
-}
-
-_PaymentMethodTone _paymentMethodTone(String method) {
-  return switch (method) {
-    'cash' => const _PaymentMethodTone(
-      icon: Icons.payments_outlined,
-      background: Color(0xFFECFDF5),
-      border: Color(0xFFA7F3D0),
-      foreground: Color(0xFF059669),
-    ),
-    'bank' => const _PaymentMethodTone(
-      icon: Icons.account_balance_rounded,
-      background: Color(0xFFEFF6FF),
-      border: Color(0xFFBFDBFE),
-      foreground: Color(0xFF2563EB),
-    ),
-    'pos' => const _PaymentMethodTone(
-      icon: Icons.point_of_sale_rounded,
-      background: Color(0xFFFFF7ED),
-      border: Color(0xFFFED7AA),
-      foreground: Color(0xFFEA580C),
-    ),
-    'credit_card' => const _PaymentMethodTone(
-      icon: Icons.credit_card_rounded,
-      background: Color(0xFFFAF5FF),
-      border: Color(0xFFE9D5FF),
-      foreground: Color(0xFF9333EA),
-    ),
-    _ => const _PaymentMethodTone(
-      icon: Icons.payments_rounded,
-      background: Color(0xFFF8FAFC),
-      border: Color(0xFFE2E8F0),
-      foreground: Color(0xFF475569),
-    ),
-  };
-}
-
-class _PaymentMethodChipData {
-  const _PaymentMethodChipData({
-    required this.label,
-    required this.icon,
-    required this.backgroundColor,
-    required this.borderColor,
-    required this.foregroundColor,
-  });
-
-  final String label;
-  final IconData icon;
-  final Color backgroundColor;
-  final Color borderColor;
-  final Color foregroundColor;
-}
-
-class _PaymentMethodTone {
-  const _PaymentMethodTone({
-    required this.icon,
-    required this.background,
-    required this.border,
-    required this.foreground,
-  });
-
-  final IconData icon;
-  final Color background;
-  final Color border;
-  final Color foreground;
+      },
+    );
+  }
 }
 
 class _WorkOrderCard extends StatefulWidget {
@@ -640,34 +490,27 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    decoration: w.isActive
-                        ? TextDecoration.none
-                        : TextDecoration.lineThrough,
-                  ),
+                        fontWeight: FontWeight.w700,
+                        decoration: w.isActive
+                            ? TextDecoration.none
+                            : TextDecoration.lineThrough,
+                      ),
                 ),
               ),
               const Gap(8),
               if (w.status == 'done')
-                const Icon(
-                  Icons.check_circle_rounded,
-                  color: AppTheme.success,
-                  size: 18,
-                )
+                const Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 18)
               else
-                const Icon(
-                  Icons.open_in_new_rounded,
-                  size: 18,
-                  color: Color(0xFF64748B),
-                ),
+                const Icon(Icons.open_in_new_rounded, size: 18, color: Color(0xFF64748B)),
             ],
           ),
           const Gap(6),
           Text(
             w.customerName ?? '—',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: const Color(0xFF64748B)),
           ),
         ],
       ),
@@ -692,6 +535,483 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
           ),
         ),
       ),
+    );
+  }
+}
+
+Future<void> _showCreateWorkOrderDialog(BuildContext context, WidgetRef ref) async {
+  final client = ref.read(supabaseClientProvider);
+  if (client == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Supabase bağlantısı bulunamadı.')),
+    );
+    return;
+  }
+
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => const _CreateWorkOrderDialog(),
+  );
+}
+
+class _CreateWorkOrderDialog extends ConsumerStatefulWidget {
+  const _CreateWorkOrderDialog();
+
+  @override
+  ConsumerState<_CreateWorkOrderDialog> createState() =>
+      _CreateWorkOrderDialogState();
+}
+
+class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _customerController = TextEditingController();
+  final _titleController = TextEditingController();
+  final _descController = TextEditingController();
+  bool _saving = false;
+
+  List<_CustomerOption> _customers = const [];
+  String? _selectedCustomerId;
+  List<_BranchOption> _branches = const [];
+  String? _selectedBranchId;
+  DateTime? _scheduledDate;
+
+  bool _usersLoaded = false;
+  List<_UserOption> _users = const [];
+  String? _assignedTo;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCustomers());
+  }
+
+  Future<void> _loadCustomers() async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      final rows = await client
+          .from('customers')
+          .select('id,name,is_active')
+          .eq('is_active', true)
+          .order('name')
+          .limit(200);
+
+      final items = (rows as List)
+          .map((e) => _CustomerOption.fromJson(e as Map<String, dynamic>))
+          .toList(growable: false);
+
+      if (!mounted) return;
+      setState(() => _customers = items);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _customers = const []);
+    }
+  }
+
+  Future<void> _loadBranches(String customerId) async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      final rows = await client
+          .from('branches')
+          .select('id,name,is_active')
+          .eq('customer_id', customerId)
+          .eq('is_active', true)
+          .order('name')
+          .limit(100);
+
+      final items = (rows as List)
+          .map((e) => _BranchOption.fromJson(e as Map<String, dynamic>))
+          .toList(growable: false);
+
+      if (!mounted) return;
+      setState(() => _branches = items);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _branches = const []);
+    }
+  }
+
+  Future<void> _loadUsers() async {
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      final rows = await client
+          .from('users')
+          .select('id,full_name,role')
+          .order('full_name')
+          .limit(200);
+
+      final items = (rows as List)
+          .map((e) => _UserOption.fromJson(e as Map<String, dynamic>))
+          .where((u) => u.role != 'admin')
+          .toList(growable: false);
+
+      if (!mounted) return;
+      setState(() => _users = items);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _users = const []);
+    }
+  }
+
+  @override
+  void dispose() {
+    _customerController.dispose();
+    _titleController.dispose();
+    _descController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final ok = _formKey.currentState?.validate() ?? false;
+    if (!ok) return;
+
+    final customerId = _selectedCustomerId;
+    if (customerId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Müşteri seçin.')),
+      );
+      return;
+    }
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    final profile = await ref.read(currentUserProfileProvider.future);
+    if (!mounted) return;
+    final isAdmin = profile?.role == 'admin';
+
+    final assignedTo = isAdmin ? _assignedTo : client.auth.currentUser?.id;
+    if (assignedTo == null || assignedTo.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Personel ataması gerekli.')),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      await client.from('work_orders').insert({
+        'customer_id': customerId,
+        'branch_id': _selectedBranchId,
+        'title': _titleController.text.trim(),
+        'description': _descController.text.trim().isEmpty
+            ? null
+            : _descController.text.trim(),
+        'status': 'open',
+        'assigned_to': assignedTo,
+        'scheduled_date': _scheduledDate?.toIso8601String().substring(0, 10),
+        'is_active': true,
+        'created_by': client.auth.currentUser?.id,
+      });
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('İş emri oluşturuldu.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('İş emri oluşturulamadı.')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final loadingCustomers = _customers.isEmpty;
+    final isAdmin = ref.watch(isAdminProvider);
+
+    if (isAdmin && !_usersLoaded) {
+      _usersLoaded = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadUsers());
+    }
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640),
+        child: AppCard(
+          padding: const EdgeInsets.all(20),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Yeni İş Emri',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Kapat',
+                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                if (loadingCustomers)
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: Row(
+                      children: [
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const Gap(10),
+                        Expanded(
+                          child: Text(
+                            'Müşteriler yükleniyor…',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(color: const Color(0xFF64748B)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Autocomplete<_CustomerOption>(
+                    optionsBuilder: (text) {
+                      final q = text.text.trim().toLowerCase();
+                      if (q.isEmpty) return _customers.take(20);
+                      return _customers
+                          .where((c) => c.name.toLowerCase().contains(q))
+                          .take(20);
+                    },
+                    displayStringForOption: (o) => o.name,
+                    onSelected: (o) {
+                      _selectedCustomerId = o.id;
+                      _customerController.text = o.name;
+                      _selectedBranchId = null;
+                      _branches = const [];
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _loadBranches(o.id);
+                      });
+                    },
+                    fieldViewBuilder: (context, controller, focusNode, _) {
+                      controller.text = _customerController.text;
+                      controller.selection = TextSelection.collapsed(
+                        offset: controller.text.length,
+                      );
+                      return TextFormField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        decoration: const InputDecoration(
+                          labelText: 'Müşteri',
+                          hintText: 'Firma adı yazın ve seçin',
+                        ),
+                        validator: (v) {
+                          if ((_selectedCustomerId ?? '').isEmpty) {
+                            return 'Müşteri seçin.';
+                          }
+                          return null;
+                        },
+                        onChanged: (_) => _selectedCustomerId = null,
+                      );
+                    },
+                  ),
+                const Gap(12),
+                if (_branches.isNotEmpty) ...[
+                  DropdownButtonFormField<String?>(
+                    initialValue: _selectedBranchId,
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('Şube seç (opsiyonel)'),
+                      ),
+                      ..._branches.map(
+                        (b) => DropdownMenuItem<String?>(
+                          value: b.id,
+                          child: Text(b.name),
+                        ),
+                      ),
+                    ],
+                    onChanged: _saving ? null : (v) => setState(() => _selectedBranchId = v),
+                    decoration: const InputDecoration(labelText: 'Şube'),
+                  ),
+                  const Gap(12),
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: _saving
+                            ? null
+                            : () async {
+                                final initial = _scheduledDate ?? DateTime.now();
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: initial,
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(DateTime.now().year + 5),
+                                );
+                                if (picked == null) return;
+                                setState(() => _scheduledDate = picked);
+                              },
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Planlanan Tarih',
+                          ),
+                          child: Text(
+                            _scheduledDate == null
+                                ? 'Seçilmedi'
+                                : '${_scheduledDate!.day}.${_scheduledDate!.month}.${_scheduledDate!.year}',
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (isAdmin) ...[
+                      const Gap(12),
+                      Expanded(
+                        child: DropdownButtonFormField<String?>(
+                          initialValue: _assignedTo,
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('Personel seç'),
+                            ),
+                            ..._users.map(
+                              (u) => DropdownMenuItem<String?>(
+                                value: u.id,
+                                child: Text(u.fullName ?? 'Personel'),
+                              ),
+                            ),
+                          ],
+                          onChanged: _saving ? null : (v) => setState(() => _assignedTo = v),
+                          decoration: const InputDecoration(labelText: 'Atanan Personel'),
+                          validator: (v) {
+                            if (!isAdmin) return null;
+                            if ((v ?? '').isEmpty) return 'Personel gerekli.';
+                            return null;
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const Gap(12),
+                TextFormField(
+                  controller: _titleController,
+                  decoration: const InputDecoration(
+                    labelText: 'Başlık',
+                    hintText: 'Örn: Hat yenileme',
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().length < 2) return 'Başlık gerekli.';
+                    return null;
+                  },
+                ),
+                const Gap(12),
+                TextFormField(
+                  controller: _descController,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Açıklama',
+                    hintText: 'İsteğe bağlı',
+                  ),
+                ),
+                const Gap(18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed:
+                            _saving ? null : () => Navigator.of(context).pop(),
+                        child: const Text('Vazgeç'),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _saving ? null : _save,
+                        child: _saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Kaydet'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CustomerOption {
+  const _CustomerOption({required this.id, required this.name});
+
+  final String id;
+  final String name;
+
+  factory _CustomerOption.fromJson(Map<String, dynamic> json) {
+    return _CustomerOption(
+      id: json['id'].toString(),
+      name: (json['name'] ?? '').toString(),
+    );
+  }
+}
+
+class _BranchOption {
+  const _BranchOption({required this.id, required this.name});
+
+  final String id;
+  final String name;
+
+  factory _BranchOption.fromJson(Map<String, dynamic> json) {
+    return _BranchOption(
+      id: json['id'].toString(),
+      name: (json['name'] ?? '').toString(),
+    );
+  }
+}
+
+class _UserOption {
+  const _UserOption({required this.id, required this.fullName, required this.role});
+
+  final String id;
+  final String? fullName;
+  final String? role;
+
+  factory _UserOption.fromJson(Map<String, dynamic> json) {
+    return _UserOption(
+      id: json['id'].toString(),
+      fullName: json['full_name']?.toString(),
+      role: json['role']?.toString(),
     );
   }
 }

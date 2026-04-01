@@ -24,17 +24,39 @@ final serviceRecordsProvider = FutureProvider<List<ServiceRecord>>((ref) async {
       .toList(growable: false);
 });
 
-class ServiceScreen extends ConsumerWidget {
+class ServiceScreen extends ConsumerStatefulWidget {
   const ServiceScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ServiceScreen> createState() => _ServiceScreenState();
+}
+
+class _ServiceScreenState extends ConsumerState<ServiceScreen> {
+  final _searchController = TextEditingController();
+  String _statusFilter = 'all';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final recordsAsync = ref.watch(serviceRecordsProvider);
+    const allowedStatuses = {'all', 'open', 'in_progress', 'done'};
+    if (!allowedStatuses.contains(_statusFilter)) _statusFilter = 'all';
 
     return AppPageLayout(
       title: 'Servis',
       subtitle: 'Adım adım süreç, parça + işçilik ayrımı.',
       actions: [
+        OutlinedButton.icon(
+          onPressed: () => ref.invalidate(serviceRecordsProvider),
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: const Text('Yenile'),
+        ),
+        const Gap(10),
         FilledButton.icon(
           onPressed: () async {
             await _showCreateServiceDialog(context, ref);
@@ -46,51 +68,169 @@ class ServiceScreen extends ConsumerWidget {
       ],
       body: recordsAsync.when(
         data: (items) {
-          if (items.isEmpty) {
-            return AppCard(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Text(
-                  'Henüz servis kaydı yok.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: const Color(0xFF64748B)),
+          final search = _searchController.text.trim().toLowerCase();
+          final filtered = items.where((item) {
+            if (_statusFilter != 'all' && item.status != _statusFilter) {
+              return false;
+            }
+            if (search.isEmpty) return true;
+            final haystack = [
+              item.title,
+              item.customerName ?? '',
+              item.id,
+            ].join(' ').toLowerCase();
+            return haystack.contains(search);
+          }).toList(growable: false);
+
+          return Column(
+            children: [
+              AppCard(
+                padding: const EdgeInsets.all(12),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final wide = constraints.maxWidth >= 980;
+
+                    final controls = Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 260,
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: (_) => setState(() {}),
+                            decoration: const InputDecoration(
+                              prefixIcon: Icon(Icons.search_rounded),
+                              hintText: 'Ara',
+                            ),
+                          ),
+                        ),
+                        _StatusPill(
+                          label: 'Durum: ${_statusLabel(_statusFilter)}',
+                          backgroundColor:
+                              const Color(0xFF7C3AED).withValues(alpha: 0.12),
+                          foregroundColor: const Color(0xFF4C1D95),
+                          icon: Icons.circle_rounded,
+                          onTap: () async {
+                            final next = await showModalBottomSheet<String>(
+                              context: context,
+                              showDragHandle: true,
+                              builder: (context) => SafeArea(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    _StatusSheetItem(
+                                      value: 'all',
+                                      label: 'Tümü',
+                                    ),
+                                    _StatusSheetItem(
+                                      value: 'open',
+                                      label: 'Açık',
+                                    ),
+                                    _StatusSheetItem(
+                                      value: 'in_progress',
+                                      label: 'Devam',
+                                    ),
+                                    _StatusSheetItem(
+                                      value: 'done',
+                                      label: 'Tamam',
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                            if (next == null || next.trim().isEmpty) return;
+                            setState(() => _statusFilter = next.trim());
+                          },
+                        ),
+                        FilledButton.tonalIcon(
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _statusFilter = 'all');
+                          },
+                          icon:
+                              const Icon(Icons.delete_outline_rounded, size: 18),
+                          label: const Text('Temizle'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor:
+                                const Color(0xFFEF4444).withValues(alpha: 0.12),
+                            foregroundColor: const Color(0xFF7F1D1D),
+                            minimumSize: const Size(0, 40),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+
+                    final stats = AppBadge(
+                      label: 'Toplam: ${filtered.length}',
+                      tone: AppBadgeTone.primary,
+                    );
+
+                    if (wide) {
+                      return Row(
+                        children: [
+                          Expanded(child: controls),
+                          const Gap(12),
+                          stats,
+                        ],
+                      );
+                    }
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        controls,
+                        const Gap(10),
+                        stats,
+                      ],
+                    );
+                  },
                 ),
               ),
-            );
-          }
-
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              final twoCols = constraints.maxWidth >= 980;
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: twoCols ? 2 : 1,
-                    child: AppCard(
-                      padding: EdgeInsets.zero,
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: items.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (context, index) => _ServiceRow(item: items[index]),
+              const Gap(12),
+              Expanded(
+                child: filtered.isEmpty
+                    ? const AppCard(
+                        child: Center(child: Text('Kayıt bulunamadı.')),
+                      )
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          final twoCols = constraints.maxWidth >= 980;
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: twoCols ? 2 : 1,
+                                child: AppCard(
+                                  padding: EdgeInsets.zero,
+                                  child: ListView.separated(
+                                    itemCount: filtered.length,
+                                    separatorBuilder: (context, index) =>
+                                        const Divider(height: 1),
+                                    itemBuilder: (context, index) =>
+                                        _ServiceRow(item: filtered[index]),
+                                  ),
+                                ),
+                              ),
+                              if (twoCols) const Gap(16),
+                              if (twoCols)
+                                Expanded(
+                                  flex: 3,
+                                  child: AppCard(
+                                    child: const _ServiceTimelinePreview(),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
                       ),
-                    ),
-                  ),
-                  if (twoCols) const Gap(16),
-                  if (twoCols)
-                    Expanded(
-                      flex: 3,
-                      child: AppCard(
-                        child: const _ServiceTimelinePreview(),
-                      ),
-                    ),
-                ],
-              );
-            },
+              ),
+            ],
           );
         },
         loading: () => Skeletonizer(
@@ -114,11 +254,11 @@ class ServiceScreen extends ConsumerWidget {
             ),
           ),
         ),
-        error: (_, _) => AppCard(
+        error: (error, _) => AppCard(
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Text(
-              'Servis kayıtları yüklenemedi.',
+              'Servis kayıtları yüklenemedi: $error',
               style: Theme.of(context)
                   .textTheme
                   .bodyMedium
@@ -128,6 +268,83 @@ class ServiceScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({
+    required this.label,
+    required this.backgroundColor,
+    required this.foregroundColor,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color backgroundColor;
+  final Color foregroundColor;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: foregroundColor),
+            const Gap(8),
+            Text(
+              label,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: foregroundColor, fontWeight: FontWeight.w700),
+            ),
+            const Gap(6),
+            Icon(Icons.expand_more_rounded, size: 18, color: foregroundColor),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusSheetItem extends StatelessWidget {
+  const _StatusSheetItem({required this.value, required this.label});
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      title: Text(label),
+      onTap: () => Navigator.of(context).pop(value),
+    );
+  }
+}
+
+String _statusLabel(String value) {
+  switch (value) {
+    case 'open':
+      return 'Açık';
+    case 'in_progress':
+      return 'Devam';
+    case 'done':
+      return 'Tamam';
+    default:
+      return 'Tümü';
   }
 }
 

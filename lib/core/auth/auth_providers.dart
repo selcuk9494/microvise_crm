@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../supabase/supabase_providers.dart';
+import '../storage/token_storage.dart';
 
 final authStateProvider = StreamProvider<AuthState?>((ref) {
   final client = ref.watch(supabaseClientProvider);
@@ -32,14 +33,19 @@ final apiAccessTokenProvider =
 
 class ApiAccessTokenNotifier extends Notifier<String?> {
   @override
-  String? build() => null;
+  String? build() => TokenStorage.read();
 
   void set(String? token) {
     final trimmed = token?.trim();
-    state = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+    final value = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+    TokenStorage.write(value);
+    state = value;
   }
 
-  void clear() => state = null;
+  void clear() {
+    TokenStorage.write(null);
+    state = null;
+  }
 }
 
 final accessTokenProvider = Provider<String?>((ref) {

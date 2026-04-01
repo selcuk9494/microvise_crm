@@ -112,6 +112,56 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith('/api/')) {
       setCors(res);
       if (req.method === 'OPTIONS') return send(res, 204, {}, null);
+      req.query = {};
+      for (const [key, value] of url.searchParams.entries()) {
+        req.query[key] = value;
+      }
+
+      if (pathname === '/api/_local/stats') {
+        try {
+          const { query } = require(path.join(rootDir, 'api', '_lib', 'db.js'));
+          const tables = [
+            'users',
+            'customers',
+            'work_orders',
+            'service_records',
+            'lines',
+            'licenses',
+            'invoices',
+            'invoice_items',
+            'payments',
+            'transactions',
+          ];
+          const counts = {};
+          for (const table of tables) {
+            try {
+              const result = await query(
+                `select count(*)::int as c from public.${table}`,
+              );
+              counts[table] = result.rows[0]?.c ?? 0;
+            } catch (e) {
+              counts[table] = null;
+            }
+          }
+          return send(
+            res,
+            200,
+            { 'Content-Type': 'application/json; charset=utf-8' },
+            JSON.stringify({ ok: true, counts }),
+          );
+        } catch (e) {
+          return send(
+            res,
+            500,
+            { 'Content-Type': 'application/json; charset=utf-8' },
+            JSON.stringify({
+              ok: false,
+              error: e instanceof Error ? e.message : String(e),
+            }),
+          );
+        }
+      }
+
       const handler = getApiHandler(pathname);
       if (!handler) return send(res, 404, { 'Content-Type': 'application/json' }, JSON.stringify({ error: 'Not found' }));
       return handler(req, res);
@@ -155,29 +205,26 @@ const server = http.createServer(async (req, res) => {
 
 const requestedPortRaw = process.env.PORT;
 const requestedPort = Number(requestedPortRaw || 3000);
-const tryPorts = requestedPortRaw
-  ? [requestedPort]
-  : Array.from({ length: 10 }, (_, i) => requestedPort + i);
 
-function listenNext(index) {
-  if (index >= tryPorts.length) {
-    console.error('Local server başlatılamadı. Portlar dolu görünüyor.');
+server.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    if (requestedPortRaw) {
+      console.error(`PORT ${requestedPort} kullanımda. Farklı PORT verin.`);
+      process.exit(1);
+    }
+    console.error(
+      'PORT 3000 kullanımda. PORT=0 npm run local-web ile otomatik port seçebilirsiniz.',
+    );
     process.exit(1);
   }
+  console.error(err);
+  process.exit(1);
+});
 
-  const port = tryPorts[index];
-  server.once('error', (err) => {
-    if (err && err.code === 'EADDRINUSE' && !requestedPortRaw) {
-      listenNext(index + 1);
-      return;
-    }
-    console.error(err);
-    process.exit(1);
-  });
-
-  server.listen(port, '127.0.0.1', () => {
-    console.log(`Local web: http://127.0.0.1:${port}`);
-  });
-}
-
-listenNext(0);
+const portToBind = requestedPortRaw ? requestedPort : 0;
+server.listen(portToBind, '127.0.0.1', () => {
+  const address = server.address();
+  const port =
+    address && typeof address === 'object' && address.port ? address.port : portToBind;
+  console.log(`Local web: http://127.0.0.1:${port}`);
+});

@@ -11,6 +11,8 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../dashboard/dashboard_providers.dart';
+import '../work_orders/work_order_detail_sheet.dart';
+import '../work_orders/work_order_model.dart';
 
 final customerDetailProvider =
     FutureProvider.family<CustomerDetail, String>((ref, customerId) async {
@@ -155,7 +157,7 @@ final customersForTransferProvider = FutureProvider<List<_CustomerOption>>((ref)
 });
 
 final customerWorkOrdersProvider =
-    FutureProvider.family<List<CustomerWorkOrder>, String>((ref, customerId) async {
+    FutureProvider.family<List<WorkOrder>, String>((ref, customerId) async {
   final apiClient = ref.watch(apiClientProvider);
   if (apiClient != null) {
     final response = await apiClient.getJson(
@@ -167,7 +169,7 @@ final customerWorkOrdersProvider =
     );
     return ((response['items'] as List?) ?? const [])
         .whereType<Map<String, dynamic>>()
-        .map(CustomerWorkOrder.fromJson)
+        .map(WorkOrder.fromJson)
         .toList(growable: false);
   }
 
@@ -175,11 +177,13 @@ final customerWorkOrdersProvider =
   if (client == null) return const [];
   final rows = await client
       .from('work_orders')
-      .select('id,title,status,scheduled_date,is_active')
+      .select(
+        'id,title,customer_id,status,scheduled_date,is_active,created_at,closed_at,description,address,city,branch_id,assigned_to,sort_order,work_order_type_id,contact_phone,location_link,close_notes',
+      )
       .eq('customer_id', customerId)
       .order('created_at', ascending: false);
   return (rows as List)
-      .map((e) => CustomerWorkOrder.fromJson(e as Map<String, dynamic>))
+      .map((e) => WorkOrder.fromJson(e as Map<String, dynamic>))
       .toList(growable: false);
 });
 
@@ -205,8 +209,11 @@ class CustomerDetailScreen extends ConsumerWidget {
                 id: customerId,
                 name: 'Microvise Teknoloji A.Ş.',
                 city: 'İstanbul',
+                address: 'Maslak Mah. Büyükdere Cad.',
+                directorName: 'Yetkili Adı',
                 email: 'ornek@firma.com',
                 vkn: '1234567890',
+                tcknMs: '00000000000',
                 notes: 'Notlar burada görünür.',
                 phone1: '0 555 555 55 55',
                 phone1Title: 'Yetkili',
@@ -358,29 +365,90 @@ class _Content extends ConsumerWidget {
   }
 }
 
-class _GeneralTab extends StatelessWidget {
+class _GeneralTab extends ConsumerWidget {
   const _GeneralTab({required this.detail});
 
   final CustomerDetail detail;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final date = DateFormat('d MMMM y', 'tr_TR').format(detail.createdAt);
 
-    return Padding(
+    final branchesAsync = ref.watch(customerBranchesProvider(detail.id));
+    final linesAsync = ref.watch(customerLinesProvider(detail.id));
+    final licensesAsync = ref.watch(customerLicensesProvider(detail.id));
+    final workOrdersAsync = ref.watch(customerWorkOrdersProvider(detail.id));
+
+    int countActive<T>(AsyncValue<List<T>> value, bool Function(T item) isActive) {
+      return value.maybeWhen(
+        data: (items) => items.where(isActive).length,
+        orElse: () => 0,
+      );
+    }
+
+    final branchesCount =
+        branchesAsync.maybeWhen(data: (v) => v.length, orElse: () => 0);
+    final activeLines = countActive<CustomerLine>(linesAsync, (e) => e.isActive);
+    final activeLicenses =
+        countActive<CustomerLicense>(licensesAsync, (e) => e.isActive);
+    final openWorkOrders =
+        countActive<WorkOrder>(workOrdersAsync, (e) => e.status != 'done');
+
+    void goTab(int index) {
+      DefaultTabController.of(context).animateTo(index);
+    }
+
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Genel Bilgiler', style: Theme.of(context).textTheme.titleMedium),
           const Gap(14),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _QuickStat(
+                label: 'Şube',
+                value: branchesCount.toString(),
+                icon: Icons.account_tree_rounded,
+                onTap: () => goTab(1),
+              ),
+              _QuickStat(
+                label: 'Hat',
+                value: activeLines.toString(),
+                icon: Icons.sim_card_rounded,
+                onTap: () => goTab(2),
+              ),
+              _QuickStat(
+                label: 'Lisans',
+                value: activeLicenses.toString(),
+                icon: Icons.verified_user_rounded,
+                onTap: () => goTab(3),
+              ),
+              _QuickStat(
+                label: 'İş Emri',
+                value: openWorkOrders.toString(),
+                icon: Icons.assignment_rounded,
+                onTap: () => goTab(4),
+              ),
+            ],
+          ),
+          const Gap(16),
           _InfoRow(label: 'Firma Adı', value: detail.name),
           const Gap(10),
           _InfoRow(label: 'Şehir', value: detail.city ?? '—'),
           const Gap(10),
+          _InfoRow(label: 'Adres', value: detail.address ?? '—'),
+          const Gap(10),
+          _InfoRow(label: 'Yetkili', value: detail.directorName ?? '—'),
+          const Gap(10),
           _InfoRow(label: 'E-posta', value: detail.email ?? '—'),
           const Gap(10),
           _InfoRow(label: 'VKN', value: detail.vkn ?? '—'),
+          const Gap(10),
+          _InfoRow(label: 'TCKN/MS', value: detail.tcknMs ?? '—'),
           const Gap(10),
           _InfoRow(
             label: detail.phone1Title ?? 'Telefon 1',
@@ -416,56 +484,73 @@ class _GeneralTab extends StatelessWidget {
               ),
             ),
           ],
-          const Gap(18),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppTheme.border),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
-                  ),
-                  child: const Icon(
-                    Icons.flash_on_rounded,
-                    color: AppTheme.primary,
-                  ),
-                ),
-                const Gap(12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hızlı Aksiyonlar',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                      const Gap(2),
-                      Text(
-                        'Yeni iş emri açın, hat/ lisans ekleyin veya servis kaydı başlatın.',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: const Color(0xFF64748B)),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
+      ),
+    );
+  }
+}
+
+class _QuickStat extends StatelessWidget {
+  const _QuickStat({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: 150,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
+              ),
+              child: Icon(icon, color: AppTheme.primary, size: 18),
+            ),
+            const Gap(10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    value,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                  ),
+                  Text(
+                    label,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: AppTheme.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -668,13 +753,12 @@ class _WorkOrdersTab extends ConsumerWidget {
                   ? 'Planlanmadı'
                   : DateFormat('d MMM', 'tr_TR').format(w.scheduledDate!);
 
-              return Container(
+              return AppCard(
+                onTap: () async {
+                  await showWorkOrderDetailSheet(context, ref, order: w);
+                  ref.invalidate(customerWorkOrdersProvider(customerId));
+                },
                 padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppTheme.border),
-                ),
                 child: Row(
                   children: [
                     Expanded(
@@ -684,19 +768,21 @@ class _WorkOrdersTab extends ConsumerWidget {
                           Text(
                             w.title,
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w700,
                                   decoration: w.isActive
                                       ? TextDecoration.none
                                       : TextDecoration.lineThrough,
                                 ),
                           ),
                           const Gap(4),
-                          Text(
-                            when,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: const Color(0xFF64748B)),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _PillText(when),
+                              if ((w.locationLink ?? '').trim().isNotEmpty)
+                                const _PillText('Konum: Var'),
+                            ],
                           ),
                         ],
                       ),
@@ -710,6 +796,31 @@ class _WorkOrdersTab extends ConsumerWidget {
         },
         loading: () => const _ListSkeleton(),
         error: (_, _) => const _TabError(text: 'İş emirleri yüklenemedi.'),
+      ),
+    );
+  }
+}
+
+class _PillText extends StatelessWidget {
+  const _PillText(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceMuted,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Text(
+        text,
+        style: Theme.of(context)
+            .textTheme
+            .bodySmall
+            ?.copyWith(color: const Color(0xFF64748B)),
       ),
     );
   }
@@ -2292,8 +2403,11 @@ class CustomerDetail {
     required this.id,
     required this.name,
     required this.city,
+    required this.address,
+    required this.directorName,
     required this.email,
     required this.vkn,
+    required this.tcknMs,
     required this.notes,
     required this.phone1,
     required this.phone1Title,
@@ -2308,8 +2422,11 @@ class CustomerDetail {
   final String id;
   final String name;
   final String? city;
+  final String? address;
+  final String? directorName;
   final String? email;
   final String? vkn;
+  final String? tcknMs;
   final String? notes;
   final String? phone1;
   final String? phone1Title;
@@ -2325,8 +2442,11 @@ class CustomerDetail {
       id: json['id'].toString(),
       name: (json['name'] ?? '').toString(),
       city: json['city']?.toString(),
+      address: json['address']?.toString(),
+      directorName: json['director_name']?.toString(),
       email: json['email']?.toString(),
       vkn: json['vkn']?.toString(),
+      tcknMs: json['tckn_ms']?.toString(),
       notes: json['notes']?.toString(),
       phone1: json['phone_1']?.toString(),
       phone1Title: json['phone_1_title']?.toString(),

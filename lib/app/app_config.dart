@@ -36,6 +36,7 @@ class AppConfig {
   }
 
   static bool get isSupabaseConfigured =>
+      (apiBaseUrl == null || apiBaseUrl!.isEmpty) &&
       _envDisableSupabase != 'true' &&
       supabaseUrl.isNotEmpty &&
       supabaseAnonKey.isNotEmpty;
@@ -43,7 +44,7 @@ class AppConfig {
   static String? get apiBaseUrl {
     if (_envApiBaseUrl.isNotEmpty) return _envApiBaseUrl;
     if (kIsWeb) return '/api';
-    if (kDebugMode) return null;
+    if (kDebugMode) return 'https://microvisecrmflutter.vercel.app/api';
     return 'https://microvisecrmflutter.vercel.app/api';
   }
 }

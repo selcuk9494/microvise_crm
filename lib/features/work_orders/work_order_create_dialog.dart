@@ -163,8 +163,12 @@ class _CreateWorkOrderDialogState
       final items = ((response['items'] as List?) ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(_UserOption.fromJson)
-          .where((u) => u.role != 'admin')
           .toList(growable: false);
+      items.sort((a, b) {
+        final aName = _sortKey(a.fullName ?? '');
+        final bName = _sortKey(b.fullName ?? '');
+        return aName.compareTo(bName);
+      });
       if (!mounted) return;
       setState(() => _users = items);
     } catch (_) {
@@ -795,17 +799,12 @@ class _CreateWorkOrderDialogState
         ..._users.map(
           (u) => DropdownMenuItem<String?>(
             value: u.id,
-            child: Text(u.fullName ?? 'Personel'),
+            child: Text((u.fullName ?? '').trim().isEmpty ? u.id : u.fullName!.trim()),
           ),
         ),
       ],
       onChanged: _saving ? null : (v) => setState(() => _assignedTo = v),
       decoration: const InputDecoration(labelText: 'Atanan Personel'),
-      validator: (v) {
-        if (!ref.read(isAdminProvider)) return null;
-        if ((v ?? '').isEmpty) return 'Personel gerekli.';
-        return null;
-      },
     );
   }
 }

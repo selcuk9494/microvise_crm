@@ -3,6 +3,10 @@ const crypto = require('crypto');
 const { getAuthenticatedUser, hasPageAccess } = require('./_lib/auth');
 const { query } = require('./_lib/db');
 const {
+  ensureSerialTrackingTable,
+  ensureWorkOrderCloseNotesTable,
+} = require('./_lib/schema');
+const {
   ok,
   badRequest,
   forbidden,
@@ -47,6 +51,7 @@ const allowedTables = new Set([
   'product_serial_inventory',
   'scrap_forms',
   'service_records',
+  'serial_tracking',
   'stock_movements',
   'tax_rates',
   'transactions',
@@ -54,6 +59,7 @@ const allowedTables = new Set([
   'users',
   'work_orders',
   'work_order_types',
+  'work_order_close_notes',
 ]);
 
 const tablePermissions = {
@@ -66,6 +72,7 @@ const tablePermissions = {
   products: 'urunler',
   stock_movements: ['urunler', 'formlar'],
   product_serial_inventory: ['urunler', 'formlar'],
+  serial_tracking: 'formlar',
   work_orders: 'is_emirleri',
   payments: ['is_emirleri', 'servis'],
   service_records: 'servis',
@@ -73,6 +80,7 @@ const tablePermissions = {
   device_brands: 'tanimlamalar',
   device_models: 'tanimlamalar',
   work_order_types: 'tanimlamalar',
+  work_order_close_notes: ['tanimlamalar', 'is_emirleri'],
   tax_rates: 'tanimlamalar',
   cities: 'tanimlamalar',
   fiscal_symbols: 'tanimlamalar',
@@ -338,6 +346,13 @@ module.exports = async (req, res) => {
     if (!op) return badRequest(res, 'op zorunludur.');
     if (!table) return badRequest(res, 'table zorunludur.');
     if (!allowedTables.has(table)) return badRequest(res, 'table desteklenmiyor.');
+
+    if (table === 'serial_tracking') {
+      await ensureSerialTrackingTable();
+    }
+    if (table === 'work_order_close_notes') {
+      await ensureWorkOrderCloseNotesTable();
+    }
 
     const requiredPage = tablePermissions[table] || null;
     if (requiredPage && !requireAnyPage(user, requiredPage, res)) return;

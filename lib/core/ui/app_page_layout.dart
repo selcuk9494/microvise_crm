@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gap/gap.dart';
 
 import '../../app/theme/app_theme.dart';
 
@@ -20,6 +21,16 @@ class AppPageLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final isMobile = width < 720;
+    final normalizedActions = actions
+        ?.map(
+          (widget) => widget is Gap
+              ? SizedBox(
+                  width: widget.mainAxisExtent,
+                  height: widget.mainAxisExtent,
+                )
+              : widget,
+        )
+        .toList(growable: false);
     final horizontalPadding = width >= 1200
         ? AppTheme.pagePaddingDesktop.horizontal / 2
         : width >= 720
@@ -84,12 +95,12 @@ class AppPageLayout extends StatelessWidget {
                                         ?.copyWith(color: AppTheme.textMuted),
                                   ),
                                 ),
-                              if (actions != null) ...[
+                              if (normalizedActions != null) ...[
                                 const SizedBox(height: 8),
                                 Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
-                                  children: actions!,
+                                  children: normalizedActions,
                                 ),
                               ],
                             ],
@@ -127,7 +138,7 @@ class AppPageLayout extends StatelessWidget {
                                   ],
                                 ),
                               ),
-                              if (actions != null)
+                              if (normalizedActions != null)
                                 Flexible(
                                   child: Align(
                                     alignment: Alignment.topRight,
@@ -137,7 +148,7 @@ class AppPageLayout extends StatelessWidget {
                                       alignment: WrapAlignment.end,
                                       crossAxisAlignment:
                                           WrapCrossAlignment.center,
-                                      children: actions!,
+                                      children: normalizedActions,
                                     ),
                                   ),
                                 ),
@@ -153,7 +164,10 @@ class AppPageLayout extends StatelessWidget {
                   horizontalPadding,
                   16,
                 ),
-                sliver: SliverToBoxAdapter(child: body),
+                sliver: SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: body,
+                ),
               ),
             ],
           ),

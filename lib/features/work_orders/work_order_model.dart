@@ -13,6 +13,7 @@ class WorkOrder {
     required this.branchId,
     this.branchName,
     required this.assignedTo,
+    this.assignedPersonnelName,
     required this.scheduledDate,
     this.createdAt,
     this.closedAt,
@@ -37,6 +38,7 @@ class WorkOrder {
   final String? branchId;
   final String? branchName;
   final String? assignedTo;
+  final String? assignedPersonnelName;
   final DateTime? scheduledDate;
   final DateTime? createdAt;
   final DateTime? closedAt;
@@ -62,6 +64,7 @@ class WorkOrder {
       branchId: json['branch_id']?.toString(),
       branchName: json['branch_name']?.toString(),
       assignedTo: json['assigned_to']?.toString(),
+      assignedPersonnelName: json['assigned_personnel_name']?.toString(),
       scheduledDate: parseAppDateTime(json['scheduled_date']?.toString()),
       createdAt: parseAppDateTime(json['created_at']?.toString()),
       closedAt: parseAppDateTime(json['closed_at']?.toString()),
@@ -86,6 +89,7 @@ class WorkOrder {
     String? branchName,
     int? sortOrder,
     bool? isActive,
+    String? assignedPersonnelName,
   }) {
     return WorkOrder(
       id: id,
@@ -99,6 +103,7 @@ class WorkOrder {
       branchId: branchId ?? this.branchId,
       branchName: branchName ?? this.branchName,
       assignedTo: assignedTo,
+      assignedPersonnelName: assignedPersonnelName ?? this.assignedPersonnelName,
       scheduledDate: scheduledDate,
       createdAt: createdAt,
       closedAt: closedAt,

@@ -17,7 +17,12 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     final client = ref.watch(supabaseClientProvider);
 
     if (apiClient != null) {
-      final response = await apiClient.getJson('/work-orders');
+      final response = await apiClient
+          .getJson(
+            '/work-orders',
+            queryParameters: {'pageSize': '500'},
+          )
+          .timeout(const Duration(seconds: 12));
       return ((response['items'] as List?) ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(WorkOrder.fromJson)

@@ -173,36 +173,40 @@ class ProductsScreen extends ConsumerWidget {
         body: Column(
           children: [
             AppCard(
-              padding: const EdgeInsets.all(16),
-              child: Row(
+              padding: const EdgeInsets.all(12),
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Expanded(
+                  SizedBox(
+                    width: 260,
                     child: TextField(
                       decoration: const InputDecoration(
-                        labelText: 'Ara',
-                        hintText: 'Hat numarası / SIM / Lisans adı',
+                        hintText: 'Ara',
                         prefixIcon: Icon(Icons.search_rounded),
                       ),
-                      onChanged: (v) => ref.read(productSearchProvider.notifier).set(v),
+                      onChanged: (v) =>
+                          ref.read(productSearchProvider.notifier).set(v),
                     ),
                   ),
-                  const Gap(12),
                   if (isAdmin)
-                    Row(
-                      children: [
-                        Switch.adaptive(
-                          value: showPassive,
-                          onChanged: (v) => ref.read(showPassiveProvider.notifier).set(v),
+                    FilledButton.tonalIcon(
+                      onPressed: () => ref
+                          .read(showPassiveProvider.notifier)
+                          .set(!showPassive),
+                      icon: const Icon(Icons.visibility_rounded, size: 18),
+                      label: Text(showPassive ? 'Kayıt: Tümü' : 'Kayıt: Aktif'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor:
+                            const Color(0xFF16A34A).withValues(alpha: 0.12),
+                        foregroundColor: const Color(0xFF14532D),
+                        minimumSize: const Size(0, 40),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
                         ),
-                        const Gap(6),
-                        Text(
-                          'Pasif',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(color: const Color(0xFF475569)),
-                        ),
-                      ],
+                      ),
                     ),
                 ],
               ),

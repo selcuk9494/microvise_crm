@@ -98,6 +98,20 @@ module.exports = async (req, res) => {
       return ok(res, { ok: true });
     }
 
+    if (op === 'set_password') {
+      const id = String(body.id || '').trim();
+      const password = String(body.password || '');
+      if (!id) return badRequest(res, 'id zorunludur.');
+      if (!password || password.length < 6) {
+        return badRequest(res, 'Şifre en az 6 karakter olmalıdır.');
+      }
+      await query(`select public.admin_update_personnel_password($1,$2)`, [
+        id,
+        password,
+      ]);
+      return ok(res, { ok: true });
+    }
+
     const email = normalizeEmail(body.email);
     const fullName = String(body.full_name || '').trim();
     const role = String(body.role || 'personel').trim() || 'personel';
@@ -187,4 +201,3 @@ module.exports = async (req, res) => {
     return serverError(res, error);
   }
 };
-

@@ -92,6 +92,32 @@ final workOrderTypesProvider = FutureProvider<List<WorkOrderType>>((ref) async {
       .toList(growable: false);
 });
 
+final workOrderCloseNotesProvider =
+    FutureProvider<List<WorkOrderCloseNoteDefinition>>((ref) async {
+  final apiClient = ref.watch(apiClientProvider);
+  if (apiClient != null) {
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {'resource': 'definition_work_order_close_notes'},
+    );
+    return ((response['items'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(WorkOrderCloseNoteDefinition.fromJson)
+        .toList(growable: false);
+  }
+
+  final client = ref.watch(supabaseClientProvider);
+  if (client == null) return const [];
+  final rows = await client
+      .from('work_order_close_notes')
+      .select('id,name,is_active,sort_order,created_at')
+      .eq('is_active', true)
+      .order('sort_order');
+  return (rows as List)
+      .map((e) => WorkOrderCloseNoteDefinition.fromJson(e as Map<String, dynamic>))
+      .toList(growable: false);
+});
+
 // KDV Oranları Provider
 final taxRatesProvider = FutureProvider<List<TaxRate>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
@@ -189,7 +215,6 @@ final businessActivityTypesProvider =
   final rows = await client
       .from('business_activity_types')
       .select('id,name,is_active,created_at')
-      .eq('is_active', true)
       .order('name');
   return (rows as List)
       .map(
@@ -280,6 +305,29 @@ class WorkOrderType {
         color: json['color']?.toString() ?? '#6366F1',
         isActive: json['is_active'] as bool? ?? true,
       );
+}
+
+class WorkOrderCloseNoteDefinition {
+  const WorkOrderCloseNoteDefinition({
+    required this.id,
+    required this.name,
+    required this.isActive,
+    required this.sortOrder,
+  });
+
+  final String id;
+  final String name;
+  final bool isActive;
+  final int sortOrder;
+
+  factory WorkOrderCloseNoteDefinition.fromJson(Map<String, dynamic> json) {
+    return WorkOrderCloseNoteDefinition(
+      id: json['id'].toString(),
+      name: (json['name'] ?? '').toString(),
+      isActive: json['is_active'] as bool? ?? true,
+      sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
+    );
+  }
 }
 
 class TaxRate {
@@ -373,7 +421,7 @@ class DefinitionsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isAdmin = ref.watch(isAdminProvider);
     return DefaultTabController(
-      length: 4,
+      length: 6,
       child: AppPageLayout(
         title: 'Tanımlamalar',
         subtitle: 'Sistem tanımları ve ayarları',
@@ -391,7 +439,9 @@ class DefinitionsScreen extends ConsumerWidget {
                       Tab(text: 'Markalar'),
                       Tab(text: 'Modeller'),
                       Tab(text: 'İş Emri Tipleri'),
+                      Tab(text: 'Kapanış Açıklaması'),
                       Tab(text: 'KDV Oranları'),
+                      Tab(text: 'Faaliyet Türü'),
                     ],
                   ),
                   const Divider(height: 1),
@@ -402,7 +452,9 @@ class DefinitionsScreen extends ConsumerWidget {
                         _BrandsTab(isAdmin: isAdmin),
                         _ModelsTab(isAdmin: isAdmin),
                         _WorkOrderTypesTab(isAdmin: isAdmin),
+                        _WorkOrderCloseNotesTab(isAdmin: isAdmin),
                         _TaxRatesTab(isAdmin: isAdmin),
+                        _BusinessActivityTypesTab(isAdmin: isAdmin),
                       ],
                     ),
                   ),
@@ -539,14 +591,83 @@ class _BrandRowState extends ConsumerState<_BrandRow> {
   bool _saving = false;
 
   Future<void> _toggleActive() async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
     setState(() => _saving = true);
     try {
-      await client
-          .from('device_brands')
-          .update({'is_active': !widget.brand.isActive})
-          .eq('id', widget.brand.id);
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'device_brands',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.brand.id},
+            ],
+            'values': {'is_active': !widget.brand.isActive},
+          },
+        );
+      } else {
+        await client!
+            .from('device_brands')
+            .update({'is_active': !widget.brand.isActive})
+            .eq('id', widget.brand.id);
+      }
+      ref.invalidate(deviceBrandsProvider);
+      ref.invalidate(deviceModelsProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _edit() async {
+    await _showCreateBrandDialog(context, ref, initial: widget.brand);
+    ref.invalidate(deviceBrandsProvider);
+    ref.invalidate(deviceModelsProvider);
+  }
+
+  Future<void> _delete() async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Markayı Sil'),
+        content: const Text('Bu kaydı silmek istiyor musunuz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _saving = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'deleteWhere',
+            'table': 'device_brands',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.brand.id},
+            ],
+          },
+        );
+      } else {
+        await client!.from('device_brands').delete().eq('id', widget.brand.id);
+      }
       ref.invalidate(deviceBrandsProvider);
       ref.invalidate(deviceModelsProvider);
     } finally {
@@ -591,6 +712,19 @@ class _BrandRowState extends ConsumerState<_BrandRow> {
                     )
                   : Text(b.isActive ? 'Pasif Yap' : 'Aktif Yap'),
             ),
+          if (widget.isAdmin) ...[
+            const Gap(8),
+            IconButton(
+              tooltip: 'Düzenle',
+              onPressed: _saving ? null : _edit,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+            IconButton(
+              tooltip: 'Sil',
+              onPressed: _saving ? null : _delete,
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
+          ],
         ],
       ),
     );
@@ -611,14 +745,82 @@ class _ModelRowState extends ConsumerState<_ModelRow> {
   bool _saving = false;
 
   Future<void> _toggleActive() async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
     setState(() => _saving = true);
     try {
-      await client
-          .from('device_models')
-          .update({'is_active': !widget.model.isActive})
-          .eq('id', widget.model.id);
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'device_models',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.model.id},
+            ],
+            'values': {'is_active': !widget.model.isActive},
+          },
+        );
+      } else {
+        await client!
+            .from('device_models')
+            .update({'is_active': !widget.model.isActive})
+            .eq('id', widget.model.id);
+      }
+      ref.invalidate(deviceModelsProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _edit() async {
+    final brands = ref.read(deviceBrandsProvider).value ?? const <DeviceBrand>[];
+    await _showCreateModelDialog(context, ref, brands: brands, initial: widget.model);
+    ref.invalidate(deviceModelsProvider);
+  }
+
+  Future<void> _delete() async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Modeli Sil'),
+        content: const Text('Bu kaydı silmek istiyor musunuz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _saving = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'deleteWhere',
+            'table': 'device_models',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.model.id},
+            ],
+          },
+        );
+      } else {
+        await client!.from('device_models').delete().eq('id', widget.model.id);
+      }
       ref.invalidate(deviceModelsProvider);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -675,14 +877,31 @@ class _ModelRowState extends ConsumerState<_ModelRow> {
                     )
                   : Text(m.isActive ? 'Pasif Yap' : 'Aktif Yap'),
             ),
+          if (widget.isAdmin) ...[
+            const Gap(8),
+            IconButton(
+              tooltip: 'Düzenle',
+              onPressed: _saving ? null : _edit,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+            IconButton(
+              tooltip: 'Sil',
+              onPressed: _saving ? null : _delete,
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-Future<void> _showCreateBrandDialog(BuildContext context, WidgetRef ref) async {
-  final controller = TextEditingController();
+Future<void> _showCreateBrandDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  DeviceBrand? initial,
+}) async {
+  final controller = TextEditingController(text: initial?.name ?? '');
   bool saving = false;
 
   await showDialog<void>(
@@ -704,7 +923,7 @@ Future<void> _showCreateBrandDialog(BuildContext context, WidgetRef ref) async {
                   children: [
                     Expanded(
                       child: Text(
-                        'Marka Ekle',
+                        initial == null ? 'Marka Ekle' : 'Marka Düzenle',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
@@ -741,14 +960,53 @@ Future<void> _showCreateBrandDialog(BuildContext context, WidgetRef ref) async {
                             : () async {
                                 final name = controller.text.trim();
                                 if (name.isEmpty) return;
+                                final apiClient = ref.read(apiClientProvider);
                                 final client = ref.read(supabaseClientProvider);
-                                if (client == null) return;
+                                if (apiClient == null && client == null) return;
                                 setState(() => saving = true);
                                 try {
-                                  await client.from('device_brands').insert({
-                                    'name': name,
-                                    'is_active': true,
-                                  });
+                                  if (apiClient != null) {
+                                    if (initial == null) {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'insertMany',
+                                          'table': 'device_brands',
+                                          'rows': [
+                                            {'name': name, 'is_active': true},
+                                          ],
+                                        },
+                                      );
+                                    } else {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'updateWhere',
+                                          'table': 'device_brands',
+                                          'filters': [
+                                            {
+                                              'col': 'id',
+                                              'op': 'eq',
+                                              'value': initial.id,
+                                            },
+                                          ],
+                                          'values': {'name': name},
+                                        },
+                                      );
+                                    }
+                                  } else {
+                                    if (initial == null) {
+                                      await client!.from('device_brands').insert({
+                                        'name': name,
+                                        'is_active': true,
+                                      });
+                                    } else {
+                                      await client!
+                                          .from('device_brands')
+                                          .update({'name': name})
+                                          .eq('id', initial.id);
+                                    }
+                                  }
                                   if (!context.mounted) return;
                                   Navigator.of(context).pop();
                                 } finally {
@@ -784,9 +1042,10 @@ Future<void> _showCreateModelDialog(
   BuildContext context,
   WidgetRef ref, {
   required List<DeviceBrand> brands,
+  DeviceModel? initial,
 }) async {
-  final controller = TextEditingController();
-  String? brandId = brands.isEmpty ? null : brands.first.id;
+  final controller = TextEditingController(text: initial?.name ?? '');
+  String? brandId = initial?.brandId ?? (brands.isEmpty ? null : brands.first.id);
   bool saving = false;
 
   await showDialog<void>(
@@ -808,7 +1067,7 @@ Future<void> _showCreateModelDialog(
                   children: [
                     Expanded(
                       child: Text(
-                        'Model Ekle',
+                        initial == null ? 'Model Ekle' : 'Model Düzenle',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
@@ -860,15 +1119,64 @@ Future<void> _showCreateModelDialog(
                                 if (name.isEmpty) return;
                                 final selected = brandId;
                                 if (selected == null) return;
+                                final apiClient = ref.read(apiClientProvider);
                                 final client = ref.read(supabaseClientProvider);
-                                if (client == null) return;
+                                if (apiClient == null && client == null) return;
                                 setState(() => saving = true);
                                 try {
-                                  await client.from('device_models').insert({
-                                    'brand_id': selected,
-                                    'name': name,
-                                    'is_active': true,
-                                  });
+                                  if (apiClient != null) {
+                                    if (initial == null) {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'insertMany',
+                                          'table': 'device_models',
+                                          'rows': [
+                                            {
+                                              'brand_id': selected,
+                                              'name': name,
+                                              'is_active': true,
+                                            },
+                                          ],
+                                        },
+                                      );
+                                    } else {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'updateWhere',
+                                          'table': 'device_models',
+                                          'filters': [
+                                            {
+                                              'col': 'id',
+                                              'op': 'eq',
+                                              'value': initial.id,
+                                            },
+                                          ],
+                                          'values': {
+                                            'brand_id': selected,
+                                            'name': name,
+                                          },
+                                        },
+                                      );
+                                    }
+                                  } else {
+                                    if (initial == null) {
+                                      await client!.from('device_models').insert({
+                                        'brand_id': selected,
+                                        'name': name,
+                                        'is_active': true,
+                                      });
+                                    } else {
+                                      await client!
+                                          .from('device_models')
+                                          .update({
+                                            'brand_id': selected,
+                                            'name': name,
+                                          })
+                                          .eq('id', initial.id);
+                                    }
+                                  }
                                   if (!context.mounted) return;
                                   Navigator.of(context).pop();
                                 } finally {
@@ -953,6 +1261,371 @@ class _WorkOrderTypesTab extends ConsumerWidget {
   }
 }
 
+class _WorkOrderCloseNotesTab extends ConsumerWidget {
+  const _WorkOrderCloseNotesTab({required this.isAdmin});
+
+  final bool isAdmin;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final itemsAsync = ref.watch(workOrderCloseNotesProvider);
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Kapanış Açıklamaları',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: isAdmin
+                    ? () async {
+                        await _showCreateWorkOrderCloseNoteDialog(context, ref);
+                        ref.invalidate(workOrderCloseNotesProvider);
+                      }
+                    : null,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Ekle'),
+              ),
+            ],
+          ),
+          const Gap(12),
+          Expanded(
+            child: itemsAsync.when(
+              data: (items) {
+                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+                return ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (context, index) => const Gap(10),
+                  itemBuilder: (context, index) => _WorkOrderCloseNoteRow(
+                    item: items[index],
+                    isAdmin: isAdmin,
+                  ),
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, _) => const _Empty(text: 'Yüklenemedi.'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkOrderCloseNoteRow extends ConsumerStatefulWidget {
+  const _WorkOrderCloseNoteRow({required this.item, required this.isAdmin});
+
+  final WorkOrderCloseNoteDefinition item;
+  final bool isAdmin;
+
+  @override
+  ConsumerState<_WorkOrderCloseNoteRow> createState() =>
+      _WorkOrderCloseNoteRowState();
+}
+
+class _WorkOrderCloseNoteRowState extends ConsumerState<_WorkOrderCloseNoteRow> {
+  bool _saving = false;
+
+  Future<void> _toggleActive() async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+    setState(() => _saving = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'work_order_close_notes',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.item.id},
+            ],
+            'values': {'is_active': !widget.item.isActive},
+          },
+        );
+      } else {
+        await client!
+            .from('work_order_close_notes')
+            .update({'is_active': !widget.item.isActive})
+            .eq('id', widget.item.id);
+      }
+      ref.invalidate(workOrderCloseNotesProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _edit() async {
+    await _showCreateWorkOrderCloseNoteDialog(
+      context,
+      ref,
+      initial: widget.item,
+    );
+    ref.invalidate(workOrderCloseNotesProvider);
+  }
+
+  Future<void> _delete() async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Kayıt Sil'),
+        content: const Text('Bu kaydı silmek istiyor musunuz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _saving = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'deleteWhere',
+            'table': 'work_order_close_notes',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.item.id},
+            ],
+          },
+        );
+      } else {
+        await client!
+            .from('work_order_close_notes')
+            .delete()
+            .eq('id', widget.item.id);
+      }
+      ref.invalidate(workOrderCloseNotesProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              item.name,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+          if (widget.isAdmin) ...[
+            IconButton(
+              tooltip: item.isActive ? 'Pasife Al' : 'Aktifleştir',
+              onPressed: _saving ? null : _toggleActive,
+              icon: Icon(
+                item.isActive
+                    ? Icons.pause_circle_outline_rounded
+                    : Icons.play_circle_outline_rounded,
+              ),
+            ),
+            IconButton(
+              tooltip: 'Düzenle',
+              onPressed: _saving ? null : _edit,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+            IconButton(
+              tooltip: 'Sil',
+              onPressed: _saving ? null : _delete,
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _showCreateWorkOrderCloseNoteDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  WorkOrderCloseNoteDefinition? initial,
+}) async {
+  final nameController = TextEditingController(text: initial?.name ?? '');
+  final sortController =
+      TextEditingController(text: initial == null ? '' : initial.sortOrder.toString());
+  bool saving = false;
+
+  final ok = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: AppCard(
+          padding: const EdgeInsets.all(20),
+          child: StatefulBuilder(
+            builder: (context, setState) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        initial == null ? 'Kayıt Ekle' : 'Kayıt Düzenle',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Kapat',
+                      onPressed:
+                          saving ? null : () => Navigator.of(context).pop(false),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Açıklama',
+                    hintText: 'Örn: Kurulum tamamlandı',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: sortController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Sıra',
+                    hintText: '0',
+                  ),
+                ),
+                const Gap(18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(false),
+                        child: const Text('Vazgeç'),
+                      ),
+                    ),
+                    const Gap(10),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                final apiClient = ref.read(apiClientProvider);
+                                final client = ref.read(supabaseClientProvider);
+                                if (apiClient == null && client == null) return;
+
+                                final name = nameController.text.trim();
+                                if (name.isEmpty) return;
+                                final sortOrder =
+                                    int.tryParse(sortController.text.trim()) ?? 0;
+
+                                setState(() => saving = true);
+                                try {
+                                  if (apiClient != null) {
+                                    if (initial == null) {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'insertMany',
+                                          'table': 'work_order_close_notes',
+                                          'rows': [
+                                            {
+                                              'name': name,
+                                              'sort_order': sortOrder,
+                                              'is_active': true,
+                                            },
+                                          ],
+                                        },
+                                      );
+                                    } else {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'updateWhere',
+                                          'table': 'work_order_close_notes',
+                                          'filters': [
+                                            {'col': 'id', 'op': 'eq', 'value': initial.id},
+                                          ],
+                                          'values': {
+                                            'name': name,
+                                            'sort_order': sortOrder,
+                                          },
+                                        },
+                                      );
+                                    }
+                                  } else {
+                                    if (initial == null) {
+                                      await client!.from('work_order_close_notes').insert({
+                                        'name': name,
+                                        'sort_order': sortOrder,
+                                        'is_active': true,
+                                      });
+                                    } else {
+                                      await client!.from('work_order_close_notes').update({
+                                        'name': name,
+                                        'sort_order': sortOrder,
+                                      }).eq('id', initial.id);
+                                    }
+                                  }
+                                  if (!context.mounted) return;
+                                  Navigator.of(context).pop(true);
+                                } finally {
+                                  setState(() => saving = false);
+                                }
+                              },
+                        child: Text(initial == null ? 'Ekle' : 'Kaydet'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  nameController.dispose();
+  sortController.dispose();
+
+  if (ok == true) {
+    ref.invalidate(workOrderCloseNotesProvider);
+  }
+}
+
 class _WorkOrderTypeRow extends ConsumerStatefulWidget {
   const _WorkOrderTypeRow({required this.type, required this.isAdmin});
 
@@ -967,14 +1640,84 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
   bool _saving = false;
 
   Future<void> _toggleActive() async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
     setState(() => _saving = true);
     try {
-      await client
-          .from('work_order_types')
-          .update({'is_active': !widget.type.isActive})
-          .eq('id', widget.type.id);
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'work_order_types',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.type.id},
+            ],
+            'values': {'is_active': !widget.type.isActive},
+          },
+        );
+      } else {
+        await client!
+            .from('work_order_types')
+            .update({'is_active': !widget.type.isActive})
+            .eq('id', widget.type.id);
+      }
+      ref.invalidate(workOrderTypesProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _edit() async {
+    await _showCreateWorkOrderTypeDialog(context, ref, initial: widget.type);
+    ref.invalidate(workOrderTypesProvider);
+  }
+
+  Future<void> _delete() async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('İş Emri Tipini Sil'),
+        content: const Text('Bu kaydı silmek istiyor musunuz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _saving = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'deleteWhere',
+            'table': 'work_order_types',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.type.id},
+            ],
+          },
+        );
+      } else {
+        await client!
+            .from('work_order_types')
+            .delete()
+            .eq('id', widget.type.id);
+      }
       ref.invalidate(workOrderTypesProvider);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -1036,6 +1779,19 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : Text(t.isActive ? 'Pasif Yap' : 'Aktif Yap'),
             ),
+          if (widget.isAdmin) ...[
+            const Gap(8),
+            IconButton(
+              tooltip: 'Düzenle',
+              onPressed: _saving ? null : _edit,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+            IconButton(
+              tooltip: 'Sil',
+              onPressed: _saving ? null : _delete,
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
+          ],
         ],
       ),
     );
@@ -1109,14 +1865,29 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
   bool _saving = false;
 
   Future<void> _toggleActive() async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
     setState(() => _saving = true);
     try {
-      await client
-          .from('tax_rates')
-          .update({'is_active': !widget.rate.isActive})
-          .eq('id', widget.rate.id);
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'tax_rates',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.rate.id},
+            ],
+            'values': {'is_active': !widget.rate.isActive},
+          },
+        );
+      } else {
+        await client!
+            .from('tax_rates')
+            .update({'is_active': !widget.rate.isActive})
+            .eq('id', widget.rate.id);
+      }
       ref.invalidate(taxRatesProvider);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -1124,14 +1895,101 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
   }
 
   Future<void> _setDefault() async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
     setState(() => _saving = true);
     try {
       // Clear existing defaults
-      await client.from('tax_rates').update({'is_default': false}).eq('is_default', true);
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'tax_rates',
+            'filters': [
+              {'col': 'is_default', 'op': 'eq', 'value': true},
+            ],
+            'values': {'is_default': false},
+          },
+        );
+      } else {
+        await client!
+            .from('tax_rates')
+            .update({'is_default': false})
+            .eq('is_default', true);
+      }
       // Set new default
-      await client.from('tax_rates').update({'is_default': true}).eq('id', widget.rate.id);
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'tax_rates',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.rate.id},
+            ],
+            'values': {'is_default': true},
+          },
+        );
+      } else {
+        await client!
+            .from('tax_rates')
+            .update({'is_default': true})
+            .eq('id', widget.rate.id);
+      }
+      ref.invalidate(taxRatesProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _edit() async {
+    await _showCreateTaxRateDialog(context, ref, initial: widget.rate);
+    ref.invalidate(taxRatesProvider);
+  }
+
+  Future<void> _delete() async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('KDV Oranını Sil'),
+        content: const Text('Bu kaydı silmek istiyor musunuz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _saving = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'deleteWhere',
+            'table': 'tax_rates',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.rate.id},
+            ],
+          },
+        );
+      } else {
+        await client!.from('tax_rates').delete().eq('id', widget.rate.id);
+      }
       ref.invalidate(taxRatesProvider);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -1201,6 +2059,17 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : Text(r.isActive ? 'Pasif Yap' : 'Aktif Yap'),
             ),
+            const Gap(6),
+            IconButton(
+              tooltip: 'Düzenle',
+              onPressed: _saving ? null : _edit,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+            IconButton(
+              tooltip: 'Sil',
+              onPressed: _saving ? null : _delete,
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
           ],
         ],
       ),
@@ -1208,10 +2077,384 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
   }
 }
 
-Future<void> _showCreateWorkOrderTypeDialog(BuildContext context, WidgetRef ref) async {
-  final nameController = TextEditingController();
-  final descController = TextEditingController();
-  String selectedColor = '#6366F1';
+class _BusinessActivityTypesTab extends ConsumerWidget {
+  const _BusinessActivityTypesTab({required this.isAdmin});
+
+  final bool isAdmin;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activitiesAsync = ref.watch(businessActivityTypesProvider);
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Faaliyet Türleri',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: isAdmin
+                    ? () async {
+                        await _showCreateBusinessActivityTypeDialog(
+                          context,
+                          ref,
+                        );
+                        ref.invalidate(businessActivityTypesProvider);
+                      }
+                    : null,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Ekle'),
+              ),
+            ],
+          ),
+          const Gap(12),
+          Expanded(
+            child: activitiesAsync.when(
+              data: (items) {
+                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+                return ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, _) => const Gap(10),
+                  itemBuilder: (context, index) => _BusinessActivityTypeRow(
+                    item: items[index],
+                    isAdmin: isAdmin,
+                  ),
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => _Empty(text: 'Yüklenemedi: $error'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BusinessActivityTypeRow extends ConsumerStatefulWidget {
+  const _BusinessActivityTypeRow({required this.item, required this.isAdmin});
+
+  final BusinessActivityTypeDefinition item;
+  final bool isAdmin;
+
+  @override
+  ConsumerState<_BusinessActivityTypeRow> createState() =>
+      _BusinessActivityTypeRowState();
+}
+
+class _BusinessActivityTypeRowState
+    extends ConsumerState<_BusinessActivityTypeRow> {
+  bool _saving = false;
+
+  Future<void> _toggleActive() async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+    setState(() => _saving = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'business_activity_types',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.item.id},
+            ],
+            'values': {'is_active': !widget.item.isActive},
+          },
+        );
+      } else {
+        await client!
+            .from('business_activity_types')
+            .update({'is_active': !widget.item.isActive})
+            .eq('id', widget.item.id);
+      }
+      ref.invalidate(businessActivityTypesProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _edit() async {
+    await _showCreateBusinessActivityTypeDialog(
+      context,
+      ref,
+      initial: widget.item,
+    );
+    ref.invalidate(businessActivityTypesProvider);
+  }
+
+  Future<void> _delete() async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Faaliyet Türünü Sil'),
+        content: const Text('Bu kaydı silmek istiyor musunuz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _saving = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'deleteWhere',
+            'table': 'business_activity_types',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.item.id},
+            ],
+          },
+        );
+      } else {
+        await client!
+            .from('business_activity_types')
+            .delete()
+            .eq('id', widget.item.id);
+      }
+      ref.invalidate(businessActivityTypesProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              item.name,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    decoration:
+                        item.isActive ? null : TextDecoration.lineThrough,
+                  ),
+            ),
+          ),
+          AppBadge(
+            label: item.isActive ? 'Aktif' : 'Pasif',
+            tone: item.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
+          ),
+          const Gap(10),
+          if (widget.isAdmin)
+            OutlinedButton(
+              onPressed: _saving ? null : _toggleActive,
+              child: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(item.isActive ? 'Pasif Yap' : 'Aktif Yap'),
+            ),
+          if (widget.isAdmin) ...[
+            const Gap(8),
+            IconButton(
+              tooltip: 'Düzenle',
+              onPressed: _saving ? null : _edit,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+            IconButton(
+              tooltip: 'Sil',
+              onPressed: _saving ? null : _delete,
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _showCreateBusinessActivityTypeDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  BusinessActivityTypeDefinition? initial,
+}) async {
+  final controller = TextEditingController(text: initial?.name ?? '');
+  bool saving = false;
+
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: AppCard(
+          padding: const EdgeInsets.all(20),
+          child: StatefulBuilder(
+            builder: (context, setState) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        initial == null
+                            ? 'Faaliyet Türü Ekle'
+                            : 'Faaliyet Türü Düzenle',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Kapat',
+                      onPressed:
+                          saving ? null : () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Ad',
+                    hintText: 'Örn: Perakende',
+                  ),
+                ),
+                const Gap(18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        child: const Text('Vazgeç'),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                final name = controller.text.trim();
+                                if (name.isEmpty) return;
+                                final apiClient = ref.read(apiClientProvider);
+                                final client = ref.read(supabaseClientProvider);
+                                if (apiClient == null && client == null) return;
+                                setState(() => saving = true);
+                                try {
+                                  if (apiClient != null) {
+                                    if (initial == null) {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'insertMany',
+                                          'table': 'business_activity_types',
+                                          'rows': [
+                                            {'name': name, 'is_active': true},
+                                          ],
+                                        },
+                                      );
+                                    } else {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'updateWhere',
+                                          'table': 'business_activity_types',
+                                          'filters': [
+                                            {
+                                              'col': 'id',
+                                              'op': 'eq',
+                                              'value': initial.id,
+                                            },
+                                          ],
+                                          'values': {'name': name},
+                                        },
+                                      );
+                                    }
+                                  } else {
+                                    if (initial == null) {
+                                      await client!
+                                          .from('business_activity_types')
+                                          .insert({
+                                        'name': name,
+                                        'is_active': true,
+                                      });
+                                    } else {
+                                      await client!
+                                          .from('business_activity_types')
+                                          .update({'name': name}).eq(
+                                        'id',
+                                        initial.id,
+                                      );
+                                    }
+                                  }
+                                  if (!context.mounted) return;
+                                  Navigator.of(context).pop();
+                                } finally {
+                                  setState(() => saving = false);
+                                }
+                              },
+                        child: saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(initial == null ? 'Ekle' : 'Kaydet'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  controller.dispose();
+}
+
+Future<void> _showCreateWorkOrderTypeDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  WorkOrderType? initial,
+}) async {
+  final nameController = TextEditingController(text: initial?.name ?? '');
+  final descController =
+      TextEditingController(text: initial?.description ?? '');
+  String selectedColor = initial?.color ?? '#6366F1';
   bool saving = false;
 
   final colors = ['#6366F1', '#22C55E', '#F59E0B', '#EF4444', '#3B82F6', '#8B5CF6', '#EC4899', '#14B8A6'];
@@ -1233,7 +2476,14 @@ Future<void> _showCreateWorkOrderTypeDialog(BuildContext context, WidgetRef ref)
               children: [
                 Row(
                   children: [
-                    Expanded(child: Text('İş Emri Tipi Ekle', style: Theme.of(context).textTheme.titleMedium)),
+                    Expanded(
+                      child: Text(
+                        initial == null
+                            ? 'İş Emri Tipi Ekle'
+                            : 'İş Emri Tipi Düzenle',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
                     IconButton(
                       tooltip: 'Kapat',
                       onPressed: saving ? null : () => Navigator.of(context).pop(),
@@ -1293,16 +2543,73 @@ Future<void> _showCreateWorkOrderTypeDialog(BuildContext context, WidgetRef ref)
                             : () async {
                                 final name = nameController.text.trim();
                                 if (name.isEmpty) return;
+                                final apiClient = ref.read(apiClientProvider);
                                 final client = ref.read(supabaseClientProvider);
-                                if (client == null) return;
+                                if (apiClient == null && client == null) return;
                                 setState(() => saving = true);
                                 try {
-                                  await client.from('work_order_types').insert({
-                                    'name': name,
-                                    'description': descController.text.trim().isEmpty ? null : descController.text.trim(),
-                                    'color': selectedColor,
-                                    'is_active': true,
-                                  });
+                                  final description =
+                                      descController.text.trim().isEmpty
+                                          ? null
+                                          : descController.text.trim();
+                                  if (apiClient != null) {
+                                    if (initial == null) {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'insertMany',
+                                          'table': 'work_order_types',
+                                          'rows': [
+                                            {
+                                              'name': name,
+                                              'description': description,
+                                              'color': selectedColor,
+                                              'is_active': true,
+                                            },
+                                          ],
+                                        },
+                                      );
+                                    } else {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'updateWhere',
+                                          'table': 'work_order_types',
+                                          'filters': [
+                                            {
+                                              'col': 'id',
+                                              'op': 'eq',
+                                              'value': initial.id,
+                                            },
+                                          ],
+                                          'values': {
+                                            'name': name,
+                                            'description': description,
+                                            'color': selectedColor,
+                                          },
+                                        },
+                                      );
+                                    }
+                                  } else {
+                                    if (initial == null) {
+                                      await client!
+                                          .from('work_order_types')
+                                          .insert({
+                                        'name': name,
+                                        'description': description,
+                                        'color': selectedColor,
+                                        'is_active': true,
+                                      });
+                                    } else {
+                                      await client!
+                                          .from('work_order_types')
+                                          .update({
+                                        'name': name,
+                                        'description': description,
+                                        'color': selectedColor,
+                                      }).eq('id', initial.id);
+                                    }
+                                  }
                                   if (!context.mounted) return;
                                   Navigator.of(context).pop();
                                 } finally {
@@ -1328,9 +2635,15 @@ Future<void> _showCreateWorkOrderTypeDialog(BuildContext context, WidgetRef ref)
   descController.dispose();
 }
 
-Future<void> _showCreateTaxRateDialog(BuildContext context, WidgetRef ref) async {
-  final nameController = TextEditingController();
-  final rateController = TextEditingController();
+Future<void> _showCreateTaxRateDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  TaxRate? initial,
+}) async {
+  final nameController = TextEditingController(text: initial?.name ?? '');
+  final rateController = TextEditingController(
+    text: initial == null ? '' : initial.rate.toStringAsFixed(0),
+  );
   bool saving = false;
 
   await showDialog<void>(
@@ -1350,7 +2663,12 @@ Future<void> _showCreateTaxRateDialog(BuildContext context, WidgetRef ref) async
               children: [
                 Row(
                   children: [
-                    Expanded(child: Text('KDV Oranı Ekle', style: Theme.of(context).textTheme.titleMedium)),
+                    Expanded(
+                      child: Text(
+                        initial == null ? 'KDV Oranı Ekle' : 'KDV Oranı Düzenle',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
                     IconButton(
                       tooltip: 'Kapat',
                       onPressed: saving ? null : () => Navigator.of(context).pop(),
@@ -1388,16 +2706,63 @@ Future<void> _showCreateTaxRateDialog(BuildContext context, WidgetRef ref) async
                                 final name = nameController.text.trim();
                                 final rate = double.tryParse(rateController.text.trim());
                                 if (name.isEmpty || rate == null) return;
+                                final apiClient = ref.read(apiClientProvider);
                                 final client = ref.read(supabaseClientProvider);
-                                if (client == null) return;
+                                if (apiClient == null && client == null) return;
                                 setState(() => saving = true);
                                 try {
-                                  await client.from('tax_rates').insert({
-                                    'name': name,
-                                    'rate': rate,
-                                    'is_active': true,
-                                    'is_default': false,
-                                  });
+                                  if (apiClient != null) {
+                                    if (initial == null) {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'insertMany',
+                                          'table': 'tax_rates',
+                                          'rows': [
+                                            {
+                                              'name': name,
+                                              'rate': rate,
+                                              'is_active': true,
+                                              'is_default': false,
+                                            },
+                                          ],
+                                        },
+                                      );
+                                    } else {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'updateWhere',
+                                          'table': 'tax_rates',
+                                          'filters': [
+                                            {
+                                              'col': 'id',
+                                              'op': 'eq',
+                                              'value': initial.id,
+                                            },
+                                          ],
+                                          'values': {
+                                            'name': name,
+                                            'rate': rate,
+                                          },
+                                        },
+                                      );
+                                    }
+                                  } else {
+                                    if (initial == null) {
+                                      await client!.from('tax_rates').insert({
+                                        'name': name,
+                                        'rate': rate,
+                                        'is_active': true,
+                                        'is_default': false,
+                                      });
+                                    } else {
+                                      await client!.from('tax_rates').update({
+                                        'name': name,
+                                        'rate': rate,
+                                      }).eq('id', initial.id);
+                                    }
+                                  }
                                   if (!context.mounted) return;
                                   Navigator.of(context).pop();
                                 } finally {

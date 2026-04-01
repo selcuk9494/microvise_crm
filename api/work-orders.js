@@ -219,12 +219,47 @@ module.exports = async (req, res) => {
       return methodNotAllowed(res, 'GET, POST, PATCH');
     }
 
+    const status = String(req.query.status || 'all').trim();
+    const showPassiveRaw = String(req.query.showPassive || '').trim();
+    const showPassive = showPassiveRaw === 'true' || showPassiveRaw === '1';
+    const search = String(req.query.search || '').trim();
+    const pageRaw = Number(req.query.page);
+    const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? pageRaw : 1;
+    const pageSizeRaw = Number(req.query.pageSize);
+    const pageSize =
+      Number.isFinite(pageSizeRaw) && pageSizeRaw >= 1 && pageSizeRaw <= 1000
+        ? pageSizeRaw
+        : 500;
+    const offset = (page - 1) * pageSize;
+
     const values = [];
-    let assignedFilterSql = '';
+    const conditions = ['true'];
+
+    if (!showPassive) {
+      conditions.push('w.is_active = true');
+    }
+    if (status && status !== 'all') {
+      values.push(status);
+      conditions.push(`w.status = $${values.length}`);
+    }
+    if (search) {
+      values.push(`%${search}%`);
+      const p = `$${values.length}`;
+      conditions.push(
+        `(w.title ilike ${p} or c.name ilike ${p} or b.name ilike ${p} or w.id::text ilike ${p})`,
+      );
+    }
     if (user.role !== 'admin') {
       values.push(user.id);
-      assignedFilterSql = `and (w.assigned_to = $${values.length} or w.created_by = $${values.length} or w.assigned_to is null)`;
+      const p = `$${values.length}`;
+      conditions.push(`(w.assigned_to = ${p} or w.created_by = ${p})`);
     }
+
+    values.push(pageSize);
+    values.push(offset);
+    const limitParam = `$${values.length - 1}`;
+    const offsetParam = `$${values.length}`;
+    const whereSql = `where ${conditions.join(' and ')}`;
 
     const result = await query(
       `
@@ -249,33 +284,15 @@ module.exports = async (req, res) => {
           w.sort_order,
           c.name as customer_name,
           b.name as branch_name,
+          u.full_name as assigned_personnel_name,
           wt.name as work_order_type_name,
-          coalesce(
-            json_agg(
-              json_build_object(
-                'amount', p.amount,
-                'currency', p.currency,
-                'description', p.description,
-                'paid_at', p.paid_at,
-                'payment_method', p.payment_method,
-                'is_active', p.is_active
-              )
-              order by p.paid_at desc
-            ) filter (where p.id is not null),
-            '[]'::json
-          ) as payments
+          '[]'::json as payments
         from public.work_orders w
         left join public.customers c on c.id = w.customer_id
         left join public.branches b on b.id = w.branch_id
+        left join public.users u on u.id = w.assigned_to
         left join public.work_order_types wt on wt.id = w.work_order_type_id
-        left join public.payments p on p.work_order_id = w.id and p.is_active = true
-        where true
-          ${assignedFilterSql}
-        group by
-          w.id,
-          c.name,
-          b.name,
-          wt.name
+        ${whereSql}
         order by
           case w.status
             when 'open' then 0
@@ -285,6 +302,8 @@ module.exports = async (req, res) => {
           end,
           w.sort_order asc,
           w.created_at desc
+        limit ${limitParam}
+        offset ${offsetParam}
       `,
       values,
     );

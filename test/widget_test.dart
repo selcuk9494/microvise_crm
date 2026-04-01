@@ -11,10 +11,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:microvise_crm/app/app.dart';
 
 void main() {
-  testWidgets('Supabase yapılandırması yoksa kurulum ekranı görünür',
-      (WidgetTester tester) async {
+  testWidgets('Uygulama giriş ekranına yönlendirir', (WidgetTester tester) async {
     await tester.pumpWidget(const ProviderScope(child: App()));
     await tester.pumpAndSettle();
-    expect(find.text('Kurulum Gerekli'), findsOneWidget);
+    expect(find.text('E-posta'), findsOneWidget);
+    expect(find.text('Giriş Yap'), findsOneWidget);
   });
 }

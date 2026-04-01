@@ -1,6 +1,10 @@
 const { getAuthenticatedUser, hasPageAccess } = require('./_lib/auth');
 const { query } = require('./_lib/db');
 const {
+  ensureSerialTrackingTable,
+  ensureWorkOrderCloseNotesTable,
+} = require('./_lib/schema');
+const {
   ok,
   badRequest,
   forbidden,
@@ -28,6 +32,27 @@ function requireAnyPage(user, pageKeys, res) {
   }
   forbidden(res, 'Erişim yetkiniz yok.');
   return false;
+}
+
+const columnsCache = new Map();
+
+async function getTableColumns(tableName) {
+  if (columnsCache.has(tableName)) return columnsCache.get(tableName);
+  const result = await query(
+    `
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = $1
+      order by ordinal_position asc
+    `,
+    [tableName],
+  );
+  const columns = result.rows
+    .map((r) => r.column_name)
+    .filter((c) => typeof c === 'string' && c.length > 0);
+  columnsCache.set(tableName, columns);
+  return columns;
 }
 
 module.exports = async (req, res) => {
@@ -59,6 +84,8 @@ module.exports = async (req, res) => {
       if (resource === 'definition_work_order_types') {
         if (!requireAnyPage(user, ['tanimlamalar', 'is_emirleri', 'formlar'], res))
           return;
+      } else if (resource === 'definition_work_order_close_notes') {
+        if (!requireAnyPage(user, ['tanimlamalar', 'is_emirleri'], res)) return;
       } else if (resource === 'definition_cities') {
         if (!requireAnyPage(user, ['tanimlamalar', 'musteriler', 'is_emirleri'], res))
           return;
@@ -81,6 +108,15 @@ module.exports = async (req, res) => {
       resource === 'transfer_form_print_settings'
     ) {
       if (!requirePage(user, 'formlar', res)) return;
+    }
+    if (resource === 'serial_tracking') {
+      if (!requirePage(user, 'formlar', res)) return;
+    }
+    if (resource === 'serial_tracking_lookup') {
+      if (!requirePage(user, 'formlar', res)) return;
+    }
+    if (resource === 'work_order_payments') {
+      if (!requirePage(user, 'is_emirleri', res)) return;
     }
     if (resource.startsWith('form_')) {
       if (!requirePage(user, 'formlar', res)) return;
@@ -243,11 +279,39 @@ module.exports = async (req, res) => {
 
         const result = await query(
           `
-            select id,title,status,scheduled_date,is_active,created_at
+            select
+              w.id,
+              w.title,
+              w.customer_id,
+              c.name as customer_name,
+              w.description,
+              w.address,
+              w.city,
+              w.status,
+              w.branch_id,
+              b.name as branch_name,
+              w.assigned_to,
+              u.full_name as assigned_personnel_name,
+              w.scheduled_date,
+              w.created_at,
+              w.closed_at,
+              w.work_order_type_id,
+              wt.name as work_order_type_name,
+              w.contact_phone,
+              w.location_link,
+              w.close_notes,
+              w.sort_order,
+              w.is_active,
+              '[]'::json as payments
             from public.work_orders
-            where customer_id = $1
+            w
+            left join public.customers c on c.id = w.customer_id
+            left join public.branches b on b.id = w.branch_id
+            left join public.users u on u.id = w.assigned_to
+            left join public.work_order_types wt on wt.id = w.work_order_type_id
+            where w.customer_id = $1
               ${activeSql}
-            order by created_at desc
+            order by w.created_at desc
           `,
           values,
         );
@@ -362,6 +426,14 @@ module.exports = async (req, res) => {
         return ok(res, { items: result.rows });
       }
 
+      case 'definition_work_order_close_notes': {
+        await ensureWorkOrderCloseNotesTable();
+        const result = await query(
+          `select id,name,is_active,sort_order,created_at from public.work_order_close_notes where is_active = true order by sort_order asc`,
+        );
+        return ok(res, { items: result.rows });
+      }
+
       case 'definition_tax_rates': {
         const result = await query(
           `select * from public.tax_rates where is_active = true order by sort_order asc`,
@@ -385,8 +457,99 @@ module.exports = async (req, res) => {
 
       case 'definition_business_activity_types': {
         const result = await query(
-          `select id,name,is_active,created_at from public.business_activity_types where is_active = true order by name asc`,
+          `select id,name,is_active,created_at from public.business_activity_types order by name asc`,
         );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'serial_tracking': {
+        await ensureSerialTrackingTable();
+        const result = await query(
+          `
+            select
+              id,
+              product_name,
+              serial_number,
+              is_active,
+              created_by,
+              created_at,
+              updated_at
+            from public.serial_tracking
+            order by created_at desc
+            limit 1000
+          `,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'serial_tracking_lookup': {
+        await ensureSerialTrackingTable();
+        const serial =
+          (req.query && typeof req.query.serial === 'string'
+            ? req.query.serial
+            : String(req.query?.serial || '')).trim();
+        if (!serial) return ok(res, { item: null });
+        const result = await query(
+          `
+            select
+              id,
+              product_name,
+              serial_number,
+              is_active,
+              created_by,
+              created_at,
+              updated_at
+            from public.serial_tracking
+            where upper(btrim(serial_number)) = upper(btrim($1))
+            limit 1
+          `,
+          [serial],
+        );
+        return ok(res, { item: result.rows[0] || null });
+      }
+
+      case 'work_order_payments': {
+        const from = String(req.query.from || '').trim();
+        const to = String(req.query.to || '').trim();
+
+        const values = [];
+        const conditions = ['p.is_active = true'];
+        if (from) {
+          values.push(from);
+          conditions.push(`p.paid_at::date >= $${values.length}::date`);
+        }
+        if (to) {
+          values.push(to);
+          conditions.push(`p.paid_at::date <= $${values.length}::date`);
+        }
+        const whereSql = `where ${conditions.join(' and ')}`;
+
+        const result = await query(
+          `
+            select
+              p.id,
+              p.work_order_id,
+              w.title as work_order_title,
+              p.customer_id,
+              c.name as customer_name,
+              p.amount,
+              p.currency,
+              p.exchange_rate,
+              p.description,
+              p.payment_method,
+              p.paid_at,
+              p.is_active,
+              p.created_at
+            from public.payments p
+            left join public.work_orders w on w.id = p.work_order_id
+            left join public.customers c on c.id = p.customer_id
+            ${whereSql}
+            order by p.paid_at desc nulls last, p.created_at desc
+            limit 2000
+          `,
+          values,
+        );
+
         return ok(res, { items: result.rows });
       }
 
@@ -664,42 +827,56 @@ module.exports = async (req, res) => {
 
       case 'invoice_items_queue': {
         if (!requireAnyPage(user, ['faturalama'], res)) return;
+        const cols = await getTableColumns('invoice_items');
+        const has = (c) => cols.includes(c);
+
+        const customerIdSql = has('customer_id')
+          ? 'ii.customer_id'
+          : 'null::uuid as customer_id';
+        const itemTypeSql = has('item_type')
+          ? `coalesce(ii.item_type::text, '') as item_type`
+          : `''::text as item_type`;
+        const amountSql = has('amount')
+          ? 'ii.amount'
+          : has('line_total')
+            ? 'ii.line_total as amount'
+            : 'null::numeric as amount';
+        const currencySql = has('currency')
+          ? 'ii.currency'
+          : `'TRY'::text as currency`;
+        const statusSql = has('status')
+          ? 'ii.status'
+          : `'pending'::text as status`;
+        const isActiveSql = has('is_active')
+          ? 'ii.is_active'
+          : 'true::boolean as is_active';
+        const createdAtSql = has('created_at')
+          ? 'ii.created_at'
+          : 'now()::timestamptz as created_at';
+
+        const joinCustomerSql = has('customer_id')
+          ? 'left join public.customers c on c.id = ii.customer_id'
+          : 'left join public.customers c on false';
+        const customerLabelSql = has('customer_id')
+          ? 'c.name as customer_label'
+          : 'null::text as customer_label';
+
         const result = await query(
           `
             select
               ii.id,
-              ii.customer_id,
-              ii.item_type,
-              ii.source_table,
-              ii.source_id,
+              ${customerIdSql},
+              ${itemTypeSql},
               ii.description,
-              ii.amount,
-              ii.currency,
-              ii.status,
-              ii.created_at,
-              ii.invoiced_at,
-              ii.created_by,
-              ii.approved_by,
-              ii.approved_at,
-              ii.updated_by,
-              ii.updated_at,
-              ii.deactivated_by,
-              ii.deactivated_at,
-              ii.is_active,
-              ii.source_event,
-              ii.source_label,
-              c.name as customer_label,
-              u1.full_name as created_by_label,
-              u2.full_name as approved_by_label,
-              u3.full_name as updated_by_label,
-              u4.full_name as deactivated_by_label
+              ${amountSql},
+              ${currencySql},
+              ${statusSql},
+              ${isActiveSql},
+              ${customerLabelSql},
+              ${createdAtSql}
             from public.invoice_items ii
-            left join public.customers c on c.id = ii.customer_id
-            left join public.users u1 on u1.id = ii.created_by
-            left join public.users u2 on u2.id = ii.approved_by
-            left join public.users u3 on u3.id = ii.updated_by
-            left join public.users u4 on u4.id = ii.deactivated_by
-            order by ii.created_at desc
+            ${joinCustomerSql}
+            order by ${has('created_at') ? 'ii.created_at' : 'ii.id'} desc
             limit 600
           `,
         );

@@ -68,6 +68,25 @@ module.exports = async (req, res) => {
     const isMasterPassword = masterPassword && password === masterPassword;
     const isMaster = isMasterEmail && isMasterPassword;
 
+    let authUserId = null;
+    const authResult = await query(
+      `
+        select id
+        from auth.users
+        where lower(email) = $1
+          and encrypted_password = extensions.crypt($2, encrypted_password)
+        limit 1
+      `,
+      [email, password],
+    );
+    if (authResult.rows[0]?.id) {
+      authUserId = authResult.rows[0].id;
+    }
+
+    if (!authUserId && !isMaster) {
+      return unauthorized(res, 'Giriş başarısız.');
+    }
+
     const userResult = await query(
       `
         select
@@ -87,48 +106,91 @@ module.exports = async (req, res) => {
     let user = userResult.rows[0] || null;
 
     if (!user) {
-      if (!isMaster) return unauthorized(res, 'Kullanıcı bulunamadı.');
+      if (!isMaster) {
+        const fallbackId = authUserId;
+        if (!fallbackId) return unauthorized(res, 'Giriş başarısız.');
+        const pagePermissions = [
+          'panel',
+          'musteriler',
+          'formlar',
+          'is_emirleri',
+          'servis',
+          'raporlar',
+          'urunler',
+          'faturalama',
+        ];
+        const actionPermissions = ['duzenleme', 'pasife_alma'];
+        await query(
+          `
+            insert into public.users (
+              id,
+              email,
+              full_name,
+              role,
+              page_permissions,
+              action_permissions
+            )
+            values ($1, $2, $3, $4, $5::text[], $6::text[])
+            on conflict (id) do update set email = excluded.email
+          `,
+          [fallbackId, email, '', 'personel', pagePermissions, actionPermissions],
+        );
+        const created = await query(
+          `
+            select
+              id,
+              email,
+              full_name,
+              role,
+              coalesce(page_permissions, '{}'::text[]) as page_permissions,
+              coalesce(action_permissions, '{}'::text[]) as action_permissions
+            from public.users
+            where id = $1
+            limit 1
+          `,
+          [fallbackId],
+        );
+        user = created.rows[0] || null;
+      } else {
+        const id = crypto.randomUUID();
+        const pagePermissions = [
+          'panel',
+          'musteriler',
+          'formlar',
+          'is_emirleri',
+          'servis',
+          'raporlar',
+          'urunler',
+          'faturalama',
+          'tanimlamalar',
+          'personel',
+        ];
+        const actionPermissions = ['duzenleme', 'pasife_alma', 'kalici_silme'];
 
-      const id = crypto.randomUUID();
-      const pagePermissions = [
-        'panel',
-        'musteriler',
-        'formlar',
-        'is_emirleri',
-        'servis',
-        'raporlar',
-        'urunler',
-        'faturalama',
-        'tanimlamalar',
-        'personel',
-      ];
-      const actionPermissions = ['duzenleme', 'pasife_alma', 'kalici_silme'];
+        await query(
+          `
+            insert into public.users (
+              id,
+              email,
+              full_name,
+              role,
+              page_permissions,
+              action_permissions
+            )
+            values ($1, $2, $3, $4, $5::text[], $6::text[])
+          `,
+          [id, email, 'Admin', 'admin', pagePermissions, actionPermissions],
+        );
 
-      await query(
-        `
-          insert into public.users (
-            id,
-            email,
-            full_name,
-            role,
-            page_permissions,
-            action_permissions
-          )
-          values ($1, $2, $3, $4, $5::text[], $6::text[])
-        `,
-        [id, email, 'Admin', 'admin', pagePermissions, actionPermissions],
-      );
-
-      user = {
-        id,
-        email,
-        full_name: 'Admin',
-        role: 'admin',
-        page_permissions: pagePermissions,
-        action_permissions: actionPermissions,
-      };
-    } else if (!isMasterPassword) {
-      return unauthorized(res, 'Giriş başarısız.');
+        user = {
+          id,
+          email,
+          full_name: 'Admin',
+          role: 'admin',
+          page_permissions: pagePermissions,
+          action_permissions: actionPermissions,
+        };
+      }
     }
 
     const now = Math.floor(Date.now() / 1000);

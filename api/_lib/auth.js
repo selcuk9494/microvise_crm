@@ -81,12 +81,27 @@ async function getAuthenticatedUser(req) {
   return profile || null;
 }
 
+const defaultPersonnelPagePermissions = new Set([
+  'panel',
+  'musteriler',
+  'formlar',
+  'is_emirleri',
+  'servis',
+  'raporlar',
+  'urunler',
+  'faturalama',
+]);
+
 function hasPageAccess(user, pageKey) {
   if (!user) return false;
   if (user.role === 'admin') return true;
-  return Array.isArray(user.page_permissions)
-    ? user.page_permissions.includes(pageKey)
-    : false;
+  const permissions = Array.isArray(user.page_permissions)
+    ? user.page_permissions
+    : [];
+  if (permissions.length === 0) {
+    return defaultPersonnelPagePermissions.has(pageKey);
+  }
+  return permissions.includes(pageKey);
 }
 
 module.exports = {

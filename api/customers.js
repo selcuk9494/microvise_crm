@@ -308,6 +308,7 @@ module.exports = async (req, res) => {
     const search = String(req.query.search || '').trim();
     const city = String(req.query.city || '').trim();
     const showPassive = parseBoolean(req.query.showPassive, false);
+    const exportAll = parseBoolean(req.query.export, false);
     const page = parseInteger(req.query.page, 1, { min: 1 });
     const pageSize = parseInteger(req.query.pageSize, 50, { min: 1, max: 100 });
     const offset = (page - 1) * pageSize;
@@ -341,6 +342,40 @@ module.exports = async (req, res) => {
     const whereSql = conditions.length
       ? `where ${conditions.join(' and ')}`
       : '';
+
+    if (exportAll) {
+      const rowsResult = await query(
+        `
+          select
+            c.id,
+            c.name,
+            c.city,
+            c.address,
+            c.director_name,
+            c.email,
+            c.phone_1,
+            c.phone_1_title,
+            c.phone_2,
+            c.phone_2_title,
+            c.phone_3,
+            c.phone_3_title,
+            c.vkn,
+            c.tckn_ms,
+            c.notes,
+            c.is_active,
+            c.created_at
+          from public.customers c
+          ${whereSql}
+          order by ${sortSql}
+          limit 50000
+        `,
+        values,
+      );
+
+      return ok(res, {
+        items: rowsResult.rows,
+      });
+    }
 
     const countResult = await query(
       `select count(*)::int as total_count from public.customers c ${whereSql}`,

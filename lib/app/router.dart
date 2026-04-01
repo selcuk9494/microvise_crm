@@ -17,6 +17,7 @@ import '../features/definitions/definitions_screen.dart';
 import '../features/forms/forms_screen.dart';
 import '../features/application_forms/application_form_screen.dart';
 import '../features/forms/scrap_form_screen.dart';
+import '../features/forms/serial_tracking_screen.dart';
 import '../features/forms/transfer_form_screen.dart';
 import '../features/personnel/personnel_screen.dart';
 import '../features/reports/reports_screen.dart';
@@ -25,6 +26,7 @@ import '../features/service/service_detail_screen.dart';
 import '../features/setup/setup_required_screen.dart';
 import '../features/shell/app_shell.dart';
 import '../features/work_orders/work_orders_list_screen.dart';
+import '../features/work_orders/work_order_payments_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final client = ref.watch(supabaseClientProvider);
@@ -108,6 +110,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 child: TransferFormScreen(),
               ),
             ),
+            GoRoute(
+              path: 'seri-takip',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: SerialTrackingScreen(),
+              ),
+            ),
           ],
         ),
         GoRoute(
@@ -115,6 +123,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           pageBuilder: (context, state) => const NoTransitionPage(
             child: WorkOrdersListScreen(),
           ),
+          routes: [
+            GoRoute(
+              path: 'tahsilatlar',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: WorkOrderPaymentsScreen(),
+              ),
+            ),
+          ],
         ),
         GoRoute(
           path: '/servis',

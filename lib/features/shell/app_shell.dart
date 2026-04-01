@@ -10,6 +10,20 @@ import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_breakpoints.dart';
 
+class _FormsNavExpandedNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void toggle() => state = !state;
+
+  void set(bool value) => state = value;
+}
+
+final formsNavExpandedProvider =
+    NotifierProvider<_FormsNavExpandedNotifier, bool>(
+  _FormsNavExpandedNotifier.new,
+);
+
 class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.child});
 
@@ -39,6 +53,7 @@ class _DesktopShell extends ConsumerWidget {
     final allowedPages = ref.watch(currentUserPagePermissionsProvider);
     final items =
         _navItems.where((item) => allowedPages.contains(item.pageKey)).toList();
+    final isFormsExpanded = ref.watch(formsNavExpandedProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -60,19 +75,53 @@ class _DesktopShell extends ConsumerWidget {
                     _BrandHeader(onTap: () => context.go('/panel')),
                     const Gap(16),
                     Expanded(
-                      child: ListView.separated(
-                        itemCount: items.length,
-                        separatorBuilder: (_, _) => const Gap(6),
-                        itemBuilder: (context, index) {
-                          final item = items[index];
-                          final active = _isActive(location, item.path);
-                          return _SidebarItem(
-                            label: item.label,
-                            icon: item.icon,
-                            active: active,
-                            onTap: () => context.go(item.path),
-                          );
-                        },
+                      child: ListView(
+                        children: [
+                          for (final item in items) ...[
+                            if (item.pageKey == 'formlar')
+                              _FormsNavGroup(
+                                label: item.label,
+                                icon: item.icon,
+                                active: _isActive(location, item.path),
+                                expanded: isFormsExpanded,
+                                onHeaderTap: () {
+                                  ref
+                                      .read(formsNavExpandedProvider.notifier)
+                                      .toggle();
+                                  if (!isFormsExpanded) {
+                                    context.go(item.path);
+                                  }
+                                },
+                                subItems: [
+                                  _FormsNavSubItem(
+                                    label: 'Başvuru',
+                                    path: '/formlar/basvuru',
+                                  ),
+                                  _FormsNavSubItem(
+                                    label: 'Hurda',
+                                    path: '/formlar/hurda',
+                                  ),
+                                  _FormsNavSubItem(
+                                    label: 'Devir',
+                                    path: '/formlar/devir',
+                                  ),
+                                  _FormsNavSubItem(
+                                    label: 'Seri Takip',
+                                    path: '/formlar/seri-takip',
+                                  ),
+                                ],
+                                matchedLocation: location,
+                              )
+                            else
+                              _SidebarItem(
+                                label: item.label,
+                                icon: item.icon,
+                                active: _isActive(location, item.path),
+                                onTap: () => context.go(item.path),
+                              ),
+                            const Gap(10),
+                          ],
+                        ],
                       ),
                     ),
                     const Gap(12),
@@ -396,6 +445,174 @@ class _SidebarItem extends StatelessWidget {
                 label,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                      color: fg,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FormsNavSubItem {
+  const _FormsNavSubItem({required this.label, required this.path});
+
+  final String label;
+  final String path;
+}
+
+class _FormsNavGroup extends StatelessWidget {
+  const _FormsNavGroup({
+    required this.label,
+    required this.icon,
+    required this.active,
+    required this.expanded,
+    required this.onHeaderTap,
+    required this.subItems,
+    required this.matchedLocation,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool active;
+  final bool expanded;
+  final VoidCallback onHeaderTap;
+  final List<_FormsNavSubItem> subItems;
+  final String matchedLocation;
+
+  @override
+  Widget build(BuildContext context) {
+    final anySubActive = subItems.any((e) => _isActive(matchedLocation, e.path));
+    final isActive = active || anySubActive;
+    final bg =
+        isActive ? AppTheme.primary.withValues(alpha: 0.10) : Colors.transparent;
+    final border =
+        isActive ? AppTheme.primary.withValues(alpha: 0.18) : AppTheme.border;
+    final fg = isActive ? AppTheme.primary : const Color(0xFF0F172A);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onHeaderTap,
+          child: Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: border),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: fg),
+                const Gap(10),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight:
+                              isActive ? FontWeight.w600 : FontWeight.w500,
+                          color: fg,
+                        ),
+                  ),
+                ),
+                Icon(
+                  expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  size: 20,
+                  color: fg.withValues(alpha: 0.9),
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedCrossFade(
+          firstChild: const SizedBox.shrink(),
+          secondChild: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Container(
+              margin: const EdgeInsets.only(left: 10),
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceMuted,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: Column(
+                children: [
+                  for (final item in subItems) ...[
+                    _SidebarSubItem(
+                      label: item.label,
+                      active: _isActive(matchedLocation, item.path),
+                      onTap: () => context.go(item.path),
+                    ),
+                    if (item != subItems.last) const Gap(6),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          crossFadeState:
+              expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 180),
+        ),
+      ],
+    );
+  }
+}
+
+class _SidebarSubItem extends StatelessWidget {
+  const _SidebarSubItem({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg =
+        active ? AppTheme.primary.withValues(alpha: 0.08) : Colors.transparent;
+    final border =
+        active ? AppTheme.primary.withValues(alpha: 0.16) : AppTheme.border;
+    final fg = active ? AppTheme.primary : const Color(0xFF334155);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        height: 40,
+        margin: const EdgeInsets.only(left: 22),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: fg.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const Gap(10),
+            Expanded(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                       color: fg,
                     ),
               ),
