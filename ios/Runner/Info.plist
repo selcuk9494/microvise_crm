@@ -30,6 +30,8 @@
 	<string>Belge, gorsel ve imza eklerken kamerayi kullanabilmeniz icin erisim gerekir.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>İş emrini kapatırken konum alabilmek için konum izni gerekir.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>İş emrini kapatırken konum alabilmek ve iş emrine konum kaydedebilmek için konum izni gerekir.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Dosya ve ciktilari arsivinize kaydedebilmeniz icin fotograf arsivinize erisim gerekir.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
