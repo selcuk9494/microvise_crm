@@ -48,6 +48,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
   final _searchController = TextEditingController();
   String _statusFilter = 'open';
   bool _showPassive = false;
+  bool _reorderMode = false;
 
   @override
   void dispose() {
@@ -59,10 +60,13 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
   Widget build(BuildContext context) {
     final boardAsync = ref.watch(workOrdersBoardProvider);
     final profileAsync = ref.watch(currentUserProfileProvider);
+    final isMobile = MediaQuery.sizeOf(context).width < 900;
     const allowedStatuses = {'all', 'open', 'in_progress', 'done', 'cancelled'};
     if (!allowedStatuses.contains(_statusFilter)) {
       _statusFilter = 'all';
     }
+    if (!isMobile) _reorderMode = false;
+    if (_statusFilter != 'open') _reorderMode = false;
 
     return AppPageLayout(
       title: 'İş Emirleri',
@@ -214,28 +218,50 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                             setState(() => _statusFilter = next.trim());
                           },
                         ),
-                        FilledButton.tonalIcon(
-                          onPressed: () =>
-                              setState(() => _showPassive = !_showPassive),
-                          icon: const Icon(Icons.visibility_rounded, size: 18),
-                          label:
-                              Text(_showPassive ? 'Kayıt: Tümü' : 'Kayıt: Aktif'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor:
-                                const Color(0xFF16A34A).withValues(alpha: 0.12),
-                            foregroundColor: const Color(0xFF14532D),
-                            minimumSize: const Size(0, 40),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
+                    if (isMobile && _statusFilter == 'open')
+                      FilledButton.tonalIcon(
+                        onPressed: () => setState(() => _reorderMode = !_reorderMode),
+                        icon: Icon(
+                          _reorderMode
+                              ? Icons.check_circle_outline_rounded
+                              : Icons.drag_handle_rounded,
+                          size: 18,
+                        ),
+                        label: Text(
+                          _reorderMode ? 'Sıralama: Açık' : 'Sıralama: Kapalı',
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor:
+                              const Color(0xFF0EA5E9).withValues(alpha: 0.12),
+                          foregroundColor: const Color(0xFF0C4A6E),
+                          minimumSize: const Size(0, 40),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
                           ),
                         ),
+                      ),
+                    FilledButton.tonalIcon(
+                      onPressed: () => setState(() => _showPassive = !_showPassive),
+                      icon: const Icon(Icons.visibility_rounded, size: 18),
+                      label: Text(_showPassive ? 'Kayıt: Tümü' : 'Kayıt: Aktif'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor:
+                            const Color(0xFF16A34A).withValues(alpha: 0.12),
+                        foregroundColor: const Color(0xFF14532D),
+                        minimumSize: const Size(0, 40),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                      ),
+                    ),
                         FilledButton.tonalIcon(
                           onPressed: () {
                             _searchController.clear();
-                            setState(() => _statusFilter = 'all');
+                            setState(() => _statusFilter = 'open');
                             setState(() => _showPassive = false);
+                            setState(() => _reorderMode = false);
                           },
                           icon:
                               const Icon(Icons.delete_outline_rounded, size: 18),
@@ -318,8 +344,10 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                       )
                     : _WorkOrdersList(
                         items: filtered,
-                        canReorder:
-                            _statusFilter == 'open' && search.trim().isEmpty,
+                        canReorder: isMobile &&
+                            _reorderMode &&
+                            _statusFilter == 'open' &&
+                            search.trim().isEmpty,
                         onReorder: (nextOpenOrderList) => ref
                             .read(workOrdersBoardProvider.notifier)
                             .reorderOpenOrders(nextOpenOrderList),
@@ -697,7 +725,7 @@ class _WorkOrderCard extends StatelessWidget {
           ),
           if (reorderable) ...[
             const Gap(10),
-            ReorderableDragStartListener(
+            ReorderableDelayedDragStartListener(
               index: reorderIndex,
               child: const Icon(Icons.drag_handle_rounded),
             ),

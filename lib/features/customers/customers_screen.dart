@@ -215,6 +215,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   @override
   Widget build(BuildContext context) {
     final isAdmin = ref.watch(isAdminProvider);
+    final isMobile = MediaQuery.sizeOf(context).width < 900;
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
     final canArchive =
         ref.watch(hasActionAccessProvider(kActionArchiveRecords));
@@ -441,6 +442,17 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   );
                 }
 
+                if (isMobile) {
+                  return _CustomersListMobile(
+                    items: pageData.items,
+                    isAdmin: isAdmin,
+                    canEdit: canEdit,
+                    canArchive: canArchive,
+                    canDelete: canDelete,
+                    onChanged: () => ref.invalidate(customersProvider),
+                  );
+                }
+
                 return _CustomersTable(
                   items: pageData.items,
                   isAdmin: isAdmin,
@@ -477,6 +489,117 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CustomersListMobile extends StatelessWidget {
+  const _CustomersListMobile({
+    required this.items,
+    required this.isAdmin,
+    required this.canEdit,
+    required this.canArchive,
+    required this.canDelete,
+    required this.onChanged,
+  });
+
+  final List<Customer> items;
+  final bool isAdmin;
+  final bool canEdit;
+  final bool canArchive;
+  final bool canDelete;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: EdgeInsets.zero,
+      itemCount: items.length,
+      separatorBuilder: (context, index) => const Gap(10),
+      itemBuilder: (context, index) {
+        final customer = items[index];
+        final vkn = customer.vkn?.trim();
+        final city = customer.city?.trim();
+
+        return AppCard(
+          onTap: () => context.go('/musteriler/${customer.id}'),
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      customer.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.text,
+                          ),
+                    ),
+                    const Gap(6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        if (vkn != null && vkn.isNotEmpty)
+                          _MobilePill(text: 'VKN: $vkn'),
+                        if (city != null && city.isNotEmpty)
+                          _MobilePill(text: city.toUpperCase()),
+                        _MobilePill(text: 'Hat: ${customer.activeLineCount}'),
+                        _MobilePill(text: 'Lisans: ${customer.activeGmp3Count}'),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Gap(10),
+              customer.isActive
+                  ? const AppBadge(label: 'Aktif', tone: AppBadgeTone.success)
+                  : const AppBadge(label: 'Pasif', tone: AppBadgeTone.neutral),
+              const Gap(6),
+              SizedBox(
+                width: 44,
+                child: _CustomerRowActions(
+                  customer: customer,
+                  isAdmin: isAdmin,
+                  canEdit: canEdit,
+                  canArchive: canArchive,
+                  canDelete: canDelete,
+                  onChanged: onChanged,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MobilePill extends StatelessWidget {
+  const _MobilePill({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceMuted,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Text(
+        text,
+        style: Theme.of(context)
+            .textTheme
+            .bodySmall
+            ?.copyWith(color: AppTheme.textMuted),
       ),
     );
   }

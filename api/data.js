@@ -3,6 +3,7 @@ const { query } = require('./_lib/db');
 const {
   ensureSerialTrackingTable,
   ensureWorkOrderCloseNotesTable,
+  ensureInvoiceItemsTable,
 } = require('./_lib/schema');
 const {
   ok,
@@ -827,6 +828,8 @@ module.exports = async (req, res) => {
 
       case 'invoice_items_queue': {
         if (!requireAnyPage(user, ['faturalama'], res)) return;
+        const okTable = await ensureInvoiceItemsTable();
+        if (!okTable) return ok(res, { items: [] });
         const cols = await getTableColumns('invoice_items');
         const has = (c) => cols.includes(c);
 

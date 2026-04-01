@@ -5,6 +5,7 @@ const { query } = require('./_lib/db');
 const {
   ensureSerialTrackingTable,
   ensureWorkOrderCloseNotesTable,
+  ensureInvoiceItemsTable,
 } = require('./_lib/schema');
 const {
   ok,
@@ -352,6 +353,14 @@ module.exports = async (req, res) => {
     }
     if (table === 'work_order_close_notes') {
       await ensureWorkOrderCloseNotesTable();
+    }
+    if (table === 'invoice_items') {
+      const okTable = await ensureInvoiceItemsTable();
+      if (!okTable) {
+        throw new Error(
+          'invoice_items table is missing. Run migrations (0003/0005/0012) or set ALLOW_SCHEMA_AUTO_CREATE=true in non-production.',
+        );
+      }
     }
 
     const requiredPage = tablePermissions[table] || null;

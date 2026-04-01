@@ -355,7 +355,15 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                       'item_type': 'work_order_payment',
                       'source_table': 'work_orders',
                       'source_id': widget.order.id,
-                      'description': 'İş Emri Ödemesi - ${widget.order.title}',
+                      'description': [
+                        'İş Emri Ödemesi',
+                        widget.order.title.trim().isEmpty
+                            ? null
+                            : widget.order.title.trim(),
+                        row['description']?.toString().trim().isEmpty ?? true
+                            ? null
+                            : row['description']?.toString().trim(),
+                      ].whereType<String>().join(' - '),
                       'amount': row['amount'],
                       'currency': row['currency'],
                       'status': 'pending',
@@ -370,6 +378,32 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           );
         } else {
           await client!.from('payments').insert(paymentRows);
+          await client.from('invoice_items').insert(
+                paymentRows
+                    .map(
+                      (row) => {
+                        'customer_id': customer.id,
+                        'item_type': 'work_order_payment',
+                        'source_table': 'work_orders',
+                        'source_id': widget.order.id,
+                        'description': [
+                          'İş Emri Ödemesi',
+                          widget.order.title.trim().isEmpty
+                              ? null
+                              : widget.order.title.trim(),
+                          row['description']?.toString().trim().isEmpty ?? true
+                              ? null
+                              : row['description']?.toString().trim(),
+                        ].whereType<String>().join(' - '),
+                        'amount': row['amount'],
+                        'currency': row['currency'],
+                        'status': 'pending',
+                        'is_active': true,
+                        'created_by': client.auth.currentUser?.id,
+                      },
+                    )
+                    .toList(growable: false),
+              );
         }
       }
 

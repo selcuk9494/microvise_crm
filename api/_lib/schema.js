@@ -3,6 +3,7 @@ const { query } = require('./db');
 const ensured = {
   serial_tracking: false,
   work_order_close_notes: false,
+  invoice_items: false,
 };
 
 async function tableExists(tableName) {
@@ -126,7 +127,99 @@ async function ensureWorkOrderCloseNotesTable() {
   ensured.work_order_close_notes = true;
 }
 
+async function ensureInvoiceItemsTable() {
+  if (ensured.invoice_items) return true;
+
+  const exists = await tableExists('invoice_items');
+  if (!exists) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
+    if (isProd && allow !== 'true') {
+      ensured.invoice_items = true;
+      return false;
+    }
+    await query(`create extension if not exists pgcrypto`);
+    await query(
+      `
+        create table if not exists public.invoice_items (
+          id uuid primary key default gen_random_uuid(),
+          customer_id uuid,
+          item_type text not null default 'work_order_payment',
+          source_table text not null default 'work_orders',
+          source_id uuid not null,
+          description text,
+          amount numeric,
+          currency text not null default 'TRY',
+          status text not null default 'pending',
+          is_active boolean not null default true,
+          invoiced_at timestamptz,
+          created_by uuid,
+          created_at timestamptz not null default now()
+        )
+      `,
+    );
+  }
+
+  await query(
+    `
+      alter table public.invoice_items
+        add column if not exists customer_id uuid,
+        add column if not exists item_type text,
+        add column if not exists source_table text,
+        add column if not exists source_id uuid,
+        add column if not exists description text,
+        add column if not exists amount numeric,
+        add column if not exists currency text,
+        add column if not exists status text,
+        add column if not exists is_active boolean,
+        add column if not exists invoiced_at timestamptz,
+        add column if not exists created_by uuid,
+        add column if not exists created_at timestamptz
+    `,
+  );
+
+  const colsResult = await query(
+    `
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'invoice_items'
+    `,
+  );
+  const cols = colsResult.rows.map((r) => r.column_name);
+  const hasItemType = cols.includes('item_type');
+  const hasSourceTable = cols.includes('source_table');
+  const hasSourceId = cols.includes('source_id');
+
+  if (hasItemType && hasSourceTable && hasSourceId) {
+    await query(
+      `alter table public.invoice_items drop constraint if exists invoice_items_item_type_check`,
+    );
+    await query(
+      `alter table public.invoice_items drop constraint if exists invoice_items_source_table_check`,
+    );
+    await query(
+      `
+        alter table public.invoice_items
+          add constraint invoice_items_item_type_check
+          check (item_type in ('line_renewal', 'gmp3_renewal', 'work_order_payment'))
+      `,
+    );
+    await query(
+      `
+        alter table public.invoice_items
+          add constraint invoice_items_source_table_check
+          check (source_table in ('lines', 'licenses', 'work_orders', 'payments'))
+      `,
+    );
+  }
+
+  ensured.invoice_items = true;
+  return true;
+}
+
 module.exports = {
   ensureSerialTrackingTable,
   ensureWorkOrderCloseNotesTable,
+  ensureInvoiceItemsTable,
 };
