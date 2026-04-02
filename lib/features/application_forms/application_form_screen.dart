@@ -95,7 +95,7 @@ final applicationFormsProvider = FutureProvider<List<ApplicationFormRecord>>((
         'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
       )
       .order('created_at', ascending: false)
-      .limit(500);
+      .limit(1200);
 
   return (rows as List)
       .map((row) => ApplicationFormRecord.fromJson(row as Map<String, dynamic>))
@@ -1335,6 +1335,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                 final r = filtered[index - 2];
                 return _ApplicationRecordCard(
                   record: r,
+                  colorIndex: index - 2,
                   canEdit: canEdit,
                   canArchive: canArchive,
                   canDeletePermanently: canDeletePermanently,
@@ -1360,68 +1361,52 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
             );
           }
 
-          return Column(
-            children: [
-              filterCard,
-              const Gap(12),
-              statsCard,
-              const Gap(12),
-              if (filtered.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 48),
-                  child: Center(
-                    child: Text('Filtreye uygun başvuru bulunamadı.'),
+          return ListView.separated(
+            padding: const EdgeInsets.only(bottom: 120),
+            itemCount: filtered.isEmpty ? 3 : filtered.length + 2,
+            separatorBuilder: (context, index) => const Gap(12),
+            itemBuilder: (context, index) {
+              if (index == 0) return filterCard;
+              if (index == 1) return statsCard;
+
+              if (filtered.isEmpty) {
+                return const AppCard(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(
+                      child: Text('Filtreye uygun başvuru bulunamadı.'),
+                    ),
                   ),
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 120),
-                  child: Column(
-                    children: [
-                      for (var index = 0; index < filtered.length; index++) ...[
-                        _ApplicationRecordCard(
-                          record: filtered[index],
-                          canEdit: canEdit,
-                          canArchive: canArchive,
-                          canDeletePermanently: canDeletePermanently,
-                          selected: _selectedRecordIds.contains(
-                            filtered[index].id,
-                          ),
-                          onSelectionChanged: (selected) {
-                            setState(() {
-                              if (selected) {
-                                _selectedRecordIds.add(filtered[index].id);
-                              } else {
-                                _selectedRecordIds.remove(filtered[index].id);
-                              }
-                            });
-                          },
-                          onPrintKdv: () => _print(
-                            filtered[index],
-                            kind: ApplicationPrintKind.kdv,
-                          ),
-                          onPrintKdv4a: () => _print(
-                            filtered[index],
-                            kind: ApplicationPrintKind.kdv4a,
-                          ),
-                          onCreateWorkOrder: () =>
-                              _openCreateWorkOrdersDialog([filtered[index]]),
-                          onEdit: () => _openEditDialog(filtered[index]),
-                          onDuplicate: () =>
-                              _openDuplicateDialog(filtered[index]),
-                          onToggleActive: () => _setRecordActive(
-                            filtered[index],
-                            !filtered[index].isActive,
-                          ),
-                          onDeletePermanently: () =>
-                              _deleteRecordPermanently(filtered[index]),
-                        ),
-                        if (index != filtered.length - 1) const Gap(12),
-                      ],
-                    ],
-                  ),
-                ),
-            ],
+                );
+              }
+
+              final recordIndex = index - 2;
+              final r = filtered[recordIndex];
+              return _ApplicationRecordCard(
+                record: r,
+                colorIndex: recordIndex,
+                canEdit: canEdit,
+                canArchive: canArchive,
+                canDeletePermanently: canDeletePermanently,
+                selected: _selectedRecordIds.contains(r.id),
+                onSelectionChanged: (selected) {
+                  setState(() {
+                    if (selected) {
+                      _selectedRecordIds.add(r.id);
+                    } else {
+                      _selectedRecordIds.remove(r.id);
+                    }
+                  });
+                },
+                onPrintKdv: () => _print(r, kind: ApplicationPrintKind.kdv),
+                onPrintKdv4a: () => _print(r, kind: ApplicationPrintKind.kdv4a),
+                onCreateWorkOrder: () => _openCreateWorkOrdersDialog([r]),
+                onEdit: () => _openEditDialog(r),
+                onDuplicate: () => _openDuplicateDialog(r),
+                onToggleActive: () => _setRecordActive(r, !r.isActive),
+                onDeletePermanently: () => _deleteRecordPermanently(r),
+              );
+            },
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -2794,6 +2779,7 @@ class _SerialTrackingPickerDialogState extends State<_SerialTrackingPickerDialog
 class _ApplicationRecordCard extends StatelessWidget {
   const _ApplicationRecordCard({
     required this.record,
+    required this.colorIndex,
     required this.canEdit,
     required this.canArchive,
     required this.canDeletePermanently,
@@ -2809,6 +2795,7 @@ class _ApplicationRecordCard extends StatelessWidget {
   });
 
   final ApplicationFormRecord record;
+  final int colorIndex;
   final bool canEdit;
   final bool canArchive;
   final bool canDeletePermanently;
@@ -2832,6 +2819,17 @@ class _ApplicationRecordCard extends StatelessWidget {
     final accentColor = record.isActive ? AppTheme.primary : AppTheme.textMuted;
     final badgeLabel = record.isActive ? record.documentType : 'Pasif';
     final badgeTone = record.isActive ? AppBadgeTone.primary : AppBadgeTone.neutral;
+
+    final backgrounds = [
+      const Color(0xFFF0F9FF),
+      const Color(0xFFECFDF5),
+      const Color(0xFFFFFBEB),
+      const Color(0xFFFDF2F8),
+      const Color(0xFFF5F3FF),
+    ];
+    final backgroundColor = record.isActive
+        ? backgrounds[colorIndex % backgrounds.length]
+        : null;
 
     final menuItems = <PopupMenuEntry<String>>[
       if (canEdit)
@@ -2873,6 +2871,7 @@ class _ApplicationRecordCard extends StatelessWidget {
         horizontal: isMobile ? 8 : 10,
         vertical: isMobile ? 7 : 6,
       ),
+      color: backgroundColor,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

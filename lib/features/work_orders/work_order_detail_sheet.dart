@@ -16,6 +16,7 @@ import '../customers/customer_detail_screen.dart';
 import '../dashboard/dashboard_providers.dart';
 import 'work_order_model.dart';
 import 'currency_service.dart';
+import 'work_order_share.dart';
 
 class _CloseNoteOption {
   const _CloseNoteOption({required this.id, required this.name});
@@ -264,8 +265,32 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     try {
       final now = DateTime.now();
       final profile = await ref.read(currentUserProfileProvider.future);
+      final signatureBytes = await _signatureController.toPngBytes();
+      final signaturePng =
+          signatureBytes == null || signatureBytes.isEmpty ? null : signatureBytes;
+      final closeNotesText = _notesController.text.trim().isEmpty
+          ? null
+          : _notesController.text.trim();
+      final closedPayments = _payments
+          .map((p) {
+            final amount = p.amount;
+            if (amount == null) return null;
+            final desc = p.descriptionController.text.trim();
+            return WorkOrderPayment(
+              amount: amount,
+              currency: p.currency,
+              paidAt: now,
+              description: desc.isEmpty ? null : desc,
+              paymentMethod: p.method,
+              isActive: true,
+            );
+          })
+          .whereType<WorkOrderPayment>()
+          .toList(growable: false);
 
       final branchId = _selectedBranchId ?? widget.order.branchId;
+      String? insertedLineId;
+      String? insertedGmp3Id;
 
       if (_addLine) {
         final number = _lineNumberController.text.trim();
@@ -287,12 +312,23 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           'is_active': true,
         };
         if (apiClient != null) {
-          await apiClient.postJson(
+          final response = await apiClient.postJson(
             '/mutate',
-            body: {'op': 'upsert', 'table': 'lines', 'values': linePayload},
+            body: {
+              'op': 'upsert',
+              'table': 'lines',
+              'returning': 'row',
+              'values': linePayload,
+            },
           );
+          insertedLineId = (response['row'] as Map?)?['id']?.toString();
         } else {
-          await client!.from('lines').insert(linePayload);
+          final row = await client!
+              .from('lines')
+              .insert(linePayload)
+              .select('id')
+              .single();
+          insertedLineId = row['id']?.toString();
         }
       }
 
@@ -311,12 +347,128 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           'is_active': true,
         };
         if (apiClient != null) {
+          final response = await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'upsert',
+              'table': 'licenses',
+              'returning': 'row',
+              'values': licensePayload,
+            },
+          );
+          insertedGmp3Id = (response['row'] as Map?)?['id']?.toString();
+        } else {
+          final row = await client!
+              .from('licenses')
+              .insert(licensePayload)
+              .select('id')
+              .single();
+          insertedGmp3Id = row['id']?.toString();
+        }
+      }
+
+      if (apiClient != null) {
+        final invoiceRows = <Map<String, dynamic>>[];
+        if ((insertedLineId ?? '').trim().isNotEmpty) {
+          final number = _lineNumberController.text.trim();
+          invoiceRows.add({
+            'customer_id': customer.id,
+            'item_type': 'line_activation',
+            'source_table': 'lines',
+            'source_id': insertedLineId,
+            'description': 'Hat Aktivasyonu - ${customer.name} / $number',
+            'currency': 'TRY',
+            'status': 'pending',
+            'is_active': true,
+            'created_by': profile?.id,
+            'source_event': 'line_activated',
+            'source_label': 'Hat Aktivasyonu',
+          });
+        }
+        if ((insertedGmp3Id ?? '').trim().isNotEmpty) {
+          final name = _gmp3NameController.text.trim();
+          invoiceRows.add({
+            'customer_id': customer.id,
+            'item_type': 'gmp3_activation',
+            'source_table': 'licenses',
+            'source_id': insertedGmp3Id,
+            'description': 'GMP3 Aktivasyonu - ${customer.name} / $name',
+            'currency': 'TRY',
+            'status': 'pending',
+            'is_active': true,
+            'created_by': profile?.id,
+            'source_event': 'gmp3_activated',
+            'source_label': 'GMP3 Aktivasyonu',
+          });
+        }
+        if (invoiceRows.isNotEmpty) {
           await apiClient.postJson(
             '/mutate',
-            body: {'op': 'upsert', 'table': 'licenses', 'values': licensePayload},
+            body: {'op': 'insertMany', 'table': 'invoice_items', 'rows': invoiceRows},
           );
-        } else {
-          await client!.from('licenses').insert(licensePayload);
+        }
+      } else {
+        if (client != null) {
+          if ((insertedLineId ?? '').trim().isNotEmpty) {
+            final number = _lineNumberController.text.trim();
+            try {
+              await client.from('invoice_items').insert({
+                'customer_id': customer.id,
+                'item_type': 'line_activation',
+                'source_table': 'lines',
+                'source_id': insertedLineId,
+                'description': 'Hat Aktivasyonu - ${customer.name} / $number',
+                'currency': 'TRY',
+                'status': 'pending',
+                'is_active': true,
+                'created_by': client.auth.currentUser?.id,
+                'source_event': 'line_activated',
+                'source_label': 'Hat Aktivasyonu',
+              });
+            } catch (_) {
+              await client.from('invoice_items').insert({
+                'customer_id': customer.id,
+                'item_type': 'line_activation',
+                'source_table': 'lines',
+                'source_id': insertedLineId,
+                'description': 'Hat Aktivasyonu - ${customer.name} / $number',
+                'currency': 'TRY',
+                'status': 'pending',
+                'is_active': true,
+                'created_by': client.auth.currentUser?.id,
+              });
+            }
+          }
+          if ((insertedGmp3Id ?? '').trim().isNotEmpty) {
+            final name = _gmp3NameController.text.trim();
+            try {
+              await client.from('invoice_items').insert({
+                'customer_id': customer.id,
+                'item_type': 'gmp3_activation',
+                'source_table': 'licenses',
+                'source_id': insertedGmp3Id,
+                'description': 'GMP3 Aktivasyonu - ${customer.name} / $name',
+                'currency': 'TRY',
+                'status': 'pending',
+                'is_active': true,
+                'created_by': client.auth.currentUser?.id,
+                'source_event': 'gmp3_activated',
+                'source_label': 'GMP3 Aktivasyonu',
+              });
+            } catch (_) {
+              await client.from('invoice_items').insert({
+                'customer_id': customer.id,
+                'item_type': 'gmp3_activation',
+                'source_table': 'licenses',
+                'source_id': insertedGmp3Id,
+                'description': 'GMP3 Aktivasyonu - ${customer.name} / $name',
+                'currency': 'TRY',
+                'status': 'pending',
+                'is_active': true,
+                'created_by': client.auth.currentUser?.id,
+              });
+            }
+          }
         }
       }
 
@@ -413,8 +565,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         'closed_at': now.toIso8601String(),
         'closed_by': profile?.id,
         'location_link': _resolvedLocationLink(),
-        'close_notes':
-            _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+        'close_notes': closeNotesText,
       };
       if (apiClient != null) {
         await apiClient.postJson(
@@ -434,9 +585,49 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
 
       if (!mounted) return;
       ref.invalidate(dashboardMetricsProvider);
+      final shareNow = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('İş emri kapatıldı'),
+          content: const Text(
+            'PDF olarak WhatsApp üzerinden paylaşmak ister misin?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Sonra'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Paylaş'),
+            ),
+          ],
+        ),
+      );
+      if (shareNow == true) {
+        final pdfOrder = WorkOrder.fromJson({
+          ...widget.order.toJson(),
+          'status': 'done',
+          'closed_at': now.toIso8601String(),
+          'close_notes': closeNotesText,
+          'payments': closedPayments.map((e) => e.toJson()).toList(growable: false),
+        });
+        await shareWorkOrderPdf(
+          order: pdfOrder,
+          customer: customer,
+          closeNotes: closeNotesText,
+          payments: closedPayments,
+          signaturePngBytes: signaturePng,
+        );
+      }
+      if (!mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İş emri kapatıldı.')),
+        SnackBar(
+          content: Text(
+            shareNow == true ? 'PDF paylaşıma hazırlandı.' : 'İş emri kapatıldı.',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -553,6 +744,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       'done' => ('Kapalı', AppBadgeTone.success),
       _ => ('Bilinmiyor', AppBadgeTone.neutral),
     };
+    final isDone = widget.order.status == 'done';
 
     return Row(
       children: [
@@ -578,6 +770,26 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           ),
         ),
         AppBadge(label: statusLabel, tone: statusTone),
+        if (isDone) ...[
+          const Gap(10),
+          IconButton.filledTonal(
+            tooltip: 'PDF Paylaş',
+            onPressed: _saving
+                ? null
+                : () async {
+                    await shareWorkOrderPdf(
+                      order: widget.order,
+                      customer: customer,
+                      closeNotes: (widget.order.closeNotes ?? '').trim().isEmpty
+                          ? null
+                          : widget.order.closeNotes,
+                      payments: widget.order.payments,
+                      signaturePngBytes: null,
+                    );
+                  },
+            icon: const Icon(Icons.share_rounded),
+          ),
+        ],
       ],
     );
   }

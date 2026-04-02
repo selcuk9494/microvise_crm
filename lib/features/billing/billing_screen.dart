@@ -14,14 +14,16 @@ import '../../core/ui/app_page_layout.dart';
 final invoiceItemsProvider = FutureProvider<List<InvoiceItem>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
   if (apiClient != null) {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: {'resource': 'invoice_items_queue'},
-    );
-    return ((response['items'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(InvoiceItem.fromJson)
-        .toList(growable: false);
+    try {
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'invoice_items_queue'},
+      );
+      return ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(InvoiceItem.fromJson)
+          .toList(growable: false);
+    } catch (_) {}
   }
 
   final client = ref.watch(supabaseClientProvider);

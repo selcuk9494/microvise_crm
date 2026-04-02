@@ -669,7 +669,7 @@ module.exports = async (req, res) => {
             from public.application_forms
             ${whereSql}
             order by created_at desc
-            limit 500
+            limit 1200
           `,
           values,
         );
@@ -839,6 +839,9 @@ module.exports = async (req, res) => {
         const itemTypeSql = has('item_type')
           ? `coalesce(ii.item_type::text, '') as item_type`
           : `''::text as item_type`;
+        const descriptionSql = has('description')
+          ? 'ii.description'
+          : `''::text as description`;
         const amountSql = has('amount')
           ? 'ii.amount'
           : has('line_total')
@@ -870,7 +873,7 @@ module.exports = async (req, res) => {
               ii.id,
               ${customerIdSql},
               ${itemTypeSql},
-              ii.description,
+              ${descriptionSql},
               ${amountSql},
               ${currencySql},
               ${statusSql},

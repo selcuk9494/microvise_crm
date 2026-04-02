@@ -147,12 +147,20 @@ async function ensureInvoiceItemsTable() {
           item_type text not null default 'work_order_payment',
           source_table text not null default 'work_orders',
           source_id uuid not null,
+          source_event text,
+          source_label text,
           description text,
           amount numeric,
           currency text not null default 'TRY',
           status text not null default 'pending',
           is_active boolean not null default true,
           invoiced_at timestamptz,
+          approved_by uuid,
+          approved_at timestamptz,
+          updated_by uuid,
+          updated_at timestamptz,
+          deactivated_by uuid,
+          deactivated_at timestamptz,
           created_by uuid,
           created_at timestamptz not null default now()
         )
@@ -167,12 +175,20 @@ async function ensureInvoiceItemsTable() {
         add column if not exists item_type text,
         add column if not exists source_table text,
         add column if not exists source_id uuid,
+        add column if not exists source_event text,
+        add column if not exists source_label text,
         add column if not exists description text,
         add column if not exists amount numeric,
         add column if not exists currency text,
         add column if not exists status text,
         add column if not exists is_active boolean,
         add column if not exists invoiced_at timestamptz,
+        add column if not exists approved_by uuid,
+        add column if not exists approved_at timestamptz,
+        add column if not exists updated_by uuid,
+        add column if not exists updated_at timestamptz,
+        add column if not exists deactivated_by uuid,
+        add column if not exists deactivated_at timestamptz,
         add column if not exists created_by uuid,
         add column if not exists created_at timestamptz
     `,
@@ -187,30 +203,14 @@ async function ensureInvoiceItemsTable() {
     `,
   );
   const cols = colsResult.rows.map((r) => r.column_name);
-  const hasItemType = cols.includes('item_type');
-  const hasSourceTable = cols.includes('source_table');
-  const hasSourceId = cols.includes('source_id');
-
-  if (hasItemType && hasSourceTable && hasSourceId) {
+  if (cols.includes('item_type')) {
     await query(
       `alter table public.invoice_items drop constraint if exists invoice_items_item_type_check`,
     );
+  }
+  if (cols.includes('source_table')) {
     await query(
       `alter table public.invoice_items drop constraint if exists invoice_items_source_table_check`,
-    );
-    await query(
-      `
-        alter table public.invoice_items
-          add constraint invoice_items_item_type_check
-          check (item_type in ('line_renewal', 'gmp3_renewal', 'work_order_payment'))
-      `,
-    );
-    await query(
-      `
-        alter table public.invoice_items
-          add constraint invoice_items_source_table_check
-          check (source_table in ('lines', 'licenses', 'work_orders', 'payments'))
-      `,
     );
   }
 
