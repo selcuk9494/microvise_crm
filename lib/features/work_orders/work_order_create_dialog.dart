@@ -43,6 +43,8 @@ class _CreateWorkOrderDialogState
 
   List<_CustomerOption> _customers = const [];
   String? _selectedCustomerId;
+  List<_DeviceRegistryOption> _deviceRegistries = const [];
+  String? _selectedRegistryNumber;
   List<String> _cities = const [];
   String? _selectedCity;
   List<_BranchOption> _branches = const [];
@@ -78,6 +80,7 @@ class _CreateWorkOrderDialogState
       _loadWorkOrderTypes();
       if ((widget.initialOrder?.customerId ?? '').isNotEmpty) {
         _loadBranches(widget.initialOrder!.customerId);
+        _loadDeviceRegistries(widget.initialOrder!.customerId);
       }
     });
   }
@@ -151,6 +154,38 @@ class _CreateWorkOrderDialogState
     }
   }
 
+  Future<void> _loadDeviceRegistries(String customerId) async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    try {
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {
+          'resource': 'customer_device_registries',
+          'customerId': customerId,
+          'showPassive': 'false',
+        },
+      );
+      final items = ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(_DeviceRegistryOption.fromJson)
+          .where((e) => e.registryNumber.trim().isNotEmpty)
+          .toList(growable: false);
+      items.sort((a, b) => a.registryNumber.compareTo(b.registryNumber));
+      if (!mounted) return;
+      setState(() {
+        _deviceRegistries = items;
+        if (_selectedRegistryNumber != null &&
+            items.every((e) => e.registryNumber != _selectedRegistryNumber)) {
+          _selectedRegistryNumber = null;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _deviceRegistries = const []);
+    }
+  }
+
   Future<void> _loadUsers() async {
     final apiClient = ref.read(apiClientProvider);
 
@@ -210,6 +245,8 @@ class _CreateWorkOrderDialogState
     _addressController.text = (customer.address ?? '').trim();
     _selectedBranchId = null;
     _branches = const [];
+    _selectedRegistryNumber = null;
+    _deviceRegistries = const [];
   }
 
   @override
@@ -260,14 +297,22 @@ class _CreateWorkOrderDialogState
 
     setState(() => _saving = true);
     try {
+      final registry = (_selectedRegistryNumber ?? '').trim();
+      final baseDesc = _descController.text.trim().isEmpty
+          ? null
+          : _descController.text.trim();
+      final description = registry.isNotEmpty
+          ? [
+              'Sicil: $registry',
+              ...?(baseDesc == null ? null : [baseDesc]),
+            ].join(' • ')
+          : baseDesc;
       final payload = <String, dynamic>{
         'customer_id': customerId,
         'branch_id': _selectedBranchId,
         'work_order_type_id': _selectedWorkOrderTypeId,
         'title': workOrderTitle,
-        'description': _descController.text.trim().isEmpty
-            ? null
-            : _descController.text.trim(),
+        'description': description,
         'address': _addressController.text.trim().isEmpty
             ? null
             : _addressController.text.trim(),
@@ -402,6 +447,10 @@ class _CreateWorkOrderDialogState
                                   const Gap(12),
                                   _branchField(),
                                 ],
+                                if (_deviceRegistries.isNotEmpty) ...[
+                                  const Gap(12),
+                                  _registryField(),
+                                ],
                                 const Gap(12),
                                 TextFormField(
                                   controller: _addressController,
@@ -495,6 +544,10 @@ class _CreateWorkOrderDialogState
                           if (_branches.isNotEmpty) ...[
                             const Gap(12),
                             _branchField(),
+                          ],
+                          if (_deviceRegistries.isNotEmpty) ...[
+                            const Gap(12),
+                            _registryField(),
                           ],
                           const Gap(12),
                           TextFormField(
@@ -656,6 +709,7 @@ class _CreateWorkOrderDialogState
         });
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _loadBranches(o.id);
+          _loadDeviceRegistries(o.id);
         });
       },
       fieldViewBuilder: (context, controller, focusNode, onSubmit) {
@@ -676,9 +730,40 @@ class _CreateWorkOrderDialogState
             }
             return null;
           },
-          onChanged: (value) => _selectedCustomerId = null,
+          onChanged: (value) {
+            _selectedCustomerId = null;
+            _selectedRegistryNumber = null;
+            _deviceRegistries = const [];
+          },
         );
       },
+    );
+  }
+
+  Widget _registryField() {
+    return DropdownButtonFormField<String?>(
+      initialValue: _selectedRegistryNumber,
+      items: [
+        const DropdownMenuItem<String?>(
+          value: null,
+          child: Text('Cihaz sicil seç (opsiyonel)'),
+        ),
+        ..._deviceRegistries.map(
+          (e) => DropdownMenuItem<String?>(
+            value: e.registryNumber,
+            child: Text(
+              [
+                e.registryNumber.trim(),
+                if ((e.model ?? '').trim().isNotEmpty) e.model!.trim(),
+              ].join(' • '),
+            ),
+          ),
+        ),
+      ],
+      onChanged: _saving
+          ? null
+          : (v) => setState(() => _selectedRegistryNumber = v),
+      decoration: const InputDecoration(labelText: 'Cihaz Sicil'),
     );
   }
 
@@ -855,6 +940,23 @@ class _BranchOption {
     return _BranchOption(
       id: json['id'].toString(),
       name: (json['name'] ?? '').toString(),
+    );
+  }
+}
+
+class _DeviceRegistryOption {
+  const _DeviceRegistryOption({
+    required this.registryNumber,
+    required this.model,
+  });
+
+  final String registryNumber;
+  final String? model;
+
+  factory _DeviceRegistryOption.fromJson(Map<String, dynamic> json) {
+    return _DeviceRegistryOption(
+      registryNumber: (json['registry_number'] ?? '').toString(),
+      model: json['model']?.toString(),
     );
   }
 }

@@ -17,6 +17,15 @@ const kPagePersonnel = 'personel';
 const kActionEditRecords = 'duzenleme';
 const kActionArchiveRecords = 'pasife_alma';
 const kActionDeleteRecords = 'kalici_silme';
+const kActionDashboardTotalCustomers = 'dashboard_toplam_musteri';
+const kActionDashboardOpenWorkOrders = 'dashboard_acik_is_emirleri';
+const kActionDashboardInProgressWorkOrders = 'dashboard_devam_eden';
+const kActionDashboardTodayWorkOrders = 'dashboard_bugunku_isler';
+const kActionDashboardExpiringSoon = 'dashboard_suresi_dolanlar';
+const kActionDashboardRevenue = 'dashboard_gelir';
+const kActionDashboardOpenInvoices = 'dashboard_acik_faturalar';
+const kActionDashboardInvoiceQueue = 'dashboard_fatura_kuyrugu';
+const kActionDashboardLowStock = 'dashboard_dusuk_stok';
 
 const allPagePermissions = <String>{
   kPagePanel,
@@ -59,12 +68,30 @@ const allActionPermissions = <String>{
   kActionEditRecords,
   kActionArchiveRecords,
   kActionDeleteRecords,
+  kActionDashboardTotalCustomers,
+  kActionDashboardOpenWorkOrders,
+  kActionDashboardInProgressWorkOrders,
+  kActionDashboardTodayWorkOrders,
+  kActionDashboardExpiringSoon,
+  kActionDashboardRevenue,
+  kActionDashboardOpenInvoices,
+  kActionDashboardInvoiceQueue,
+  kActionDashboardLowStock,
 };
 
 const actionPermissionLabels = <String, String>{
   kActionEditRecords: 'Düzenleme',
   kActionArchiveRecords: 'Pasife Alma',
   kActionDeleteRecords: 'Kalıcı Silme',
+  kActionDashboardTotalCustomers: 'Panel - Toplam Müşteri',
+  kActionDashboardOpenWorkOrders: 'Panel - Açık İş Emirleri',
+  kActionDashboardInProgressWorkOrders: 'Panel - Devam Eden',
+  kActionDashboardTodayWorkOrders: 'Panel - Bugünkü İşler',
+  kActionDashboardExpiringSoon: 'Panel - Süresi Dolanlar',
+  kActionDashboardRevenue: 'Panel - Gelir',
+  kActionDashboardOpenInvoices: 'Panel - Açık Faturalar',
+  kActionDashboardInvoiceQueue: 'Panel - Fatura Kuyruğu',
+  kActionDashboardLowStock: 'Panel - Düşük Stok',
 };
 
 final currentUserProfileProvider = FutureProvider<UserProfile?>((ref) async {

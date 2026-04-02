@@ -58,11 +58,15 @@ class ApplicationFormRecord {
   }
 
   factory ApplicationFormRecord.fromJson(Map<String, dynamic> json) {
+    final offsetHours = DateTime.now().timeZoneOffset.inHours;
     return ApplicationFormRecord(
       id: json['id'].toString(),
       applicationDate:
-          parseAppDateTime(json['application_date']?.toString()) ??
-          appNow(),
+          parseAppDateTime(
+            json['application_date']?.toString(),
+            fixedOffsetHours: offsetHours,
+          ) ??
+          DateTime.now(),
       customerId: json['customer_id']?.toString(),
       customerName: json['customer_name']?.toString() ?? '—',
       customerTcknMs: json['customer_tckn_ms']?.toString(),
@@ -78,11 +82,17 @@ class ApplicationFormRecord {
       stockProductName: json['stock_product_name']?.toString(),
       stockRegistryNumber: json['stock_registry_number']?.toString(),
       accountingOffice: json['accounting_office']?.toString(),
-      okcStartDate: parseAppDateTime(json['okc_start_date']?.toString()),
+      okcStartDate: parseAppDateTime(
+        json['okc_start_date']?.toString(),
+        fixedOffsetHours: offsetHours,
+      ),
       businessActivityName: json['business_activity_name']?.toString(),
       invoiceNumber: json['invoice_number']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
-      createdAt: parseAppDateTime(json['created_at']?.toString()),
+      createdAt: parseAppDateTime(
+        json['created_at']?.toString(),
+        fixedOffsetHours: offsetHours,
+      ),
     );
   }
 }

@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:excel/excel.dart' hide Border;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -98,6 +102,37 @@ final customerLicensesProvider =
       .order('created_at', ascending: false);
   return (rows as List)
       .map((e) => CustomerLicense.fromJson(e as Map<String, dynamic>))
+      .toList(growable: false);
+});
+
+final customerDeviceRegistriesProvider =
+    FutureProvider.family<List<CustomerDeviceRegistry>, String>((ref, customerId) async {
+  final apiClient = ref.watch(apiClientProvider);
+  if (apiClient != null) {
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {
+        'resource': 'customer_device_registries',
+        'customerId': customerId,
+      },
+    );
+    return ((response['items'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(CustomerDeviceRegistry.fromJson)
+        .toList(growable: false);
+  }
+
+  final client = ref.watch(supabaseClientProvider);
+  if (client == null) return const [];
+  final rows = await client
+      .from('device_registries')
+      .select(
+        'id,registry_number,model,customer_id,application_form_id,is_active,assigned_at,released_at,created_at',
+      )
+      .eq('customer_id', customerId)
+      .order('created_at', ascending: false);
+  return (rows as List)
+      .map((e) => CustomerDeviceRegistry.fromJson(e as Map<String, dynamic>))
       .toList(growable: false);
 });
 
@@ -270,7 +305,7 @@ class _Content extends ConsumerWidget {
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
 
     return DefaultTabController(
-      length: 5,
+      length: 6,
       child: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
@@ -370,6 +405,7 @@ class _Content extends ConsumerWidget {
                         Tab(text: 'Şubeler'),
                         Tab(text: 'Hatlar'),
                         Tab(text: 'Lisanslar'),
+                        Tab(text: 'Cihaz Sicil'),
                         Tab(text: 'İş Emirleri'),
                       ],
                     ),
@@ -382,6 +418,7 @@ class _Content extends ConsumerWidget {
                           _BranchesTab(customerId: detail.id),
                           _LinesTab(customerId: detail.id),
                           _LicensesTab(customerId: detail.id),
+                          _DeviceRegistriesTab(customerId: detail.id),
                           _WorkOrdersTab(customerId: detail.id),
                         ],
                       ),
@@ -409,6 +446,8 @@ class _GeneralTab extends ConsumerWidget {
     final branchesAsync = ref.watch(customerBranchesProvider(detail.id));
     final linesAsync = ref.watch(customerLinesProvider(detail.id));
     final licensesAsync = ref.watch(customerLicensesProvider(detail.id));
+    final deviceRegistriesAsync =
+        ref.watch(customerDeviceRegistriesProvider(detail.id));
     final workOrdersAsync = ref.watch(customerWorkOrdersProvider(detail.id));
 
     int countActive<T>(AsyncValue<List<T>> value, bool Function(T item) isActive) {
@@ -425,6 +464,10 @@ class _GeneralTab extends ConsumerWidget {
         countActive<CustomerLicense>(licensesAsync, (e) => e.isActive);
     final openWorkOrders =
         countActive<WorkOrder>(workOrdersAsync, (e) => e.status != 'done');
+    final deviceCount = countActive<CustomerDeviceRegistry>(
+      deviceRegistriesAsync,
+      (e) => e.isActive,
+    );
 
     void goTab(int index) {
       DefaultTabController.of(context).animateTo(index);
@@ -463,6 +506,12 @@ class _GeneralTab extends ConsumerWidget {
                 label: 'İş Emri',
                 value: openWorkOrders.toString(),
                 icon: Icons.assignment_rounded,
+                onTap: () => goTab(5),
+              ),
+              _QuickStat(
+                label: 'Cihaz',
+                value: deviceCount.toString(),
+                icon: Icons.badge_rounded,
                 onTap: () => goTab(4),
               ),
             ],
@@ -755,6 +804,254 @@ class _LicensesTab extends ConsumerWidget {
   }
 }
 
+class _DeviceRegistriesTab extends ConsumerStatefulWidget {
+  const _DeviceRegistriesTab({required this.customerId});
+
+  final String customerId;
+
+  @override
+  ConsumerState<_DeviceRegistriesTab> createState() => _DeviceRegistriesTabState();
+}
+
+class _DeviceRegistriesTabState extends ConsumerState<_DeviceRegistriesTab> {
+  bool _importing = false;
+
+  String _normalizeHeader(String input) {
+    return input
+        .toLowerCase()
+        .trim()
+        .replaceAll(' ', '')
+        .replaceAll('ç', 'c')
+        .replaceAll('ğ', 'g')
+        .replaceAll('ı', 'i')
+        .replaceAll('ö', 'o')
+        .replaceAll('ş', 's')
+        .replaceAll('ü', 'u');
+  }
+
+  String _cellText(Data? cell) {
+    final v = cell?.value;
+    if (v == null) return '';
+    return v.toString().trim();
+  }
+
+  Future<void> _importFromExcel() async {
+    if (_importing) return;
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    final picked = await FilePicker.platform.pickFiles(
+      withData: true,
+      type: FileType.custom,
+      allowedExtensions: const ['xls', 'xlsx'],
+    );
+    final bytes = picked?.files.single.bytes;
+    if (bytes == null) return;
+
+    setState(() => _importing = true);
+    try {
+      final excel = Excel.decodeBytes(Uint8List.fromList(bytes));
+      final sheet = excel.tables.values.isEmpty ? null : excel.tables.values.first;
+      if (sheet == null || sheet.rows.isEmpty) {
+        throw Exception('Excel okunamadı.');
+      }
+
+      final header = sheet.rows.first;
+      int? sicilIndex;
+      int? vknIndex;
+      int? modelIndex;
+      for (var i = 0; i < header.length; i++) {
+        final h = _normalizeHeader(_cellText(header[i]));
+        if (h.contains('sicil')) sicilIndex ??= i;
+        if (h == 'vkn' || h.contains('verginosu') || h.contains('vergisicil')) {
+          vknIndex ??= i;
+        }
+        if (h.contains('model')) modelIndex ??= i;
+      }
+      if (sicilIndex == null || vknIndex == null) {
+        throw Exception('Kolonlar bulunamadı. (Sicil, VKN, Model)');
+      }
+
+      final customerMap = <String, String>{};
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'customers_lookup_vkn'},
+        );
+        for (final row in ((response['items'] as List?) ?? const [])) {
+          if (row is! Map) continue;
+          final vkn = (row['vkn'] ?? '').toString().trim();
+          final id = (row['id'] ?? '').toString().trim();
+          if (vkn.isEmpty || id.isEmpty) continue;
+          customerMap[vkn] = id;
+        }
+      } else {
+        final rows = await client!
+            .from('customers')
+            .select('id,vkn')
+            .order('name')
+            .limit(10000);
+        for (final row in (rows as List)) {
+          final map = row as Map<String, dynamic>;
+          final vkn = (map['vkn'] ?? '').toString().trim();
+          final id = (map['id'] ?? '').toString().trim();
+          if (vkn.isEmpty || id.isEmpty) continue;
+          customerMap[vkn] = id;
+        }
+      }
+
+      var imported = 0;
+      var skipped = 0;
+      var missingCustomer = 0;
+      final nowIso = DateTime.now().toIso8601String();
+
+      for (var r = 1; r < sheet.rows.length; r++) {
+        final row = sheet.rows[r];
+        final sicil = _cellText(row.length > sicilIndex ? row[sicilIndex] : null);
+        final vkn = _cellText(row.length > vknIndex ? row[vknIndex] : null);
+        final model = modelIndex == null
+            ? ''
+            : _cellText(row.length > modelIndex ? row[modelIndex] : null);
+
+        if (sicil.isEmpty || vkn.isEmpty) {
+          skipped++;
+          continue;
+        }
+        final customerId = customerMap[vkn];
+        if (customerId == null || customerId.isEmpty) {
+          missingCustomer++;
+          continue;
+        }
+
+        final values = <String, dynamic>{
+          'registry_number': sicil,
+          'model': model.isEmpty ? null : model,
+          'customer_id': customerId,
+          'application_form_id': null,
+          'is_active': true,
+          'assigned_at': nowIso,
+          'released_at': null,
+        };
+
+        if (apiClient != null) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {'op': 'upsert', 'table': 'device_registries', 'values': values},
+          );
+        } else {
+          await client!.from('device_registries').upsert(values);
+        }
+        imported++;
+      }
+
+      ref.invalidate(customerDeviceRegistriesProvider(widget.customerId));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'İçe aktarıldı: $imported • Eksik müşteri(VKN): $missingCustomer • Atlanan: $skipped',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İçe aktarma hatası: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final itemsAsync =
+        ref.watch(customerDeviceRegistriesProvider(widget.customerId));
+    final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
+    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
+    final canDeletePermanently =
+        ref.watch(hasActionAccessProvider(kActionDeleteRecords));
+    final canTransfer = ref.watch(isAdminProvider);
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Cihaz Sicilleri',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              if (canTransfer)
+                OutlinedButton.icon(
+                  onPressed: _importing ? null : _importFromExcel,
+                  icon: _importing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.upload_file_rounded, size: 18),
+                  label: const Text('İçe Aktar'),
+                ),
+              if (canTransfer) const Gap(10),
+              if (canEdit)
+                FilledButton.icon(
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => _DeviceRegistryEditDialog(
+                        customerId: widget.customerId,
+                      ),
+                    );
+                    if (ok == true) {
+                      ref.invalidate(
+                        customerDeviceRegistriesProvider(widget.customerId),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Ekle'),
+                ),
+            ],
+          ),
+          const Gap(12),
+          Expanded(
+            child: itemsAsync.when(
+              data: (items) {
+                if (items.isEmpty) {
+                  return const _TabEmpty(
+                    text: 'Bu müşteriye ait cihaz sicili bulunamadı.',
+                  );
+                }
+                return ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, _) => const Gap(10),
+                  itemBuilder: (context, index) => _DeviceRegistryItem(
+                    customerId: widget.customerId,
+                    registry: items[index],
+                    canEdit: canEdit,
+                    canArchive: canArchive,
+                    canDeletePermanently: canDeletePermanently,
+                    canTransfer: canTransfer,
+                  ),
+                );
+              },
+              loading: () => const _ListSkeleton(),
+              error: (_, _) =>
+                  const _TabError(text: 'Cihaz sicilleri yüklenemedi.'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _WorkOrdersTab extends ConsumerWidget {
   const _WorkOrdersTab({required this.customerId});
 
@@ -829,6 +1126,476 @@ class _WorkOrdersTab extends ConsumerWidget {
         loading: () => const _ListSkeleton(),
         error: (_, _) => const _TabError(text: 'İş emirleri yüklenemedi.'),
       ),
+    );
+  }
+}
+
+class _DeviceRegistryItem extends ConsumerStatefulWidget {
+  const _DeviceRegistryItem({
+    required this.customerId,
+    required this.registry,
+    required this.canEdit,
+    required this.canArchive,
+    required this.canDeletePermanently,
+    required this.canTransfer,
+  });
+
+  final String customerId;
+  final CustomerDeviceRegistry registry;
+  final bool canEdit;
+  final bool canArchive;
+  final bool canDeletePermanently;
+  final bool canTransfer;
+
+  @override
+  ConsumerState<_DeviceRegistryItem> createState() => _DeviceRegistryItemState();
+}
+
+class _DeviceRegistryItemState extends ConsumerState<_DeviceRegistryItem> {
+  bool _busy = false;
+
+  Future<void> _setActive(bool active) async {
+    if (!widget.canArchive) return;
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    setState(() => _busy = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'device_registries',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.registry.id},
+            ],
+            'values': {
+              'is_active': active,
+              'released_at': active ? null : DateTime.now().toIso8601String(),
+            },
+          },
+        );
+      } else {
+        await client!.from('device_registries').update({
+          'is_active': active,
+          'released_at': active ? null : DateTime.now().toIso8601String(),
+        }).eq('id', widget.registry.id);
+      }
+      ref.invalidate(customerDeviceRegistriesProvider(widget.customerId));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _deletePermanently() async {
+    if (!widget.canDeletePermanently) return;
+    if (widget.registry.isActive) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Önce kaydı pasife alın.')),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Kalıcı sil'),
+        content: Text(
+          '"${widget.registry.registryNumber}" sicili kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Kalıcı Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    setState(() => _busy = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {'op': 'delete', 'table': 'device_registries', 'id': widget.registry.id},
+        );
+      } else {
+        await client!.from('device_registries').delete().eq('id', widget.registry.id);
+      }
+      ref.invalidate(customerDeviceRegistriesProvider(widget.customerId));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _edit() async {
+    if (!widget.canEdit) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => _DeviceRegistryEditDialog(
+        customerId: widget.customerId,
+        initial: widget.registry,
+      ),
+    );
+    if (ok == true) {
+      ref.invalidate(customerDeviceRegistriesProvider(widget.customerId));
+    }
+  }
+
+  Future<void> _transfer() async {
+    if (!widget.canTransfer) return;
+    final customers = await ref.read(customersForTransferProvider.future);
+    if (!mounted) return;
+    final activeCustomers = customers.where((c) => c.isActive).toList(growable: false);
+    final selected = await showDialog<_CustomerOption>(
+      context: context,
+      builder: (context) => _CustomerTransferDialog(items: activeCustomers),
+    );
+    if (selected == null) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    setState(() => _busy = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'device_registries',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.registry.id},
+            ],
+            'values': {
+              'customer_id': selected.id,
+              'assigned_at': DateTime.now().toIso8601String(),
+              'released_at': null,
+              'is_active': true,
+            },
+          },
+        );
+      } else {
+        await client!.from('device_registries').update({
+          'customer_id': selected.id,
+          'assigned_at': DateTime.now().toIso8601String(),
+          'released_at': null,
+          'is_active': true,
+        }).eq('id', widget.registry.id);
+      }
+      ref.invalidate(customerDeviceRegistriesProvider(widget.customerId));
+      ref.invalidate(customerDeviceRegistriesProvider(selected.id));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.registry;
+    final tone = !item.isActive ? AppBadgeTone.neutral : AppBadgeTone.primary;
+    final statusLabel = item.isActive ? 'Aktif' : 'Pasif';
+    final subtitleParts = <String>[
+      if (item.model?.trim().isNotEmpty ?? false) item.model!.trim(),
+      if (item.assignedAt != null)
+        DateFormat('d MMM y', 'tr_TR').format(item.assignedAt!),
+    ];
+    final subtitle = subtitleParts.join(' • ');
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.registryNumber,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        decoration: item.isActive
+                            ? TextDecoration.none
+                            : TextDecoration.lineThrough,
+                      ),
+                ),
+                if (subtitle.isNotEmpty) ...[
+                  const Gap(4),
+                  Text(
+                    subtitle,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: const Color(0xFF64748B)),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const Gap(10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              AppBadge(label: statusLabel, tone: tone),
+              const Gap(8),
+              MenuAnchor(
+                builder: (context, controller, _) => OutlinedButton(
+                  onPressed: _busy
+                      ? null
+                      : () => controller.isOpen ? controller.close() : controller.open(),
+                  child: _busy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('İşlem'),
+                ),
+                menuChildren: [
+                  if (widget.canEdit)
+                    MenuItemButton(
+                      onPressed: _busy ? null : _edit,
+                      child: const Text('Düzenle'),
+                    ),
+                  if (widget.canTransfer)
+                    MenuItemButton(
+                      onPressed: _busy ? null : _transfer,
+                      child: const Text('Devret'),
+                    ),
+                  if (widget.canArchive)
+                    MenuItemButton(
+                      onPressed: _busy ? null : () => _setActive(!item.isActive),
+                      child: Text(item.isActive ? 'Pasife Al' : 'Aktifleştir'),
+                    ),
+                  if (widget.canDeletePermanently)
+                    MenuItemButton(
+                      onPressed: _busy ? null : _deletePermanently,
+                      child: const Text('Kalıcı Sil'),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeviceRegistryEditDialog extends ConsumerStatefulWidget {
+  const _DeviceRegistryEditDialog({required this.customerId, this.initial});
+
+  final String customerId;
+  final CustomerDeviceRegistry? initial;
+
+  @override
+  ConsumerState<_DeviceRegistryEditDialog> createState() =>
+      _DeviceRegistryEditDialogState();
+}
+
+class _DeviceRegistryEditDialogState
+    extends ConsumerState<_DeviceRegistryEditDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _registryController;
+  late final TextEditingController _modelController;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _registryController =
+        TextEditingController(text: widget.initial?.registryNumber ?? '');
+    _modelController = TextEditingController(text: widget.initial?.model ?? '');
+  }
+
+  @override
+  void dispose() {
+    _registryController.dispose();
+    _modelController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    setState(() => _saving = true);
+    try {
+      final values = <String, dynamic>{
+        if (widget.initial != null) 'id': widget.initial!.id,
+        'registry_number': _registryController.text.trim(),
+        'model': _modelController.text.trim().isEmpty ? null : _modelController.text.trim(),
+        'customer_id': widget.customerId,
+        'is_active': true,
+        'assigned_at': DateTime.now().toIso8601String(),
+        'released_at': null,
+      };
+
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {'op': 'upsert', 'table': 'device_registries', 'values': values},
+        );
+      } else {
+        if (widget.initial == null) {
+          await client!.from('device_registries').insert(values);
+        } else {
+          await client!.from('device_registries').update(values).eq('id', widget.initial!.id);
+        }
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kaydedilemedi.')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isEdit = widget.initial != null;
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: AppCard(
+          padding: const EdgeInsets.all(20),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        isEdit ? 'Cihaz Sicil Düzenle' : 'Cihaz Sicil Ekle',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                TextFormField(
+                  controller: _registryController,
+                  decoration: const InputDecoration(labelText: 'Sicil No'),
+                  validator: (v) => (v ?? '').trim().isEmpty ? 'Sicil girin.' : null,
+                ),
+                const Gap(12),
+                TextFormField(
+                  controller: _modelController,
+                  decoration: const InputDecoration(labelText: 'Model'),
+                ),
+                const Gap(16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+                        child: const Text('Vazgeç'),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _saving ? null : _save,
+                        icon: const Icon(Icons.save_rounded, size: 18),
+                        label: const Text('Kaydet'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CustomerTransferDialog extends StatefulWidget {
+  const _CustomerTransferDialog({required this.items});
+
+  final List<_CustomerOption> items;
+
+  @override
+  State<_CustomerTransferDialog> createState() => _CustomerTransferDialogState();
+}
+
+class _CustomerTransferDialogState extends State<_CustomerTransferDialog> {
+  String? _selectedId;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Devret'),
+      content: DropdownButtonFormField<String?>(
+        initialValue: _selectedId,
+        items: [
+          const DropdownMenuItem<String?>(
+            value: null,
+            child: Text('Müşteri seç'),
+          ),
+          ...widget.items.map(
+            (c) => DropdownMenuItem<String?>(
+              value: c.id,
+              child: Text(c.name),
+            ),
+          ),
+        ],
+        onChanged: (value) => setState(() => _selectedId = value),
+        decoration: const InputDecoration(labelText: 'Yeni Müşteri'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Vazgeç'),
+        ),
+        FilledButton(
+          onPressed: _selectedId == null
+              ? null
+              : () {
+                  final selected = widget.items
+                      .where((e) => e.id == _selectedId)
+                      .cast<_CustomerOption?>()
+                      .firstWhere((_) => true, orElse: () => null);
+                  Navigator.of(context).pop(selected);
+                },
+          child: const Text('Devret'),
+        ),
+      ],
     );
   }
 }
@@ -2552,6 +3319,44 @@ class CustomerLicense {
       endsAt: DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
           DateTime.tryParse(json['expires_at']?.toString() ?? ''),
       isActive: (json['is_active'] as bool?) ?? true,
+    );
+  }
+}
+
+class CustomerDeviceRegistry {
+  const CustomerDeviceRegistry({
+    required this.id,
+    required this.registryNumber,
+    required this.model,
+    required this.customerId,
+    required this.applicationFormId,
+    required this.isActive,
+    required this.assignedAt,
+    required this.releasedAt,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String registryNumber;
+  final String? model;
+  final String? customerId;
+  final String? applicationFormId;
+  final bool isActive;
+  final DateTime? assignedAt;
+  final DateTime? releasedAt;
+  final DateTime? createdAt;
+
+  factory CustomerDeviceRegistry.fromJson(Map<String, dynamic> json) {
+    return CustomerDeviceRegistry(
+      id: json['id'].toString(),
+      registryNumber: (json['registry_number'] ?? '').toString(),
+      model: json['model']?.toString(),
+      customerId: json['customer_id']?.toString(),
+      applicationFormId: json['application_form_id']?.toString(),
+      isActive: (json['is_active'] as bool?) ?? true,
+      assignedAt: DateTime.tryParse(json['assigned_at']?.toString() ?? ''),
+      releasedAt: DateTime.tryParse(json['released_at']?.toString() ?? ''),
+      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
     );
   }
 }

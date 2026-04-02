@@ -47,9 +47,14 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 -e 
+-e 
 # Environment files
 *.env
-*.env.*
+-e 
+# Documents (local data imports)
+/dokuman/
+*.xls
+*.xlsx
 -e 
 # Environment files
 *.env

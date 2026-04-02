@@ -16,6 +16,7 @@ import '../features/products/products_screen.dart';
 import '../features/definitions/definitions_screen.dart';
 import '../features/forms/forms_screen.dart';
 import '../features/application_forms/application_form_screen.dart';
+import '../features/forms/fault_form_screen.dart';
 import '../features/forms/scrap_form_screen.dart';
 import '../features/forms/serial_tracking_screen.dart';
 import '../features/forms/transfer_form_screen.dart';
@@ -102,6 +103,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               path: 'hurda',
               pageBuilder: (context, state) => const NoTransitionPage(
                 child: ScrapFormScreen(),
+              ),
+            ),
+            GoRoute(
+              path: 'ariza',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: FaultFormScreen(),
               ),
             ),
             GoRoute(

@@ -58,6 +58,42 @@ final scrapFormCustomersProvider =
   return items;
 });
 
+final scrapCustomerDeviceRegistriesProvider =
+    FutureProvider.family<List<_ScrapDeviceRegistryOption>, String>((
+  ref,
+  customerId,
+) async {
+  final apiClient = ref.watch(apiClientProvider);
+  final client = ref.watch(supabaseClientProvider);
+  if (apiClient != null) {
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {
+        'resource': 'customer_device_registries',
+        'customerId': customerId,
+        'showPassive': 'false',
+      },
+    );
+    return ((response['items'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(_ScrapDeviceRegistryOption.fromJson)
+        .where((e) => e.registryNumber.trim().isNotEmpty)
+        .toList(growable: false);
+  }
+  if (client == null) return const [];
+  final rows = await client
+      .from('device_registries')
+      .select('registry_number,model,is_active')
+      .eq('customer_id', customerId)
+      .eq('is_active', true)
+      .order('registry_number', ascending: true)
+      .limit(1000);
+  return (rows as List)
+      .map((e) => _ScrapDeviceRegistryOption.fromJson(e as Map<String, dynamic>))
+      .where((e) => e.registryNumber.trim().isNotEmpty)
+      .toList(growable: false);
+});
+
 final scrapFormsProvider = FutureProvider<List<ScrapFormRecord>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
   final client = ref.watch(supabaseClientProvider);
@@ -160,15 +196,26 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
   }
 
   Future<void> _print(ScrapFormRecord record) async {
-    final settings = await ref.read(scrapFormPrintSettingsProvider.future);
-    final ok = await printScrapForm(record, settings: settings);
+    final settings = ref.read(scrapFormPrintSettingsProvider).maybeWhen(
+          data: (value) => value,
+          orElse: () => ScrapFormPrintSettings.defaults,
+        );
+    bool ok = false;
+    Object? error;
+    try {
+      ok = await printScrapForm(record, settings: settings);
+    } catch (e) {
+      error = e;
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          ok
-              ? 'Hurda formu çıktısı hazırlandı.'
-              : 'Hurda formu çıktısı bu platformda açılamadı.',
+          error != null
+              ? 'Hurda formu yazdırma hatası: $error'
+              : ok
+                  ? 'Hurda formu çıktısı hazırlandı.'
+                  : 'Hurda formu çıktısı bu platformda açılamadı.',
         ),
       ),
     );
@@ -177,37 +224,51 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
   Future<void> _setRecordActive(ScrapFormRecord record, bool active) async {
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (apiClient != null) {
-      await apiClient.postJson(
-        '/mutate',
-        body: {
-          'op': 'upsert',
-          'table': 'scrap_forms',
-          'returning': 'row',
-          'values': {'id': record.id, 'is_active': active},
-        },
-      );
-    } else {
-      if (client == null) return;
-      await client
-          .from('scrap_forms')
-          .update({'is_active': active})
-          .eq('id', record.id);
-    }
-    ref.invalidate(scrapFormsProvider);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          active
-              ? 'Hurda formu aktifleştirildi.'
-              : 'Hurda formu pasife alındı.',
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'scrap_forms',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': record.id},
+            ],
+            'values': {'is_active': active},
+          },
+        );
+      } else {
+        if (client == null) return;
+        await client
+            .from('scrap_forms')
+            .update({'is_active': active})
+            .eq('id', record.id);
+      }
+      ref.invalidate(scrapFormsProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            active ? 'Hurda formu aktifleştirildi.' : 'Hurda formu pasife alındı.',
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İşlem başarısız: $e')),
+      );
+    }
   }
 
   Future<void> _deleteRecordPermanently(ScrapFormRecord record) async {
+    if (record.isActive) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Önce kaydı pasife alın.')),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -231,20 +292,27 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
 
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (apiClient != null) {
-      await apiClient.postJson(
-        '/mutate',
-        body: {'op': 'delete', 'table': 'scrap_forms', 'id': record.id},
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {'op': 'delete', 'table': 'scrap_forms', 'id': record.id},
+        );
+      } else {
+        if (client == null) return;
+        await client.from('scrap_forms').delete().eq('id', record.id);
+      }
+      ref.invalidate(scrapFormsProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hurda formu kalıcı olarak silindi.')),
       );
-    } else {
-      if (client == null) return;
-      await client.from('scrap_forms').delete().eq('id', record.id);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Silinemedi: $e')),
+      );
     }
-    ref.invalidate(scrapFormsProvider);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Hurda formu kalıcı olarak silindi.')),
-    );
   }
 
   List<ScrapFormRecord> _filter(List<ScrapFormRecord> records) {
@@ -314,256 +382,169 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
           final filtered = _filter(records)
               .where((item) => _showPassive || item.isActive)
               .toList(growable: false);
-          return Column(
-            children: [
-              AppCard(
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    SizedBox(
-                      width: isMobile ? double.infinity : 280,
-                      child: TextField(
-                        controller: _customerFilterController,
-                        onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
-                          labelText: 'Müşteri',
-                          hintText: 'Ad / ünvan ara',
-                          prefixIcon: Icon(Icons.person_search_rounded),
-                        ),
-                      ),
+          final filterCard = AppCard(
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                SizedBox(
+                  width: isMobile ? double.infinity : 280,
+                  child: TextField(
+                    controller: _customerFilterController,
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Müşteri',
+                      hintText: 'Ad / ünvan ara',
+                      prefixIcon: Icon(Icons.person_search_rounded),
                     ),
-                    SizedBox(
-                      width: isMobile ? double.infinity : 280,
-                      child: TextField(
-                        controller: _deviceFilterController,
-                        onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
-                          labelText: 'Cihaz / Sicil',
-                          hintText: 'Marka model veya sicil no',
-                          prefixIcon: Icon(Icons.memory_rounded),
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      width: isMobile ? double.infinity : 180,
-                      child: TextField(
-                        controller: TextEditingController(
-                          text: _fromDate == null
-                              ? ''
-                              : _dateFormat.format(_fromDate!),
-                        ),
-                        readOnly: true,
-                        onTap: () => _pickDate(
-                          currentValue: _fromDate,
-                          onSelected: (value) =>
-                              setState(() => _fromDate = value),
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: 'Başlangıç',
-                          hintText: 'Tarih seçin',
-                          prefixIcon: Icon(Icons.calendar_today_rounded),
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      width: isMobile ? double.infinity : 180,
-                      child: TextField(
-                        controller: TextEditingController(
-                          text: _toDate == null
-                              ? ''
-                              : _dateFormat.format(_toDate!),
-                        ),
-                        readOnly: true,
-                        onTap: () => _pickDate(
-                          currentValue: _toDate,
-                          onSelected: (value) =>
-                              setState(() => _toDate = value),
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: 'Bitiş',
-                          hintText: 'Tarih seçin',
-                          prefixIcon: Icon(Icons.event_rounded),
-                        ),
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _customerFilterController.clear();
-                          _deviceFilterController.clear();
-                          _fromDate = null;
-                          _toDate = null;
-                        });
-                      },
-                      icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
-                      label: const Text('Temizle'),
-                    ),
-                    FilterChip(
-                      selected: _showPassive,
-                      onSelected: (value) =>
-                          setState(() => _showPassive = value),
-                      label: const Text('Pasifleri Göster'),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const Gap(14),
-              AppCard(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
+                SizedBox(
+                  width: isMobile ? double.infinity : 280,
+                  child: TextField(
+                    controller: _deviceFilterController,
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Cihaz / Sicil',
+                      hintText: 'Marka model veya sicil no',
+                      prefixIcon: Icon(Icons.memory_rounded),
+                    ),
+                  ),
                 ),
-                child: Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    AppBadge(
-                      label: 'Toplam: ${records.length}',
-                      tone: AppBadgeTone.primary,
+                SizedBox(
+                  width: isMobile ? double.infinity : 180,
+                  child: TextField(
+                    controller: TextEditingController(
+                      text:
+                          _fromDate == null ? '' : _dateFormat.format(_fromDate!),
                     ),
-                    AppBadge(
-                      label: 'Filtrelenen: ${filtered.length}',
-                      tone: AppBadgeTone.warning,
+                    readOnly: true,
+                    onTap: () => _pickDate(
+                      currentValue: _fromDate,
+                      onSelected: (value) => setState(() => _fromDate = value),
                     ),
-                    AppBadge(
-                      label:
-                          'Bugün: ${records.where((item) => _isSameDay(item.formDate, DateTime.now())).length}',
-                      tone: AppBadgeTone.success,
+                    decoration: const InputDecoration(
+                      labelText: 'Başlangıç',
+                      hintText: 'Tarih seçin',
+                      prefixIcon: Icon(Icons.calendar_today_rounded),
                     ),
-                  ],
+                  ),
                 ),
-              ),
-              const Gap(14),
-              if (filtered.isEmpty)
-                const AppCard(
+                SizedBox(
+                  width: isMobile ? double.infinity : 180,
+                  child: TextField(
+                    controller: TextEditingController(
+                      text: _toDate == null ? '' : _dateFormat.format(_toDate!),
+                    ),
+                    readOnly: true,
+                    onTap: () => _pickDate(
+                      currentValue: _toDate,
+                      onSelected: (value) => setState(() => _toDate = value),
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Bitiş',
+                      hintText: 'Tarih seçin',
+                      prefixIcon: Icon(Icons.event_rounded),
+                    ),
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _customerFilterController.clear();
+                      _deviceFilterController.clear();
+                      _fromDate = null;
+                      _toDate = null;
+                      _showPassive = false;
+                    });
+                  },
+                  icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
+                  label: const Text('Temizle'),
+                ),
+                FilterChip(
+                  selected: _showPassive,
+                  onSelected: (value) => setState(() => _showPassive = value),
+                  label: const Text('Pasifleri Göster'),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+          );
+
+          final statsCard = AppCard(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                AppBadge(
+                  label: 'Toplam: ${records.length}',
+                  tone: AppBadgeTone.primary,
+                ),
+                AppBadge(
+                  label: 'Filtrelenen: ${filtered.length}',
+                  tone: AppBadgeTone.warning,
+                ),
+                AppBadge(
+                  label:
+                      'Bugün: ${records.where((item) => _isSameDay(item.formDate, DateTime.now())).length}',
+                  tone: AppBadgeTone.success,
+                ),
+              ],
+            ),
+          );
+
+          return ListView.separated(
+            padding: const EdgeInsets.only(bottom: 120),
+            itemCount: filtered.isEmpty ? 3 : filtered.length + 2,
+            separatorBuilder: (_, _) => const Gap(12),
+            itemBuilder: (context, index) {
+              if (index == 0) return filterCard;
+              if (index == 1) return statsCard;
+              if (filtered.isEmpty) {
+                return const AppCard(
                   child: Padding(
                     padding: EdgeInsets.all(24),
                     child: Center(child: Text('Henüz hurda formu kaydı yok.')),
                   ),
-                )
-              else
-                ...filtered.map(
-                  (record) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: AppCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 6,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  record.customerName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.titleMedium
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 14,
-                                      ),
-                                ),
-                              ),
-                              const Gap(6),
-                              Wrap(
-                                spacing: 4,
-                                runSpacing: 4,
-                                children: [
-                                  if (canEdit)
-                                    _MiniActionButton(
-                                      onPressed: () => _openEditDialog(record),
-                                      icon: Icons.edit_rounded,
-                                      label: 'Düzenle',
-                                    ),
-                                  if (canEdit)
-                                    _MiniActionButton(
-                                      onPressed: () =>
-                                          _openDuplicateDialog(record),
-                                      icon: Icons.copy_rounded,
-                                      label: 'Kopya',
-                                    ),
-                                  _MiniActionButton(
-                                    onPressed: () => _print(record),
-                                    icon: Icons.print_rounded,
-                                    label: 'Yazdır',
-                                    primary: true,
-                                  ),
-                                  if (canArchive)
-                                    _MiniActionButton(
-                                      onPressed: () => _setRecordActive(
-                                        record,
-                                        !record.isActive,
-                                      ),
-                                      icon: record.isActive
-                                          ? Icons.delete_outline_rounded
-                                          : Icons.restore_rounded,
-                                      label: record.isActive ? 'Sil' : 'Aktif',
-                                    ),
-                                  if (!record.isActive && canDeletePermanently)
-                                    _MiniActionButton(
-                                      onPressed: () =>
-                                          _deleteRecordPermanently(record),
-                                      icon: Icons.delete_forever_rounded,
-                                      label: 'Kalıcı Sil',
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          const Gap(4),
-                          Wrap(
-                            spacing: 4,
-                            runSpacing: 4,
-                            children: [
-                              _TinyBadge(
-                                label: _dateFormat.format(record.formDate),
-                                tone: AppBadgeTone.primary,
-                              ),
-                              if (record.rowNumber?.trim().isNotEmpty ?? false)
-                                _TinyBadge(
-                                  label: 'Sıra: ${record.rowNumber}',
-                                  tone: AppBadgeTone.neutral,
-                                ),
-                              if (record.deviceBrandModelRegistry
-                                      ?.trim()
-                                      .isNotEmpty ??
-                                  false)
-                                _TinyBadge(
-                                  label: record.deviceBrandModelRegistry!,
-                                  tone: AppBadgeTone.warning,
-                                ),
-                              if (record.interventionPurpose
-                                      ?.trim()
-                                      .isNotEmpty ??
-                                  false)
-                                _TinyBadge(
-                                  label: record.interventionPurpose!,
-                                  tone: AppBadgeTone.success,
-                                ),
-                              if (!record.isActive)
-                                const _TinyBadge(
-                                  label: 'Pasif',
-                                  tone: AppBadgeTone.neutral,
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-            ],
+                );
+              }
+              final record = filtered[index - 2];
+              return _ScrapRecordCard(
+                record: record,
+                canEdit: canEdit,
+                canArchive: canArchive,
+                canDeletePermanently: canDeletePermanently,
+                onEdit: () => _openEditDialog(record),
+                onDuplicate: () => _openDuplicateDialog(record),
+                onPrint: () => _print(record),
+                onToggleActive: canArchive
+                    ? () => _setRecordActive(record, !record.isActive)
+                    : null,
+                onDeletePermanently: canDeletePermanently
+                    ? () => _deleteRecordPermanently(record)
+                    : null,
+              );
+            },
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stackTrace) => const Center(child: Text('Yüklenemedi.')),
       ),
+    );
+  }
+}
+
+class _ScrapDeviceRegistryOption {
+  const _ScrapDeviceRegistryOption({required this.registryNumber, required this.model});
+
+  final String registryNumber;
+  final String? model;
+
+  factory _ScrapDeviceRegistryOption.fromJson(Map<String, dynamic> json) {
+    return _ScrapDeviceRegistryOption(
+      registryNumber: (json['registry_number'] ?? '').toString(),
+      model: json['model']?.toString(),
     );
   }
 }
@@ -580,52 +561,186 @@ class _ScrapFormDialog extends ConsumerStatefulWidget {
   ConsumerState<_ScrapFormDialog> createState() => _ScrapFormDialogState();
 }
 
-class _TinyBadge extends StatelessWidget {
-  const _TinyBadge({required this.label, required this.tone});
+class _ScrapRecordCard extends StatelessWidget {
+  const _ScrapRecordCard({
+    required this.record,
+    required this.canEdit,
+    required this.canArchive,
+    required this.canDeletePermanently,
+    required this.onEdit,
+    required this.onDuplicate,
+    required this.onPrint,
+    required this.onToggleActive,
+    required this.onDeletePermanently,
+  });
 
-  final String label;
-  final AppBadgeTone tone;
+  final ScrapFormRecord record;
+  final bool canEdit;
+  final bool canArchive;
+  final bool canDeletePermanently;
+  final VoidCallback onEdit;
+  final VoidCallback onDuplicate;
+  final VoidCallback onPrint;
+  final VoidCallback? onToggleActive;
+  final VoidCallback? onDeletePermanently;
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTextStyle.merge(
-      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
-      child: AppBadge(label: label, tone: tone),
+    final isMobile = MediaQuery.sizeOf(context).width < 900;
+    final dateText = DateFormat('d MMM y', 'tr_TR').format(record.formDate);
+    final badgeLabel = record.isActive ? 'KDV 15B' : 'Pasif';
+    final badgeTone =
+        record.isActive ? AppBadgeTone.primary : AppBadgeTone.neutral;
+
+    return AppCard(
+      padding:
+          EdgeInsets.symmetric(horizontal: isMobile ? 10 : 12, vertical: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 10,
+            height: 48,
+            decoration: BoxDecoration(
+              color: record.isActive
+                  ? AppTheme.primary.withValues(alpha: 0.16)
+                  : const Color(0xFFE2E8F0),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: record.isActive
+                    ? AppTheme.primary.withValues(alpha: 0.25)
+                    : const Color(0xFFE2E8F0),
+              ),
+            ),
+          ),
+          const Gap(10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        record.customerName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              fontSize: isMobile ? 14 : 15,
+                            ),
+                      ),
+                    ),
+                    const Gap(8),
+                    AppBadge(label: badgeLabel, tone: badgeTone),
+                  ],
+                ),
+                const Gap(6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _ScrapInfoChip(
+                      icon: Icons.calendar_today_rounded,
+                      text: dateText,
+                    ),
+                    if ((record.rowNumber ?? '').trim().isNotEmpty)
+                      _ScrapInfoChip(
+                        icon: Icons.tag_rounded,
+                        text: 'Sıra: ${record.rowNumber!.trim()}',
+                      ),
+                    if ((record.deviceBrandModelRegistry ?? '').trim().isNotEmpty)
+                      _ScrapInfoChip(
+                        icon: Icons.memory_rounded,
+                        text: record.deviceBrandModelRegistry!.trim(),
+                      ),
+                    if ((record.interventionPurpose ?? '').trim().isNotEmpty)
+                      _ScrapInfoChip(
+                        icon: Icons.task_alt_rounded,
+                        text: record.interventionPurpose!.trim(),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const Gap(10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              IconButton.filledTonal(
+                tooltip: 'Yazdır',
+                onPressed: onPrint,
+                icon: const Icon(Icons.print_rounded, size: 18),
+              ),
+              if (canEdit)
+                IconButton.filledTonal(
+                  tooltip: 'Düzenle',
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_rounded, size: 18),
+                ),
+              if (canEdit)
+                IconButton.filledTonal(
+                  tooltip: 'Kopya',
+                  onPressed: onDuplicate,
+                  icon: const Icon(Icons.content_copy_rounded, size: 18),
+                ),
+              if (canArchive && onToggleActive != null)
+                IconButton.filledTonal(
+                  tooltip: record.isActive ? 'Pasife Al' : 'Aktifleştir',
+                  onPressed: onToggleActive,
+                  icon: Icon(
+                    record.isActive
+                        ? Icons.delete_outline_rounded
+                        : Icons.restore_rounded,
+                    size: 18,
+                  ),
+                ),
+              if (canDeletePermanently && onDeletePermanently != null)
+                IconButton.filledTonal(
+                  tooltip: 'Kalıcı Sil',
+                  onPressed: onDeletePermanently,
+                  icon: const Icon(Icons.delete_forever_rounded, size: 18),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _MiniActionButton extends StatelessWidget {
-  const _MiniActionButton({
-    required this.onPressed,
-    required this.icon,
-    required this.label,
-    this.primary = false,
-  });
+class _ScrapInfoChip extends StatelessWidget {
+  const _ScrapInfoChip({required this.icon, required this.text});
 
-  final VoidCallback onPressed;
   final IconData icon;
-  final String label;
-  final bool primary;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
-    final style = (primary ? FilledButton.styleFrom : OutlinedButton.styleFrom)
-        .call(
-          minimumSize: const Size(28, 24),
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: const Color(0xFF64748B)),
+          const Gap(6),
+          Text(
+            text,
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: const Color(0xFF475569)),
           ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        );
-
-    final child = Tooltip(message: label, child: Icon(icon, size: 12));
-
-    return primary
-        ? FilledButton(onPressed: onPressed, style: style, child: child)
-        : OutlinedButton(onPressed: onPressed, style: style, child: child);
+        ],
+      ),
+    );
   }
 }
 
@@ -1026,6 +1141,65 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                     ),
                   ),
                   const Gap(12),
+                  if ((_selectedCustomerId ?? '').trim().isNotEmpty)
+                    ref
+                        .watch(
+                          scrapCustomerDeviceRegistriesProvider(
+                            _selectedCustomerId!.trim(),
+                          ),
+                        )
+                        .when(
+                          data: (items) {
+                            if (items.isEmpty) return const SizedBox.shrink();
+                            return Column(
+                              children: [
+                                DropdownButtonFormField<String?>(
+                                  initialValue: null,
+                                  items: [
+                                    const DropdownMenuItem<String?>(
+                                      value: null,
+                                      child: Text('Sicil seç'),
+                                    ),
+                                    ...items.map(
+                                      (e) => DropdownMenuItem<String?>(
+                                        value: e.registryNumber.trim(),
+                                        child: Text(
+                                          [
+                                            e.registryNumber.trim(),
+                                            if ((e.model ?? '').trim().isNotEmpty)
+                                              e.model!.trim(),
+                                          ].join(' • '),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: _saving
+                                      ? null
+                                      : (value) {
+                                          final v = (value ?? '').trim();
+                                          if (v.isEmpty) return;
+                                          final selected = items.firstWhere(
+                                            (e) => e.registryNumber.trim() == v,
+                                            orElse: () => items.first,
+                                          );
+                                          setState(() {
+                                            final model = (selected.model ?? '').trim();
+                                            _deviceController.text = model.isEmpty
+                                                ? v
+                                                : '$model / $v';
+                                          });
+                                        },
+                                  decoration: const InputDecoration(
+                                    labelText: 'Müşteri Sicilleri',
+                                  ),
+                                ),
+                                const Gap(12),
+                              ],
+                            );
+                          },
+                          loading: () => const SizedBox.shrink(),
+                          error: (_, _) => const SizedBox.shrink(),
+                        ),
                   TextFormField(
                     controller: _deviceController,
                     decoration: const InputDecoration(

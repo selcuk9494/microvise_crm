@@ -4,6 +4,8 @@ const ensured = {
   serial_tracking: false,
   work_order_close_notes: false,
   invoice_items: false,
+  fault_forms: false,
+  device_registries: false,
 };
 
 async function tableExists(tableName) {
@@ -212,8 +214,209 @@ async function ensureInvoiceItemsTable() {
   return true;
 }
 
+async function ensureFaultFormsTable() {
+  if (ensured.fault_forms) return true;
+
+  const exists = await tableExists('fault_forms');
+  if (!exists) {
+    await query(`create extension if not exists pgcrypto`);
+    await query(
+      `
+        create table if not exists public.fault_forms (
+          id uuid primary key default gen_random_uuid(),
+          form_date timestamptz not null default now(),
+          customer_id uuid,
+          customer_name text not null,
+          customer_address text,
+          customer_tax_office text,
+          customer_vkn text,
+          device_brand_model text,
+          company_code_and_registry text,
+          okc_approval_date_and_number text,
+          fault_date_time_text text,
+          fault_description text,
+          last_z_report_date_and_number text,
+          last_z_report_date timestamptz,
+          last_z_report_no text,
+          total_revenue text,
+          total_vat text,
+          is_active boolean not null default true,
+          created_by uuid,
+          created_at timestamptz not null default now()
+        )
+      `,
+    );
+  } else {
+    await query(
+      `
+        alter table public.fault_forms
+          add column if not exists form_date timestamptz,
+          add column if not exists customer_id uuid,
+          add column if not exists customer_name text,
+          add column if not exists customer_address text,
+          add column if not exists customer_tax_office text,
+          add column if not exists customer_vkn text,
+          add column if not exists device_brand_model text,
+          add column if not exists company_code_and_registry text,
+          add column if not exists okc_approval_date_and_number text,
+          add column if not exists fault_date_time_text text,
+          add column if not exists fault_description text,
+          add column if not exists last_z_report_date_and_number text,
+          add column if not exists last_z_report_date timestamptz,
+          add column if not exists last_z_report_no text,
+          add column if not exists total_revenue text,
+          add column if not exists total_vat text,
+          add column if not exists is_active boolean,
+          add column if not exists created_by uuid,
+          add column if not exists created_at timestamptz
+      `,
+    );
+  }
+
+  ensured.fault_forms = true;
+  return true;
+}
+
+async function ensureDeviceRegistriesTable() {
+  if (ensured.device_registries) return true;
+
+  const exists = await tableExists('device_registries');
+  if (!exists) {
+    await query(`create extension if not exists pgcrypto`);
+    await query(
+      `
+        create table if not exists public.device_registries (
+          id uuid primary key default gen_random_uuid(),
+          registry_number text not null,
+          registry_number_norm text not null,
+          model text,
+          customer_id uuid,
+          application_form_id uuid,
+          is_active boolean not null default true,
+          assigned_at timestamptz,
+          released_at timestamptz,
+          created_by uuid,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now()
+        )
+      `,
+    );
+    await query(
+      `
+        create unique index if not exists idx_device_registries_unique_registry_norm
+        on public.device_registries (registry_number_norm)
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_device_registries_customer_id
+        on public.device_registries (customer_id)
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_device_registries_created_at
+        on public.device_registries (created_at desc)
+      `,
+    );
+    await query(
+      `
+        create or replace function public.device_registries_set_updated_at()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          new.registry_number_norm = upper(btrim(new.registry_number));
+          new.updated_at = now();
+          return new;
+        end;
+        $$;
+      `,
+    );
+    await query(
+      `
+        drop trigger if exists set_device_registries_updated_at on public.device_registries;
+        create trigger set_device_registries_updated_at
+        before insert or update on public.device_registries
+        for each row
+        execute function public.device_registries_set_updated_at();
+      `,
+    );
+  } else {
+    await query(
+      `
+        alter table public.device_registries
+          add column if not exists registry_number text,
+          add column if not exists registry_number_norm text,
+          add column if not exists model text,
+          add column if not exists customer_id uuid,
+          add column if not exists application_form_id uuid,
+          add column if not exists is_active boolean,
+          add column if not exists assigned_at timestamptz,
+          add column if not exists released_at timestamptz,
+          add column if not exists created_by uuid,
+          add column if not exists created_at timestamptz,
+          add column if not exists updated_at timestamptz
+      `,
+    );
+    await query(
+      `
+        update public.device_registries
+        set registry_number_norm = upper(btrim(registry_number))
+        where coalesce(registry_number_norm, '') = ''
+      `,
+    );
+    await query(
+      `
+        create unique index if not exists idx_device_registries_unique_registry_norm
+        on public.device_registries (registry_number_norm)
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_device_registries_customer_id
+        on public.device_registries (customer_id)
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_device_registries_created_at
+        on public.device_registries (created_at desc)
+      `,
+    );
+    await query(
+      `
+        create or replace function public.device_registries_set_updated_at()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          new.registry_number_norm = upper(btrim(new.registry_number));
+          new.updated_at = now();
+          return new;
+        end;
+        $$;
+      `,
+    );
+    await query(
+      `
+        drop trigger if exists set_device_registries_updated_at on public.device_registries;
+        create trigger set_device_registries_updated_at
+        before insert or update on public.device_registries
+        for each row
+        execute function public.device_registries_set_updated_at();
+      `,
+    );
+  }
+
+  ensured.device_registries = true;
+  return true;
+}
+
 module.exports = {
   ensureSerialTrackingTable,
   ensureWorkOrderCloseNotesTable,
   ensureInvoiceItemsTable,
+  ensureFaultFormsTable,
+  ensureDeviceRegistriesTable,
 };

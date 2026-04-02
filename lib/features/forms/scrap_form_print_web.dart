@@ -15,7 +15,15 @@ Future<bool> printScrapForm(
   );
   final blob = html.Blob([htmlContent], 'text/html');
   final url = html.Url.createObjectUrlFromBlob(blob);
-  html.window.open(url, '_blank');
+  try {
+    html.window.open(url, '_blank');
+  } catch (_) {
+    try {
+      html.window.location.assign(url);
+    } catch (_) {
+      html.window.location.href = url;
+    }
+  }
   Future<void>.delayed(const Duration(seconds: 5), () {
     html.Url.revokeObjectUrl(url);
   });

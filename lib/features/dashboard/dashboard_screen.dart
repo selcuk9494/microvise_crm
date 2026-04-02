@@ -24,6 +24,24 @@ class DashboardScreen extends ConsumerWidget {
     final canSeeProducts = ref.watch(hasPageAccessProvider(kPageProducts));
     final canSeeBilling = ref.watch(hasPageAccessProvider(kPageBilling));
     final canSeeReports = ref.watch(hasPageAccessProvider(kPageReports));
+    final canSeeTileTotalCustomers =
+        ref.watch(hasActionAccessProvider(kActionDashboardTotalCustomers));
+    final canSeeTileOpenWorkOrders =
+        ref.watch(hasActionAccessProvider(kActionDashboardOpenWorkOrders));
+    final canSeeTileInProgressWorkOrders =
+        ref.watch(hasActionAccessProvider(kActionDashboardInProgressWorkOrders));
+    final canSeeTileTodayWorkOrders =
+        ref.watch(hasActionAccessProvider(kActionDashboardTodayWorkOrders));
+    final canSeeTileExpiringSoon =
+        ref.watch(hasActionAccessProvider(kActionDashboardExpiringSoon));
+    final canSeeTileRevenue =
+        ref.watch(hasActionAccessProvider(kActionDashboardRevenue));
+    final canSeeTileOpenInvoices =
+        ref.watch(hasActionAccessProvider(kActionDashboardOpenInvoices));
+    final canSeeTileInvoiceQueue =
+        ref.watch(hasActionAccessProvider(kActionDashboardInvoiceQueue));
+    final canSeeTileLowStock =
+        ref.watch(hasActionAccessProvider(kActionDashboardLowStock));
 
     final seriesAsync = canSeeReports
         ? ref.watch(dashboardRevenueSeriesProvider)
@@ -53,6 +71,15 @@ class DashboardScreen extends ConsumerWidget {
                 canSeeProducts: canSeeProducts,
                 canSeeBilling: canSeeBilling,
                 canSeeReports: canSeeReports,
+                canSeeTileTotalCustomers: canSeeTileTotalCustomers,
+                canSeeTileOpenWorkOrders: canSeeTileOpenWorkOrders,
+                canSeeTileInProgressWorkOrders: canSeeTileInProgressWorkOrders,
+                canSeeTileTodayWorkOrders: canSeeTileTodayWorkOrders,
+                canSeeTileExpiringSoon: canSeeTileExpiringSoon,
+                canSeeTileRevenue: canSeeTileRevenue,
+                canSeeTileOpenInvoices: canSeeTileOpenInvoices,
+                canSeeTileInvoiceQueue: canSeeTileInvoiceQueue,
+                canSeeTileLowStock: canSeeTileLowStock,
               ),
             ),
             const Gap(16),
@@ -278,6 +305,15 @@ class _MetricsGrid extends StatelessWidget {
     required this.canSeeProducts,
     required this.canSeeBilling,
     required this.canSeeReports,
+    required this.canSeeTileTotalCustomers,
+    required this.canSeeTileOpenWorkOrders,
+    required this.canSeeTileInProgressWorkOrders,
+    required this.canSeeTileTodayWorkOrders,
+    required this.canSeeTileExpiringSoon,
+    required this.canSeeTileRevenue,
+    required this.canSeeTileOpenInvoices,
+    required this.canSeeTileInvoiceQueue,
+    required this.canSeeTileLowStock,
   });
 
   final DashboardMetrics metrics;
@@ -287,6 +323,15 @@ class _MetricsGrid extends StatelessWidget {
   final bool canSeeProducts;
   final bool canSeeBilling;
   final bool canSeeReports;
+  final bool canSeeTileTotalCustomers;
+  final bool canSeeTileOpenWorkOrders;
+  final bool canSeeTileInProgressWorkOrders;
+  final bool canSeeTileTodayWorkOrders;
+  final bool canSeeTileExpiringSoon;
+  final bool canSeeTileRevenue;
+  final bool canSeeTileOpenInvoices;
+  final bool canSeeTileInvoiceQueue;
+  final bool canSeeTileLowStock;
 
   @override
   Widget build(BuildContext context) {
@@ -309,14 +354,14 @@ class _MetricsGrid extends StatelessWidget {
         final itemWidth = (width - (columns - 1) * spacing) / columns;
 
         final items = <_MetricTile>[
-          if (canSeeCustomers)
+          if (canSeeCustomers && canSeeTileTotalCustomers)
             _MetricTile(
               title: 'Toplam Müşteri',
               value: metrics.totalCustomers.toString(),
               icon: Icons.people_alt_rounded,
               onTap: () => context.go('/musteriler'),
             ),
-          if (canSeeWorkOrders)
+          if (canSeeWorkOrders && canSeeTileOpenWorkOrders)
             _MetricTile(
               title: 'Açık İş Emirleri',
               value: metrics.openWorkOrders.toString(),
@@ -326,7 +371,7 @@ class _MetricsGrid extends StatelessWidget {
                   : _MetricTone.neutral,
               onTap: () => context.go('/is-emirleri'),
             ),
-          if (canSeeWorkOrders)
+          if (canSeeWorkOrders && canSeeTileInProgressWorkOrders)
             _MetricTile(
               title: 'Devam Eden',
               value: metrics.inProgressWorkOrders.toString(),
@@ -334,14 +379,14 @@ class _MetricsGrid extends StatelessWidget {
               tone: _MetricTone.primary,
               onTap: () => context.go('/is-emirleri'),
             ),
-          if (canSeeWorkOrders)
+          if (canSeeWorkOrders && canSeeTileTodayWorkOrders)
             _MetricTile(
               title: 'Bugünkü İşler',
               value: metrics.todayWorkOrders.toString(),
               icon: Icons.today_rounded,
               onTap: () => context.go('/is-emirleri'),
             ),
-          if (canSeeProducts)
+          if (canSeeProducts && canSeeTileExpiringSoon)
             _MetricTile(
               title: 'Süresi Dolanlar',
               value: metrics.expiringSoon.toString(),
@@ -351,7 +396,7 @@ class _MetricsGrid extends StatelessWidget {
                   : _MetricTone.neutral,
               onTap: () => context.go('/urunler'),
             ),
-          if (canSeeReports)
+          if (canSeeReports && canSeeTileRevenue)
             _MetricTile(
               title: 'Gelir (Bu Ay)',
               value: money.format(metrics.revenue),
@@ -362,7 +407,7 @@ class _MetricsGrid extends StatelessWidget {
                   revenueChange >= 0 ? AppTheme.success : AppTheme.error,
               onTap: () => context.go('/raporlar'),
             ),
-          if (canSeeBilling)
+          if (canSeeBilling && canSeeTileOpenInvoices)
             _MetricTile(
               title: 'Açık Faturalar',
               value: metrics.openInvoices.toString(),
@@ -370,7 +415,7 @@ class _MetricsGrid extends StatelessWidget {
               subtitle: money.format(metrics.totalInvoiceAmount),
               onTap: () => context.go('/faturalama'),
             ),
-          if (canSeeBilling)
+          if (canSeeBilling && canSeeTileInvoiceQueue)
             _MetricTile(
               title: 'Fatura Kuyruğu',
               value: metrics.invoiceQueuePending.toString(),
@@ -380,7 +425,7 @@ class _MetricsGrid extends StatelessWidget {
                   : _MetricTone.neutral,
               onTap: () => context.go('/faturalama'),
             ),
-          if (canSeeProducts)
+          if (canSeeProducts && canSeeTileLowStock)
             _MetricTile(
               title: 'Düşük Stok',
               value: metrics.lowStockProducts.toString(),

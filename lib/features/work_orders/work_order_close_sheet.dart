@@ -8,6 +8,8 @@ import 'package:intl/intl.dart';
 import 'package:signature/signature.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/api/api_client.dart';
+import '../../core/auth/user_profile_provider.dart';
 import '../billing/invoice_queue_helper.dart';
 import '../../core/platform/current_position.dart';
 import '../../core/supabase/supabase_providers.dart';
@@ -91,15 +93,193 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
   }
 
   Future<void> _save(CustomerDetail customer) async {
+    final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    if (client == null) return;
+    if (apiClient == null && client == null) return;
 
     setState(() => _saving = true);
     try {
       final now = DateTime.now();
       final locationLink = _resolvedLocationLink();
+      final profile = await ref.read(currentUserProfileProvider.future);
 
       final branchId = _selectedBranchId ?? widget.order.branchId;
+      if (apiClient != null) {
+        String? insertedLineId;
+        String? insertedLicenseId;
+
+        if (_addLine) {
+          final number = _lineNumberController.text.trim();
+          if (number.isEmpty) {
+            throw Exception('Hat numarası gerekli.');
+          }
+          final start = DateTime(now.year, now.month, now.day);
+          final end = DateTime(now.year, 12, 31);
+          final response = await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'upsert',
+              'table': 'lines',
+              'returning': 'row',
+              'values': {
+                'customer_id': customer.id,
+                'branch_id': branchId,
+                'number': number,
+                'sim_number': _lineSimController.text.trim().isEmpty
+                    ? null
+                    : _lineSimController.text.trim(),
+                'starts_at': start.toIso8601String().substring(0, 10),
+                'ends_at': end.toIso8601String().substring(0, 10),
+                'expires_at': end.toIso8601String().substring(0, 10),
+                'is_active': true,
+              },
+            },
+          );
+          insertedLineId = (response['row'] as Map?)?['id']?.toString();
+        }
+
+        if (_addGmp3) {
+          final name = _gmp3NameController.text.trim();
+          if (name.isEmpty) throw Exception('GMP3 adı gerekli.');
+          final start = DateTime(now.year, now.month, now.day);
+          final end = DateTime(now.year, 12, 31);
+          final response = await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'upsert',
+              'table': 'licenses',
+              'returning': 'row',
+              'values': {
+                'customer_id': customer.id,
+                'name': name,
+                'license_type': 'gmp3',
+                'starts_at': start.toIso8601String().substring(0, 10),
+                'ends_at': end.toIso8601String().substring(0, 10),
+                'expires_at': end.toIso8601String().substring(0, 10),
+                'is_active': true,
+              },
+            },
+          );
+          insertedLicenseId = (response['row'] as Map?)?['id']?.toString();
+        }
+
+        final invoiceRows = <Map<String, dynamic>>[];
+        if ((insertedLineId ?? '').trim().isNotEmpty) {
+          final number = _lineNumberController.text.trim();
+          invoiceRows.add({
+            'customer_id': customer.id,
+            'item_type': 'line_activation',
+            'source_table': 'lines',
+            'source_id': insertedLineId,
+            'description': 'Hat Aktivasyonu - ${customer.name} / $number',
+            'currency': 'TRY',
+            'status': 'pending',
+            'is_active': true,
+            'created_by': profile?.id,
+            'source_event': 'line_activated',
+            'source_label': 'Hat Aktivasyonu',
+          });
+        }
+        if ((insertedLicenseId ?? '').trim().isNotEmpty) {
+          final name = _gmp3NameController.text.trim();
+          invoiceRows.add({
+            'customer_id': customer.id,
+            'item_type': 'gmp3_activation',
+            'source_table': 'licenses',
+            'source_id': insertedLicenseId,
+            'description': 'GMP3 Aktivasyonu - ${customer.name} / $name',
+            'currency': 'TRY',
+            'status': 'pending',
+            'is_active': true,
+            'created_by': profile?.id,
+            'source_event': 'gmp3_activated',
+            'source_label': 'GMP3 Aktivasyonu',
+          });
+        }
+
+        final paymentRows = <Map<String, dynamic>>[];
+        for (final p in _payments) {
+          final amount = p.amount;
+          if (amount == null) continue;
+          paymentRows.add({
+            'customer_id': customer.id,
+            'work_order_id': widget.order.id,
+            'amount': amount,
+            'currency': p.currency,
+            'exchange_rate': p.currency == 'TRY' ? 1.0 : null,
+            'payment_method': p.method,
+            'description': p.description,
+            'paid_at': now.toIso8601String(),
+            'is_active': true,
+          });
+        }
+        if (paymentRows.isNotEmpty) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {'op': 'insertMany', 'table': 'payments', 'rows': paymentRows},
+          );
+          invoiceRows.addAll(
+            paymentRows.map(
+              (row) => {
+                'customer_id': customer.id,
+                'item_type': 'work_order_payment',
+                'source_table': 'work_orders',
+                'source_id': widget.order.id,
+                'description': [
+                  'İş Emri Ödemesi',
+                  widget.order.title.trim().isEmpty ? null : widget.order.title.trim(),
+                  row['description']?.toString().trim().isEmpty ?? true
+                      ? null
+                      : row['description']?.toString().trim(),
+                ].whereType<String>().join(' - '),
+                'amount': row['amount'],
+                'currency': row['currency'],
+                'status': 'pending',
+                'is_active': true,
+                'created_by': profile?.id,
+                'source_event': 'work_order_payment',
+                'source_label': 'İş Emri Ödemesi',
+              },
+            ),
+          );
+        }
+        if (invoiceRows.isNotEmpty) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {'op': 'insertMany', 'table': 'invoice_items', 'rows': invoiceRows},
+          );
+        }
+
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'work_orders',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.order.id},
+            ],
+            'values': {
+              'status': 'done',
+              'branch_id': branchId,
+              'location_link': locationLink,
+              'closed_at': now.toIso8601String(),
+              'closed_by': profile?.id,
+              'close_notes': _notesController.text.trim().isEmpty
+                  ? null
+                  : _notesController.text.trim(),
+            },
+          },
+        );
+
+        if (!mounted) return;
+        Navigator.of(context).pop(true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('İş emri kapatıldı.')),
+        );
+        return;
+      }
+
+      if (client == null) return;
       if (branchId != null) {
         final lat = double.tryParse(_latController.text.trim());
         final lng = double.tryParse(_lngController.text.trim());

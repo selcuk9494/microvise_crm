@@ -229,21 +229,63 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     ApplicationFormRecord record, {
     required ApplicationPrintKind kind,
   }) async {
-    final settings = await ref.read(
-      applicationFormPrintSettingsProvider.future,
-    );
-    final ok = await printApplicationForm(
-      record,
-      kind: kind,
-      settings: settings,
-    );
+    final settings = ref.read(applicationFormPrintSettingsProvider).maybeWhen(
+          data: (value) => value,
+          orElse: () => ApplicationFormPrintSettings.defaults,
+        );
+    bool ok = false;
+    Object? error;
+    try {
+      ok = await printApplicationForm(
+        record,
+        kind: kind,
+        settings: settings,
+      );
+    } catch (e) {
+      error = e;
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          ok
-              ? '${kind.label} çıktısı hazırlandı.'
-              : '${kind.label} çıktısı bu platformda açılamadı.',
+          error != null
+              ? '${kind.label} yazdırma hatası: $error'
+              : ok
+                  ? '${kind.label} çıktısı hazırlandı.'
+                  : '${kind.label} çıktısı bu platformda açılamadı.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _printBulk(
+    List<ApplicationFormRecord> records, {
+    required ApplicationPrintKind kind,
+  }) async {
+    final settings = ref.read(applicationFormPrintSettingsProvider).maybeWhen(
+          data: (value) => value,
+          orElse: () => ApplicationFormPrintSettings.defaults,
+        );
+    bool ok = false;
+    Object? error;
+    try {
+      ok = await printApplicationFormsBulk(
+        records,
+        kind: kind,
+        settings: settings,
+      );
+    } catch (e) {
+      error = e;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error != null
+              ? '${kind.label} toplu yazdırma hatası: $error'
+              : ok
+                  ? '${kind.label} toplu çıktısı hazırlandı.'
+                  : '${kind.label} toplu çıktısı bu platformda açılamadı.',
         ),
       ),
     );
@@ -256,6 +298,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
     try {
+      final nowIso = DateTime.now().toIso8601String();
       if (apiClient != null) {
         await apiClient.postJson(
           '/mutate',
@@ -268,12 +311,76 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
             'values': {'is_active': active},
           },
         );
+
+        final registry = record.stockRegistryNumber?.trim() ?? '';
+        final customerId = record.customerId?.trim() ?? '';
+        if (registry.isNotEmpty) {
+          if (!active) {
+            await apiClient.postJson(
+              '/mutate',
+              body: {
+                'op': 'updateWhere',
+                'table': 'device_registries',
+                'filters': [
+                  {'col': 'registry_number', 'op': 'eq', 'value': registry},
+                  {'col': 'application_form_id', 'op': 'eq', 'value': record.id},
+                ],
+                'values': {
+                  'customer_id': null,
+                  'application_form_id': null,
+                  'released_at': nowIso,
+                  'is_active': true,
+                },
+              },
+            );
+          } else if (customerId.isNotEmpty) {
+            await apiClient.postJson(
+              '/mutate',
+              body: {
+                'op': 'upsert',
+                'table': 'device_registries',
+                'values': {
+                  'registry_number': registry,
+                  'model': record.modelName,
+                  'customer_id': customerId,
+                  'application_form_id': record.id,
+                  'is_active': true,
+                  'assigned_at': nowIso,
+                  'released_at': null,
+                },
+              },
+            );
+          }
+        }
       } else {
         if (client == null) return;
         await client
             .from('application_forms')
             .update({'is_active': active})
             .eq('id', record.id);
+
+        final registry = record.stockRegistryNumber?.trim() ?? '';
+        final customerId = record.customerId?.trim() ?? '';
+        if (registry.isNotEmpty) {
+          if (!active) {
+            await client.from('device_registries').update({
+              'customer_id': null,
+              'application_form_id': null,
+              'released_at': nowIso,
+              'is_active': true,
+            }).eq('registry_number', registry).eq('application_form_id', record.id);
+          } else if (customerId.isNotEmpty) {
+            await client.from('device_registries').upsert({
+              'registry_number': registry,
+              'model': record.modelName,
+              'customer_id': customerId,
+              'application_form_id': record.id,
+              'is_active': true,
+              'assigned_at': nowIso,
+              'released_at': null,
+            });
+          }
+        }
       }
       ref.invalidate(applicationFormsProvider);
       if (!mounted) return;
@@ -319,13 +426,42 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
     try {
+      final nowIso = DateTime.now().toIso8601String();
+      final registry = record.stockRegistryNumber?.trim() ?? '';
       if (apiClient != null) {
+        if (registry.isNotEmpty) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'updateWhere',
+              'table': 'device_registries',
+              'filters': [
+                {'col': 'registry_number', 'op': 'eq', 'value': registry},
+                {'col': 'application_form_id', 'op': 'eq', 'value': record.id},
+              ],
+              'values': {
+                'customer_id': null,
+                'application_form_id': null,
+                'released_at': nowIso,
+                'is_active': true,
+              },
+            },
+          );
+        }
         await apiClient.postJson(
           '/mutate',
           body: {'op': 'delete', 'table': 'application_forms', 'id': record.id},
         );
       } else {
         if (client == null) return;
+        if (registry.isNotEmpty) {
+          await client.from('device_registries').update({
+            'customer_id': null,
+            'application_form_id': null,
+            'released_at': nowIso,
+            'is_active': true,
+          }).eq('registry_number', registry).eq('application_form_id', record.id);
+        }
         await client.from('application_forms').delete().eq('id', record.id);
       }
       ref.invalidate(applicationFormsProvider);
@@ -373,10 +509,27 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       return;
     }
 
+    final uniqueCustomerIds = linkedRecords
+        .map((r) => (r.customerId ?? '').trim())
+        .where((e) => e.isNotEmpty)
+        .toSet();
+    final customerIdForRegistry =
+        uniqueCustomerIds.length == 1 ? uniqueCustomerIds.first : null;
+    final distinctRegistries = linkedRecords
+        .map((r) => (r.stockRegistryNumber ?? '').trim())
+        .where((e) => e.isNotEmpty)
+        .toSet();
+    final initialRegistryNumber =
+        distinctRegistries.length == 1 ? distinctRegistries.first : null;
+
     final config = await showDialog<_WorkOrderCreationConfig>(
       context: context,
       builder: (context) =>
-          _ApplicationWorkOrderDialog(recordCount: linkedRecords.length),
+          _ApplicationWorkOrderDialog(
+        recordCount: linkedRecords.length,
+        customerIdForRegistry: customerIdForRegistry,
+        initialRegistryNumber: initialRegistryNumber,
+      ),
     );
     if (config == null) return;
 
@@ -400,19 +553,27 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         ? null
         : DateFormat('yyyy-MM-dd').format(config.scheduledDate!);
     final descriptionTemplate = config.description.trim();
+    final chosenRegistry = (config.registryNumber ?? '').trim();
 
     var createdCount = 0;
     var failedCount = 0;
 
     for (final record in linkedRecords) {
+      final recordRegistry = (record.stockRegistryNumber ?? '').trim();
+      final effectiveRegistry =
+          chosenRegistry.isNotEmpty ? chosenRegistry : recordRegistry;
+      final baseDescription = descriptionTemplate.isNotEmpty
+          ? descriptionTemplate
+          : _defaultWorkOrderDescription(record);
+      final description = effectiveRegistry.isNotEmpty
+          ? 'Sicil: $effectiveRegistry • $baseDescription'
+          : baseDescription;
       final payload = <String, dynamic>{
         'customer_id': record.customerId,
         'branch_id': null,
         'work_order_type_id': config.workOrderTypeId,
         'title': config.workOrderTypeName,
-        'description': descriptionTemplate.isNotEmpty
-            ? descriptionTemplate
-            : _defaultWorkOrderDescription(record),
+        'description': description,
         'address': record.workAddress?.trim().isNotEmpty ?? false
             ? record.workAddress!.trim()
             : null,
@@ -870,12 +1031,13 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
           final baseFiltered = _filterRecords(records, includeTodayOnly: false)
               .where((item) => _showPassive ? !item.isActive : item.isActive)
               .toList(growable: false);
+          final today = DateTime.now();
           final filtered = _todayOnly
               ? baseFiltered
                     .where(
                       (item) => _isSameDay(
                         item.applicationDate,
-                        DateTime.now(),
+                        today,
                       ),
                     )
                     .toList(growable: false)
@@ -886,7 +1048,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
           final allFilteredSelected =
               filtered.isNotEmpty && selectedRecords.length == filtered.length;
           final todayCount = baseFiltered
-              .where((item) => _isSameDay(item.applicationDate, DateTime.now()))
+              .where((item) => _isSameDay(item.applicationDate, today))
               .length;
 
           Future<void> openMobileFiltersSheet() async {
@@ -940,8 +1102,10 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                               format: _dateFormat,
                               onTap: () => _pickFilterDate(
                                 currentValue: _fromDate,
-                                onSelected: (value) =>
-                                    setState(() => _fromDate = value),
+                                onSelected: (value) => setState(() {
+                                  _fromDate = value;
+                                  _todayOnly = false;
+                                }),
                               ),
                               onClear: _fromDate == null
                                   ? null
@@ -956,8 +1120,10 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                               format: _dateFormat,
                               onTap: () => _pickFilterDate(
                                 currentValue: _toDate,
-                                onSelected: (value) =>
-                                    setState(() => _toDate = value),
+                                onSelected: (value) => setState(() {
+                                  _toDate = value;
+                                  _todayOnly = false;
+                                }),
                               ),
                               onClear: _toDate == null
                                   ? null
@@ -1066,8 +1232,10 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                               format: _dateFormat,
                               onTap: () => _pickFilterDate(
                                 currentValue: _fromDate,
-                                onSelected: (value) =>
-                                    setState(() => _fromDate = value),
+                                onSelected: (value) => setState(() {
+                                  _fromDate = value;
+                                  _todayOnly = false;
+                                }),
                               ),
                               onClear: _fromDate == null
                                   ? null
@@ -1082,8 +1250,10 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                               format: _dateFormat,
                               onTap: () => _pickFilterDate(
                                 currentValue: _toDate,
-                                onSelected: (value) =>
-                                    setState(() => _toDate = value),
+                                onSelected: (value) => setState(() {
+                                  _toDate = value;
+                                  _todayOnly = false;
+                                }),
                               ),
                               onClear: _toDate == null
                                   ? null
@@ -1136,8 +1306,13 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           value: todayCount.toString(),
                           icon: Icons.today_rounded,
                           selected: _todayOnly,
-                          onTap: () =>
-                              setState(() => _todayOnly = !_todayOnly),
+                          onTap: () => setState(() {
+                            _todayOnly = !_todayOnly;
+                            if (_todayOnly) {
+                              _fromDate = null;
+                              _toDate = null;
+                            }
+                          }),
                         ),
                       ],
                     ),
@@ -1188,6 +1363,26 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                   size: 18),
                               label: Text(
                                 'İş Emri Oluştur (${selectedRecords.length})',
+                              ),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: () => _printBulk(
+                                selectedRecords,
+                                kind: ApplicationPrintKind.kdv,
+                              ),
+                              icon: const Icon(Icons.print_rounded, size: 18),
+                              label: Text(
+                                'KDV4 Yazdır (${selectedRecords.length})',
+                              ),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: () => _printBulk(
+                                selectedRecords,
+                                kind: ApplicationPrintKind.kdv4a,
+                              ),
+                              icon: const Icon(Icons.print_rounded, size: 18),
+                              label: Text(
+                                'KDV4A Yazdır (${selectedRecords.length})',
                               ),
                             ),
                             FilledButton.icon(
@@ -1278,6 +1473,34 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                               Navigator.of(context).pop();
                                               _openCreateWorkOrdersDialog(
                                                 selectedRecords,
+                                              );
+                                            },
+                                          ),
+                                          ListTile(
+                                            leading:
+                                                const Icon(Icons.print_rounded),
+                                            title: Text(
+                                              'KDV4 Yazdır (${selectedRecords.length})',
+                                            ),
+                                            onTap: () {
+                                              Navigator.of(context).pop();
+                                              _printBulk(
+                                                selectedRecords,
+                                                kind: ApplicationPrintKind.kdv,
+                                              );
+                                            },
+                                          ),
+                                          ListTile(
+                                            leading:
+                                                const Icon(Icons.print_rounded),
+                                            title: Text(
+                                              'KDV4A Yazdır (${selectedRecords.length})',
+                                            ),
+                                            onTap: () {
+                                              Navigator.of(context).pop();
+                                              _printBulk(
+                                                selectedRecords,
+                                                kind: ApplicationPrintKind.kdv4a,
                                               );
                                             },
                                           ),
@@ -1949,6 +2172,75 @@ class _ApplicationFormDialogState
               )
               .single();
         }
+
+        try {
+          final record = ApplicationFormRecord.fromJson(inserted);
+          final nowIso = DateTime.now().toIso8601String();
+          final registry = record.stockRegistryNumber?.trim() ?? '';
+          final oldRegistry = widget.initialRecord?.stockRegistryNumber?.trim() ?? '';
+          if (apiClient != null) {
+            if (oldRegistry.isNotEmpty && oldRegistry != registry) {
+              await apiClient.postJson(
+                '/mutate',
+                body: {
+                  'op': 'updateWhere',
+                  'table': 'device_registries',
+                  'filters': [
+                    {'col': 'registry_number', 'op': 'eq', 'value': oldRegistry},
+                    {'col': 'application_form_id', 'op': 'eq', 'value': record.id},
+                  ],
+                  'values': {
+                    'customer_id': null,
+                    'application_form_id': null,
+                    'released_at': nowIso,
+                    'is_active': true,
+                  },
+                },
+              );
+            }
+            if (registry.isNotEmpty && (record.customerId ?? '').trim().isNotEmpty) {
+              await apiClient.postJson(
+                '/mutate',
+                body: {
+                  'op': 'upsert',
+                  'table': 'device_registries',
+                  'values': {
+                    'registry_number': registry,
+                    'model': record.modelName,
+                    'customer_id': record.customerId,
+                    'application_form_id': record.id,
+                    'is_active': true,
+                    'assigned_at': nowIso,
+                    'released_at': null,
+                  },
+                },
+              );
+            }
+          } else {
+            if (client != null) {
+              if (oldRegistry.isNotEmpty && oldRegistry != registry) {
+                await client.from('device_registries').update({
+                  'customer_id': null,
+                  'application_form_id': null,
+                  'released_at': nowIso,
+                  'is_active': true,
+                }).eq('registry_number', oldRegistry).eq('application_form_id', record.id);
+              }
+              if (registry.isNotEmpty && (record.customerId ?? '').trim().isNotEmpty) {
+                await client.from('device_registries').upsert({
+                  'registry_number': registry,
+                  'model': record.modelName,
+                  'customer_id': record.customerId,
+                  'application_form_id': record.id,
+                  'is_active': true,
+                  'assigned_at': nowIso,
+                  'released_at': null,
+                });
+              }
+            }
+          }
+        } catch (_) {}
+
         ref.invalidate(applicationFormsProvider);
         if (!mounted) return;
         Navigator.of(context).pop([ApplicationFormRecord.fromJson(inserted)]);
@@ -2015,6 +2307,31 @@ class _ApplicationFormDialogState
             },
           );
         }
+
+        try {
+          final nowIso = DateTime.now().toIso8601String();
+          for (final inserted in insertedRecords) {
+            final registry = inserted.stockRegistryNumber?.trim() ?? '';
+            final customerId = inserted.customerId?.trim() ?? '';
+            if (registry.isEmpty || customerId.isEmpty) continue;
+            await apiClient.postJson(
+              '/mutate',
+              body: {
+                'op': 'upsert',
+                'table': 'device_registries',
+                'values': {
+                  'registry_number': registry,
+                  'model': inserted.modelName,
+                  'customer_id': customerId,
+                  'application_form_id': inserted.id,
+                  'is_active': true,
+                  'assigned_at': nowIso,
+                  'released_at': null,
+                },
+              },
+            );
+          }
+        } catch (_) {}
       } else {
         final insertedRows = await client!
             .from('application_forms')
@@ -2046,6 +2363,24 @@ class _ApplicationFormDialogState
             sourceLabel: 'Başvuru Formu',
           );
         }
+
+        try {
+          final nowIso = DateTime.now().toIso8601String();
+          for (final inserted in insertedRecords) {
+            final registry = inserted.stockRegistryNumber?.trim() ?? '';
+            final customerId = inserted.customerId?.trim() ?? '';
+            if (registry.isEmpty || customerId.isEmpty) continue;
+            await client.from('device_registries').upsert({
+              'registry_number': registry,
+              'model': inserted.modelName,
+              'customer_id': customerId,
+              'application_form_id': inserted.id,
+              'is_active': true,
+              'assigned_at': nowIso,
+              'released_at': null,
+            });
+          }
+        } catch (_) {}
       }
 
       ref.invalidate(applicationFormsProvider);
@@ -3041,6 +3376,7 @@ class _WorkOrderCreationConfig {
     required this.assignedTo,
     required this.scheduledDate,
     required this.description,
+    required this.registryNumber,
   });
 
   final String? workOrderTypeId;
@@ -3048,6 +3384,7 @@ class _WorkOrderCreationConfig {
   final String? assignedTo;
   final DateTime? scheduledDate;
   final String description;
+  final String? registryNumber;
 }
 
 class _WorkOrderTypeChoice {
@@ -3084,10 +3421,30 @@ class _PersonnelChoice {
   }
 }
 
+class _DeviceRegistryChoice {
+  const _DeviceRegistryChoice({required this.registryNumber, required this.model});
+
+  final String registryNumber;
+  final String? model;
+
+  factory _DeviceRegistryChoice.fromJson(Map<String, dynamic> json) {
+    return _DeviceRegistryChoice(
+      registryNumber: (json['registry_number'] ?? '').toString(),
+      model: json['model']?.toString(),
+    );
+  }
+}
+
 class _ApplicationWorkOrderDialog extends ConsumerStatefulWidget {
-  const _ApplicationWorkOrderDialog({required this.recordCount});
+  const _ApplicationWorkOrderDialog({
+    required this.recordCount,
+    required this.customerIdForRegistry,
+    required this.initialRegistryNumber,
+  });
 
   final int recordCount;
+  final String? customerIdForRegistry;
+  final String? initialRegistryNumber;
 
   @override
   ConsumerState<_ApplicationWorkOrderDialog> createState() =>
@@ -3100,8 +3457,10 @@ class _ApplicationWorkOrderDialogState
   final _descriptionController = TextEditingController();
   List<_WorkOrderTypeChoice> _types = const [];
   List<_PersonnelChoice> _personnel = const [];
+  List<_DeviceRegistryChoice> _registries = const [];
   String? _selectedTypeId;
   String? _selectedAssignedTo;
+  String? _selectedRegistryNumber;
   DateTime? _scheduledDate;
   bool _loading = true;
   bool _saving = false;
@@ -3151,7 +3510,6 @@ class _ApplicationWorkOrderDialogState
           );
           final rows = ((response['items'] as List?) ?? const [])
               .whereType<Map<String, dynamic>>()
-              .where((row) => (row['role'] ?? '').toString() != 'admin')
               .toList(growable: false);
           personnel =
               rows.map(_PersonnelChoice.fromJson).toList(growable: false);
@@ -3163,21 +3521,63 @@ class _ApplicationWorkOrderDialogState
               .limit(200);
           personnel = (userRows as List)
               .map((row) => row as Map<String, dynamic>)
-              .where((row) => (row['role'] ?? '').toString() != 'admin')
               .map(_PersonnelChoice.fromJson)
               .toList(growable: false);
         }
       }
 
       if (!mounted) return;
+      List<_DeviceRegistryChoice> registries = const [];
+      final customerId = (widget.customerIdForRegistry ?? '').trim();
+      if (customerId.isNotEmpty) {
+        if (apiClient != null) {
+          final response = await apiClient.getJson(
+            '/data',
+            queryParameters: {
+              'resource': 'customer_device_registries',
+              'customerId': customerId,
+              'showPassive': 'false',
+            },
+          );
+          registries = ((response['items'] as List?) ?? const [])
+              .whereType<Map<String, dynamic>>()
+              .map(_DeviceRegistryChoice.fromJson)
+              .where((e) => e.registryNumber.trim().isNotEmpty)
+              .toList(growable: false);
+        } else if (client != null) {
+          final rows = await client
+              .from('device_registries')
+              .select('registry_number,model,is_active')
+              .eq('customer_id', customerId)
+              .eq('is_active', true)
+              .order('registry_number', ascending: true)
+              .limit(1000);
+          registries = (rows as List)
+              .map((e) =>
+                  _DeviceRegistryChoice.fromJson(e as Map<String, dynamic>))
+              .where((e) => e.registryNumber.trim().isNotEmpty)
+              .toList(growable: false);
+        }
+        registries = [...registries]
+          ..sort((a, b) => a.registryNumber.compareTo(b.registryNumber));
+      }
       final parsedTypes = typesRows
           .map(_WorkOrderTypeChoice.fromJson)
           .toList(growable: false);
       setState(() {
         _types = parsedTypes;
         _personnel = personnel;
+        _registries = registries;
         if (_types.length == 1) {
           _selectedTypeId = _types.first.id;
+        }
+        if (_personnel.length == 1) {
+          _selectedAssignedTo = _personnel.first.id;
+        }
+        final initialRegistry = (widget.initialRegistryNumber ?? '').trim();
+        if (initialRegistry.isNotEmpty &&
+            _registries.any((e) => e.registryNumber.trim() == initialRegistry)) {
+          _selectedRegistryNumber = initialRegistry;
         }
         _loading = false;
       });
@@ -3216,6 +3616,7 @@ class _ApplicationWorkOrderDialogState
         assignedTo: _selectedAssignedTo,
         scheduledDate: _scheduledDate,
         description: _descriptionController.text.trim(),
+        registryNumber: _selectedRegistryNumber,
       ),
     );
   }
@@ -3330,7 +3731,7 @@ class _ApplicationWorkOrderDialogState
                       onChanged: (value) =>
                           setState(() => _selectedAssignedTo = value),
                       validator: (value) {
-                        if ((value ?? '').isEmpty) {
+                        if (_personnel.isNotEmpty && (value ?? '').isEmpty) {
                           return 'Personel seçin.';
                         }
                         return null;
@@ -3338,6 +3739,36 @@ class _ApplicationWorkOrderDialogState
                       decoration: const InputDecoration(
                         labelText: 'Atanan Personel',
                       ),
+                    ),
+                  ],
+                  if (_registries.isNotEmpty) ...[
+                    const Gap(12),
+                    DropdownButtonFormField<String?>(
+                      initialValue: _selectedRegistryNumber,
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Sicil seç (opsiyonel)'),
+                        ),
+                        ..._registries.map(
+                          (e) => DropdownMenuItem<String?>(
+                            value: e.registryNumber.trim(),
+                            child: Text(
+                              [
+                                e.registryNumber.trim(),
+                                if ((e.model ?? '').trim().isNotEmpty)
+                                  e.model!.trim(),
+                              ].join(' • '),
+                            ),
+                          ),
+                        ),
+                      ],
+                      onChanged: _saving
+                          ? null
+                          : (value) => setState(() {
+                                _selectedRegistryNumber = value;
+                              }),
+                      decoration: const InputDecoration(labelText: 'Cihaz Sicil'),
                     ),
                   ],
                   const Gap(12),

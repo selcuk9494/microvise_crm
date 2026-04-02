@@ -13,3 +13,11 @@ Future<bool> printApplicationForm(
 }) async {
   return false;
 }
+
+Future<bool> printApplicationFormsBulk(
+  List<ApplicationFormRecord> records, {
+  required ApplicationPrintKind kind,
+  ApplicationFormPrintSettings? settings,
+}) async {
+  return false;
+}

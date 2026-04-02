@@ -103,6 +103,10 @@ class _DesktopShell extends ConsumerWidget {
                                     path: '/formlar/hurda',
                                   ),
                                   _FormsNavSubItem(
+                                    label: 'Arıza',
+                                    path: '/formlar/ariza',
+                                  ),
+                                  _FormsNavSubItem(
                                     label: 'Devir',
                                     path: '/formlar/devir',
                                   ),

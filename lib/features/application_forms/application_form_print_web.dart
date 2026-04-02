@@ -20,13 +20,75 @@ Future<bool> printApplicationForm(
     kind: kind,
     settings: settings ?? ApplicationFormPrintSettings.defaults,
   );
+  _openInNewTab(htmlContent, revokeAfter: const Duration(seconds: 30));
+  return true;
+}
+
+Future<bool> printApplicationFormsBulk(
+  List<ApplicationFormRecord> records, {
+  required ApplicationPrintKind kind,
+  ApplicationFormPrintSettings? settings,
+}) async {
+  if (records.isEmpty) return false;
+  final resolved = settings ?? ApplicationFormPrintSettings.defaults;
+
+  final base = _buildPrintableHtml(records.first, kind: kind, settings: resolved);
+  final (prefix, suffix) = _splitHtmlAroundBody(base);
+
+  final pages = records
+      .map(
+        (record) => _extractBody(
+          _buildPrintableHtml(record, kind: kind, settings: resolved),
+        ),
+      )
+      .map((body) => body.trim())
+      .where((body) => body.isNotEmpty)
+      .map((body) => '<div class="print-page">$body</div>')
+      .toList(growable: false);
+
+  final htmlContent = prefix + pages.join('') + suffix;
+  _openInNewTab(htmlContent, revokeAfter: const Duration(seconds: 90));
+  return true;
+}
+
+void _openInNewTab(
+  String htmlContent, {
+  required Duration revokeAfter,
+}) {
   final blob = html.Blob([htmlContent], 'text/html');
   final url = html.Url.createObjectUrlFromBlob(blob);
-  html.window.open(url, '_blank');
-  Future<void>.delayed(const Duration(seconds: 30), () {
-    html.Url.revokeObjectUrl(url);
-  });
-  return true;
+  try {
+    html.window.open(url, '_blank');
+  } catch (_) {
+    try {
+      html.window.location.assign(url);
+    } catch (_) {
+      html.window.location.href = url;
+    }
+  }
+  Future<void>.delayed(revokeAfter, () => html.Url.revokeObjectUrl(url));
+}
+
+String _extractBody(String input) {
+  final openMatch = RegExp(r'<body[^>]*>', caseSensitive: false).firstMatch(input);
+  if (openMatch == null) return '';
+  final closeMatches = RegExp(r'</body\s*>', caseSensitive: false).allMatches(input);
+  if (closeMatches.isEmpty) return '';
+  final closeIndex = closeMatches.last.start;
+  final start = openMatch.end;
+  if (closeIndex <= start) return '';
+  return input.substring(start, closeIndex);
+}
+
+(String, String) _splitHtmlAroundBody(String input) {
+  final openMatch = RegExp(r'<body[^>]*>', caseSensitive: false).firstMatch(input);
+  if (openMatch == null) return (input, '');
+  final closeMatches = RegExp(r'</body\s*>', caseSensitive: false).allMatches(input);
+  if (closeMatches.isEmpty) return (input, '');
+  final closeIndex = closeMatches.last.start;
+  final start = openMatch.end;
+  if (closeIndex <= start) return (input, '');
+  return (input.substring(0, start), input.substring(closeIndex));
 }
 
 String _buildPrintableHtml(
@@ -111,13 +173,21 @@ String _buildPrintableHtml(
     <title></title>
     <script>
       window.onload = function() {
-        setTimeout(function() { window.print(); }, 250);
+        setTimeout(function() { window.print(); }, 600);
       };
     </script>
     <style>
       @page {
         size: A4 portrait;
         margin: 5mm;
+      }
+      .print-page {
+        break-after: page;
+        page-break-after: always;
+      }
+      .print-page:last-child {
+        break-after: auto;
+        page-break-after: auto;
       }
       body {
         margin: 0;

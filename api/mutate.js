@@ -6,6 +6,8 @@ const {
   ensureSerialTrackingTable,
   ensureWorkOrderCloseNotesTable,
   ensureInvoiceItemsTable,
+  ensureFaultFormsTable,
+  ensureDeviceRegistriesTable,
 } = require('./_lib/schema');
 const {
   ok,
@@ -57,6 +59,8 @@ const allowedTables = new Set([
   'tax_rates',
   'transactions',
   'transfer_forms',
+  'fault_forms',
+  'device_registries',
   'users',
   'work_orders',
   'work_order_types',
@@ -88,6 +92,8 @@ const tablePermissions = {
   application_forms: 'formlar',
   scrap_forms: 'formlar',
   transfer_forms: 'formlar',
+  fault_forms: 'formlar',
+  device_registries: ['musteriler', 'formlar'],
   invoices: 'faturalama',
   invoice_items: ['faturalama', 'urunler', 'formlar', 'is_emirleri'],
   transactions: 'faturalama',
@@ -147,6 +153,17 @@ async function upsertRow({ table, values, returningRow }) {
   const picked = pickValues(values, columns);
 
   const hasIdColumn = columns.includes('id');
+  const hasRegistryNormColumn =
+    table === 'device_registries' && columns.includes('registry_number_norm');
+  if (
+    table === 'device_registries' &&
+    hasRegistryNormColumn &&
+    picked.registry_number != null
+  ) {
+    picked.registry_number_norm = String(picked.registry_number || '')
+      .trim()
+      .toUpperCase();
+  }
   if (hasIdColumn) {
     if (!picked.id) {
       picked.id = crypto.randomUUID();
@@ -167,7 +184,12 @@ async function upsertRow({ table, values, returningRow }) {
     .map((k) => `${quoteIdent(k)} = excluded.${quoteIdent(k)}`)
     .join(', ');
 
-  const conflict = hasIdColumn ? ' on conflict (id) do update set ' + updateSql : '';
+  const conflict =
+    table === 'device_registries' && hasRegistryNormColumn
+      ? ' on conflict (registry_number_norm) do update set ' + updateSql
+      : hasIdColumn
+        ? ' on conflict (id) do update set ' + updateSql
+        : '';
   const returning = hasIdColumn
     ? returningRow
       ? ' returning *'
@@ -361,6 +383,12 @@ module.exports = async (req, res) => {
           'invoice_items table is missing. Run migrations (0003/0005/0012) or set ALLOW_SCHEMA_AUTO_CREATE=true in non-production.',
         );
       }
+    }
+    if (table === 'fault_forms') {
+      await ensureFaultFormsTable();
+    }
+    if (table === 'device_registries') {
+      await ensureDeviceRegistriesTable();
     }
 
     const requiredPage = tablePermissions[table] || null;

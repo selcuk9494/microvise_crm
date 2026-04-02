@@ -4,6 +4,8 @@ const {
   ensureSerialTrackingTable,
   ensureWorkOrderCloseNotesTable,
   ensureInvoiceItemsTable,
+  ensureFaultFormsTable,
+  ensureDeviceRegistriesTable,
 } = require('./_lib/schema');
 const {
   ok,
@@ -136,6 +138,19 @@ module.exports = async (req, res) => {
         return ok(res, { items: result.rows });
       }
 
+      case 'customers_lookup_vkn': {
+        if (!requirePage(user, 'musteriler', res)) return;
+        const result = await query(
+          `
+            select id,name,vkn,is_active
+            from public.customers
+            order by name asc
+            limit 5000
+          `,
+        );
+        return ok(res, { items: result.rows });
+      }
+
       case 'customer_detail': {
         const id = String(req.query.customerId || '').trim();
         if (!id) return badRequest(res, 'customerId zorunludur.');
@@ -233,6 +248,40 @@ module.exports = async (req, res) => {
             where customer_id = $1
               ${activeSql}
             order by created_at desc
+          `,
+          values,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'customer_device_registries': {
+        const customerId = String(req.query.customerId || '').trim();
+        if (!customerId) return badRequest(res, 'customerId zorunludur.');
+        await ensureDeviceRegistriesTable();
+        const showPassive = parseBoolean(req.query.showPassive, true);
+        const values = [customerId];
+        let activeSql = '';
+        if (!showPassive) {
+          values.push(true);
+          activeSql = `and is_active = $${values.length}`;
+        }
+        const result = await query(
+          `
+            select
+              id,
+              registry_number,
+              model,
+              customer_id,
+              application_form_id,
+              is_active,
+              assigned_at,
+              released_at,
+              created_at
+            from public.device_registries
+            where customer_id = $1
+              ${activeSql}
+            order by created_at desc
+            limit 1000
           `,
           values,
         );
@@ -739,6 +788,48 @@ module.exports = async (req, res) => {
         return ok(res, { items: result.rows });
       }
 
+      case 'form_fault_list': {
+        if (!requirePage(user, 'formlar', res)) return;
+        await ensureFaultFormsTable();
+        const showPassive = parseBoolean(req.query.showPassive, false);
+        const values = [];
+        let whereSql = 'where true';
+        if (!showPassive) {
+          values.push(true);
+          whereSql += ` and is_active = $${values.length}`;
+        }
+        const result = await query(
+          `
+            select
+              id,
+              form_date,
+              customer_id,
+              customer_name,
+              customer_address,
+              customer_tax_office,
+              customer_vkn,
+              device_brand_model,
+              company_code_and_registry,
+              okc_approval_date_and_number,
+              fault_date_time_text,
+              fault_description,
+              last_z_report_date_and_number,
+              last_z_report_date,
+              last_z_report_no,
+              total_revenue,
+              total_vat,
+              is_active,
+              created_at
+            from public.fault_forms
+            ${whereSql}
+            order by created_at desc
+            limit 800
+          `,
+          values,
+        );
+        return ok(res, { items: result.rows });
+      }
+
       case 'form_transfer_customers': {
         const result = await query(
           `
@@ -832,6 +923,109 @@ module.exports = async (req, res) => {
         if (!okTable) return ok(res, { items: [] });
         const cols = await getTableColumns('invoice_items');
         const has = (c) => cols.includes(c);
+
+        try {
+          await query(
+            `
+              insert into public.invoice_items (
+                customer_id,
+                item_type,
+                source_table,
+                source_id,
+                description,
+                currency,
+                status,
+                is_active,
+                created_at
+              )
+              select
+                l.customer_id,
+                'line_renewal'::text,
+                'lines'::text,
+                l.id,
+                (
+                  'Hat Yenileme - ' ||
+                  coalesce(c.name, '') ||
+                  case when coalesce(l.number, '') = '' then '' else (' / ' || l.number) end ||
+                  case
+                    when l.expires_at is null then ''
+                    else (' (Bitiş: ' || to_char(l.expires_at::date, 'DD.MM.YYYY') || ')')
+                  end
+                )::text,
+                'TRY'::text,
+                'pending'::text,
+                true,
+                now()
+              from public.lines l
+              left join public.customers c on c.id = l.customer_id
+              where l.is_active = true
+                and l.expires_at is not null
+                and l.expires_at >= now()
+                and l.expires_at <= now() + interval '30 days'
+                and not exists (
+                  select 1
+                  from public.invoice_items ii
+                  where ii.source_table = 'lines'
+                    and ii.source_id = l.id
+                    and coalesce(ii.item_type::text, '') = 'line_renewal'
+                    and coalesce(ii.status::text, 'pending') = 'pending'
+                    and coalesce(ii.is_active, true) = true
+                )
+            `,
+          );
+        } catch (_) {}
+
+        try {
+          await query(
+            `
+              insert into public.invoice_items (
+                customer_id,
+                item_type,
+                source_table,
+                source_id,
+                description,
+                currency,
+                status,
+                is_active,
+                created_at
+              )
+              select
+                li.customer_id,
+                'gmp3_renewal'::text,
+                'licenses'::text,
+                li.id,
+                (
+                  'GMP3 Yenileme - ' ||
+                  coalesce(c.name, '') ||
+                  case when coalesce(li.name, '') = '' then '' else (' / ' || li.name) end ||
+                  case
+                    when li.expires_at is null then ''
+                    else (' (Bitiş: ' || to_char(li.expires_at::date, 'DD.MM.YYYY') || ')')
+                  end
+                )::text,
+                'TRY'::text,
+                'pending'::text,
+                true,
+                now()
+              from public.licenses li
+              left join public.customers c on c.id = li.customer_id
+              where li.is_active = true
+                and coalesce(li.license_type::text, '') = 'gmp3'
+                and li.expires_at is not null
+                and li.expires_at >= now()
+                and li.expires_at <= now() + interval '30 days'
+                and not exists (
+                  select 1
+                  from public.invoice_items ii
+                  where ii.source_table = 'licenses'
+                    and ii.source_id = li.id
+                    and coalesce(ii.item_type::text, '') = 'gmp3_renewal'
+                    and coalesce(ii.status::text, 'pending') = 'pending'
+                    and coalesce(ii.is_active, true) = true
+                )
+            `,
+          );
+        } catch (_) {}
 
         const customerIdSql = has('customer_id')
           ? 'ii.customer_id'
