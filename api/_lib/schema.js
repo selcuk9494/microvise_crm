@@ -132,12 +132,6 @@ async function ensureInvoiceItemsTable() {
 
   const exists = await tableExists('invoice_items');
   if (!exists) {
-    const isProd = process.env.NODE_ENV === 'production';
-    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
-    if (isProd && allow !== 'true') {
-      ensured.invoice_items = true;
-      return false;
-    }
     await query(`create extension if not exists pgcrypto`);
     await query(
       `
