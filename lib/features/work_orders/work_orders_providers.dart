@@ -29,7 +29,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     }
 
     if (apiClient != null) {
-      final initial = await _fetchApi(pageSize: 80);
+      final initial = await _fetchApi(pageSize: 200);
       unawaited(_persistCache(initial));
       unawaited(_refreshFromRemoteAndCache());
       return initial;
@@ -59,7 +59,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
       final response = await apiClient
           .getJson(
             '/work-orders',
-            queryParameters: {'pageSize': '80'},
+            queryParameters: {'pageSize': '$pageSize'},
           )
           .timeout(const Duration(seconds: 30));
       return ((response['items'] as List?) ?? const [])

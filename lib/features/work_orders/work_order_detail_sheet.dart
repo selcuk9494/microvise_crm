@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -92,6 +95,11 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     penColor: const Color(0xFF0F172A),
   );
 
+  final SignatureController _personnelSignatureController = SignatureController(
+    penStrokeWidth: 2.5,
+    penColor: const Color(0xFF0F172A),
+  );
+
   bool _saving = false;
   bool _fetchingLocation = false;
   bool _addLine = false;
@@ -136,6 +144,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     _notesController.dispose();
     _locationLinkController.dispose();
     _signatureController.dispose();
+    _personnelSignatureController.dispose();
     _lineNumberController.dispose();
     _lineSimController.dispose();
     _gmp3NameController.dispose();
@@ -268,6 +277,11 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       final signatureBytes = await _signatureController.toPngBytes();
       final signaturePng =
           signatureBytes == null || signatureBytes.isEmpty ? null : signatureBytes;
+      final personnelSignatureBytes = await _personnelSignatureController.toPngBytes();
+      final personnelSignaturePng = personnelSignatureBytes == null ||
+              personnelSignatureBytes.isEmpty
+          ? null
+          : personnelSignatureBytes;
       final closeNotesText = _notesController.text.trim().isEmpty
           ? null
           : _notesController.text.trim();
@@ -583,6 +597,39 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         await client!.from('work_orders').update(workOrderUpdate).eq('id', widget.order.id);
       }
 
+      final customerSigDataUrl = signaturePng == null
+          ? null
+          : 'data:image/png;base64,${base64Encode(signaturePng)}';
+      final personnelSigDataUrl = personnelSignaturePng == null
+          ? null
+          : 'data:image/png;base64,${base64Encode(personnelSignaturePng)}';
+      if (customerSigDataUrl != null || personnelSigDataUrl != null) {
+        try {
+          if (apiClient != null) {
+            await apiClient.postJson(
+              '/mutate',
+              body: {
+                'op': 'upsert',
+                'table': 'work_order_signatures',
+                'values': {
+                  'id': widget.order.id,
+                  'work_order_id': widget.order.id,
+                  'customer_signature_data_url': customerSigDataUrl,
+                  'personnel_signature_data_url': personnelSigDataUrl,
+                },
+              },
+            );
+          } else {
+            await client!.from('work_order_signatures').upsert({
+              'id': widget.order.id,
+              'work_order_id': widget.order.id,
+              'customer_signature_data_url': customerSigDataUrl,
+              'personnel_signature_data_url': personnelSigDataUrl,
+            });
+          }
+        } catch (_) {}
+      }
+
       if (!mounted) return;
       ref.invalidate(dashboardMetricsProvider);
       final shareNow = await showDialog<bool>(
@@ -618,6 +665,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           closeNotes: closeNotesText,
           payments: closedPayments,
           signaturePngBytes: signaturePng,
+          personnelSignaturePngBytes: personnelSignaturePng,
         );
       }
       if (!mounted) return;
@@ -777,14 +825,70 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             onPressed: _saving
                 ? null
                 : () async {
+                    final apiClient = ref.read(apiClientProvider);
+                    final client = ref.read(supabaseClientProvider);
+                    WorkOrder pdfOrder = widget.order;
+                    Uint8List? customerSigBytes;
+                    Uint8List? personnelSigBytes;
+                    try {
+                      if (apiClient != null) {
+                        final response = await apiClient.getJson(
+                          '/data',
+                          queryParameters: {
+                            'resource': 'work_order_detail',
+                            'workOrderId': widget.order.id,
+                          },
+                        );
+                        final item =
+                            (response['item'] as Map?)?.cast<String, dynamic>();
+                        if (item != null) {
+                          pdfOrder = WorkOrder.fromJson(item);
+                          customerSigBytes =
+                              _decodePngDataUrl(pdfOrder.customerSignatureDataUrl);
+                          personnelSigBytes = _decodePngDataUrl(
+                            pdfOrder.personnelSignatureDataUrl,
+                          );
+                        }
+                      } else if (client != null) {
+                        final rows = await client
+                            .from('payments')
+                            .select('amount,currency,paid_at,description,payment_method,is_active')
+                            .eq('work_order_id', widget.order.id)
+                            .eq('is_active', true)
+                            .order('paid_at', ascending: true)
+                            .limit(2000);
+                        final payments = (rows as List)
+                            .map((e) => WorkOrderPayment.fromJson(e as Map<String, dynamic>))
+                            .toList(growable: false);
+                        final sigRows = await client
+                            .from('work_order_signatures')
+                            .select(
+                              'customer_signature_data_url,personnel_signature_data_url',
+                            )
+                            .eq('work_order_id', widget.order.id)
+                            .limit(1);
+                        final sig = (sigRows as List).isEmpty
+                            ? null
+                            : (sigRows.first as Map).cast<String, dynamic>();
+                        customerSigBytes =
+                            _decodePngDataUrl(sig?['customer_signature_data_url']?.toString());
+                        personnelSigBytes =
+                            _decodePngDataUrl(sig?['personnel_signature_data_url']?.toString());
+                        pdfOrder = WorkOrder.fromJson({
+                          ...widget.order.toJson(),
+                          'payments': payments.map((e) => e.toJson()).toList(growable: false),
+                        });
+                      }
+                    } catch (_) {}
+
                     await shareWorkOrderPdf(
-                      order: widget.order,
+                      order: pdfOrder,
                       customer: customer,
-                      closeNotes: (widget.order.closeNotes ?? '').trim().isEmpty
-                          ? null
-                          : widget.order.closeNotes,
-                      payments: widget.order.payments,
-                      signaturePngBytes: null,
+                      closeNotes:
+                          (pdfOrder.closeNotes ?? '').trim().isEmpty ? null : pdfOrder.closeNotes,
+                      payments: pdfOrder.payments,
+                      signaturePngBytes: customerSigBytes,
+                      personnelSignaturePngBytes: personnelSigBytes,
                     );
                   },
             icon: const Icon(Icons.share_rounded),
@@ -792,6 +896,19 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         ],
       ],
     );
+  }
+
+  Uint8List? _decodePngDataUrl(String? dataUrl) {
+    final raw = (dataUrl ?? '').trim();
+    if (raw.isEmpty) return null;
+    final prefix = 'data:image/png;base64,';
+    final base64Part = raw.startsWith(prefix) ? raw.substring(prefix.length) : raw;
+    try {
+      final bytes = base64Decode(base64Part);
+      return Uint8List.fromList(bytes);
+    } catch (_) {
+      return null;
+    }
   }
 
   Widget _buildInfoCard(BuildContext context, CustomerDetail customer) {
@@ -1096,43 +1213,36 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Müşteri İmzası', style: Theme.of(context).textTheme.titleSmall),
-          const Gap(10),
-          Container(
-            height: 180,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppTheme.border),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Signature(
-                controller: _signatureController,
-                backgroundColor: Colors.white,
-              ),
-            ),
-          ),
+          Text('İmzalar', style: Theme.of(context).textTheme.titleSmall),
           const Gap(10),
           Row(
             children: [
-              OutlinedButton(
-                onPressed: _saving ? null : () => _signatureController.clear(),
-                child: const Text('Temizle'),
-              ),
-              const Gap(12),
               Expanded(
-                child: Text(
-                  customer.email?.trim().isNotEmpty ?? false
-                      ? 'İmza ile birlikte e-posta gönderilecek.'
-                      : 'E-posta adresi yoksa gönderim yapılmaz.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                child: _SignatureBox(
+                  title: 'Müşteri İmzası',
+                  controller: _signatureController,
+                  onClear: _saving ? null : _signatureController.clear,
+                ),
+              ),
+              const Gap(10),
+              Expanded(
+                child: _SignatureBox(
+                  title: 'Personel İmzası',
+                  controller: _personnelSignatureController,
+                  onClear: _saving ? null : _personnelSignatureController.clear,
                 ),
               ),
             ],
+          ),
+          const Gap(10),
+          Text(
+            customer.email?.trim().isNotEmpty ?? false
+                ? 'İmza ile birlikte e-posta gönderilecek.'
+                : 'E-posta adresi yoksa gönderim yapılmaz.',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: const Color(0xFF64748B)),
           ),
         ],
       ),
@@ -1341,6 +1451,54 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     return OutlinedButton(
       onPressed: _saving ? null : () => Navigator.of(context).pop(),
       child: const Text('Kapat'),
+    );
+  }
+}
+
+class _SignatureBox extends StatelessWidget {
+  const _SignatureBox({
+    required this.title,
+    required this.controller,
+    required this.onClear,
+  });
+
+  final String title;
+  final SignatureController controller;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child:
+                  Text(title, style: Theme.of(context).textTheme.titleSmall),
+            ),
+            TextButton(
+              onPressed: onClear,
+              child: const Text('Temizle'),
+            ),
+          ],
+        ),
+        Container(
+          height: 160,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Signature(
+              controller: controller,
+              backgroundColor: Colors.white,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

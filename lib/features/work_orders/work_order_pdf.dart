@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../customers/customer_detail_screen.dart';
 import 'work_order_model.dart';
@@ -13,19 +14,34 @@ Future<Uint8List> buildWorkOrderPdfBytes({
   required String? closeNotes,
   required List<WorkOrderPayment> payments,
   Uint8List? signaturePngBytes,
+  Uint8List? personnelSignaturePngBytes,
 }) async {
+  final regularFont = await PdfGoogleFonts.notoSansRegular();
+  final boldFont = await PdfGoogleFonts.notoSansBold();
+  final italicFont = await PdfGoogleFonts.notoSansItalic();
+  final theme = pw.ThemeData.withFont(
+    base: regularFont,
+    bold: boldFont,
+    italic: italicFont,
+  );
+
   final doc = pw.Document(
-    title: 'Is Emri - ${order.title}',
+    title: 'Servis Formu - ${order.title}',
     author: 'Microvise CRM',
     creator: 'Microvise CRM',
   );
 
-  final dateFormat = DateFormat('d MMMM y HH:mm', 'tr_TR');
-  final scheduled = order.scheduledDate == null
-      ? null
-      : dateFormat.format(order.scheduledDate!);
-  final created = order.createdAt == null ? null : dateFormat.format(order.createdAt!);
-  final closed = order.closedAt == null ? null : dateFormat.format(order.closedAt!);
+  final dateTimeFormat = DateFormat('d MMMM y HH:mm', 'tr_TR');
+  final dateOnlyFormat = DateFormat('d MMMM y', 'tr_TR');
+  final timeOnlyFormat = DateFormat('HH:mm', 'tr_TR');
+
+  final createdAt = order.createdAt;
+  final closedAt = order.closedAt;
+  final scheduledAt = order.scheduledDate;
+
+  final createdAtText = createdAt == null ? null : dateTimeFormat.format(createdAt.toLocal());
+  final closedAtText = closedAt == null ? null : dateTimeFormat.format(closedAt.toLocal());
+  final scheduledText = scheduledAt == null ? null : dateTimeFormat.format(scheduledAt.toLocal());
 
   final address = (order.address ?? '').trim();
   final city = (order.city ?? '').trim();
@@ -34,89 +50,133 @@ Future<Uint8List> buildWorkOrderPdfBytes({
     if (city.isNotEmpty) city,
   ].join(' • ');
 
-  final money = NumberFormat.currency(locale: 'tr_TR', symbol: '', decimalDigits: 2);
+  final statusLabel = switch (order.status) {
+    'open' => 'Açık',
+    'in_progress' => 'Yapılıyor',
+    'done' => 'Kapalı',
+    'cancelled' => 'İptal',
+    _ => order.status,
+  };
 
-  double totalTry = 0;
+  final money =
+      NumberFormat.currency(locale: 'tr_TR', symbol: '', decimalDigits: 2);
+
+  final totalsByCurrency = <String, double>{};
   for (final p in payments) {
-    if (p.currency == 'TRY') {
-      totalTry += p.amount;
-    }
+    totalsByCurrency.update(p.currency, (v) => v + p.amount, ifAbsent: () => p.amount);
   }
 
-  pw.Widget infoRow(String label, String value) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 3),
-      child: pw.Row(
+  final signature = signaturePngBytes == null || signaturePngBytes.isEmpty
+      ? null
+      : pw.MemoryImage(signaturePngBytes);
+  final personnelSignature =
+      personnelSignaturePngBytes == null || personnelSignaturePngBytes.isEmpty
+          ? null
+          : pw.MemoryImage(personnelSignaturePngBytes);
+
+  pw.TextStyle tLabel() =>
+      pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold);
+  pw.TextStyle tValue() => const pw.TextStyle(fontSize: 9);
+  pw.TextStyle tSmall() => const pw.TextStyle(fontSize: 8);
+
+  pw.Widget section(String title, pw.Widget child) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.white,
+        border: pw.Border.all(color: PdfColors.grey400),
+      ),
+      child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.SizedBox(
-            width: 120,
-            child: pw.Text(
-              '$label:',
-              style: pw.TextStyle(
-                fontSize: 10,
-                color: PdfColors.grey700,
-                fontWeight: pw.FontWeight.bold,
-              ),
-            ),
-          ),
-          pw.Expanded(
-            child: pw.Text(
-              value,
-              style: const pw.TextStyle(fontSize: 10),
-            ),
-          ),
+          pw.Text(title, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 8),
+          child,
         ],
       ),
     );
   }
 
-  pw.Widget sectionTitle(String text) {
+  pw.Widget kvRow(String label, String value) {
     return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: pw.BoxDecoration(
-        color: PdfColors.grey200,
-        borderRadius: pw.BorderRadius.circular(6),
-      ),
-      child: pw.Text(
-        text,
-        style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+      padding: const pw.EdgeInsets.symmetric(vertical: 4),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(width: 110, child: pw.Text(label, style: tLabel())),
+          pw.SizedBox(width: 8),
+          pw.Expanded(child: pw.Text(value, style: tValue())),
+        ],
       ),
     );
   }
 
-  pw.Widget paymentTable() {
+  pw.Widget serviceInfoTable() {
+    final phone = (order.contactPhone ?? '').trim().isNotEmpty
+        ? order.contactPhone!.trim()
+        : (customer.phone1 ?? '').trim();
+    final email = (customer.email ?? '').trim();
+    final assigned = (order.assignedPersonnelName ?? '').trim();
+    final typeName = (order.workOrderTypeName ?? '').trim();
+    final branch = (order.branchName ?? '').trim();
+
+    final registry = RegExp(r'Sicil:\\s*([^•\\s]+)', caseSensitive: false)
+        .firstMatch((order.description ?? '').trim())
+        ?.group(1)
+        ?.trim();
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        kvRow('İş Emri No', order.id),
+        kvRow('Durum', statusLabel),
+        if (createdAtText != null) kvRow('Oluşturma', createdAtText),
+        if (scheduledText != null) kvRow('Plan', scheduledText),
+        if (closedAtText != null) kvRow('Kapanış', closedAtText),
+        if (typeName.isNotEmpty) kvRow('İş Emri Tipi', typeName),
+        if (branch.isNotEmpty) kvRow('Şube', branch),
+        if (assigned.isNotEmpty) kvRow('Atanan', assigned),
+        kvRow('Müşteri', customer.name.trim()),
+        if (phone.isNotEmpty) kvRow('Telefon', phone),
+        if (email.isNotEmpty) kvRow('E-posta', email),
+        if (addressText.isNotEmpty) kvRow('Adres', addressText),
+        if (registry != null && registry.isNotEmpty) kvRow('Cihaz Sicil', registry),
+      ],
+    );
+  }
+
+  pw.Widget paymentsTable() {
     if (payments.isEmpty) {
-      return pw.Text('Ödeme yok', style: const pw.TextStyle(fontSize: 10));
+      return pw.Text('Ödeme yok.', style: tValue());
     }
 
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.grey300),
       columnWidths: const {
-        0: pw.FlexColumnWidth(2.2),
-        1: pw.FlexColumnWidth(1.2),
-        2: pw.FlexColumnWidth(1.2),
-        3: pw.FlexColumnWidth(3.0),
+        0: pw.FlexColumnWidth(2.1),
+        1: pw.FlexColumnWidth(1.3),
+        2: pw.FlexColumnWidth(1.0),
+        3: pw.FlexColumnWidth(3.2),
       },
       children: [
         pw.TableRow(
-          decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+          decoration: pw.BoxDecoration(color: PdfColor.fromHex('#EFF6FF')),
           children: [
             pw.Padding(
               padding: const pw.EdgeInsets.all(6),
-              child: pw.Text('Tarih', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+              child: pw.Text('Tarih', style: tLabel()),
             ),
             pw.Padding(
               padding: const pw.EdgeInsets.all(6),
-              child: pw.Text('Tutar', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+              child: pw.Text('Tutar', style: tLabel()),
             ),
             pw.Padding(
               padding: const pw.EdgeInsets.all(6),
-              child: pw.Text('Döviz', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+              child: pw.Text('Döviz', style: tLabel()),
             ),
             pw.Padding(
               padding: const pw.EdgeInsets.all(6),
-              child: pw.Text('Açıklama', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+              child: pw.Text('Açıklama', style: tLabel()),
             ),
           ],
         ),
@@ -126,27 +186,21 @@ Future<Uint8List> buildWorkOrderPdfBytes({
               pw.Padding(
                 padding: const pw.EdgeInsets.all(6),
                 child: pw.Text(
-                  p.paidAt == null ? '' : dateFormat.format(p.paidAt!),
-                  style: const pw.TextStyle(fontSize: 9),
+                  p.paidAt == null ? '' : dateTimeFormat.format(p.paidAt!.toLocal()),
+                  style: tSmall(),
                 ),
               ),
               pw.Padding(
                 padding: const pw.EdgeInsets.all(6),
-                child: pw.Text(
-                  money.format(p.amount),
-                  style: const pw.TextStyle(fontSize: 9),
-                ),
+                child: pw.Text(money.format(p.amount), style: tValue()),
               ),
               pw.Padding(
                 padding: const pw.EdgeInsets.all(6),
-                child: pw.Text(p.currency, style: const pw.TextStyle(fontSize: 9)),
+                child: pw.Text(p.currency, style: tValue()),
               ),
               pw.Padding(
                 padding: const pw.EdgeInsets.all(6),
-                child: pw.Text(
-                  (p.description ?? '').trim(),
-                  style: const pw.TextStyle(fontSize: 9),
-                ),
+                child: pw.Text((p.description ?? '').trim(), style: tSmall()),
               ),
             ],
           ),
@@ -154,130 +208,196 @@ Future<Uint8List> buildWorkOrderPdfBytes({
     );
   }
 
-  final signature = signaturePngBytes == null || signaturePngBytes.isEmpty
-      ? null
-      : pw.MemoryImage(signaturePngBytes);
+  pw.Widget totalsRow() {
+    if (totalsByCurrency.isEmpty) return pw.SizedBox();
+    final keys = totalsByCurrency.keys.toList()..sort();
+    return pw.Wrap(
+      spacing: 10,
+      runSpacing: 6,
+      children: [
+        for (final k in keys)
+          pw.Container(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: PdfColors.grey400),
+            ),
+            child: pw.Text(
+              'Toplam $k: ${money.format(totalsByCurrency[k] ?? 0)}',
+              style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+            ),
+          ),
+      ],
+    );
+  }
+
+  final docNo = _shortId(order.id);
+  final headerDate = DateTime.now();
 
   doc.addPage(
     pw.MultiPage(
+      theme: theme,
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(24),
-      build: (context) => [
-        pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
+      header: (context) => pw.Container(
+        padding: const pw.EdgeInsets.only(bottom: 10),
+        decoration: const pw.BoxDecoration(
+          border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey400)),
+        ),
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
           children: [
             pw.Expanded(
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text(
-                    'İş Emri Kapanış Raporu',
-                    style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+                    'SERVİS FORMU',
+                    style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
                   ),
-                  pw.SizedBox(height: 4),
+                  pw.SizedBox(height: 2),
                   pw.Text(
-                    order.title.trim(),
-                    style: pw.TextStyle(fontSize: 12, color: PdfColors.grey700),
+                    'Microvise Servis Formu',
+                    style: tSmall(),
                   ),
                 ],
               ),
             ),
-            pw.Container(
-              padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: pw.BoxDecoration(
-                color: PdfColors.blue50,
-                borderRadius: pw.BorderRadius.circular(999),
-                border: pw.Border.all(color: PdfColors.blue200),
-              ),
-              child: pw.Text(
-                order.status == 'done' ? 'Kapalı' : order.status,
-                style: pw.TextStyle(
-                  fontSize: 10,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.blue900,
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                pw.Text('Form No: $docNo', style: tSmall()),
+                pw.Text(
+                  '${dateOnlyFormat.format(headerDate)} ${timeOnlyFormat.format(headerDate)}',
+                  style: tSmall(),
                 ),
-              ),
+              ],
             ),
           ],
         ),
-        pw.SizedBox(height: 16),
-        sectionTitle('Genel Bilgiler'),
-        pw.SizedBox(height: 8),
-        infoRow('Müşteri', customer.name),
-        if ((customer.phone1 ?? '').trim().isNotEmpty) infoRow('Telefon', customer.phone1!.trim()),
-        if ((customer.email ?? '').trim().isNotEmpty) infoRow('E-posta', customer.email!.trim()),
-        if (addressText.isNotEmpty) infoRow('Adres', addressText),
-        if ((order.branchName ?? '').trim().isNotEmpty) infoRow('Şube', order.branchName!.trim()),
-        if ((order.assignedPersonnelName ?? '').trim().isNotEmpty)
-          infoRow('Atanan', order.assignedPersonnelName!.trim()),
-        if ((order.workOrderTypeName ?? '').trim().isNotEmpty)
-          infoRow('Tip', order.workOrderTypeName!.trim()),
-        if (scheduled != null) infoRow('Plan', scheduled),
-        if (created != null) infoRow('Oluşturma', created),
-        if (closed != null) infoRow('Kapanış', closed),
-        pw.SizedBox(height: 14),
-        sectionTitle('Yapılan İşlem / Detay'),
-        pw.SizedBox(height: 8),
-        pw.Text(
-          (closeNotes ?? '').trim().isEmpty ? '—' : closeNotes!.trim(),
-          style: const pw.TextStyle(fontSize: 10),
+      ),
+      footer: (context) => pw.Container(
+        padding: const pw.EdgeInsets.only(top: 10),
+        decoration: const pw.BoxDecoration(
+          border: pw.Border(top: pw.BorderSide(color: PdfColors.grey400)),
         ),
-        if ((order.description ?? '').trim().isNotEmpty) ...[
-          pw.SizedBox(height: 8),
-          pw.Container(
-            padding: const pw.EdgeInsets.all(10),
-            decoration: pw.BoxDecoration(
-              color: PdfColors.grey100,
-              borderRadius: pw.BorderRadius.circular(8),
-              border: pw.Border.all(color: PdfColors.grey300),
-            ),
-            child: pw.Text(
-              (order.description ?? '').trim(),
-              style: const pw.TextStyle(fontSize: 10),
-            ),
+        child: pw.Row(
+          children: [
+            pw.Text('Sayfa ${context.pageNumber}/${context.pagesCount}', style: tSmall()),
+            pw.Spacer(),
+            pw.Text('Belge No: $docNo', style: tSmall()),
+          ],
+        ),
+      ),
+      build: (context) => [
+        pw.Text(
+          order.title.trim(),
+          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+        ),
+        pw.SizedBox(height: 10),
+        section('İş Emri Bilgileri', serviceInfoTable()),
+        pw.SizedBox(height: 10),
+        section(
+          'Servis Detayı',
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              kvRow('Arıza / Talep', order.title.trim()),
+              if ((order.description ?? '').trim().isNotEmpty)
+                kvRow('Açıklama', (order.description ?? '').trim()),
+              kvRow('Yapılan İşlem', (closeNotes ?? '').trim().isEmpty ? '—' : closeNotes!.trim()),
+            ],
           ),
-        ],
-        pw.SizedBox(height: 14),
-        sectionTitle('Ödemeler'),
-        pw.SizedBox(height: 8),
-        paymentTable(),
-        if (payments.isNotEmpty) ...[
-          pw.SizedBox(height: 10),
-          pw.Align(
-            alignment: pw.Alignment.centerRight,
-            child: pw.Text(
-              'Toplam (TRY): ${money.format(totalTry)}',
-              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
-            ),
+        ),
+        pw.SizedBox(height: 10),
+        section(
+          'Ödeme Bilgileri',
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              paymentsTable(),
+              if (payments.isNotEmpty) ...[
+                pw.SizedBox(height: 10),
+                totalsRow(),
+              ],
+            ],
           ),
-        ],
-        pw.SizedBox(height: 14),
-        sectionTitle('Müşteri İmzası'),
-        pw.SizedBox(height: 8),
-        signature == null
-            ? pw.Container(
-                padding: const pw.EdgeInsets.all(14),
-                decoration: pw.BoxDecoration(
-                  borderRadius: pw.BorderRadius.circular(8),
-                  border: pw.Border.all(color: PdfColors.grey300),
+        ),
+        pw.SizedBox(height: 10),
+        section(
+          'İmzalar',
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(
+                child: pw.Container(
+                  height: 140,
+                  padding: const pw.EdgeInsets.all(8),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey400),
+                  ),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('Müşteri İmzası', style: tLabel()),
+                      pw.SizedBox(height: 8),
+                      pw.Expanded(
+                        child: signature == null
+                            ? pw.Center(
+                                child: pw.Text('İmza yok.', style: tSmall()),
+                              )
+                            : pw.Image(signature, fit: pw.BoxFit.contain),
+                      ),
+                      pw.SizedBox(height: 8),
+                      pw.Text('Ad Soyad:', style: tSmall()),
+                      pw.SizedBox(height: 4),
+                      pw.Text('Tarih:', style: tSmall()),
+                    ],
+                  ),
                 ),
-                child: pw.Text(
-                  'İmza kaydı yok.',
-                  style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
-                ),
-              )
-            : pw.Container(
-                height: 140,
-                decoration: pw.BoxDecoration(
-                  borderRadius: pw.BorderRadius.circular(8),
-                  border: pw.Border.all(color: PdfColors.grey300),
-                ),
-                padding: const pw.EdgeInsets.all(8),
-                child: pw.Image(signature, fit: pw.BoxFit.contain),
               ),
+              pw.SizedBox(width: 10),
+              pw.Expanded(
+                child: pw.Container(
+                  height: 140,
+                  padding: const pw.EdgeInsets.all(8),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey400),
+                  ),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('Servis Personeli', style: tLabel()),
+                      pw.SizedBox(height: 8),
+                      pw.Expanded(
+                        child: personnelSignature == null
+                            ? pw.Center(
+                                child: pw.Text('İmza yok.', style: tSmall()),
+                              )
+                            : pw.Image(
+                                personnelSignature,
+                                fit: pw.BoxFit.contain,
+                              ),
+                      ),
+                      pw.SizedBox(height: 8),
+                      pw.Text('Ad Soyad:', style: tSmall()),
+                      pw.SizedBox(height: 4),
+                      pw.Text('Tarih:', style: tSmall()),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     ),
   );
 
   return doc.save();
+}
+
+String _shortId(String id) {
+  final trimmed = id.trim();
+  if (trimmed.length <= 6) return trimmed;
+  return trimmed.substring(0, 6);
 }

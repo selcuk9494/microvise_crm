@@ -6,6 +6,8 @@ const {
   ensureInvoiceItemsTable,
   ensureFaultFormsTable,
   ensureDeviceRegistriesTable,
+  ensureBusinessActivityTypesTable,
+  ensureWorkOrderSignaturesTable,
 } = require('./_lib/schema');
 const {
   ok,
@@ -368,6 +370,72 @@ module.exports = async (req, res) => {
         return ok(res, { items: result.rows });
       }
 
+      case 'work_order_detail': {
+        if (!requirePage(user, 'is_emirleri', res)) return;
+        await ensureWorkOrderSignaturesTable();
+        const workOrderId = String(req.query.workOrderId || '').trim();
+        if (!workOrderId) return ok(res, { item: null });
+
+        const result = await query(
+          `
+            select
+              w.id,
+              w.title,
+              w.description,
+              w.address,
+              w.city,
+              w.status,
+              w.is_active,
+              w.customer_id,
+              w.branch_id,
+              w.assigned_to,
+              w.scheduled_date,
+              w.created_at,
+              w.closed_at,
+              w.work_order_type_id,
+              w.contact_phone,
+              w.location_link,
+              w.close_notes,
+              w.sort_order,
+              c.name as customer_name,
+              b.name as branch_name,
+              u.full_name as assigned_personnel_name,
+              wt.name as work_order_type_name,
+              coalesce(
+                (
+                  select json_agg(
+                    json_build_object(
+                      'amount', p.amount,
+                      'currency', p.currency,
+                      'paid_at', p.paid_at,
+                      'description', p.description,
+                      'payment_method', p.payment_method,
+                      'is_active', p.is_active
+                    )
+                    order by p.paid_at asc nulls last, p.created_at asc
+                  )
+                  from public.payments p
+                  where p.work_order_id = w.id and p.is_active = true
+                ),
+                '[]'::json
+              ) as payments,
+              s.customer_signature_data_url,
+              s.personnel_signature_data_url
+            from public.work_orders w
+            left join public.customers c on c.id = w.customer_id
+            left join public.branches b on b.id = w.branch_id
+            left join public.users u on u.id = w.assigned_to
+            left join public.work_order_types wt on wt.id = w.work_order_type_id
+            left join public.work_order_signatures s on s.work_order_id = w.id
+            where w.id = $1
+            limit 1
+          `,
+          [workOrderId],
+        );
+
+        return ok(res, { item: result.rows[0] || null });
+      }
+
       case 'customers_for_transfer': {
         const result = await query(
           `select id,name,is_active from public.customers order by name asc`,
@@ -506,6 +574,7 @@ module.exports = async (req, res) => {
       }
 
       case 'definition_business_activity_types': {
+        await ensureBusinessActivityTypesTable();
         const result = await query(
           `select id,name,is_active,created_at from public.business_activity_types order by name asc`,
         );

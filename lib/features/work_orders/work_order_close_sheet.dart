@@ -19,6 +19,7 @@ import '../customers/customer_detail_screen.dart';
 import '../customers/customer_model.dart';
 import '../customers/customers_providers.dart';
 import 'work_order_model.dart';
+import 'work_order_share.dart';
 
 Future<void> showWorkOrderCloseSheet(
   BuildContext context,
@@ -58,6 +59,11 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     penColor: const Color(0xFF0F172A),
   );
 
+  final SignatureController _personnelSignatureController = SignatureController(
+    penStrokeWidth: 2.5,
+    penColor: const Color(0xFF0F172A),
+  );
+
   bool _saving = false;
   bool _addLine = false;
   bool _addGmp3 = false;
@@ -83,6 +89,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     _locationDescriptionController.dispose();
     _locationLinkController.dispose();
     _signatureController.dispose();
+    _personnelSignatureController.dispose();
     _lineNumberController.dispose();
     _lineSimController.dispose();
     _gmp3NameController.dispose();
@@ -272,9 +279,113 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         );
 
         if (!mounted) return;
+        final closeNotesText = _notesController.text.trim().isEmpty
+            ? null
+            : _notesController.text.trim();
+        final closedPayments = _payments
+            .map((p) {
+              final amount = p.amount;
+              if (amount == null) return null;
+              return WorkOrderPayment(
+                amount: amount,
+                currency: p.currency,
+                paidAt: now,
+                description: p.description,
+                paymentMethod: p.method,
+                isActive: true,
+              );
+            })
+            .whereType<WorkOrderPayment>()
+            .toList(growable: false);
+
+        try {
+          final signatureBytes = await _signatureController.toPngBytes();
+          final signaturePng = signatureBytes == null || signatureBytes.isEmpty
+              ? null
+              : signatureBytes;
+          final personnelSignatureBytes =
+              await _personnelSignatureController.toPngBytes();
+          final personnelSignaturePng = personnelSignatureBytes == null ||
+                  personnelSignatureBytes.isEmpty
+              ? null
+              : personnelSignatureBytes;
+          final customerSigDataUrl = signaturePng == null
+              ? null
+              : 'data:image/png;base64,${base64Encode(signaturePng)}';
+          final personnelSigDataUrl = personnelSignaturePng == null
+              ? null
+              : 'data:image/png;base64,${base64Encode(personnelSignaturePng)}';
+          if (customerSigDataUrl != null || personnelSigDataUrl != null) {
+            await apiClient.postJson(
+              '/mutate',
+              body: {
+                'op': 'upsert',
+                'table': 'work_order_signatures',
+                'values': {
+                  'id': widget.order.id,
+                  'work_order_id': widget.order.id,
+                  'customer_signature_data_url': customerSigDataUrl,
+                  'personnel_signature_data_url': personnelSigDataUrl,
+                },
+              },
+            );
+          }
+        } catch (_) {}
+
+        if (!mounted) return;
+        final shareNow = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('İş emri kapatıldı'),
+            content: const Text('PDF olarak WhatsApp üzerinden paylaşmak ister misin?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Sonra'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Paylaş'),
+              ),
+            ],
+          ),
+        );
+        if (shareNow == true) {
+          final signatureBytes = await _signatureController.toPngBytes();
+          final signaturePng = signatureBytes == null || signatureBytes.isEmpty
+              ? null
+              : signatureBytes;
+          final personnelSignatureBytes =
+              await _personnelSignatureController.toPngBytes();
+          final personnelSignaturePng = personnelSignatureBytes == null ||
+                  personnelSignatureBytes.isEmpty
+              ? null
+              : personnelSignatureBytes;
+          final pdfOrder = WorkOrder.fromJson({
+            ...widget.order.toJson(),
+            'status': 'done',
+            'closed_at': now.toIso8601String(),
+            'close_notes': closeNotesText,
+            'payments': closedPayments.map((e) => e.toJson()).toList(growable: false),
+          });
+          await shareWorkOrderPdf(
+            order: pdfOrder,
+            customer: customer,
+            closeNotes: closeNotesText,
+            payments: closedPayments,
+            signaturePngBytes: signaturePng,
+            personnelSignaturePngBytes: personnelSignaturePng,
+          );
+        }
+
+        if (!mounted) return;
         Navigator.of(context).pop(true);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('İş emri kapatıldı.')),
+          SnackBar(
+            content: Text(
+              shareNow == true ? 'PDF paylaşıma hazırlandı.' : 'İş emri kapatıldı.',
+            ),
+          ),
         );
         return;
       }
@@ -464,6 +575,13 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         signatureDataUrl =
             'data:image/png;base64,${base64Encode(signatureBytes)}';
       }
+      Uint8List? personnelSignatureBytes =
+          await _personnelSignatureController.toPngBytes();
+      String? personnelSignatureDataUrl;
+      if (personnelSignatureBytes != null && personnelSignatureBytes.isNotEmpty) {
+        personnelSignatureDataUrl =
+            'data:image/png;base64,${base64Encode(personnelSignatureBytes)}';
+      }
 
       await client
           .from('work_orders')
@@ -478,6 +596,17 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                 : _notesController.text.trim(),
           })
           .eq('id', widget.order.id);
+
+      if (signatureDataUrl != null || personnelSignatureDataUrl != null) {
+        try {
+          await client.from('work_order_signatures').upsert({
+            'id': widget.order.id,
+            'work_order_id': widget.order.id,
+            'customer_signature_data_url': signatureDataUrl,
+            'personnel_signature_data_url': personnelSignatureDataUrl,
+          });
+        } catch (_) {}
+      }
 
       if (customer.email != null &&
           customer.email!.trim().isNotEmpty &&
@@ -504,10 +633,69 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
       }
 
       if (!mounted) return;
+      final closeNotesText = _notesController.text.trim().isEmpty
+          ? null
+          : _notesController.text.trim();
+      final closedPayments = _payments
+          .map((p) {
+            final amount = p.amount;
+            if (amount == null) return null;
+            return WorkOrderPayment(
+              amount: amount,
+              currency: p.currency,
+              paidAt: now,
+              description: p.description,
+              paymentMethod: p.method,
+              isActive: true,
+            );
+          })
+          .whereType<WorkOrderPayment>()
+          .toList(growable: false);
+
+      final shareNow = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('İş emri kapatıldı'),
+          content: const Text('PDF olarak WhatsApp üzerinden paylaşmak ister misin?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Sonra'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Paylaş'),
+            ),
+          ],
+        ),
+      );
+      if (shareNow == true) {
+        final pdfOrder = WorkOrder.fromJson({
+          ...widget.order.toJson(),
+          'status': 'done',
+          'closed_at': now.toIso8601String(),
+          'close_notes': closeNotesText,
+          'payments': closedPayments.map((e) => e.toJson()).toList(growable: false),
+        });
+        await shareWorkOrderPdf(
+          order: pdfOrder,
+          customer: customer,
+          closeNotes: closeNotesText,
+          payments: closedPayments,
+          signaturePngBytes: signatureBytes,
+          personnelSignaturePngBytes: personnelSignatureBytes,
+        );
+      }
+
+      if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('İş emri kapatıldı.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            shareNow == true ? 'PDF paylaşıma hazırlandı.' : 'İş emri kapatıldı.',
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -645,6 +833,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               lineSimController: _lineSimController,
               gmp3NameController: _gmp3NameController,
               signatureController: _signatureController,
+              personnelSignatureController: _personnelSignatureController,
               payments: _payments,
               saving: _saving,
               onAddPayment: _saving
@@ -709,6 +898,7 @@ class _SheetBody extends StatelessWidget {
     required this.lineSimController,
     required this.gmp3NameController,
     required this.signatureController,
+    required this.personnelSignatureController,
     required this.payments,
     required this.saving,
     required this.onAddPayment,
@@ -744,6 +934,7 @@ class _SheetBody extends StatelessWidget {
   final TextEditingController lineSimController;
   final TextEditingController gmp3NameController;
   final SignatureController signatureController;
+  final SignatureController personnelSignatureController;
   final List<_PaymentDraft> payments;
   final bool saving;
   final VoidCallback? onAddPayment;
@@ -1001,43 +1192,94 @@ class _SheetBody extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('İmza', style: Theme.of(context).textTheme.titleSmall),
-                    const Gap(10),
-                    Container(
-                      height: 180,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: Signature(
-                          controller: signatureController,
-                          backgroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
+                    Text('İmzalar', style: Theme.of(context).textTheme.titleSmall),
                     const Gap(10),
                     Row(
                       children: [
-                        OutlinedButton(
-                          onPressed: saving
-                              ? null
-                              : () => signatureController.clear(),
-                          child: const Text('Temizle'),
-                        ),
-                        const Gap(12),
                         Expanded(
-                          child: Text(
-                            customer.email?.trim().isNotEmpty ?? false
-                                ? 'İmza ile birlikte e-posta gönderimi denenecek.'
-                                : 'E-posta yoksa gönderim yapılmaz.',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: const Color(0xFF64748B)),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Müşteri İmzası',
+                                      style: Theme.of(context).textTheme.titleSmall,
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: saving ? null : signatureController.clear,
+                                    child: const Text('Temizle'),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                height: 160,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: AppTheme.border),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Signature(
+                                    controller: signatureController,
+                                    backgroundColor: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Gap(10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Personel İmzası',
+                                      style: Theme.of(context).textTheme.titleSmall,
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: saving
+                                        ? null
+                                        : personnelSignatureController.clear,
+                                    child: const Text('Temizle'),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                height: 160,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: AppTheme.border),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Signature(
+                                    controller: personnelSignatureController,
+                                    backgroundColor: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
+                    ),
+                    const Gap(10),
+                    Text(
+                      customer.email?.trim().isNotEmpty ?? false
+                          ? 'İmza ile birlikte e-posta gönderimi denenecek.'
+                          : 'E-posta yoksa gönderim yapılmaz.',
+                      style: Theme.of(context).textTheme.bodySmall
+                          ?.copyWith(color: const Color(0xFF64748B)),
                     ),
                   ],
                 ),

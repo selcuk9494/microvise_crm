@@ -24,6 +24,8 @@ class WorkOrder {
     this.closeNotes,
     this.sortOrder = 0,
     this.payments = const [],
+    this.customerSignatureDataUrl,
+    this.personnelSignatureDataUrl,
     required this.isActive,
   });
 
@@ -49,6 +51,8 @@ class WorkOrder {
   final String? closeNotes;
   final int sortOrder;
   final List<WorkOrderPayment> payments;
+  final String? customerSignatureDataUrl;
+  final String? personnelSignatureDataUrl;
   final bool isActive;
 
   factory WorkOrder.fromJson(Map<String, dynamic> json) {
@@ -79,6 +83,9 @@ class WorkOrder {
           .map(WorkOrderPayment.fromJson)
           .where((payment) => payment.isActive)
           .toList(growable: false),
+      customerSignatureDataUrl: json['customer_signature_data_url']?.toString(),
+      personnelSignatureDataUrl:
+          json['personnel_signature_data_url']?.toString(),
       isActive: (json['is_active'] as bool?) ?? true,
     );
   }
@@ -142,6 +149,8 @@ class WorkOrder {
       'close_notes': closeNotes,
       'sort_order': sortOrder,
       'payments': payments.map((p) => p.toJson()).toList(growable: false),
+      'customer_signature_data_url': customerSignatureDataUrl,
+      'personnel_signature_data_url': personnelSignatureDataUrl,
       'is_active': isActive,
     };
   }

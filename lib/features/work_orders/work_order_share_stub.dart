@@ -9,7 +9,7 @@ Future<void> shareWorkOrderPdf({
   required String? closeNotes,
   required List<WorkOrderPayment> payments,
   Uint8List? signaturePngBytes,
+  Uint8List? personnelSignaturePngBytes,
 }) async {
   throw UnsupportedError('PDF paylaşımı bu platformda desteklenmiyor.');
 }
-

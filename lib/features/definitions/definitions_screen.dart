@@ -420,6 +420,8 @@ class DefinitionsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isAdmin = ref.watch(isAdminProvider);
+    final height = MediaQuery.sizeOf(context).height;
+    final availableHeight = (height - 260).clamp(520.0, 920.0);
     return DefaultTabController(
       length: 6,
       child: AppPageLayout(
@@ -446,7 +448,7 @@ class DefinitionsScreen extends ConsumerWidget {
                   ),
                   const Divider(height: 1),
                   SizedBox(
-                    height: 720,
+                    height: availableHeight,
                     child: TabBarView(
                       children: [
                         _BrandsTab(isAdmin: isAdmin),

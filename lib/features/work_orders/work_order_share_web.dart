@@ -14,6 +14,7 @@ Future<void> shareWorkOrderPdf({
   required String? closeNotes,
   required List<WorkOrderPayment> payments,
   Uint8List? signaturePngBytes,
+  Uint8List? personnelSignaturePngBytes,
 }) async {
   final bytes = await buildWorkOrderPdfBytes(
     order: order,
@@ -21,6 +22,7 @@ Future<void> shareWorkOrderPdf({
     closeNotes: closeNotes,
     payments: payments,
     signaturePngBytes: signaturePngBytes,
+    personnelSignaturePngBytes: personnelSignaturePngBytes,
   );
 
   final filename = _safeFilename(
@@ -51,4 +53,3 @@ Future<void> shareWorkOrderPdf({
 String _safeFilename(String input) {
   return input.replaceAll(RegExp(r'[^a-zA-Z0-9._-]+'), '_');
 }
-

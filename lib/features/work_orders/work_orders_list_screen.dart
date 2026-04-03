@@ -22,6 +22,29 @@ String _shortId(String id) {
   return trimmed.substring(0, 6);
 }
 
+int _hashString32(String input) {
+  var hash = 0x811C9DC5;
+  for (final codeUnit in input.codeUnits) {
+    hash ^= codeUnit;
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+  }
+  return hash;
+}
+
+Color _cityAccentColor(String? city, {required int fallbackIndex}) {
+  final v = (city ?? '').trim();
+  if (v.isEmpty) return _rowAccentColor(fallbackIndex);
+  final h = _hashString32(v) % 360;
+  return HSLColor.fromAHSL(1, h.toDouble(), 0.62, 0.42).toColor();
+}
+
+Color? _cityBackgroundColor(String? city) {
+  final v = (city ?? '').trim();
+  if (v.isEmpty) return null;
+  final h = _hashString32(v) % 360;
+  return HSLColor.fromAHSL(1, h.toDouble(), 0.60, 0.94).toColor();
+}
+
 Widget _statusBadge(String status) {
   switch (status) {
     case 'open':
@@ -326,26 +349,6 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                         ? Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _searchController,
-                                      onChanged: (_) => setState(() {}),
-                                      decoration: const InputDecoration(
-                                        prefixIcon: Icon(Icons.search_rounded),
-                                        hintText: 'Ara',
-                                      ),
-                                    ),
-                                  ),
-                                  const Gap(10),
-                                  IconButton.filledTonal(
-                                    onPressed: openFiltersSheet,
-                                    icon: const Icon(Icons.tune_rounded),
-                                  ),
-                                ],
-                              ),
-                              const Gap(10),
                               Wrap(
                                 spacing: 10,
                                 runSpacing: 10,
@@ -414,6 +417,26 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                           'Bit: ${DateFormat('y-MM-dd').format(_toDate!)}',
                                       tone: AppBadgeTone.neutral,
                                     ),
+                                ],
+                              ),
+                              const Gap(10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _searchController,
+                                      onChanged: (_) => setState(() {}),
+                                      decoration: const InputDecoration(
+                                        prefixIcon: Icon(Icons.search_rounded),
+                                        hintText: 'Ara',
+                                      ),
+                                    ),
+                                  ),
+                                  const Gap(10),
+                                  IconButton.filledTonal(
+                                    onPressed: openFiltersSheet,
+                                    icon: const Icon(Icons.tune_rounded),
+                                  ),
                                 ],
                               ),
                             ],
@@ -666,6 +689,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
               items: filtered,
               canReorder:
                   _reorderMode && _statusFilter == 'open' && search.trim().isEmpty,
+              preferGrid: (kIsWeb && !isMobile) || isMobile,
               canEdit: canEdit,
               canArchive: canArchive,
               canDelete: canDelete,
@@ -913,6 +937,7 @@ class _WorkOrdersList extends StatelessWidget {
     required this.header,
     required this.items,
     required this.canReorder,
+    required this.preferGrid,
     required this.canEdit,
     required this.canArchive,
     required this.canDelete,
@@ -927,6 +952,7 @@ class _WorkOrdersList extends StatelessWidget {
   final Widget? header;
   final List<WorkOrder> items;
   final bool canReorder;
+  final bool preferGrid;
   final bool canEdit;
   final bool canArchive;
   final bool canDelete;
@@ -960,6 +986,23 @@ class _WorkOrdersList extends StatelessWidget {
         openCounter += 1;
         openIndexMap[w.id] = openCounter;
       }
+    }
+
+    if (canReorder && preferGrid) {
+      return _ReorderableWorkOrdersGrid(
+        items: sorted,
+        openIndexMap: openIndexMap,
+        onReorder: onReorder,
+        onOpen: onOpen,
+        onEdit: onEdit,
+        onCancel: onCancel,
+        onToggleActive: onToggleActive,
+        onDelete: onDelete,
+        showEdit: canEdit,
+        showCancel: canEdit,
+        showToggleActive: canArchive,
+        showDelete: canDelete,
+      );
     }
 
     if (canReorder) {
@@ -1017,6 +1060,71 @@ class _WorkOrdersList extends StatelessWidget {
       );
     }
 
+    if (preferGrid) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final maxColumns = width < 520
+              ? 2
+              : width < 820
+                  ? 3
+                  : 6;
+          final targetTileWidth = width < 520
+              ? 170.0
+              : width < 820
+                  ? 200.0
+                  : 220.0;
+          final crossAxisCount =
+              (width / targetTileWidth).floor().clamp(2, maxColumns);
+
+          return CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              if (header != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: header!,
+                  ),
+                ),
+              SliverPadding(
+                padding: const EdgeInsets.only(bottom: 120),
+                sliver: SliverGrid(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                    childAspectRatio: width < 520 ? 1.14 : 1.28,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final order = sorted[index];
+                      final indexNumber = openIndexMap[order.id];
+                      return _WorkOrderGridCard(
+                        order: order,
+                        indexNumber: indexNumber,
+                        colorIndex: index,
+                        onOpen: () => onOpen(order),
+                        onEdit: canEdit ? () => onEdit(order) : null,
+                        onCancel: () => onCancel(order),
+                        onToggleActive: () => onToggleActive(order),
+                        onDelete: () => onDelete(order),
+                        showEdit: canEdit,
+                        showCancel: canEdit,
+                        showToggleActive: canArchive,
+                        showDelete: canDelete,
+                      );
+                    },
+                    childCount: sorted.length,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    }
+
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 120),
@@ -1044,6 +1152,383 @@ class _WorkOrdersList extends StatelessWidget {
           showCancel: canEdit,
           showToggleActive: canArchive,
           showDelete: canDelete,
+        );
+      },
+    );
+  }
+}
+
+class _WorkOrderGridCard extends StatelessWidget {
+  const _WorkOrderGridCard({
+    required this.order,
+    required this.indexNumber,
+    required this.colorIndex,
+    required this.onOpen,
+    required this.onEdit,
+    required this.onCancel,
+    required this.onToggleActive,
+    required this.onDelete,
+    required this.showEdit,
+    required this.showCancel,
+    required this.showToggleActive,
+    required this.showDelete,
+  });
+
+  final WorkOrder order;
+  final int? indexNumber;
+  final int colorIndex;
+  final VoidCallback onOpen;
+  final VoidCallback? onEdit;
+  final VoidCallback onCancel;
+  final VoidCallback onToggleActive;
+  final VoidCallback onDelete;
+  final bool showEdit;
+  final bool showCancel;
+  final bool showToggleActive;
+  final bool showDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxHeight < 175 || constraints.maxWidth < 210;
+        final statusColor = _statusColor(order.status);
+        final accent = _cityAccentColor(order.city, fallbackIndex: colorIndex);
+        final backgroundColor = _cityBackgroundColor(order.city);
+        final muted = Theme.of(context)
+            .textTheme
+            .bodySmall
+            ?.copyWith(color: AppTheme.textMuted);
+
+        final line1 = [
+          order.customerName?.trim().isNotEmpty ?? false
+              ? order.customerName!.trim()
+              : null,
+          order.branchName?.trim().isNotEmpty ?? false
+              ? order.branchName!.trim()
+              : null,
+        ].whereType<String>().join(' • ');
+
+        final scheduled = order.scheduledDate == null
+            ? null
+            : DateFormat('d MMM', 'tr_TR').format(order.scheduledDate!.toLocal());
+        final createdAtTime = order.createdAt == null
+            ? null
+            : DateFormat('HH:mm', 'tr_TR').format(order.createdAt!.toLocal());
+
+        final meta = [
+          if ((order.workOrderTypeName ?? '').trim().isNotEmpty)
+            order.workOrderTypeName!.trim(),
+          if ((order.city ?? '').trim().isNotEmpty) order.city!.trim(),
+          if (createdAtTime != null) 'Oluş: $createdAtTime',
+          if (scheduled != null) 'Plan: $scheduled',
+        ].join(' • ');
+
+        return AppCard(
+          onTap: onOpen,
+          padding: EdgeInsets.all(compact ? 8 : 10),
+          color: backgroundColor,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: compact ? 28 : 32,
+                    height: compact ? 28 : 32,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: accent.withValues(alpha: 0.22)),
+                    ),
+                    child: Center(
+                      child: Text(
+                        indexNumber?.toString() ?? _shortId(order.id),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              color: accent,
+                            ),
+                      ),
+                    ),
+                  ),
+                  const Gap(8),
+                  Expanded(child: _statusBadge(order.status)),
+                  PopupMenuButton<String>(
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(value: 'detail', child: Text('Detay')),
+                      if (showEdit)
+                        const PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+                      if (showCancel)
+                        const PopupMenuItem(value: 'cancel', child: Text('İptal Et')),
+                      if (showToggleActive)
+                        PopupMenuItem(
+                          value: 'toggle',
+                          child: Text(order.isActive ? 'Pasife Al' : 'Aktifleştir'),
+                        ),
+                      if (showDelete)
+                        const PopupMenuItem(value: 'delete', child: Text('Sil')),
+                    ],
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'detail':
+                          onOpen();
+                          break;
+                        case 'edit':
+                          onEdit?.call();
+                          break;
+                        case 'cancel':
+                          onCancel();
+                          break;
+                        case 'toggle':
+                          onToggleActive();
+                          break;
+                        case 'delete':
+                          onDelete();
+                          break;
+                      }
+                    },
+                  ),
+                ],
+              ),
+              Gap(compact ? 6 : 10),
+              Container(
+                height: compact ? 4 : 6,
+                width: compact ? 44 : 56,
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.75),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              Gap(compact ? 6 : 10),
+              Text(
+                order.title,
+                maxLines: compact ? 2 : 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      decoration: order.isActive ? null : TextDecoration.lineThrough,
+                    ),
+              ),
+              Gap(compact ? 4 : 6),
+              if (!compact && line1.trim().isNotEmpty)
+                Text(
+                  line1,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: muted,
+                ),
+              if (meta.trim().isNotEmpty) ...[
+                Gap(compact ? 2 : 4),
+                Text(
+                  meta,
+                  maxLines: compact ? 1 : 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: muted,
+                ),
+              ],
+              if (!compact) ...[
+                const Spacer(),
+                if ((order.description ?? '').trim().isNotEmpty)
+                  Text(
+                    (order.description ?? '').trim(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: muted,
+                  ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ReorderableWorkOrdersGrid extends StatefulWidget {
+  const _ReorderableWorkOrdersGrid({
+    required this.items,
+    required this.openIndexMap,
+    required this.onReorder,
+    required this.onOpen,
+    required this.onEdit,
+    required this.onCancel,
+    required this.onToggleActive,
+    required this.onDelete,
+    required this.showEdit,
+    required this.showCancel,
+    required this.showToggleActive,
+    required this.showDelete,
+  });
+
+  final List<WorkOrder> items;
+  final Map<String, int> openIndexMap;
+  final ValueChanged<List<WorkOrder>> onReorder;
+  final ValueChanged<WorkOrder> onOpen;
+  final ValueChanged<WorkOrder> onEdit;
+  final ValueChanged<WorkOrder> onCancel;
+  final ValueChanged<WorkOrder> onToggleActive;
+  final ValueChanged<WorkOrder> onDelete;
+  final bool showEdit;
+  final bool showCancel;
+  final bool showToggleActive;
+  final bool showDelete;
+
+  @override
+  State<_ReorderableWorkOrdersGrid> createState() =>
+      _ReorderableWorkOrdersGridState();
+}
+
+class _ReorderableWorkOrdersGridState extends State<_ReorderableWorkOrdersGrid> {
+  late List<WorkOrder> _items;
+  String? _draggingId;
+
+  @override
+  void initState() {
+    super.initState();
+    _items = [...widget.items];
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReorderableWorkOrdersGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_draggingId != null) return;
+    _items = [...widget.items];
+  }
+
+  void _move(String fromId, String toId) {
+    if (fromId == toId) return;
+    final fromIndex = _items.indexWhere((e) => e.id == fromId);
+    final toIndex = _items.indexWhere((e) => e.id == toId);
+    if (fromIndex < 0 || toIndex < 0) return;
+    final next = [..._items];
+    final item = next.removeAt(fromIndex);
+    next.insert(toIndex, item);
+    setState(() => _items = next);
+    widget.onReorder(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final maxColumns = width < 520
+            ? 2
+            : width < 820
+                ? 3
+                : 6;
+        final targetTileWidth = width < 520
+            ? 170.0
+            : width < 820
+                ? 200.0
+                : 220.0;
+        final crossAxisCount = (width / targetTileWidth).floor().clamp(2, maxColumns);
+        return GridView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 120),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: width < 520 ? 1.14 : 1.28,
+          ),
+          itemCount: _items.length,
+          itemBuilder: (context, index) {
+            final order = _items[index];
+            final indexNumber = widget.openIndexMap[order.id];
+            return DragTarget<String>(
+              onWillAcceptWithDetails: (details) {
+                final fromId = details.data;
+                return fromId != order.id;
+              },
+              onAcceptWithDetails: (details) {
+                _move(details.data, order.id);
+              },
+              builder: (context, candidateData, rejectedData) {
+                final highlight = candidateData.isNotEmpty;
+                final card = _WorkOrderGridCard(
+                  order: order,
+                  indexNumber: indexNumber,
+                  colorIndex: index,
+                  onOpen: () => widget.onOpen(order),
+                  onEdit: widget.showEdit ? () => widget.onEdit(order) : null,
+                  onCancel: () => widget.onCancel(order),
+                  onToggleActive: () => widget.onToggleActive(order),
+                  onDelete: () => widget.onDelete(order),
+                  showEdit: widget.showEdit,
+                  showCancel: widget.showCancel,
+                  showToggleActive: widget.showToggleActive,
+                  showDelete: widget.showDelete,
+                );
+
+                final draggableChild = AnimatedScale(
+                  duration: const Duration(milliseconds: 120),
+                  scale: highlight ? 0.98 : 1,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                      border: highlight
+                          ? Border.all(
+                              color: AppTheme.primary.withValues(alpha: 0.5),
+                              width: 2,
+                            )
+                          : null,
+                    ),
+                    child: card,
+                  ),
+                );
+
+                final feedback = ConstrainedBox(
+                  constraints:
+                      const BoxConstraints.tightFor(width: 240, height: 190),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Opacity(
+                      opacity: 0.95,
+                      child: _WorkOrderGridCard(
+                        order: order,
+                        indexNumber: indexNumber,
+                        colorIndex: index,
+                        onOpen: () {},
+                        onEdit: null,
+                        onCancel: () {},
+                        onToggleActive: () {},
+                        onDelete: () {},
+                        showEdit: false,
+                        showCancel: false,
+                        showToggleActive: false,
+                        showDelete: false,
+                      ),
+                    ),
+                  ),
+                );
+
+                final childWhenDragging = Opacity(opacity: 0.35, child: card);
+
+                if (kIsWeb) {
+                  return Draggable<String>(
+                    data: order.id,
+                    onDragStarted: () => setState(() => _draggingId = order.id),
+                    onDragEnd: (_) => setState(() => _draggingId = null),
+                    feedback: feedback,
+                    childWhenDragging: childWhenDragging,
+                    child: draggableChild,
+                  );
+                }
+
+                return LongPressDraggable<String>(
+                  data: order.id,
+                  onDragStarted: () => setState(() => _draggingId = order.id),
+                  onDraggableCanceled: (velocity, offset) =>
+                      setState(() => _draggingId = null),
+                  onDragEnd: (_) => setState(() => _draggingId = null),
+                  feedback: feedback,
+                  childWhenDragging: childWhenDragging,
+                  child: draggableChild,
+                );
+              },
+            );
+          },
         );
       },
     );
@@ -1109,7 +1594,6 @@ class _WorkOrderCard extends StatelessWidget {
     ].whereType<String>().join(' • ');
 
     final statusColor = _statusColor(order.status);
-    final accent = _rowAccentColor(reorderIndex);
     final muted = Theme.of(context)
         .textTheme
         .bodySmall
@@ -1122,9 +1606,11 @@ class _WorkOrderCard extends StatelessWidget {
       const Color(0xFFFDF2F8),
       const Color(0xFFF5F3FF),
     ];
-    final backgroundColor = order.status == 'open'
-        ? openBackgrounds[reorderIndex % openBackgrounds.length]
-        : null;
+    final backgroundColor =
+        _cityBackgroundColor(order.city) ??
+        (order.status == 'open'
+            ? openBackgrounds[reorderIndex % openBackgrounds.length]
+            : null);
 
     return AppCard(
       onTap: onOpen,
@@ -1146,16 +1632,23 @@ class _WorkOrderCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.12),
+              color: _cityAccentColor(order.city, fallbackIndex: reorderIndex)
+                  .withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: accent.withValues(alpha: 0.22)),
+              border: Border.all(
+                color: _cityAccentColor(order.city, fallbackIndex: reorderIndex)
+                    .withValues(alpha: 0.22),
+              ),
             ),
             child: Center(
               child: Text(
                 indexNumber?.toString() ?? _shortId(order.id),
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w900,
-                      color: accent,
+                      color: _cityAccentColor(
+                        order.city,
+                        fallbackIndex: reorderIndex,
+                      ),
                     ),
               ),
             ),

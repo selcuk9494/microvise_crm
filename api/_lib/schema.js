@@ -6,6 +6,8 @@ const ensured = {
   invoice_items: false,
   fault_forms: false,
   device_registries: false,
+  business_activity_types: false,
+  work_order_signatures: false,
 };
 
 async function tableExists(tableName) {
@@ -413,10 +415,169 @@ async function ensureDeviceRegistriesTable() {
   return true;
 }
 
+async function ensureBusinessActivityTypesTable() {
+  if (ensured.business_activity_types) return true;
+
+  const exists = await tableExists('business_activity_types');
+  if (!exists) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
+    if (isProd && allow !== 'true') {
+      throw new Error(
+        'business_activity_types table is missing. Set ALLOW_SCHEMA_AUTO_CREATE=true to auto-create (non-production recommended).',
+      );
+    }
+    await query(`create extension if not exists pgcrypto`);
+    await query(
+      `
+        create table if not exists public.business_activity_types (
+          id uuid primary key default gen_random_uuid(),
+          name text not null,
+          is_active boolean not null default true,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now()
+        )
+      `,
+    );
+    await query(
+      `
+        create unique index if not exists idx_business_activity_types_unique_name
+        on public.business_activity_types (upper(btrim(name)))
+      `,
+    );
+    await query(
+      `
+        create or replace function public.business_activity_types_set_updated_at()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          new.updated_at = now();
+          return new;
+        end;
+        $$;
+      `,
+    );
+    await query(
+      `
+        drop trigger if exists set_business_activity_types_updated_at on public.business_activity_types;
+        create trigger set_business_activity_types_updated_at
+        before update on public.business_activity_types
+        for each row
+        execute function public.business_activity_types_set_updated_at();
+      `,
+    );
+  }
+
+  ensured.business_activity_types = true;
+  return true;
+}
+
+async function ensureWorkOrderSignaturesTable() {
+  if (ensured.work_order_signatures) return true;
+
+  const exists = await tableExists('work_order_signatures');
+  if (!exists) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
+    if (isProd && allow !== 'true') {
+      throw new Error(
+        'work_order_signatures table is missing. Set ALLOW_SCHEMA_AUTO_CREATE=true to auto-create (non-production recommended).',
+      );
+    }
+    await query(`create extension if not exists pgcrypto`);
+    await query(
+      `
+        create table if not exists public.work_order_signatures (
+          id uuid primary key default gen_random_uuid(),
+          work_order_id uuid not null unique,
+          customer_signature_data_url text,
+          personnel_signature_data_url text,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now()
+        )
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_work_order_signatures_work_order_id
+        on public.work_order_signatures (work_order_id)
+      `,
+    );
+    await query(
+      `
+        create or replace function public.work_order_signatures_set_updated_at()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          new.updated_at = now();
+          return new;
+        end;
+        $$;
+      `,
+    );
+    await query(
+      `
+        drop trigger if exists set_work_order_signatures_updated_at on public.work_order_signatures;
+        create trigger set_work_order_signatures_updated_at
+        before update on public.work_order_signatures
+        for each row
+        execute function public.work_order_signatures_set_updated_at();
+      `,
+    );
+  } else {
+    await query(
+      `
+        alter table public.work_order_signatures
+          add column if not exists id uuid,
+          add column if not exists work_order_id uuid,
+          add column if not exists customer_signature_data_url text,
+          add column if not exists personnel_signature_data_url text,
+          add column if not exists created_at timestamptz,
+          add column if not exists updated_at timestamptz
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_work_order_signatures_work_order_id
+        on public.work_order_signatures (work_order_id)
+      `,
+    );
+    await query(
+      `
+        create or replace function public.work_order_signatures_set_updated_at()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          new.updated_at = now();
+          return new;
+        end;
+        $$;
+      `,
+    );
+    await query(
+      `
+        drop trigger if exists set_work_order_signatures_updated_at on public.work_order_signatures;
+        create trigger set_work_order_signatures_updated_at
+        before update on public.work_order_signatures
+        for each row
+        execute function public.work_order_signatures_set_updated_at();
+      `,
+    );
+  }
+
+  ensured.work_order_signatures = true;
+  return true;
+}
+
 module.exports = {
   ensureSerialTrackingTable,
   ensureWorkOrderCloseNotesTable,
   ensureInvoiceItemsTable,
   ensureFaultFormsTable,
   ensureDeviceRegistriesTable,
+  ensureBusinessActivityTypesTable,
+  ensureWorkOrderSignaturesTable,
 };
