@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/utils/app_time.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
@@ -45,12 +46,44 @@ Color? _cityBackgroundColor(String? city) {
   return HSLColor.fromAHSL(1, h.toDouble(), 0.60, 0.94).toColor();
 }
 
+Widget _compactStatusPill(String status) {
+  final color = _statusColor(status);
+  final label = switch (status) {
+    'open' => 'BEKLEYEN',
+    'in_progress' => 'YAPILIYOR',
+    'approval_pending' => 'ONAY',
+    'done' => 'KAPALI',
+    'cancelled' => 'İPTAL',
+    _ => status.toUpperCase(),
+  };
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.14),
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(color: color.withValues(alpha: 0.30)),
+    ),
+    child: Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w900,
+        color: color,
+      ),
+    ),
+  );
+}
+
 Widget _statusBadge(String status) {
   switch (status) {
     case 'open':
       return const AppBadge(label: 'BEKLEYEN', tone: AppBadgeTone.warning);
     case 'in_progress':
       return const AppBadge(label: 'YAPILIYOR', tone: AppBadgeTone.primary);
+    case 'approval_pending':
+      return const AppBadge(label: 'ONAY BEKLİYOR', tone: AppBadgeTone.primary);
     case 'done':
       return const AppBadge(label: 'TAMAMLANDI', tone: AppBadgeTone.success);
     case 'cancelled':
@@ -89,7 +122,14 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
     final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
     final canDelete = ref.watch(hasActionAccessProvider(kActionDeleteRecords));
-    const allowedStatuses = {'all', 'open', 'in_progress', 'done', 'cancelled'};
+    const allowedStatuses = {
+      'all',
+      'open',
+      'in_progress',
+      'approval_pending',
+      'done',
+      'cancelled',
+    };
     if (!allowedStatuses.contains(_statusFilter)) {
       _statusFilter = 'all';
     }
@@ -382,6 +422,10 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                                 label: 'Yapılıyor',
                                               ),
                                               _StatusSheetItem(
+                                                value: 'approval_pending',
+                                                label: 'Onay Bekliyor',
+                                              ),
+                                              _StatusSheetItem(
                                                 value: 'done',
                                                 label: 'Kapalı',
                                               ),
@@ -483,6 +527,10 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                           _StatusSheetItem(
                                             value: 'in_progress',
                                             label: 'Yapılıyor',
+                                          ),
+                                          _StatusSheetItem(
+                                            value: 'approval_pending',
+                                            label: 'Onay Bekliyor',
                                           ),
                                           _StatusSheetItem(
                                             value: 'done',
@@ -629,6 +677,11 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                           label: 'Yapılıyor: ${byStatus('in_progress')}',
                           tone: AppBadgeTone.primary,
                         ),
+                                        AppBadge(
+                                          label:
+                                              'Onay: ${byStatus('approval_pending')}',
+                                          tone: AppBadgeTone.primary,
+                                        ),
                         AppBadge(
                           label: 'Kapalı: ${byStatus('done')}',
                           tone: AppBadgeTone.success,
@@ -711,6 +764,19 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                   initialOrder: order,
                 );
                 ref.read(workOrdersBoardProvider.notifier).refresh();
+              },
+              onApprovalPending: (order) {
+                if (!canEdit) return;
+                ref.read(workOrdersBoardProvider.notifier).updateStatus(
+                      workOrderId: order.id,
+                      newStatus: 'approval_pending',
+                    );
+              },
+              onMarkOpen: (order) {
+                if (!canEdit) return;
+                ref
+                    .read(workOrdersBoardProvider.notifier)
+                    .updateStatus(workOrderId: order.id, newStatus: 'open');
               },
               onCancel: (order) {
                 if (!canEdit) return;
@@ -923,6 +989,8 @@ String _statusLabel(String value) {
       return 'Açık';
     case 'in_progress':
       return 'Yapılıyor';
+    case 'approval_pending':
+      return 'Onay Bekliyor';
     case 'done':
       return 'Kapalı';
     case 'cancelled':
@@ -944,6 +1012,8 @@ class _WorkOrdersList extends StatelessWidget {
     required this.onReorder,
     required this.onOpen,
     required this.onEdit,
+    required this.onApprovalPending,
+    required this.onMarkOpen,
     required this.onCancel,
     required this.onToggleActive,
     required this.onDelete,
@@ -959,6 +1029,8 @@ class _WorkOrdersList extends StatelessWidget {
   final ValueChanged<List<WorkOrder>> onReorder;
   final ValueChanged<WorkOrder> onOpen;
   final ValueChanged<WorkOrder> onEdit;
+  final ValueChanged<WorkOrder> onApprovalPending;
+  final ValueChanged<WorkOrder> onMarkOpen;
   final ValueChanged<WorkOrder> onCancel;
   final ValueChanged<WorkOrder> onToggleActive;
   final ValueChanged<WorkOrder> onDelete;
@@ -995,6 +1067,8 @@ class _WorkOrdersList extends StatelessWidget {
         onReorder: onReorder,
         onOpen: onOpen,
         onEdit: onEdit,
+        onApprovalPending: onApprovalPending,
+        onMarkOpen: onMarkOpen,
         onCancel: onCancel,
         onToggleActive: onToggleActive,
         onDelete: onDelete,
@@ -1048,6 +1122,8 @@ class _WorkOrdersList extends StatelessWidget {
             reorderable: true,
             onOpen: () => onOpen(order),
             onEdit: canEdit ? () => onEdit(order) : null,
+            onApprovalPending: () => onApprovalPending(order),
+            onMarkOpen: () => onMarkOpen(order),
             onCancel: () => onCancel(order),
             onToggleActive: () => onToggleActive(order),
             onDelete: () => onDelete(order),
@@ -1076,6 +1152,11 @@ class _WorkOrdersList extends StatelessWidget {
                   : 220.0;
           final crossAxisCount =
               (width / targetTileWidth).floor().clamp(2, maxColumns);
+          final childAspectRatio = width < 520
+              ? 0.82
+              : width < 1000
+                  ? 0.98
+                  : 1.18;
 
           return CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -1094,7 +1175,7 @@ class _WorkOrdersList extends StatelessWidget {
                     crossAxisCount: crossAxisCount,
                     crossAxisSpacing: 10,
                     mainAxisSpacing: 10,
-                    childAspectRatio: width < 520 ? 1.14 : 1.28,
+                    childAspectRatio: childAspectRatio,
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -1106,6 +1187,8 @@ class _WorkOrdersList extends StatelessWidget {
                         colorIndex: index,
                         onOpen: () => onOpen(order),
                         onEdit: canEdit ? () => onEdit(order) : null,
+                        onApprovalPending: () => onApprovalPending(order),
+                        onMarkOpen: () => onMarkOpen(order),
                         onCancel: () => onCancel(order),
                         onToggleActive: () => onToggleActive(order),
                         onDelete: () => onDelete(order),
@@ -1145,6 +1228,8 @@ class _WorkOrdersList extends StatelessWidget {
           reorderable: false,
           onOpen: () => onOpen(order),
           onEdit: canEdit ? () => onEdit(order) : null,
+          onApprovalPending: () => onApprovalPending(order),
+          onMarkOpen: () => onMarkOpen(order),
           onCancel: () => onCancel(order),
           onToggleActive: () => onToggleActive(order),
           onDelete: () => onDelete(order),
@@ -1165,6 +1250,8 @@ class _WorkOrderGridCard extends StatelessWidget {
     required this.colorIndex,
     required this.onOpen,
     required this.onEdit,
+    required this.onApprovalPending,
+    required this.onMarkOpen,
     required this.onCancel,
     required this.onToggleActive,
     required this.onDelete,
@@ -1179,6 +1266,8 @@ class _WorkOrderGridCard extends StatelessWidget {
   final int colorIndex;
   final VoidCallback onOpen;
   final VoidCallback? onEdit;
+  final VoidCallback onApprovalPending;
+  final VoidCallback onMarkOpen;
   final VoidCallback onCancel;
   final VoidCallback onToggleActive;
   final VoidCallback onDelete;
@@ -1191,7 +1280,7 @@ class _WorkOrderGridCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.maxHeight < 175 || constraints.maxWidth < 210;
+        final compact = constraints.maxHeight < 190 || constraints.maxWidth < 210;
         final statusColor = _statusColor(order.status);
         final accent = _cityAccentColor(order.city, fallbackIndex: colorIndex);
         final backgroundColor = _cityBackgroundColor(order.city);
@@ -1200,33 +1289,57 @@ class _WorkOrderGridCard extends StatelessWidget {
             .bodySmall
             ?.copyWith(color: AppTheme.textMuted);
 
-        final line1 = [
-          order.customerName?.trim().isNotEmpty ?? false
-              ? order.customerName!.trim()
-              : null,
-          order.branchName?.trim().isNotEmpty ?? false
-              ? order.branchName!.trim()
-              : null,
-        ].whereType<String>().join(' • ');
+        final customerName = (order.customerName ?? '').trim();
+        final branchName = (order.branchName ?? '').trim();
 
         final scheduled = order.scheduledDate == null
             ? null
-            : DateFormat('d MMM', 'tr_TR').format(order.scheduledDate!.toLocal());
+            : DateFormat('d MMM', 'tr_TR')
+                .format(AppTime.toTr(order.scheduledDate!));
         final createdAtTime = order.createdAt == null
             ? null
-            : DateFormat('HH:mm', 'tr_TR').format(order.createdAt!.toLocal());
+            : DateFormat('HH:mm', 'tr_TR')
+                .format(AppTime.toTr(order.createdAt!));
+
+        final typeName = (order.workOrderTypeName ?? '').trim();
+        final city = (order.city ?? '').trim();
+        final address = (order.address ?? '').trim();
+        final contactPhone = (order.contactPhone ?? '').trim();
+        final paymentValue = order.paymentRequired;
+        final paymentColor = paymentValue == null
+            ? null
+            : paymentValue
+                ? const Color(0xFF16A34A)
+                : const Color(0xFFDC2626);
+        final paymentIcon = paymentValue == null
+            ? null
+            : paymentValue
+                ? Icons.payments_rounded
+                : Icons.money_off_csred_rounded;
 
         final meta = [
-          if ((order.workOrderTypeName ?? '').trim().isNotEmpty)
-            order.workOrderTypeName!.trim(),
-          if ((order.city ?? '').trim().isNotEmpty) order.city!.trim(),
+          if (typeName.isNotEmpty) typeName,
+          if (city.isNotEmpty) city,
           if (createdAtTime != null) 'Oluş: $createdAtTime',
           if (scheduled != null) 'Plan: $scheduled',
         ].join(' • ');
 
+        Widget infoLine(String label, String value) {
+          final style = (muted ?? const TextStyle()).copyWith(
+            fontSize: compact ? 10 : muted?.fontSize,
+            height: compact ? 1.02 : muted?.height,
+          );
+          return Text(
+            '$label: $value',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: style,
+          );
+        }
+
         return AppCard(
           onTap: onOpen,
-          padding: EdgeInsets.all(compact ? 8 : 10),
+          padding: EdgeInsets.all(compact ? 6 : 10),
           color: backgroundColor,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1252,12 +1365,59 @@ class _WorkOrderGridCard extends StatelessWidget {
                     ),
                   ),
                   const Gap(8),
-                  Expanded(child: _statusBadge(order.status)),
+                  if (paymentValue != null) ...[
+                    Container(
+                      width: compact ? 26 : 30,
+                      height: compact ? 26 : 30,
+                      decoration: BoxDecoration(
+                        color: paymentColor!.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: paymentColor.withValues(alpha: 0.30),
+                        ),
+                      ),
+                      child: Center(
+                        child: Icon(
+                          paymentIcon!,
+                          size: 18,
+                          color: paymentColor,
+                        ),
+                      ),
+                    ),
+                    const Gap(6),
+                  ],
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: compact
+                          ? FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: _compactStatusPill(order.status),
+                            )
+                          : _statusBadge(order.status),
+                    ),
+                  ),
                   PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
+                    tooltip: 'İşlemler',
+                    icon: const Icon(Icons.more_horiz_rounded),
                     itemBuilder: (context) => [
                       const PopupMenuItem(value: 'detail', child: Text('Detay')),
                       if (showEdit)
                         const PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+                      if (showEdit &&
+                          (order.status == 'open' ||
+                              order.status == 'in_progress'))
+                        const PopupMenuItem(
+                          value: 'approval_pending',
+                          child: Text('Onay Bekliyor'),
+                        ),
+                      if (showEdit && order.status == 'approval_pending')
+                        const PopupMenuItem(
+                          value: 'mark_open',
+                          child: Text('Açığa Al'),
+                        ),
                       if (showCancel)
                         const PopupMenuItem(value: 'cancel', child: Text('İptal Et')),
                       if (showToggleActive)
@@ -1276,6 +1436,12 @@ class _WorkOrderGridCard extends StatelessWidget {
                         case 'edit':
                           onEdit?.call();
                           break;
+                        case 'approval_pending':
+                          onApprovalPending();
+                          break;
+                        case 'mark_open':
+                          onMarkOpen();
+                          break;
                         case 'cancel':
                           onCancel();
                           break;
@@ -1290,50 +1456,100 @@ class _WorkOrderGridCard extends StatelessWidget {
                   ),
                 ],
               ),
-              Gap(compact ? 6 : 10),
+              Gap(compact ? 4 : 10),
               Container(
-                height: compact ? 4 : 6,
-                width: compact ? 44 : 56,
+                height: compact ? 3 : 6,
+                width: compact ? 40 : 56,
                 decoration: BoxDecoration(
                   color: statusColor.withValues(alpha: 0.75),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
-              Gap(compact ? 6 : 10),
+              Gap(compact ? 4 : 10),
+              Text(
+                customerName.isNotEmpty ? customerName : '—',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+              ),
+              Gap(compact ? 3 : 6),
               Text(
                 order.title,
-                maxLines: compact ? 2 : 2,
+                maxLines: compact ? 1 : 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       decoration: order.isActive ? null : TextDecoration.lineThrough,
                     ),
               ),
-              Gap(compact ? 4 : 6),
-              if (!compact && line1.trim().isNotEmpty)
+              if ((order.description ?? '').trim().isNotEmpty) ...[
+                Gap(compact ? 2 : 6),
                 Text(
-                  line1,
+                  (order.description ?? '').trim(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: muted,
                 ),
-              if (meta.trim().isNotEmpty) ...[
-                Gap(compact ? 2 : 4),
+              ],
+              if (compact && scheduled != null) ...[
+                const Gap(3),
+                Text(
+                  'PLAN: $scheduled',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: statusColor,
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+              ],
+              Gap(compact ? 2 : 6),
+              if (!compact && branchName.isNotEmpty)
+                Text(
+                  branchName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: muted,
+                ),
+              if (compact) ...[
+                if (typeName.isNotEmpty) ...[
+                  const Gap(2),
+                  infoLine('Tip', typeName),
+                ],
+                if (city.isNotEmpty) ...[
+                  const Gap(2),
+                  infoLine('Şehir', city),
+                ],
+                if (address.isNotEmpty) ...[
+                  const Gap(2),
+                  infoLine('Adres', address),
+                ],
+                if (contactPhone.isNotEmpty) ...[
+                  const Gap(2),
+                  infoLine('İrtibat', contactPhone),
+                ],
+              ] else if (meta.trim().isNotEmpty) ...[
+                const Gap(4),
                 Text(
                   meta,
-                  maxLines: compact ? 1 : 2,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: muted,
                 ),
               ],
               if (!compact) ...[
                 const Spacer(),
-                if ((order.description ?? '').trim().isNotEmpty)
+                if (scheduled != null)
                   Text(
-                    (order.description ?? '').trim(),
-                    maxLines: 2,
+                    'Plan: $scheduled',
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: muted,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: statusColor,
+                          fontWeight: FontWeight.w800,
+                        ),
                   ),
               ],
             ],
@@ -1351,6 +1567,8 @@ class _ReorderableWorkOrdersGrid extends StatefulWidget {
     required this.onReorder,
     required this.onOpen,
     required this.onEdit,
+    required this.onApprovalPending,
+    required this.onMarkOpen,
     required this.onCancel,
     required this.onToggleActive,
     required this.onDelete,
@@ -1365,6 +1583,8 @@ class _ReorderableWorkOrdersGrid extends StatefulWidget {
   final ValueChanged<List<WorkOrder>> onReorder;
   final ValueChanged<WorkOrder> onOpen;
   final ValueChanged<WorkOrder> onEdit;
+  final ValueChanged<WorkOrder> onApprovalPending;
+  final ValueChanged<WorkOrder> onMarkOpen;
   final ValueChanged<WorkOrder> onCancel;
   final ValueChanged<WorkOrder> onToggleActive;
   final ValueChanged<WorkOrder> onDelete;
@@ -1423,6 +1643,11 @@ class _ReorderableWorkOrdersGridState extends State<_ReorderableWorkOrdersGrid> 
                 ? 200.0
                 : 220.0;
         final crossAxisCount = (width / targetTileWidth).floor().clamp(2, maxColumns);
+        final childAspectRatio = width < 520
+            ? 0.82
+            : width < 1000
+                ? 0.98
+                : 1.18;
         return GridView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.only(bottom: 120),
@@ -1430,7 +1655,7 @@ class _ReorderableWorkOrdersGridState extends State<_ReorderableWorkOrdersGrid> 
             crossAxisCount: crossAxisCount,
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
-            childAspectRatio: width < 520 ? 1.14 : 1.28,
+            childAspectRatio: childAspectRatio,
           ),
           itemCount: _items.length,
           itemBuilder: (context, index) {
@@ -1452,6 +1677,8 @@ class _ReorderableWorkOrdersGridState extends State<_ReorderableWorkOrdersGrid> 
                   colorIndex: index,
                   onOpen: () => widget.onOpen(order),
                   onEdit: widget.showEdit ? () => widget.onEdit(order) : null,
+                  onApprovalPending: () => widget.onApprovalPending(order),
+                  onMarkOpen: () => widget.onMarkOpen(order),
                   onCancel: () => widget.onCancel(order),
                   onToggleActive: () => widget.onToggleActive(order),
                   onDelete: () => widget.onDelete(order),
@@ -1491,6 +1718,8 @@ class _ReorderableWorkOrdersGridState extends State<_ReorderableWorkOrdersGrid> 
                         colorIndex: index,
                         onOpen: () {},
                         onEdit: null,
+                        onApprovalPending: () {},
+                        onMarkOpen: () {},
                         onCancel: () {},
                         onToggleActive: () {},
                         onDelete: () {},
@@ -1544,6 +1773,8 @@ class _WorkOrderCard extends StatelessWidget {
     required this.reorderable,
     required this.onOpen,
     required this.onEdit,
+    required this.onApprovalPending,
+    required this.onMarkOpen,
     required this.onCancel,
     required this.onToggleActive,
     required this.onDelete,
@@ -1559,6 +1790,8 @@ class _WorkOrderCard extends StatelessWidget {
   final bool reorderable;
   final VoidCallback onOpen;
   final VoidCallback? onEdit;
+  final VoidCallback onApprovalPending;
+  final VoidCallback onMarkOpen;
   final VoidCallback onCancel;
   final VoidCallback onToggleActive;
   final VoidCallback onDelete;
@@ -1572,7 +1805,7 @@ class _WorkOrderCard extends StatelessWidget {
     final scheduled = order.scheduledDate == null
         ? null
         : DateFormat('d MMM y HH:mm', 'tr_TR')
-            .format(order.scheduledDate!.toLocal());
+            .format(AppTime.toTr(order.scheduledDate!));
 
     final line1 = [
       order.customerName?.trim().isNotEmpty ?? false
@@ -1682,6 +1915,18 @@ class _WorkOrderCard extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
+                    if (order.paymentRequired != null)
+                      _InfoChip(
+                        text: order.paymentRequired!
+                            ? '₺ Ödeme Alınacak'
+                            : '₺ Ödeme Yok',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: order.paymentRequired!
+                                  ? const Color(0xFF16A34A)
+                                  : const Color(0xFFDC2626),
+                              fontWeight: FontWeight.w900,
+                            ),
+                      ),
                     if (line1.trim().isNotEmpty)
                       _InfoChip(text: line1, style: muted),
                     if ((order.assignedPersonnelName ?? '').trim().isNotEmpty)
@@ -1720,6 +1965,17 @@ class _WorkOrderCard extends StatelessWidget {
                 const PopupMenuItem(value: 'detail', child: Text('Detay')),
                 if (showEdit)
                   const PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+                if (showEdit &&
+                    (order.status == 'open' || order.status == 'in_progress'))
+                  const PopupMenuItem(
+                    value: 'approval_pending',
+                    child: Text('Onay Bekliyor'),
+                  ),
+                if (showEdit && order.status == 'approval_pending')
+                  const PopupMenuItem(
+                    value: 'mark_open',
+                    child: Text('Açığa Al'),
+                  ),
                 if (showCancel)
                   const PopupMenuItem(value: 'cancel', child: Text('İptal Et')),
                 if (showToggleActive)
@@ -1740,6 +1996,12 @@ class _WorkOrderCard extends StatelessWidget {
                     break;
                   case 'edit':
                     onEdit?.call();
+                    break;
+                  case 'approval_pending':
+                    onApprovalPending();
+                    break;
+                  case 'mark_open':
+                    onMarkOpen();
                     break;
                   case 'cancel':
                     onCancel();
@@ -1766,6 +2028,8 @@ Color _statusColor(String status) {
       return const Color(0xFFF59E0B);
     case 'in_progress':
       return const Color(0xFF2563EB);
+    case 'approval_pending':
+      return const Color(0xFF7C3AED);
     case 'done':
       return const Color(0xFF16A34A);
     case 'cancelled':

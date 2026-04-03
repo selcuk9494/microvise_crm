@@ -52,6 +52,8 @@ class _CreateWorkOrderDialogState
   List<_WorkOrderTypeOption> _workOrderTypes = const [];
   String? _selectedWorkOrderTypeId;
   DateTime? _scheduledDate;
+  bool? _paymentRequired;
+  String _selectedStatus = 'open';
 
   bool _usersLoaded = false;
   List<_UserOption> _users = const [];
@@ -73,6 +75,8 @@ class _CreateWorkOrderDialogState
       _selectedWorkOrderTypeId = initialOrder.workOrderTypeId;
       _scheduledDate = initialOrder.scheduledDate;
       _assignedTo = initialOrder.assignedTo;
+      _paymentRequired = initialOrder.paymentRequired;
+      _selectedStatus = initialOrder.status;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadCustomers();
@@ -157,6 +161,7 @@ class _CreateWorkOrderDialogState
   Future<void> _loadDeviceRegistries(String customerId) async {
     final apiClient = ref.read(apiClientProvider);
     if (apiClient == null) return;
+
     try {
       final response = await apiClient.getJson(
         '/data',
@@ -325,6 +330,8 @@ class _CreateWorkOrderDialogState
         'location_link': _locationLinkController.text.trim().isEmpty
             ? null
             : _locationLinkController.text.trim(),
+        'payment_required': _paymentRequired,
+        'status': _selectedStatus,
       };
 
       if (widget.initialOrder == null) {
@@ -452,6 +459,14 @@ class _CreateWorkOrderDialogState
                                   _registryField(),
                                 ],
                                 const Gap(12),
+                                Row(
+                                  children: [
+                                    Expanded(child: _paymentRequiredField()),
+                                    const Gap(12),
+                                    Expanded(child: _statusField()),
+                                  ],
+                                ),
+                                const Gap(12),
                                 TextFormField(
                                   controller: _addressController,
                                   minLines: 2,
@@ -548,6 +563,20 @@ class _CreateWorkOrderDialogState
                           if (_deviceRegistries.isNotEmpty) ...[
                             const Gap(12),
                             _registryField(),
+                          ],
+                          const Gap(12),
+                          if (isMedium)
+                            Row(
+                              children: [
+                                Expanded(child: _paymentRequiredField()),
+                                const Gap(12),
+                                Expanded(child: _statusField()),
+                              ],
+                            )
+                          else ...[
+                            _paymentRequiredField(),
+                            const Gap(12),
+                            _statusField(),
                           ],
                           const Gap(12),
                           TextFormField(
@@ -764,6 +793,48 @@ class _CreateWorkOrderDialogState
           ? null
           : (v) => setState(() => _selectedRegistryNumber = v),
       decoration: const InputDecoration(labelText: 'Cihaz Sicil'),
+    );
+  }
+
+  Widget _paymentRequiredField() {
+    return DropdownButtonFormField<bool?>(
+      initialValue: _paymentRequired,
+      items: const [
+        DropdownMenuItem<bool?>(
+          value: null,
+          child: Text('Seçiniz'),
+        ),
+        DropdownMenuItem<bool?>(
+          value: true,
+          child: Text('Ödeme alınacak'),
+        ),
+        DropdownMenuItem<bool?>(
+          value: false,
+          child: Text('Ödeme alınmayacak'),
+        ),
+      ],
+      validator: (v) => v == null ? 'Ödeme seçimi zorunlu.' : null,
+      onChanged: _saving ? null : (v) => setState(() => _paymentRequired = v),
+      decoration: const InputDecoration(labelText: 'Ödeme'),
+    );
+  }
+
+  Widget _statusField() {
+    return DropdownButtonFormField<String>(
+      initialValue: _selectedStatus,
+      items: const [
+        DropdownMenuItem<String>(
+          value: 'open',
+          child: Text('Açık'),
+        ),
+        DropdownMenuItem<String>(
+          value: 'approval_pending',
+          child: Text('Onay Bekliyor'),
+        ),
+      ],
+      onChanged:
+          _saving ? null : (v) => setState(() => _selectedStatus = v ?? 'open'),
+      decoration: const InputDecoration(labelText: 'Durum'),
     );
   }
 

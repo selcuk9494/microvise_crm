@@ -1,6 +1,10 @@
 const { getAuthenticatedUser, hasPageAccess } = require('./_lib/auth');
 const { query } = require('./_lib/db');
 const {
+  ensureWorkOrdersPaymentRequiredColumn,
+  ensureWorkOrdersStatusCheckConstraint,
+} = require('./_lib/schema');
+const {
   ok,
   badRequest,
   forbidden,
@@ -33,6 +37,9 @@ module.exports = async (req, res) => {
       return forbidden(res, 'İş emirlerine erişim yetkiniz yok.');
     }
 
+    await ensureWorkOrdersPaymentRequiredColumn();
+    await ensureWorkOrdersStatusCheckConstraint();
+
     if (req.method === 'POST') {
       const body = await readJson(req);
 
@@ -45,6 +52,30 @@ module.exports = async (req, res) => {
       const assignedToRaw = String(body.assigned_to || '').trim();
       const assignedTo = user.role === 'admin' ? assignedToRaw : user.id;
       if (!assignedTo) return badRequest(res, 'assigned_to zorunludur.');
+
+      if (typeof body.payment_required !== 'boolean') {
+        return badRequest(res, 'payment_required zorunludur.');
+      }
+
+      const allowedStatuses = new Set([
+        'open',
+        'in_progress',
+        'approval_pending',
+        'done',
+        'cancelled',
+      ]);
+      const requestedStatus =
+        body.status == null ? null : String(body.status || '').trim() || null;
+      const status =
+        requestedStatus && allowedStatuses.has(requestedStatus)
+          ? requestedStatus
+          : 'open';
+      const finalStatus =
+        user.role === 'admin'
+          ? status
+          : status === 'approval_pending'
+            ? 'approval_pending'
+            : 'open';
 
       const scheduledDate =
         body.scheduled_date == null
@@ -63,6 +94,7 @@ module.exports = async (req, res) => {
         scheduledDate,
         body.contact_phone ? String(body.contact_phone).trim() : null,
         body.location_link ? String(body.location_link).trim() : null,
+        body.payment_required,
         user.id,
       ];
 
@@ -80,15 +112,16 @@ module.exports = async (req, res) => {
             scheduled_date,
             contact_phone,
             location_link,
+            payment_required,
             status,
             is_active,
             created_by
           )
           values (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
-            'open',
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+            '${finalStatus}',
             true,
-            $12
+            $13
           )
           returning id
         `,
@@ -113,6 +146,8 @@ module.exports = async (req, res) => {
             : null;
       const isActive =
         typeof body.is_active === 'boolean' ? body.is_active : null;
+      const paymentRequired =
+        typeof body.payment_required === 'boolean' ? body.payment_required : null;
 
       const title =
         body.title == null ? null : String(body.title || '').trim() || null;
@@ -162,7 +197,8 @@ module.exports = async (req, res) => {
         contactPhone == null &&
         locationLink == null &&
         scheduledDate == null &&
-        assignedTo == null
+        assignedTo == null &&
+        paymentRequired == null
       ) {
         return badRequest(res, 'Güncellenecek alan bulunamadı.');
       }
@@ -171,6 +207,7 @@ module.exports = async (req, res) => {
         status,
         sortOrder,
         isActive,
+        paymentRequired,
         title,
         description,
         address,
@@ -196,17 +233,18 @@ module.exports = async (req, res) => {
             status = coalesce($1, status),
             sort_order = coalesce($2, sort_order),
             is_active = coalesce($3, is_active),
-            title = coalesce($4, title),
-            description = coalesce($5, description),
-            address = coalesce($6, address),
-            city = coalesce($7, city),
-            branch_id = coalesce($8, branch_id),
-            work_order_type_id = coalesce($9, work_order_type_id),
-            contact_phone = coalesce($10, contact_phone),
-            location_link = coalesce($11, location_link),
-            scheduled_date = coalesce($12, scheduled_date),
-            assigned_to = coalesce($13, assigned_to)
-          where id = $14
+            payment_required = coalesce($4, payment_required),
+            title = coalesce($5, title),
+            description = coalesce($6, description),
+            address = coalesce($7, address),
+            city = coalesce($8, city),
+            branch_id = coalesce($9, branch_id),
+            work_order_type_id = coalesce($10, work_order_type_id),
+            contact_phone = coalesce($11, contact_phone),
+            location_link = coalesce($12, location_link),
+            scheduled_date = coalesce($13, scheduled_date),
+            assigned_to = coalesce($14, assigned_to)
+          where id = $15
             ${assignedSql}
         `,
         values,
@@ -271,6 +309,7 @@ module.exports = async (req, res) => {
           w.city,
           w.status,
           w.is_active,
+          w.payment_required,
           w.customer_id,
           w.branch_id,
           w.assigned_to,
@@ -297,7 +336,8 @@ module.exports = async (req, res) => {
           case w.status
             when 'open' then 0
             when 'in_progress' then 1
-            when 'done' then 2
+            when 'approval_pending' then 2
+            when 'done' then 3
             else 99
           end,
           w.sort_order asc,

@@ -1,5 +1,15 @@
 import '../../core/format/app_date_time.dart';
 
+bool? _parseFlexibleBool(dynamic value) {
+  if (value is bool) return value;
+  if (value is num) return value != 0;
+  final text = value?.toString().trim().toLowerCase();
+  if (text == null || text.isEmpty) return null;
+  if (text == 'true' || text == 't' || text == '1' || text == 'yes') return true;
+  if (text == 'false' || text == 'f' || text == '0' || text == 'no') return false;
+  return null;
+}
+
 class WorkOrder {
   const WorkOrder({
     required this.id,
@@ -24,6 +34,7 @@ class WorkOrder {
     this.closeNotes,
     this.sortOrder = 0,
     this.payments = const [],
+    this.paymentRequired,
     this.customerSignatureDataUrl,
     this.personnelSignatureDataUrl,
     required this.isActive,
@@ -51,6 +62,7 @@ class WorkOrder {
   final String? closeNotes;
   final int sortOrder;
   final List<WorkOrderPayment> payments;
+  final bool? paymentRequired;
   final String? customerSignatureDataUrl;
   final String? personnelSignatureDataUrl;
   final bool isActive;
@@ -83,10 +95,11 @@ class WorkOrder {
           .map(WorkOrderPayment.fromJson)
           .where((payment) => payment.isActive)
           .toList(growable: false),
+      paymentRequired: _parseFlexibleBool(json['payment_required']),
       customerSignatureDataUrl: json['customer_signature_data_url']?.toString(),
       personnelSignatureDataUrl:
           json['personnel_signature_data_url']?.toString(),
-      isActive: (json['is_active'] as bool?) ?? true,
+      isActive: _parseFlexibleBool(json['is_active']) ?? true,
     );
   }
 
@@ -97,6 +110,7 @@ class WorkOrder {
     int? sortOrder,
     bool? isActive,
     String? assignedPersonnelName,
+    bool? paymentRequired,
   }) {
     return WorkOrder(
       id: id,
@@ -121,6 +135,7 @@ class WorkOrder {
       closeNotes: closeNotes,
       sortOrder: sortOrder ?? this.sortOrder,
       payments: payments,
+      paymentRequired: paymentRequired ?? this.paymentRequired,
       isActive: isActive ?? this.isActive,
     );
   }
@@ -149,6 +164,7 @@ class WorkOrder {
       'close_notes': closeNotes,
       'sort_order': sortOrder,
       'payments': payments.map((p) => p.toJson()).toList(growable: false),
+      'payment_required': paymentRequired,
       'customer_signature_data_url': customerSignatureDataUrl,
       'personnel_signature_data_url': personnelSignatureDataUrl,
       'is_active': isActive,
@@ -184,7 +200,7 @@ class WorkOrderPayment {
       paidAt: parseAppDateTime(json['paid_at']?.toString()),
       description: json['description']?.toString(),
       paymentMethod: json['payment_method']?.toString(),
-      isActive: (json['is_active'] as bool?) ?? true,
+      isActive: _parseFlexibleBool(json['is_active']) ?? true,
     );
   }
 

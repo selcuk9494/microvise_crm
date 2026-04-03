@@ -8,6 +8,8 @@ const ensured = {
   device_registries: false,
   business_activity_types: false,
   work_order_signatures: false,
+  work_orders_payment_required: false,
+  work_orders_status_check: false,
 };
 
 async function tableExists(tableName) {
@@ -572,6 +574,47 @@ async function ensureWorkOrderSignaturesTable() {
   return true;
 }
 
+async function ensureWorkOrdersPaymentRequiredColumn() {
+  if (ensured.work_orders_payment_required) return true;
+
+  const exists = await tableExists('work_orders');
+  if (exists) {
+    await query(
+      `
+        alter table public.work_orders
+          add column if not exists payment_required boolean not null default true
+      `,
+    );
+  }
+
+  ensured.work_orders_payment_required = true;
+  return true;
+}
+
+async function ensureWorkOrdersStatusCheckConstraint() {
+  if (ensured.work_orders_status_check) return true;
+
+  const exists = await tableExists('work_orders');
+  if (exists) {
+    await query(
+      `
+        alter table public.work_orders
+          drop constraint if exists work_orders_status_check
+      `,
+    );
+    await query(
+      `
+        alter table public.work_orders
+          add constraint work_orders_status_check
+          check (status in ('open','in_progress','approval_pending','done','cancelled'))
+      `,
+    );
+  }
+
+  ensured.work_orders_status_check = true;
+  return true;
+}
+
 module.exports = {
   ensureSerialTrackingTable,
   ensureWorkOrderCloseNotesTable,
@@ -580,4 +623,6 @@ module.exports = {
   ensureDeviceRegistriesTable,
   ensureBusinessActivityTypesTable,
   ensureWorkOrderSignaturesTable,
+  ensureWorkOrdersPaymentRequiredColumn,
+  ensureWorkOrdersStatusCheckConstraint,
 };

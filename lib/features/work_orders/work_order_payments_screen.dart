@@ -9,6 +9,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/utils/app_time.dart';
 
 class WorkOrderPaymentItem {
   const WorkOrderPaymentItem({
@@ -284,7 +285,8 @@ class _PaymentRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final paidAt = item.paidAt == null
         ? null
-        : DateFormat('d MMM y HH:mm', 'tr_TR').format(item.paidAt!.toLocal());
+        : DateFormat('d MMM y HH:mm', 'tr_TR')
+            .format(AppTime.toTr(item.paidAt!));
 
     return AppCard(
       padding: const EdgeInsets.all(14),

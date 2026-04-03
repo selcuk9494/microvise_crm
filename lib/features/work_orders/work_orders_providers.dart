@@ -51,10 +51,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
             queryParameters: {'pageSize': '$pageSize'},
           )
           .timeout(const Duration(seconds: 30));
-      return ((response['items'] as List?) ?? const [])
-          .whereType<Map<String, dynamic>>()
-          .map(WorkOrder.fromJson)
-          .toList(growable: false);
+      return await _mapApiWorkOrdersWithPaymentFallback(response['items']);
     } on TimeoutException {
       final response = await apiClient
           .getJson(
@@ -62,11 +59,64 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
             queryParameters: {'pageSize': '$pageSize'},
           )
           .timeout(const Duration(seconds: 30));
-      return ((response['items'] as List?) ?? const [])
-          .whereType<Map<String, dynamic>>()
-          .map(WorkOrder.fromJson)
-          .toList(growable: false);
+      return await _mapApiWorkOrdersWithPaymentFallback(response['items']);
     }
+  }
+
+  Future<List<WorkOrder>> _mapApiWorkOrdersWithPaymentFallback(Object? raw) async {
+    final maps = ((raw as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .toList(growable: false);
+
+    if (maps.isEmpty) return const [];
+
+    final hasPaymentRequired = maps.any((m) => m.containsKey('payment_required'));
+    if (hasPaymentRequired) {
+      return maps.map(WorkOrder.fromJson).toList(growable: false);
+    }
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) {
+      return maps.map(WorkOrder.fromJson).toList(growable: false);
+    }
+
+    final ids = maps
+        .map((m) => m['id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+
+    if (ids.isEmpty) {
+      return maps.map(WorkOrder.fromJson).toList(growable: false);
+    }
+
+    final paymentById = <String, bool>{};
+    try {
+      final rows = await client
+          .from('work_orders')
+          .select('id,payment_required')
+          .inFilter('id', ids)
+          .then((value) => (value as List).cast<Map>());
+
+      for (final row in rows) {
+        final id = row['id']?.toString();
+        final value = row['payment_required'];
+        if (id == null || id.isEmpty) continue;
+        if (value is bool) paymentById[id] = value;
+      }
+    } catch (_) {}
+
+    final merged = maps
+        .map(
+          (m) => WorkOrder.fromJson({
+            ...m,
+            if (m['id'] != null) 'payment_required': paymentById[m['id']?.toString()],
+          }),
+        )
+        .toList(growable: false);
+
+    return merged;
   }
 
   Future<List<WorkOrder>> _fetchSupabase() async {
@@ -76,11 +126,10 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     final profile = await ref.watch(currentUserProfileProvider.future);
     final isAdmin = profile?.role == 'admin';
 
-    var q = client
-        .from('work_orders')
-        .select(
-          'id,title,description,address,city,status,is_active,customer_id,branch_id,assigned_to,scheduled_date,created_at,closed_at,work_order_type_id,contact_phone,location_link,close_notes,sort_order,customers(name),branches(name),work_order_types(name)',
-        );
+    final baseSelect =
+        'id,title,description,address,city,status,is_active,payment_required,customer_id,branch_id,assigned_to,scheduled_date,created_at,closed_at,work_order_type_id,contact_phone,location_link,close_notes,sort_order,customers(name),branches(name),work_order_types(name)';
+
+    var q = client.from('work_orders').select(baseSelect);
 
     if (!isAdmin) {
       final userId = client.auth.currentUser?.id;
@@ -88,9 +137,22 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
       q = q.eq('assigned_to', userId);
     }
 
-    final rows = await q
-        .order('sort_order')
-        .order('created_at', ascending: false);
+    Object rows;
+    try {
+      rows = await q.order('sort_order').order('created_at', ascending: false);
+    } catch (e) {
+      final message = e.toString();
+      if (!message.contains('payment_required')) rethrow;
+      var fallback = client.from('work_orders').select(
+            baseSelect.replaceAll('payment_required,', ''),
+          );
+      if (!isAdmin) {
+        final userId = client.auth.currentUser?.id;
+        if (userId == null) return const [];
+        fallback = fallback.eq('assigned_to', userId);
+      }
+      rows = await fallback.order('sort_order').order('created_at', ascending: false);
+    }
 
     final rawRows = (rows as List)
         .cast<Map<String, dynamic>>()
@@ -196,7 +258,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     final tokenHash = _hashString(token);
     final base = apiClient?.baseUrl ?? 'supabase';
     final userId = supabaseClient?.auth.currentUser?.id?.toString() ?? '';
-    return 'cache:v1:work_orders:$base:$userId:$tokenHash';
+    return 'cache:v2:work_orders:$base:$userId:$tokenHash';
   }
 
   int _hashString(String input) {
@@ -249,6 +311,52 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
       await client
           .from('work_orders')
           .update({'status': newStatus})
+          .eq('id', workOrderId);
+    } catch (_) {
+      state = AsyncData(current);
+      unawaited(_persistCache(current));
+    }
+  }
+
+  Future<void> updatePaymentRequired({
+    required String workOrderId,
+    required bool paymentRequired,
+  }) async {
+    final current = state.asData?.value;
+    if (current == null) return;
+
+    final next = [
+      for (final w in current)
+        if (w.id == workOrderId)
+          w.copyWith(paymentRequired: paymentRequired)
+        else
+          w,
+    ];
+    state = AsyncData(next);
+    unawaited(_persistCache(next));
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient != null) {
+      try {
+        await apiClient.patchJson(
+          '/work-orders',
+          body: {'id': workOrderId, 'payment_required': paymentRequired},
+        );
+        return;
+      } catch (_) {
+        state = AsyncData(current);
+        unawaited(_persistCache(current));
+        return;
+      }
+    }
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      await client
+          .from('work_orders')
+          .update({'payment_required': paymentRequired})
           .eq('id', workOrderId);
     } catch (_) {
       state = AsyncData(current);

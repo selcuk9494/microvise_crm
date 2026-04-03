@@ -584,6 +584,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
             : null,
         'contact_phone': null,
         'location_link': null,
+        'payment_required': config.paymentRequired,
+        'status': config.status,
       };
 
       try {
@@ -633,6 +635,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
           'scheduled_date': payload['scheduled_date'],
           'contact_phone': payload['contact_phone'],
           'location_link': payload['location_link'],
+          'payment_required': payload['payment_required'],
+          'status': payload['status'],
         },
       );
       return;
@@ -645,6 +649,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       'contact_phone',
       'location_link',
       'work_order_type_id',
+      'payment_required',
+      'status',
     };
 
     while (true) {
@@ -3377,6 +3383,8 @@ class _WorkOrderCreationConfig {
     required this.scheduledDate,
     required this.description,
     required this.registryNumber,
+    required this.paymentRequired,
+    required this.status,
   });
 
   final String? workOrderTypeId;
@@ -3385,6 +3393,8 @@ class _WorkOrderCreationConfig {
   final DateTime? scheduledDate;
   final String description;
   final String? registryNumber;
+  final bool paymentRequired;
+  final String status;
 }
 
 class _WorkOrderTypeChoice {
@@ -3462,6 +3472,8 @@ class _ApplicationWorkOrderDialogState
   String? _selectedAssignedTo;
   String? _selectedRegistryNumber;
   DateTime? _scheduledDate;
+  bool? _paymentRequired;
+  String _selectedStatus = 'open';
   bool _loading = true;
   bool _saving = false;
 
@@ -3617,6 +3629,8 @@ class _ApplicationWorkOrderDialogState
         scheduledDate: _scheduledDate,
         description: _descriptionController.text.trim(),
         registryNumber: _selectedRegistryNumber,
+        paymentRequired: _paymentRequired!,
+        status: _selectedStatus,
       ),
     );
   }
@@ -3771,6 +3785,50 @@ class _ApplicationWorkOrderDialogState
                       decoration: const InputDecoration(labelText: 'Cihaz Sicil'),
                     ),
                   ],
+                  const Gap(12),
+                  DropdownButtonFormField<bool?>(
+                    initialValue: _paymentRequired,
+                    items: const [
+                      DropdownMenuItem<bool?>(
+                        value: null,
+                        child: Text('Ödeme seçiniz'),
+                      ),
+                      DropdownMenuItem<bool?>(
+                        value: true,
+                        child: Text('Ödeme alınacak'),
+                      ),
+                      DropdownMenuItem<bool?>(
+                        value: false,
+                        child: Text('Ödeme alınmayacak'),
+                      ),
+                    ],
+                    onChanged: _saving
+                        ? null
+                        : (value) => setState(() => _paymentRequired = value),
+                    validator: (value) =>
+                        value == null ? 'Ödeme seçimi zorunlu.' : null,
+                    decoration: const InputDecoration(labelText: 'Ödeme'),
+                  ),
+                  const Gap(12),
+                  DropdownButtonFormField<String>(
+                    initialValue: _selectedStatus,
+                    items: const [
+                      DropdownMenuItem<String>(
+                        value: 'open',
+                        child: Text('Açık'),
+                      ),
+                      DropdownMenuItem<String>(
+                        value: 'approval_pending',
+                        child: Text('Onay Bekliyor'),
+                      ),
+                    ],
+                    onChanged: _saving
+                        ? null
+                        : (value) => setState(() {
+                              _selectedStatus = value ?? 'open';
+                            }),
+                    decoration: const InputDecoration(labelText: 'Durum'),
+                  ),
                   const Gap(12),
                   TextFormField(
                     controller: _descriptionController,

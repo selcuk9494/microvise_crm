@@ -1,10 +1,9 @@
-import 'dart:typed_data';
-
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 
+import '../../core/utils/app_time.dart';
 import '../customers/customer_detail_screen.dart';
 import 'work_order_model.dart';
 
@@ -16,9 +15,15 @@ Future<Uint8List> buildWorkOrderPdfBytes({
   Uint8List? signaturePngBytes,
   Uint8List? personnelSignaturePngBytes,
 }) async {
-  final regularFont = await PdfGoogleFonts.notoSansRegular();
-  final boldFont = await PdfGoogleFonts.notoSansBold();
-  final italicFont = await PdfGoogleFonts.notoSansItalic();
+  final regularFont = pw.Font.ttf(
+    await rootBundle.load('assets/fonts/noto_sans/NotoSans-Regular.ttf'),
+  );
+  final boldFont = pw.Font.ttf(
+    await rootBundle.load('assets/fonts/noto_sans/NotoSans-Regular.ttf'),
+  );
+  final italicFont = pw.Font.ttf(
+    await rootBundle.load('assets/fonts/noto_sans/NotoSans-Italic.ttf'),
+  );
   final theme = pw.ThemeData.withFont(
     base: regularFont,
     bold: boldFont,
@@ -39,9 +44,13 @@ Future<Uint8List> buildWorkOrderPdfBytes({
   final closedAt = order.closedAt;
   final scheduledAt = order.scheduledDate;
 
-  final createdAtText = createdAt == null ? null : dateTimeFormat.format(createdAt.toLocal());
-  final closedAtText = closedAt == null ? null : dateTimeFormat.format(closedAt.toLocal());
-  final scheduledText = scheduledAt == null ? null : dateTimeFormat.format(scheduledAt.toLocal());
+  final createdAtText =
+      createdAt == null ? null : dateTimeFormat.format(AppTime.toTr(createdAt));
+  final closedAtText =
+      closedAt == null ? null : dateTimeFormat.format(AppTime.toTr(closedAt));
+  final scheduledText = scheduledAt == null
+      ? null
+      : dateTimeFormat.format(AppTime.toTr(scheduledAt));
 
   final address = (order.address ?? '').trim();
   final city = (order.city ?? '').trim();
@@ -73,6 +82,14 @@ Future<Uint8List> buildWorkOrderPdfBytes({
       personnelSignaturePngBytes == null || personnelSignaturePngBytes.isEmpty
           ? null
           : pw.MemoryImage(personnelSignaturePngBytes);
+
+  pw.MemoryImage? logo;
+  try {
+    final bytes = (await rootBundle.load('dokuman/logo.png')).buffer.asUint8List();
+    if (bytes.isNotEmpty) {
+      logo = pw.MemoryImage(bytes);
+    }
+  } catch (_) {}
 
   pw.TextStyle tLabel() =>
       pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold);
@@ -130,6 +147,14 @@ Future<Uint8List> buildWorkOrderPdfBytes({
       children: [
         kvRow('İş Emri No', order.id),
         kvRow('Durum', statusLabel),
+        kvRow(
+          'Ödeme',
+          order.paymentRequired == null
+              ? 'Belirsiz'
+              : order.paymentRequired!
+                  ? 'Alınacak'
+                  : 'Alınmayacak',
+        ),
         if (createdAtText != null) kvRow('Oluşturma', createdAtText),
         if (scheduledText != null) kvRow('Plan', scheduledText),
         if (closedAtText != null) kvRow('Kapanış', closedAtText),
@@ -186,7 +211,9 @@ Future<Uint8List> buildWorkOrderPdfBytes({
               pw.Padding(
                 padding: const pw.EdgeInsets.all(6),
                 child: pw.Text(
-                  p.paidAt == null ? '' : dateTimeFormat.format(p.paidAt!.toLocal()),
+                  p.paidAt == null
+                      ? ''
+                      : dateTimeFormat.format(AppTime.toTr(p.paidAt!)),
                   style: tSmall(),
                 ),
               ),
@@ -231,7 +258,7 @@ Future<Uint8List> buildWorkOrderPdfBytes({
   }
 
   final docNo = _shortId(order.id);
-  final headerDate = DateTime.now();
+  final headerDate = AppTime.toTr(DateTime.now());
 
   doc.addPage(
     pw.MultiPage(
@@ -243,32 +270,48 @@ Future<Uint8List> buildWorkOrderPdfBytes({
         decoration: const pw.BoxDecoration(
           border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey400)),
         ),
-        child: pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.end,
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
-            pw.Expanded(
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(
-                    'SERVİS FORMU',
-                    style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
-                  ),
-                  pw.SizedBox(height: 2),
-                  pw.Text(
-                    'Microvise Servis Formu',
-                    style: tSmall(),
-                  ),
-                ],
+            if (logo != null) ...[
+              pw.Align(
+                alignment: pw.Alignment.center,
+                child: pw.SizedBox(
+                  width: 180,
+                  height: 46,
+                  child: pw.Image(logo, fit: pw.BoxFit.contain),
+                ),
               ),
-            ),
-            pw.Column(
+              pw.SizedBox(height: 6),
+            ],
+            pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.end,
               children: [
-                pw.Text('Form No: $docNo', style: tSmall()),
-                pw.Text(
-                  '${dateOnlyFormat.format(headerDate)} ${timeOnlyFormat.format(headerDate)}',
-                  style: tSmall(),
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        'Microvise Servis Formu',
+                        style: pw.TextStyle(
+                          fontSize: 20,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                      pw.SizedBox(height: 2),
+                      pw.Text(order.title.trim(), style: tSmall()),
+                    ],
+                  ),
+                ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text('Form No: $docNo', style: tSmall()),
+                    pw.Text(
+                      '${dateOnlyFormat.format(headerDate)} ${timeOnlyFormat.format(headerDate)}',
+                      style: tSmall(),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -289,11 +332,6 @@ Future<Uint8List> buildWorkOrderPdfBytes({
         ),
       ),
       build: (context) => [
-        pw.Text(
-          order.title.trim(),
-          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-        ),
-        pw.SizedBox(height: 10),
         section('İş Emri Bilgileri', serviceInfoTable()),
         pw.SizedBox(height: 10),
         section(
@@ -348,9 +386,9 @@ Future<Uint8List> buildWorkOrderPdfBytes({
                             : pw.Image(signature, fit: pw.BoxFit.contain),
                       ),
                       pw.SizedBox(height: 8),
-                      pw.Text('Ad Soyad:', style: tSmall()),
+                      pw.Text('Firma: ${customer.name.trim()}', style: tSmall()),
                       pw.SizedBox(height: 4),
-                      pw.Text('Tarih:', style: tSmall()),
+                      pw.Text('Tarih: ${dateOnlyFormat.format(headerDate)}', style: tSmall()),
                     ],
                   ),
                 ),
@@ -379,9 +417,12 @@ Future<Uint8List> buildWorkOrderPdfBytes({
                               ),
                       ),
                       pw.SizedBox(height: 8),
-                      pw.Text('Ad Soyad:', style: tSmall()),
+                      pw.Text(
+                        'Ad Soyad: ${(order.assignedPersonnelName ?? '').trim().isEmpty ? '—' : (order.assignedPersonnelName ?? '').trim()}',
+                        style: tSmall(),
+                      ),
                       pw.SizedBox(height: 4),
-                      pw.Text('Tarih:', style: tSmall()),
+                      pw.Text('Tarih: ${dateOnlyFormat.format(headerDate)}', style: tSmall()),
                     ],
                   ),
                 ),

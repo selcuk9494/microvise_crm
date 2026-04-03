@@ -106,7 +106,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
 
     setState(() => _saving = true);
     try {
-      final now = DateTime.now();
+      final now = DateTime.now().toUtc();
       final locationLink = _resolvedLocationLink();
       final profile = await ref.read(currentUserProfileProvider.future);
 

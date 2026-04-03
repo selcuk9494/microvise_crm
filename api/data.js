@@ -8,6 +8,8 @@ const {
   ensureDeviceRegistriesTable,
   ensureBusinessActivityTypesTable,
   ensureWorkOrderSignaturesTable,
+  ensureWorkOrdersPaymentRequiredColumn,
+  ensureWorkOrdersStatusCheckConstraint,
 } = require('./_lib/schema');
 const {
   ok,
@@ -316,6 +318,8 @@ module.exports = async (req, res) => {
       case 'customer_work_orders': {
         const customerId = String(req.query.customerId || '').trim();
         if (!customerId) return badRequest(res, 'customerId zorunludur.');
+        await ensureWorkOrdersPaymentRequiredColumn();
+        await ensureWorkOrdersStatusCheckConstraint();
         const showPassive = parseBoolean(req.query.showPassive, true);
         const values = [customerId];
         let activeSql = '';
@@ -340,6 +344,7 @@ module.exports = async (req, res) => {
               w.address,
               w.city,
               w.status,
+              w.payment_required,
               w.branch_id,
               b.name as branch_name,
               w.assigned_to,
@@ -373,6 +378,8 @@ module.exports = async (req, res) => {
       case 'work_order_detail': {
         if (!requirePage(user, 'is_emirleri', res)) return;
         await ensureWorkOrderSignaturesTable();
+        await ensureWorkOrdersPaymentRequiredColumn();
+        await ensureWorkOrdersStatusCheckConstraint();
         const workOrderId = String(req.query.workOrderId || '').trim();
         if (!workOrderId) return ok(res, { item: null });
 
@@ -386,6 +393,7 @@ module.exports = async (req, res) => {
               w.city,
               w.status,
               w.is_active,
+              w.payment_required,
               w.customer_id,
               w.branch_id,
               w.assigned_to,

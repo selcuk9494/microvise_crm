@@ -272,7 +272,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
 
     setState(() => _saving = true);
     try {
-      final now = DateTime.now();
+      final now = DateTime.now().toUtc();
       final profile = await ref.read(currentUserProfileProvider.future);
       final signatureBytes = await _signatureController.toPngBytes();
       final signaturePng =
@@ -981,6 +981,66 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           if (customer.phone1?.isNotEmpty ?? false) ...[
             const Gap(8),
             _InfoRow(icon: Icons.phone_rounded, label: 'Telefon', value: customer.phone1!),
+          ],
+          const Gap(8),
+          Row(
+            children: [
+              Icon(
+                widget.order.paymentRequired == null
+                    ? Icons.help_outline_rounded
+                    : widget.order.paymentRequired!
+                        ? Icons.payments_rounded
+                        : Icons.money_off_csred_rounded,
+                size: 18,
+                color: widget.order.paymentRequired == null
+                    ? Colors.grey
+                    : widget.order.paymentRequired!
+                        ? Colors.red
+                        : Colors.red,
+              ),
+              const Gap(10),
+              Expanded(
+                child: Text(
+                  widget.order.paymentRequired == null
+                      ? 'ÖDEME BELİRSİZ'
+                      : widget.order.paymentRequired!
+                          ? 'ÖDEME ALINACAK'
+                          : 'ÖDEME ALINMAYACAK',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: widget.order.paymentRequired == null
+                            ? Colors.grey
+                            : Colors.red,
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          if ((widget.order.contactPhone ?? '').trim().isNotEmpty) ...[
+            const Gap(8),
+            Row(
+              children: [
+                const Icon(Icons.phone_in_talk_rounded, size: 18, color: Colors.red),
+                const Gap(10),
+                Text(
+                  'İrtibat:',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.red,
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const Gap(8),
+                Expanded(
+                  child: Text(
+                    widget.order.contactPhone!.trim(),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w900,
+                        ),
+                  ),
+                ),
+              ],
+            ),
           ],
           if (closeNotes.isNotEmpty) ...[
             const Gap(8),
