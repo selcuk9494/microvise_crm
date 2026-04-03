@@ -85,7 +85,8 @@ Future<Uint8List> buildWorkOrderPdfBytes({
 
   pw.MemoryImage? logo;
   try {
-    final bytes = (await rootBundle.load('dokuman/logo.png')).buffer.asUint8List();
+    final bytes =
+        (await rootBundle.load('assets/images/logo.png')).buffer.asUint8List();
     if (bytes.isNotEmpty) {
       logo = pw.MemoryImage(bytes);
     }
