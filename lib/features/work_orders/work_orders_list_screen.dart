@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -641,6 +642,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
           Widget buildList({Widget? header}) {
             if (filtered.isEmpty) {
               return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.only(bottom: 120),
                 children: [
                   if (header != null) ...[header, const Gap(12)],
@@ -728,7 +730,10 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
           }
 
           if (isMobile) {
-            return buildList(header: _reorderMode ? null : headerCard);
+            return RefreshIndicator(
+              onRefresh: () => ref.read(workOrdersBoardProvider.notifier).refresh(),
+              child: buildList(header: _reorderMode ? null : headerCard),
+            );
           }
 
           return Column(
@@ -935,14 +940,32 @@ class _WorkOrdersList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sorted = [...items]
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      ..sort((a, b) {
+        final byOrder = a.sortOrder.compareTo(b.sortOrder);
+        if (byOrder != 0) return byOrder;
+        final aDate = a.createdAt ?? a.scheduledDate;
+        final bDate = b.createdAt ?? b.scheduledDate;
+        final byDate = (bDate ?? DateTime.fromMillisecondsSinceEpoch(0))
+            .compareTo(aDate ?? DateTime.fromMillisecondsSinceEpoch(0));
+        if (byDate != 0) return byDate;
+        return a.id.compareTo(b.id);
+      });
 
     final hasHeader = header != null;
     final headerCount = hasHeader ? 1 : 0;
+    final openIndexMap = <String, int>{};
+    var openCounter = 0;
+    for (final w in sorted) {
+      if (w.status == 'open') {
+        openCounter += 1;
+        openIndexMap[w.id] = openCounter;
+      }
+    }
 
     if (canReorder) {
       return ReorderableListView.builder(
         buildDefaultDragHandles: false,
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 120),
         itemCount: sorted.length + headerCount,
         onReorder: (oldIndex, newIndex) {
@@ -995,6 +1018,7 @@ class _WorkOrdersList extends StatelessWidget {
     }
 
     return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 120),
       itemCount: sorted.length + headerCount,
       separatorBuilder: (context, index) {
@@ -1005,8 +1029,7 @@ class _WorkOrdersList extends StatelessWidget {
         if (hasHeader && index == 0) return header!;
         final effectiveIndex = index - headerCount;
         final order = sorted[effectiveIndex];
-        final indexNumber =
-            order.status == 'open' ? order.sortOrder + 1 : null;
+        final indexNumber = openIndexMap[order.id];
         return _WorkOrderCard(
           order: order,
           indexNumber: indexNumber,
@@ -1189,9 +1212,13 @@ class _WorkOrderCard extends StatelessWidget {
           ),
           if (reorderable) ...[
             const Gap(10),
-            ReorderableDelayedDragStartListener(
+            (kIsWeb ? ReorderableDragStartListener.new : ReorderableDelayedDragStartListener.new)(
               index: reorderIndex,
-              child: const Icon(Icons.drag_handle_rounded),
+              child: const SizedBox(
+                width: 44,
+                height: 44,
+                child: Center(child: Icon(Icons.drag_handle_rounded)),
+              ),
             ),
           ] else ...[
             const Gap(10),
