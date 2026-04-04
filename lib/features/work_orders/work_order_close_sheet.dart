@@ -21,7 +21,6 @@ import '../customers/customers_providers.dart';
 import '../definitions/definitions_screen.dart';
 import 'work_order_model.dart';
 import 'work_order_share.dart';
-import 'work_order_whatsapp_share.dart';
 
 Future<void> showWorkOrderCloseSheet(
   BuildContext context,
@@ -109,6 +108,17 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
     if (apiClient == null && client == null) return;
+
+    final canSellGmp3 = ref.read(isAdminProvider);
+    if (_addGmp3 && !canSellGmp3) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('GMP3 satışı sadece admin tarafından yapılabilir.'),
+        ),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
@@ -354,7 +364,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               content: Text(
                 kIsWeb
                     ? 'PDF olarak kaydetmek ister misin?'
-                    : 'PDF olarak WhatsApp üzerinden paylaşmak ister misin?',
+                    : 'PDF olarak paylaşmak ister misin?',
               ),
             actions: [
               TextButton(
@@ -387,26 +397,14 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
             'payments': closedPayments.map((e) => e.toJson()).toList(growable: false),
           });
           if (!mounted) return;
-          if (kIsWeb) {
-            await shareWorkOrderPdf(
-              order: pdfOrder,
-              customer: customer,
-              closeNotes: closeNotesText,
-              payments: closedPayments,
-              signaturePngBytes: signaturePng,
-              personnelSignaturePngBytes: personnelSignaturePng,
-            );
-          } else {
-            await shareWorkOrderPdfWithWhatsAppPrompt(
-              context: context,
-              order: pdfOrder,
-              customer: customer,
-              closeNotes: closeNotesText,
-              payments: closedPayments,
-              signaturePngBytes: signaturePng,
-              personnelSignaturePngBytes: personnelSignaturePng,
-            );
-          }
+          await shareWorkOrderPdf(
+            order: pdfOrder,
+            customer: customer,
+            closeNotes: closeNotesText,
+            payments: closedPayments,
+            signaturePngBytes: signaturePng,
+            personnelSignaturePngBytes: personnelSignaturePng,
+          );
         }
 
         if (!mounted) return;
@@ -698,7 +696,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           content: Text(
             kIsWeb
                 ? 'PDF olarak kaydetmek ister misin?'
-                : 'PDF olarak WhatsApp üzerinden paylaşmak ister misin?',
+                : 'PDF olarak paylaşmak ister misin?',
           ),
           actions: [
             TextButton(
@@ -721,26 +719,14 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           'payments': closedPayments.map((e) => e.toJson()).toList(growable: false),
         });
         if (!mounted) return;
-        if (kIsWeb) {
-          await shareWorkOrderPdf(
-            order: pdfOrder,
-            customer: customer,
-            closeNotes: closeNotesText,
-            payments: closedPayments,
-            signaturePngBytes: signatureBytes,
-            personnelSignaturePngBytes: personnelSignatureBytes,
-          );
-        } else {
-          await shareWorkOrderPdfWithWhatsAppPrompt(
-            context: context,
-            order: pdfOrder,
-            customer: customer,
-            closeNotes: closeNotesText,
-            payments: closedPayments,
-            signaturePngBytes: signatureBytes,
-            personnelSignaturePngBytes: personnelSignatureBytes,
-          );
-        }
+        await shareWorkOrderPdf(
+          order: pdfOrder,
+          customer: customer,
+          closeNotes: closeNotesText,
+          payments: closedPayments,
+          signaturePngBytes: signatureBytes,
+          personnelSignaturePngBytes: personnelSignatureBytes,
+        );
       }
 
       if (!mounted) return;
@@ -813,6 +799,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
       customerLocationsProvider(widget.order.customerId),
     );
     final companiesAsync = ref.watch(softwareCompaniesProvider);
+    final canSellGmp3 = ref.watch(isAdminProvider);
 
     return Container(
       decoration: const BoxDecoration(
@@ -835,6 +822,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               branchesAsync: branchesAsync,
               customerLocationsAsync: customerLocationsAsync,
               companiesAsync: companiesAsync,
+              canSellGmp3: canSellGmp3,
               selectedBranchId: _selectedBranchId ?? widget.order.branchId,
               onBranchChanged: _saving
                   ? null
@@ -883,10 +871,20 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               addGmp3: _addGmp3,
               onToggleAddLine: _saving
                   ? null
-                  : (v) => setState(() => _addLine = v),
+                  : (v) => setState(() {
+                        _addLine = v;
+                        if (v && (_lineOperator ?? '').trim().isEmpty) {
+                          _lineOperator = 'turkcell';
+                        }
+                        if (!v) {
+                          _lineOperator = null;
+                        }
+                      }),
               onToggleAddGmp3: _saving
                   ? null
-                  : (v) => setState(() => _addGmp3 = v),
+                  : (!canSellGmp3
+                      ? null
+                      : (v) => setState(() => _addGmp3 = v)),
               lineNumberController: _lineNumberController,
               lineSimController: _lineSimController,
               lineOperator: _lineOperator,
@@ -960,6 +958,7 @@ class _SheetBody extends StatelessWidget {
     required this.onToggleSaveAsCustomerLocation,
     required this.addLine,
     required this.addGmp3,
+    required this.canSellGmp3,
     required this.onToggleAddLine,
     required this.onToggleAddGmp3,
     required this.lineNumberController,
@@ -1002,6 +1001,7 @@ class _SheetBody extends StatelessWidget {
   final ValueChanged<bool>? onToggleSaveAsCustomerLocation;
   final bool addLine;
   final bool addGmp3;
+  final bool canSellGmp3;
   final ValueChanged<bool>? onToggleAddLine;
   final ValueChanged<bool>? onToggleAddGmp3;
   final TextEditingController lineNumberController;
@@ -1426,10 +1426,12 @@ class _SheetBody extends StatelessWidget {
                     SwitchListTile.adaptive(
                       contentPadding: EdgeInsets.zero,
                       value: addGmp3,
-                      onChanged: onToggleAddGmp3,
+                      onChanged: canSellGmp3 ? onToggleAddGmp3 : null,
                       title: const Text('GMP3 Lisansı Sat'),
-                      subtitle: const Text(
-                        'Başlangıç: bugün • Bitiş: yıl sonu',
+                      subtitle: Text(
+                        canSellGmp3
+                            ? 'Başlangıç: bugün • Bitiş: yıl sonu'
+                            : 'Sadece admin',
                       ),
                     ),
                     if (addGmp3) ...[

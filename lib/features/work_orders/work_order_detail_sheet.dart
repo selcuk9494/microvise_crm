@@ -22,7 +22,6 @@ import '../dashboard/dashboard_providers.dart';
 import 'work_order_model.dart';
 import 'currency_service.dart';
 import 'work_order_share.dart';
-import 'work_order_whatsapp_share.dart';
 
 class _CloseNoteOption {
   const _CloseNoteOption({required this.id, required this.name});
@@ -643,9 +642,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         builder: (context) => AlertDialog(
           title: const Text('İş emri kapatıldı'),
           content: Text(
-            kIsWeb
-                ? 'PDF olarak kaydetmek ister misin?'
-                : 'PDF olarak WhatsApp üzerinden paylaşmak ister misin?',
+            kIsWeb ? 'PDF olarak kaydetmek ister misin?' : 'PDF olarak paylaşmak ister misin?',
           ),
           actions: [
             TextButton(
@@ -668,26 +665,14 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           'payments': closedPayments.map((e) => e.toJson()).toList(growable: false),
         });
         if (!mounted) return;
-        if (kIsWeb) {
-          await shareWorkOrderPdf(
-            order: pdfOrder,
-            customer: customer,
-            closeNotes: closeNotesText,
-            payments: closedPayments,
-            signaturePngBytes: signaturePng,
-            personnelSignaturePngBytes: personnelSignaturePng,
-          );
-        } else {
-          await shareWorkOrderPdfWithWhatsAppPrompt(
-            context: context,
-            order: pdfOrder,
-            customer: customer,
-            closeNotes: closeNotesText,
-            payments: closedPayments,
-            signaturePngBytes: signaturePng,
-            personnelSignaturePngBytes: personnelSignaturePng,
-          );
-        }
+        await shareWorkOrderPdf(
+          order: pdfOrder,
+          customer: customer,
+          closeNotes: closeNotesText,
+          payments: closedPayments,
+          signaturePngBytes: signaturePng,
+          personnelSignaturePngBytes: personnelSignaturePng,
+        );
       }
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -909,30 +894,16 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                     } catch (_) {}
 
                     if (!context.mounted) return;
-                    if (kIsWeb) {
-                      await shareWorkOrderPdf(
-                        order: pdfOrder,
-                        customer: customer,
-                        closeNotes: (pdfOrder.closeNotes ?? '').trim().isEmpty
-                            ? null
-                            : pdfOrder.closeNotes,
-                        payments: pdfOrder.payments,
-                        signaturePngBytes: customerSigBytes,
-                        personnelSignaturePngBytes: personnelSigBytes,
-                      );
-                    } else {
-                      await shareWorkOrderPdfWithWhatsAppPrompt(
-                        context: context,
-                        order: pdfOrder,
-                        customer: customer,
-                        closeNotes: (pdfOrder.closeNotes ?? '').trim().isEmpty
-                            ? null
-                            : pdfOrder.closeNotes,
-                        payments: pdfOrder.payments,
-                        signaturePngBytes: customerSigBytes,
-                        personnelSignaturePngBytes: personnelSigBytes,
-                      );
-                    }
+                    await shareWorkOrderPdf(
+                      order: pdfOrder,
+                      customer: customer,
+                      closeNotes: (pdfOrder.closeNotes ?? '').trim().isEmpty
+                          ? null
+                          : pdfOrder.closeNotes,
+                      payments: pdfOrder.payments,
+                      signaturePngBytes: customerSigBytes,
+                      personnelSignaturePngBytes: personnelSigBytes,
+                    );
                   },
             icon: const Icon(Icons.share_rounded),
           ),
