@@ -283,8 +283,8 @@ Future<Uint8List> buildWorkOrderPdfBytes({
               pw.Align(
                 alignment: pw.Alignment.center,
                 child: pw.SizedBox(
-                  width: 220,
-                  height: 54,
+                  width: 520,
+                  height: 162,
                   child: pw.Image(logo, fit: pw.BoxFit.contain),
                 ),
               ),

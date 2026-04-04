@@ -7,6 +7,10 @@ const ensured = {
   fault_forms: false,
   device_registries: false,
   business_activity_types: false,
+  software_companies: false,
+  licenses_software_company: false,
+  licenses_registry_number: false,
+  lines_operator: false,
   work_order_signatures: false,
   work_orders_payment_required: false,
   work_orders_status_check: false,
@@ -475,6 +479,127 @@ async function ensureBusinessActivityTypesTable() {
   return true;
 }
 
+async function ensureSoftwareCompaniesTable() {
+  if (ensured.software_companies) return true;
+
+  const exists = await tableExists('software_companies');
+  if (!exists) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
+    if (isProd && allow !== 'true') {
+      throw new Error(
+        'software_companies table is missing. Set ALLOW_SCHEMA_AUTO_CREATE=true to auto-create (non-production recommended).',
+      );
+    }
+    await query(`create extension if not exists pgcrypto`);
+    await query(
+      `
+        create table if not exists public.software_companies (
+          id uuid primary key default gen_random_uuid(),
+          name text not null,
+          is_active boolean not null default true,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now()
+        )
+      `,
+    );
+    await query(
+      `
+        create unique index if not exists idx_software_companies_unique_name
+        on public.software_companies (upper(btrim(name)))
+      `,
+    );
+    await query(
+      `
+        create or replace function public.software_companies_set_updated_at()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          new.updated_at = now();
+          return new;
+        end;
+        $$;
+      `,
+    );
+    await query(
+      `
+        drop trigger if exists set_software_companies_updated_at on public.software_companies;
+        create trigger set_software_companies_updated_at
+        before update on public.software_companies
+        for each row
+        execute function public.software_companies_set_updated_at();
+      `,
+    );
+  }
+
+  ensured.software_companies = true;
+  return true;
+}
+
+async function ensureLicensesSoftwareCompanyColumn() {
+  if (ensured.licenses_software_company) return true;
+  const exists = await tableExists('licenses');
+  if (exists) {
+    await query(
+      `
+        alter table public.licenses
+          add column if not exists software_company_id uuid
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_licenses_software_company_id
+        on public.licenses (software_company_id)
+      `,
+    );
+  }
+  ensured.licenses_software_company = true;
+  return true;
+}
+
+async function ensureLicensesRegistryNumberColumn() {
+  if (ensured.licenses_registry_number) return true;
+  const exists = await tableExists('licenses');
+  if (exists) {
+    await query(
+      `
+        alter table public.licenses
+          add column if not exists registry_number text
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_licenses_registry_number
+        on public.licenses (registry_number)
+      `,
+    );
+  }
+  ensured.licenses_registry_number = true;
+  return true;
+}
+
+async function ensureLinesOperatorColumn() {
+  if (ensured.lines_operator) return true;
+  const exists = await tableExists('lines');
+  if (exists) {
+    await query(
+      `
+        alter table public.lines
+          add column if not exists operator text
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_lines_operator
+        on public.lines (operator)
+      `,
+    );
+  }
+  ensured.lines_operator = true;
+  return true;
+}
+
 async function ensureWorkOrderSignaturesTable() {
   if (ensured.work_order_signatures) return true;
 
@@ -622,6 +747,10 @@ module.exports = {
   ensureFaultFormsTable,
   ensureDeviceRegistriesTable,
   ensureBusinessActivityTypesTable,
+  ensureSoftwareCompaniesTable,
+  ensureLicensesSoftwareCompanyColumn,
+  ensureLicensesRegistryNumberColumn,
+  ensureLinesOperatorColumn,
   ensureWorkOrderSignaturesTable,
   ensureWorkOrdersPaymentRequiredColumn,
   ensureWorkOrdersStatusCheckConstraint,

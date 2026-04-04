@@ -15,6 +15,8 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../dashboard/dashboard_providers.dart';
+import '../definitions/definitions_screen.dart';
+import '../subscriptions/subscriptions_screen.dart';
 import '../work_orders/work_order_detail_sheet.dart';
 import '../work_orders/work_order_model.dart';
 import 'customer_form_dialog.dart';
@@ -56,7 +58,11 @@ final customerLinesProvider =
   if (apiClient != null) {
     final response = await apiClient.getJson(
       '/data',
-      queryParameters: {'resource': 'customer_lines', 'customerId': customerId},
+      queryParameters: {
+        'resource': 'customer_lines',
+        'customerId': customerId,
+        'showPassive': 'false',
+      },
     );
     return ((response['items'] as List?) ?? const [])
         .whereType<Map<String, dynamic>>()
@@ -68,7 +74,7 @@ final customerLinesProvider =
   if (client == null) return const [];
   final rows = await client
       .from('lines')
-      .select('id,label,number,sim_number,starts_at,ends_at,expires_at,is_active')
+      .select('id,label,number,sim_number,operator,starts_at,ends_at,expires_at,is_active')
       .eq('customer_id', customerId)
       .order('created_at', ascending: false);
   return (rows as List)
@@ -85,6 +91,7 @@ final customerLicensesProvider =
       queryParameters: {
         'resource': 'customer_licenses',
         'customerId': customerId,
+        'showPassive': 'false',
       },
     );
     return ((response['items'] as List?) ?? const [])
@@ -97,7 +104,9 @@ final customerLicensesProvider =
   if (client == null) return const [];
   final rows = await client
       .from('licenses')
-      .select('id,name,license_type,starts_at,ends_at,expires_at,is_active')
+      .select(
+        'id,name,license_type,software_company_id,registry_number,starts_at,ends_at,expires_at,is_active,software_companies(name)',
+      )
       .eq('customer_id', customerId)
       .order('created_at', ascending: false);
   return (rows as List)
@@ -700,6 +709,8 @@ class _LinesTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final linesAsync = ref.watch(customerLinesProvider(customerId));
     final isAdmin = ref.watch(isAdminProvider);
+    final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
+    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -736,6 +747,8 @@ class _LinesTab extends ConsumerWidget {
                     line: lines[index],
                     customerId: customerId,
                     canTransfer: isAdmin,
+                    canEdit: canEdit,
+                    canArchive: canArchive,
                   ),
                 );
               },
@@ -757,6 +770,8 @@ class _LicensesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final licensesAsync = ref.watch(customerLicensesProvider(customerId));
+    final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
+    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -791,7 +806,12 @@ class _LicensesTab extends ConsumerWidget {
                   itemCount: gmp3.length,
                   separatorBuilder: (_, _) => const Gap(10),
                   itemBuilder: (context, index) =>
-                      _LicenseItem(customerId: customerId, license: gmp3[index]),
+                      _LicenseItem(
+                        customerId: customerId,
+                        license: gmp3[index],
+                        canEdit: canEdit,
+                        canArchive: canArchive,
+                      ),
                 );
               },
               loading: () => const _ListSkeleton(),
@@ -1712,11 +1732,15 @@ class _LineItem extends ConsumerStatefulWidget {
     required this.line,
     required this.customerId,
     required this.canTransfer,
+    required this.canEdit,
+    required this.canArchive,
   });
 
   final CustomerLine line;
   final String customerId;
   final bool canTransfer;
+  final bool canEdit;
+  final bool canArchive;
 
   @override
   ConsumerState<_LineItem> createState() => _LineItemState();
@@ -1724,6 +1748,81 @@ class _LineItem extends ConsumerStatefulWidget {
 
 class _LineItemState extends ConsumerState<_LineItem> {
   bool _busy = false;
+
+  String? _operatorLabel(String? value) {
+    final v = (value ?? '').trim().toLowerCase();
+    if (v == 'turkcell') return 'TURKCELL';
+    if (v == 'telsim' || v == 'vodafone') return 'TELSİM';
+    return null;
+  }
+
+  Future<void> _edit(CustomerLine line) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _showEditLineDialog(context, ref, customerId: widget.customerId, line: line);
+      ref.invalidate(customerLinesProvider(widget.customerId));
+      ref.invalidate(customersProvider);
+      ref.invalidate(linesProvider);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _archive(CustomerLine line) async {
+    if (_busy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Hatı Sil'),
+        content: const Text('Bu hattı silmek istiyor musunuz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _busy = true);
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      final client = ref.read(supabaseClientProvider);
+      if (apiClient == null && client == null) return;
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'lines',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': line.id},
+            ],
+            'values': {'is_active': false},
+          },
+        );
+      } else {
+        await client!.from('lines').update({'is_active': false}).eq('id', line.id);
+      }
+
+      ref.invalidate(customerLinesProvider(widget.customerId));
+      ref.invalidate(customersProvider);
+      ref.invalidate(linesProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hat silindi.')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1760,6 +1859,8 @@ class _LineItemState extends ConsumerState<_LineItem> {
     final subtitle = [
       if (line.number?.trim().isNotEmpty ?? false) 'Hat: ${line.number}',
       if (line.simNumber?.trim().isNotEmpty ?? false) 'SIM: ${line.simNumber}',
+      if (_operatorLabel(line.operator) != null)
+        'Operatör: ${_operatorLabel(line.operator)}',
     ].join(' • ');
 
     return Container(
@@ -1815,7 +1916,7 @@ class _LineItemState extends ConsumerState<_LineItem> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               AppBadge(label: statusLabel, tone: tone),
-              if (widget.canTransfer) ...[
+              if (widget.canTransfer || widget.canEdit || widget.canArchive) ...[
                 const Gap(8),
                 MenuAnchor(
                   builder: (context, controller, _) => OutlinedButton(
@@ -1833,43 +1934,59 @@ class _LineItemState extends ConsumerState<_LineItem> {
                         : const Text('İşlem'),
                   ),
                   menuChildren: [
-                    MenuItemButton(
-                      onPressed: () async {
-                        if (_busy) return;
-                        setState(() => _busy = true);
-                        try {
-                          await _showTransferLineDialog(
-                            context,
-                            ref,
-                            lineId: line.id,
-                            fromCustomerId: widget.customerId,
-                          );
-                          ref.invalidate(customerLinesProvider(widget.customerId));
-                        } finally {
-                          if (mounted) setState(() => _busy = false);
-                        }
-                      },
-                      child: const Text('Devir Et'),
-                    ),
-                    MenuItemButton(
-                      onPressed: () async {
-                        if (_busy) return;
-                        setState(() => _busy = true);
-                        try {
-                          await _extendLineAndQueueInvoice(
-                            context,
-                            ref,
-                            lineId: line.id,
-                            customerId: widget.customerId,
-                            currentEndsAt: line.endsAt,
-                          );
-                          ref.invalidate(customerLinesProvider(widget.customerId));
-                        } finally {
-                          if (mounted) setState(() => _busy = false);
-                        }
-                      },
-                      child: const Text('Uzat + Fatura Listesi'),
-                    ),
+                    if (widget.canEdit)
+                      MenuItemButton(
+                        onPressed: () async => _edit(line),
+                        child: const Text('Düzenle'),
+                      ),
+                    if (widget.canArchive)
+                      MenuItemButton(
+                        onPressed: () async => _archive(line),
+                        child: const Text('Sil'),
+                      ),
+                    if (widget.canTransfer) ...[
+                      MenuItemButton(
+                        onPressed: () async {
+                          if (_busy) return;
+                          setState(() => _busy = true);
+                          try {
+                            await _showTransferLineDialog(
+                              context,
+                              ref,
+                              lineId: line.id,
+                              fromCustomerId: widget.customerId,
+                            );
+                            ref.invalidate(customerLinesProvider(widget.customerId));
+                            ref.invalidate(customersProvider);
+                            ref.invalidate(linesProvider);
+                          } finally {
+                            if (mounted) setState(() => _busy = false);
+                          }
+                        },
+                        child: const Text('Devir Et'),
+                      ),
+                      MenuItemButton(
+                        onPressed: () async {
+                          if (_busy) return;
+                          setState(() => _busy = true);
+                          try {
+                            await _extendLineAndQueueInvoice(
+                              context,
+                              ref,
+                              lineId: line.id,
+                              customerId: widget.customerId,
+                              currentEndsAt: line.endsAt,
+                            );
+                            ref.invalidate(customerLinesProvider(widget.customerId));
+                            ref.invalidate(customersProvider);
+                            ref.invalidate(linesProvider);
+                          } finally {
+                            if (mounted) setState(() => _busy = false);
+                          }
+                        },
+                        child: const Text('Uzat + Fatura Listesi'),
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -1882,10 +1999,17 @@ class _LineItemState extends ConsumerState<_LineItem> {
 }
 
 class _LicenseItem extends ConsumerStatefulWidget {
-  const _LicenseItem({required this.customerId, required this.license});
+  const _LicenseItem({
+    required this.customerId,
+    required this.license,
+    required this.canEdit,
+    required this.canArchive,
+  });
 
   final String customerId;
   final CustomerLicense license;
+  final bool canEdit;
+  final bool canArchive;
 
   @override
   ConsumerState<_LicenseItem> createState() => _LicenseItemState();
@@ -1893,6 +2017,83 @@ class _LicenseItem extends ConsumerStatefulWidget {
 
 class _LicenseItemState extends ConsumerState<_LicenseItem> {
   bool _busy = false;
+
+  Future<void> _edit(CustomerLicense license) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _showEditGmp3Dialog(
+        context,
+        ref,
+        customerId: widget.customerId,
+        license: license,
+      );
+      ref.invalidate(customerLicensesProvider(widget.customerId));
+      ref.invalidate(customersProvider);
+      ref.invalidate(licensesProvider);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _archive(CustomerLicense license) async {
+    if (_busy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('GMP3 Lisansı Sil'),
+        content: const Text('Bu lisansı silmek istiyor musunuz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _busy = true);
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      final client = ref.read(supabaseClientProvider);
+      if (apiClient == null && client == null) return;
+
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'licenses',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': license.id},
+            ],
+            'values': {'is_active': false},
+          },
+        );
+      } else {
+        await client!
+            .from('licenses')
+            .update({'is_active': false})
+            .eq('id', license.id);
+      }
+
+      ref.invalidate(customerLicensesProvider(widget.customerId));
+      ref.invalidate(customersProvider);
+      ref.invalidate(licensesProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('GMP3 lisansı silindi.')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1957,6 +2158,22 @@ class _LicenseItemState extends ConsumerState<_LicenseItem> {
                         ?.copyWith(color: const Color(0xFF64748B)),
                   ),
                 ],
+                if ((license.softwareCompanyName ?? '').trim().isNotEmpty ||
+                    (license.registryNumber ?? '').trim().isNotEmpty) ...[
+                  const Gap(4),
+                  Text(
+                    [
+                      if ((license.softwareCompanyName ?? '').trim().isNotEmpty)
+                        'Firma: ${license.softwareCompanyName}',
+                      if ((license.registryNumber ?? '').trim().isNotEmpty)
+                        'Sicil: ${license.registryNumber}',
+                    ].join(' • '),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: const Color(0xFF64748B)),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1965,12 +2182,38 @@ class _LicenseItemState extends ConsumerState<_LicenseItem> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               AppBadge(label: label, tone: tone),
-              if (isAdmin) ...[
+              if (widget.canEdit || widget.canArchive || isAdmin) ...[
                 const Gap(8),
-                OutlinedButton(
-                  onPressed: _busy
-                      ? null
-                      : () async {
+                MenuAnchor(
+                  builder: (context, controller, _) => OutlinedButton(
+                    onPressed: _busy
+                        ? null
+                        : () => controller.isOpen
+                            ? controller.close()
+                            : controller.open(),
+                    child: _busy
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('İşlem'),
+                  ),
+                  menuChildren: [
+                    if (widget.canEdit)
+                      MenuItemButton(
+                        onPressed: () async => _edit(license),
+                        child: const Text('Düzenle'),
+                      ),
+                    if (widget.canArchive)
+                      MenuItemButton(
+                        onPressed: () async => _archive(license),
+                        child: const Text('Sil'),
+                      ),
+                    if (isAdmin)
+                      MenuItemButton(
+                        onPressed: () async {
+                          if (_busy) return;
                           setState(() => _busy = true);
                           try {
                             await _extendGmp3AndQueueInvoice(
@@ -1981,17 +2224,16 @@ class _LicenseItemState extends ConsumerState<_LicenseItem> {
                               currentEndsAt: license.endsAt,
                               name: license.name,
                             );
+                            ref.invalidate(customerLicensesProvider(widget.customerId));
+                            ref.invalidate(customersProvider);
+                            ref.invalidate(licensesProvider);
                           } finally {
                             if (mounted) setState(() => _busy = false);
                           }
                         },
-                  child: _busy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Uzat + Fatura'),
+                        child: const Text('Uzat + Fatura'),
+                      ),
+                  ],
                 ),
               ],
             ],
@@ -2241,6 +2483,271 @@ Future<void> _showSellLineDialog(
   );
 }
 
+Future<void> _showEditLineDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required String customerId,
+  required CustomerLine line,
+}) async {
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => _EditLineDialog(customerId: customerId, line: line),
+  );
+}
+
+class _EditLineDialog extends ConsumerStatefulWidget {
+  const _EditLineDialog({required this.customerId, required this.line});
+
+  final String customerId;
+  final CustomerLine line;
+
+  @override
+  ConsumerState<_EditLineDialog> createState() => _EditLineDialogState();
+}
+
+class _EditLineDialogState extends ConsumerState<_EditLineDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _labelController;
+  late final TextEditingController _numberController;
+  late final TextEditingController _simController;
+  late String _operator;
+  DateTime? _start;
+  DateTime? _end;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final l = widget.line;
+    _labelController = TextEditingController(text: (l.label ?? '').trim());
+    _numberController = TextEditingController(text: (l.number ?? '').trim());
+    _simController = TextEditingController(text: (l.simNumber ?? '').trim());
+    _operator = (l.operator ?? 'turkcell').trim().isEmpty ? 'turkcell' : (l.operator ?? 'turkcell').trim();
+    _start = l.startsAt;
+    _end = l.endsAt;
+  }
+
+  @override
+  void dispose() {
+    _labelController.dispose();
+    _numberController.dispose();
+    _simController.dispose();
+    super.dispose();
+  }
+
+  String _isoDate(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final dd = d.day.toString().padLeft(2, '0');
+    return '$y-$m-$dd';
+  }
+
+  Future<void> _pickStart() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _start ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    if (!mounted) return;
+    setState(() => _start = DateTime(picked.year, picked.month, picked.day));
+  }
+
+  Future<void> _pickEnd() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _end ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    if (!mounted) return;
+    setState(() => _end = DateTime(picked.year, picked.month, picked.day));
+  }
+
+  Future<void> _save() async {
+    final ok = _formKey.currentState?.validate() ?? false;
+    if (!ok) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    setState(() => _saving = true);
+    try {
+      final values = <String, dynamic>{
+        'label': _labelController.text.trim().isEmpty
+            ? null
+            : _labelController.text.trim(),
+        'number': _numberController.text.trim(),
+        'operator': _operator,
+        'sim_number': _simController.text.trim().isEmpty
+            ? null
+            : _simController.text.trim(),
+        'starts_at': _start == null ? null : _isoDate(_start!),
+        'ends_at': _end == null ? null : _isoDate(_end!),
+        'expires_at': _end == null ? null : _isoDate(_end!),
+      };
+
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'lines',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.line.id},
+            ],
+            'values': values,
+          },
+        );
+      } else {
+        await client!.from('lines').update(values).eq('id', widget.line.id);
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hat güncellendi.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hat güncellenemedi.')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final df = DateFormat('d MMM y', 'tr_TR');
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640),
+        child: AppCard(
+          padding: const EdgeInsets.all(20),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Hat Düzenle',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Kapat',
+                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                TextFormField(
+                  controller: _numberController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Hat No',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) => (v ?? '').trim().isEmpty ? 'Hat no gerekli.' : null,
+                ),
+                const Gap(12),
+                DropdownButtonFormField<String>(
+                  initialValue: _operator,
+                  items: const [
+                    DropdownMenuItem(value: 'turkcell', child: Text('TURKCELL')),
+                    DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
+                  ],
+                  onChanged: _saving ? null : (v) => setState(() => _operator = v ?? 'turkcell'),
+                  decoration: const InputDecoration(
+                    labelText: 'Operatör',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const Gap(12),
+                TextFormField(
+                  controller: _simController,
+                  decoration: const InputDecoration(
+                    labelText: 'SIM No',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const Gap(12),
+                TextFormField(
+                  controller: _labelController,
+                  decoration: const InputDecoration(
+                    labelText: 'Etiket',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const Gap(12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _saving ? null : _pickStart,
+                        icon: const Icon(Icons.date_range_rounded),
+                        label: Text(_start == null ? 'Başlangıç' : df.format(_start!)),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _saving ? null : _pickEnd,
+                        icon: const Icon(Icons.event_busy_rounded),
+                        label: Text(_end == null ? 'Bitiş' : df.format(_end!)),
+                      ),
+                    ),
+                  ],
+                ),
+                const Gap(16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                        child: const Text('Vazgeç'),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _saving ? null : _save,
+                        child: _saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Kaydet'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SellLineDialog extends ConsumerStatefulWidget {
   const _SellLineDialog({required this.customerId});
 
@@ -2258,6 +2765,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
   bool _saving = false;
 
   String? _branchId;
+  String? _operator;
 
   @override
   void dispose() {
@@ -2291,6 +2799,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
             ? null
             : _labelController.text.trim(),
         'number': _numberController.text.trim(),
+        'operator': _operator,
         'sim_number': _simController.text.trim().isEmpty
             ? null
             : _simController.text.trim(),
@@ -2435,6 +2944,21 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                   },
                 ),
                 const Gap(12),
+                DropdownButtonFormField<String>(
+                  initialValue: _operator,
+                  items: const [
+                    DropdownMenuItem(value: 'turkcell', child: Text('TURKCELL')),
+                    DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
+                  ],
+                  onChanged: _saving ? null : (v) => setState(() => _operator = v),
+                  decoration: const InputDecoration(
+                    labelText: 'Operatör',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      (v ?? '').trim().isEmpty ? 'Operatör seçin.' : null,
+                ),
+                const Gap(12),
                 TextFormField(
                   controller: _simController,
                   decoration: const InputDecoration(
@@ -2520,6 +3044,300 @@ Future<void> _showSellGmp3Dialog(
   );
 }
 
+Future<void> _showEditGmp3Dialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required String customerId,
+  required CustomerLicense license,
+}) async {
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => _EditGmp3Dialog(customerId: customerId, license: license),
+  );
+}
+
+class _EditGmp3Dialog extends ConsumerStatefulWidget {
+  const _EditGmp3Dialog({required this.customerId, required this.license});
+
+  final String customerId;
+  final CustomerLicense license;
+
+  @override
+  ConsumerState<_EditGmp3Dialog> createState() => _EditGmp3DialogState();
+}
+
+class _EditGmp3DialogState extends ConsumerState<_EditGmp3Dialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameController;
+  late final TextEditingController _registryController;
+  DateTime? _start;
+  DateTime? _end;
+  String? _selectedSoftwareCompanyId;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.license.name);
+    _registryController =
+        TextEditingController(text: (widget.license.registryNumber ?? '').trim());
+    _start = widget.license.startsAt;
+    _end = widget.license.endsAt;
+    _selectedSoftwareCompanyId = widget.license.softwareCompanyId;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _registryController.dispose();
+    super.dispose();
+  }
+
+  String _isoDate(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final dd = d.day.toString().padLeft(2, '0');
+    return '$y-$m-$dd';
+  }
+
+  Future<void> _pickStart() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _start ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    if (!mounted) return;
+    setState(() => _start = DateTime(picked.year, picked.month, picked.day));
+  }
+
+  Future<void> _pickEnd() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _end ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    if (!mounted) return;
+    setState(() => _end = DateTime(picked.year, picked.month, picked.day));
+  }
+
+  Future<void> _save() async {
+    final ok = _formKey.currentState?.validate() ?? false;
+    if (!ok) return;
+
+    if ((_selectedSoftwareCompanyId ?? '').trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Yazılım firması seçin.')),
+      );
+      return;
+    }
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    setState(() => _saving = true);
+    try {
+      final values = <String, dynamic>{
+        'name': _nameController.text.trim(),
+        'software_company_id': _selectedSoftwareCompanyId,
+        'registry_number': _registryController.text.trim().isEmpty
+            ? null
+            : _registryController.text.trim(),
+        'starts_at': _start == null ? null : _isoDate(_start!),
+        'ends_at': _end == null ? null : _isoDate(_end!),
+        'expires_at': _end == null ? null : _isoDate(_end!),
+      };
+
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'licenses',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.license.id},
+            ],
+            'values': values,
+          },
+        );
+      } else {
+        await client!.from('licenses').update(values).eq('id', widget.license.id);
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('GMP3 lisansı güncellendi.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('GMP3 lisansı güncellenemedi.')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final df = DateFormat('d MMM y', 'tr_TR');
+    final companiesAsync = ref.watch(softwareCompaniesProvider);
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640),
+        child: AppCard(
+          padding: const EdgeInsets.all(20),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'GMP3 Düzenle',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Kapat',
+                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Lisans Adı',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      (v ?? '').trim().isEmpty ? 'Lisans adı gerekli.' : null,
+                ),
+                const Gap(12),
+                companiesAsync.when(
+                  data: (items) {
+                    final active =
+                        items.where((e) => e.isActive).toList(growable: false);
+                    if (active.isEmpty) {
+                      return Text(
+                        'Yazılım firması tanımlanmamış.',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: AppTheme.textMuted),
+                      );
+                    }
+                    final initialValue = (_selectedSoftwareCompanyId != null &&
+                            active.any((e) => e.id == _selectedSoftwareCompanyId))
+                        ? _selectedSoftwareCompanyId
+                        : active.first.id;
+                    return DropdownButtonFormField<String>(
+                      initialValue: initialValue,
+                      items: [
+                        for (final c in active)
+                          DropdownMenuItem(value: c.id, child: Text(c.name)),
+                      ],
+                      onChanged: _saving
+                          ? null
+                          : (v) => setState(() => _selectedSoftwareCompanyId = v),
+                      decoration: const InputDecoration(
+                        labelText: 'Yazılım Firması',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (v) =>
+                          (v ?? '').isEmpty ? 'Yazılım firması seçin.' : null,
+                    );
+                  },
+                  loading: () => const SizedBox(
+                    height: 56,
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                  error: (error, stackTrace) => Text(
+                    'Yazılım firmaları yüklenemedi.',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: AppTheme.textMuted),
+                  ),
+                ),
+                const Gap(12),
+                TextFormField(
+                  controller: _registryController,
+                  decoration: const InputDecoration(
+                    labelText: 'Sicil No',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const Gap(12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _saving ? null : _pickStart,
+                        icon: const Icon(Icons.date_range_rounded),
+                        label: Text(_start == null ? 'Başlangıç' : df.format(_start!)),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _saving ? null : _pickEnd,
+                        icon: const Icon(Icons.event_busy_rounded),
+                        label: Text(_end == null ? 'Bitiş' : df.format(_end!)),
+                      ),
+                    ),
+                  ],
+                ),
+                const Gap(16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                        child: const Text('Vazgeç'),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _saving ? null : _save,
+                        child: _saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Kaydet'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SellGmp3Dialog extends ConsumerStatefulWidget {
   const _SellGmp3Dialog({required this.customerId});
 
@@ -2532,17 +3350,27 @@ class _SellGmp3Dialog extends ConsumerStatefulWidget {
 class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController(text: 'GMP3 Lisansı');
+  final _registryController = TextEditingController();
   bool _saving = false;
+  String? _selectedSoftwareCompanyId;
 
   @override
   void dispose() {
     _nameController.dispose();
+    _registryController.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     final ok = _formKey.currentState?.validate() ?? false;
     if (!ok) return;
+
+    if ((_selectedSoftwareCompanyId ?? '').trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Yazılım firması seçin.')),
+      );
+      return;
+    }
 
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
@@ -2561,6 +3389,10 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
         'customer_id': widget.customerId,
         'name': _nameController.text.trim(),
         'license_type': 'gmp3',
+        'software_company_id': _selectedSoftwareCompanyId,
+        'registry_number': _registryController.text.trim().isEmpty
+            ? null
+            : _registryController.text.trim(),
         'starts_at': start.toIso8601String().substring(0, 10),
         'ends_at': end.toIso8601String().substring(0, 10),
         'expires_at': end.toIso8601String().substring(0, 10),
@@ -2637,6 +3469,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
     final now = DateTime.now();
     final startText = DateFormat('d MMM y', 'tr_TR').format(now);
     final endText = DateFormat('d MMM y', 'tr_TR').format(DateTime(now.year, 12, 31));
+    final companiesAsync = ref.watch(softwareCompaniesProvider);
+    final registriesAsync =
+        ref.watch(customerDeviceRegistriesProvider(widget.customerId));
 
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
@@ -2675,6 +3510,100 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
                   ),
                   validator: (v) =>
                       v == null || v.trim().isEmpty ? 'Lisans adı gerekli.' : null,
+                ),
+                const Gap(12),
+                companiesAsync.when(
+                  data: (items) {
+                    final active =
+                        items.where((e) => e.isActive).toList(growable: false);
+                    if (active.isEmpty) {
+                      return Text(
+                        'Yazılım firması tanımlanmamış.',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: AppTheme.textMuted),
+                      );
+                    }
+                    if (_selectedSoftwareCompanyId == null) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) return;
+                        setState(() => _selectedSoftwareCompanyId = active.first.id);
+                      });
+                    }
+                    return DropdownButtonFormField<String>(
+                      initialValue: _selectedSoftwareCompanyId ?? active.first.id,
+                      items: [
+                        for (final c in active)
+                          DropdownMenuItem(value: c.id, child: Text(c.name)),
+                      ],
+                      onChanged: _saving
+                          ? null
+                          : (v) => setState(() => _selectedSoftwareCompanyId = v),
+                      decoration: const InputDecoration(
+                        labelText: 'Yazılım Firması',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (v) =>
+                          (v ?? '').isEmpty ? 'Yazılım firması seçin.' : null,
+                    );
+                  },
+                  loading: () => const SizedBox(
+                    height: 56,
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                  error: (error, stackTrace) => Text(
+                    'Yazılım firmaları yüklenemedi.',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: AppTheme.textMuted),
+                  ),
+                ),
+                const Gap(12),
+                TextFormField(
+                  controller: _registryController,
+                  decoration: const InputDecoration(
+                    labelText: 'Sicil No',
+                    hintText: 'SICIL...',
+                  ),
+                ),
+                const Gap(10),
+                registriesAsync.when(
+                  data: (items) {
+                    final active = items.where((e) => e.isActive).toList(growable: false);
+                    if (active.isEmpty) return const SizedBox.shrink();
+                    return DropdownButtonFormField<String?>(
+                      initialValue: null,
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Sicil seç (opsiyonel)'),
+                        ),
+                        for (final r in active)
+                          DropdownMenuItem<String?>(
+                            value: r.registryNumber,
+                            child: Text(
+                              r.model?.trim().isNotEmpty ?? false
+                                  ? '${r.registryNumber} • ${r.model}'
+                                  : r.registryNumber,
+                            ),
+                          ),
+                      ],
+                      onChanged: _saving
+                          ? null
+                          : (v) {
+                              if (v == null) return;
+                              _registryController.text = v;
+                            },
+                      decoration: const InputDecoration(
+                        labelText: 'Kayıtlı Siciller',
+                        border: OutlineInputBorder(),
+                      ),
+                    );
+                  },
+                  loading: () => const SizedBox.shrink(),
+                  error: (error, stackTrace) => const SizedBox.shrink(),
                 ),
                 const Gap(12),
                 Container(
@@ -3266,6 +4195,7 @@ class CustomerLine {
     required this.label,
     required this.number,
     required this.simNumber,
+    required this.operator,
     required this.startsAt,
     required this.endsAt,
     required this.isActive,
@@ -3275,6 +4205,7 @@ class CustomerLine {
   final String? label;
   final String? number;
   final String? simNumber;
+  final String? operator;
   final DateTime? startsAt;
   final DateTime? endsAt;
   final bool isActive;
@@ -3285,6 +4216,7 @@ class CustomerLine {
       label: json['label']?.toString(),
       number: json['number']?.toString(),
       simNumber: json['sim_number']?.toString(),
+      operator: json['operator']?.toString(),
       startsAt: DateTime.tryParse(json['starts_at']?.toString() ?? ''),
       endsAt: DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
           DateTime.tryParse(json['expires_at']?.toString() ?? ''),
@@ -3298,6 +4230,9 @@ class CustomerLicense {
     required this.id,
     required this.name,
     required this.licenseType,
+    required this.softwareCompanyId,
+    required this.softwareCompanyName,
+    required this.registryNumber,
     required this.startsAt,
     required this.endsAt,
     required this.isActive,
@@ -3306,15 +4241,25 @@ class CustomerLicense {
   final String id;
   final String name;
   final String licenseType;
+  final String? softwareCompanyId;
+  final String? softwareCompanyName;
+  final String? registryNumber;
   final DateTime? startsAt;
   final DateTime? endsAt;
   final bool isActive;
 
   factory CustomerLicense.fromJson(Map<String, dynamic> json) {
+    final softwareCompanies =
+        (json['software_companies'] as Map?)?.cast<String, dynamic>();
     return CustomerLicense(
       id: json['id'].toString(),
       name: (json['name'] ?? '').toString(),
       licenseType: (json['license_type'] ?? 'gmp3').toString(),
+      softwareCompanyId: json['software_company_id']?.toString(),
+      softwareCompanyName: (json['software_company_name'] ??
+              softwareCompanies?['name'])
+          ?.toString(),
+      registryNumber: json['registry_number']?.toString(),
       startsAt: DateTime.tryParse(json['starts_at']?.toString() ?? ''),
       endsAt: DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
           DateTime.tryParse(json['expires_at']?.toString() ?? ''),

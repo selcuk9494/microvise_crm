@@ -2338,6 +2338,55 @@ class _ApplicationFormDialogState
             );
           }
         } catch (_) {}
+
+        try {
+          final profile = await ref.read(currentUserProfileProvider.future);
+          final assignedTo = (profile?.id ?? '').trim();
+          if (assignedTo.isEmpty) throw Exception('Oturum bulunamadı.');
+
+          for (final inserted in insertedRecords) {
+            final customerId = inserted.customerId?.trim() ?? '';
+            if (customerId.isEmpty) continue;
+
+            final registry = inserted.stockRegistryNumber?.trim() ?? '';
+            final parts = <String>[
+              'Başvuru Formu',
+              if (inserted.brandModel.trim().isNotEmpty) inserted.brandModel.trim(),
+              if (inserted.businessActivityName?.trim().isNotEmpty ?? false)
+                inserted.businessActivityName!.trim(),
+              if (inserted.fileRegistryNumber?.trim().isNotEmpty ?? false)
+                'Dosya: ${inserted.fileRegistryNumber!.trim()}',
+            ];
+            final baseDescription = parts.join(' • ');
+            final description = registry.isNotEmpty
+                ? 'Sicil: $registry • $baseDescription'
+                : baseDescription;
+
+            await apiClient.postJson(
+              '/work-orders',
+              body: {
+                'customer_id': customerId,
+                'branch_id': null,
+                'work_order_type_id': null,
+                'title': 'Başvuru Formu',
+                'description': description,
+                'address': inserted.workAddress?.trim().isNotEmpty ?? false
+                    ? inserted.workAddress!.trim()
+                    : null,
+                'assigned_to': assignedTo,
+                'scheduled_date': null,
+                'city': inserted.taxOfficeCityName?.trim().isNotEmpty ?? false
+                    ? inserted.taxOfficeCityName!.trim()
+                    : null,
+                'contact_phone': null,
+                'location_link': null,
+                'payment_required': false,
+                'status': 'approval_pending',
+              },
+            );
+          }
+          ref.invalidate(workOrdersBoardProvider);
+        } catch (_) {}
       } else {
         final insertedRows = await client!
             .from('application_forms')
@@ -2386,6 +2435,52 @@ class _ApplicationFormDialogState
               'released_at': null,
             });
           }
+        } catch (_) {}
+
+        try {
+          final assignedTo = (client.auth.currentUser?.id ?? '').trim();
+          if (assignedTo.isEmpty) throw Exception('Oturum bulunamadı.');
+
+          for (final inserted in insertedRecords) {
+            final customerId = inserted.customerId?.trim() ?? '';
+            if (customerId.isEmpty) continue;
+
+            final registry = inserted.stockRegistryNumber?.trim() ?? '';
+            final parts = <String>[
+              'Başvuru Formu',
+              if (inserted.brandModel.trim().isNotEmpty) inserted.brandModel.trim(),
+              if (inserted.businessActivityName?.trim().isNotEmpty ?? false)
+                inserted.businessActivityName!.trim(),
+              if (inserted.fileRegistryNumber?.trim().isNotEmpty ?? false)
+                'Dosya: ${inserted.fileRegistryNumber!.trim()}',
+            ];
+            final baseDescription = parts.join(' • ');
+            final description = registry.isNotEmpty
+                ? 'Sicil: $registry • $baseDescription'
+                : baseDescription;
+
+            await client.from('work_orders').insert({
+              'customer_id': customerId,
+              'branch_id': null,
+              'work_order_type_id': null,
+              'title': 'Başvuru Formu',
+              'description': description,
+              'address': inserted.workAddress?.trim().isNotEmpty ?? false
+                  ? inserted.workAddress!.trim()
+                  : null,
+              'assigned_to': assignedTo,
+              'scheduled_date': null,
+              'city': inserted.taxOfficeCityName?.trim().isNotEmpty ?? false
+                  ? inserted.taxOfficeCityName!.trim()
+                  : null,
+              'contact_phone': null,
+              'location_link': null,
+              'payment_required': false,
+              'status': 'approval_pending',
+              'is_active': true,
+            });
+          }
+          ref.invalidate(workOrdersBoardProvider);
         } catch (_) {}
       }
 
@@ -4408,7 +4503,6 @@ class _BusinessActivityMultiSelectField extends StatelessWidget {
         final selected = await showDialog<List<String>>(
           context: context,
           builder: (context) => _BusinessActivityPickerDialog(
-            items: items,
             selectedIds: selectedIds,
           ),
         );
@@ -4442,23 +4536,22 @@ class _BusinessActivityMultiSelectField extends StatelessWidget {
   }
 }
 
-class _BusinessActivityPickerDialog extends StatefulWidget {
+class _BusinessActivityPickerDialog extends ConsumerStatefulWidget {
   const _BusinessActivityPickerDialog({
-    required this.items,
     required this.selectedIds,
   });
 
-  final List<BusinessActivityTypeDefinition> items;
   final List<String> selectedIds;
 
   @override
-  State<_BusinessActivityPickerDialog> createState() =>
+  ConsumerState<_BusinessActivityPickerDialog> createState() =>
       _BusinessActivityPickerDialogState();
 }
 
 class _BusinessActivityPickerDialogState
-    extends State<_BusinessActivityPickerDialog> {
+    extends ConsumerState<_BusinessActivityPickerDialog> {
   late final Set<String> _selectedIds;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -4466,8 +4559,134 @@ class _BusinessActivityPickerDialogState
     _selectedIds = widget.selectedIds.toSet();
   }
 
+  bool get _isAdmin {
+    final profile = ref.watch(currentUserProfileProvider).maybeWhen(
+          data: (p) => p,
+          orElse: () => null,
+        );
+    return profile?.role == 'admin';
+  }
+
+  Future<void> _upsertActivity({BusinessActivityTypeDefinition? initial}) async {
+    final controller = TextEditingController(text: initial?.name ?? '');
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title:
+            Text(initial == null ? 'Faaliyet Türü Ekle' : 'Faaliyet Türü Düzenle'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Ad',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: Text(initial == null ? 'Ekle' : 'Kaydet'),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+
+    final name = (result ?? '').trim();
+    if (name.isEmpty) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+
+    setState(() => _saving = true);
+    try {
+      if (initial == null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'insertMany',
+            'table': 'business_activity_types',
+            'rows': [
+              {'name': name, 'is_active': true},
+            ],
+          },
+        );
+      } else {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'business_activity_types',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': initial.id},
+            ],
+            'values': {'name': name},
+          },
+        );
+      }
+      ref.invalidate(businessActivityTypesProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _deleteActivity(BusinessActivityTypeDefinition item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Faaliyet Türünü Sil'),
+        content: const Text('Bu kaydı silmek istiyor musunuz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+
+    setState(() => _saving = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'deleteWhere',
+          'table': 'business_activity_types',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': item.id},
+          ],
+        },
+      );
+      _selectedIds.remove(item.id);
+      ref.invalidate(businessActivityTypesProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final itemsAsync = ref.watch(businessActivityTypesProvider);
+    final items = itemsAsync.maybeWhen(
+      data: (v) => v.where((e) => e.isActive).toList(growable: false),
+      orElse: () => const <BusinessActivityTypeDefinition>[],
+    );
+
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
       backgroundColor: Colors.transparent,
@@ -4485,6 +4704,17 @@ class _BusinessActivityPickerDialogState
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
+                  if (_isAdmin)
+                    IconButton(
+                      onPressed: _saving ? null : () => _upsertActivity(),
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.add_rounded),
+                    ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close_rounded),
@@ -4493,30 +4723,64 @@ class _BusinessActivityPickerDialogState
               ),
               const Gap(8),
               Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: widget.items.length,
-                  separatorBuilder: (context, index) =>
-                      const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final item = widget.items[index];
-                    return CheckboxListTile(
-                      value: _selectedIds.contains(item.id),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(item.name),
-                      onChanged: (value) {
-                        setState(() {
-                          if (value ?? false) {
-                            _selectedIds.add(item.id);
-                          } else {
-                            _selectedIds.remove(item.id);
-                          }
-                        });
-                      },
-                    );
-                  },
+                child: itemsAsync.when(
+                  loading: () => const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                      child: CircularProgressIndicator(),
+                    ),
+                  ),
+                  error: (e, st) => const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Text('Yüklenemedi.'),
+                    ),
+                  ),
+                  data: (_) => ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: items.length,
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      return CheckboxListTile(
+                        value: _selectedIds.contains(item.id),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(item.name),
+                        secondary: _isAdmin
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    onPressed: _saving
+                                        ? null
+                                        : () => _upsertActivity(initial: item),
+                                    icon: const Icon(Icons.edit_rounded),
+                                  ),
+                                  IconButton(
+                                    onPressed: _saving
+                                        ? null
+                                        : () => _deleteActivity(item),
+                                    icon:
+                                        const Icon(Icons.delete_outline_rounded),
+                                  ),
+                                ],
+                              )
+                            : null,
+                        onChanged: (value) {
+                          setState(() {
+                            if (value ?? false) {
+                              _selectedIds.add(item.id);
+                            } else {
+                              _selectedIds.remove(item.id);
+                            }
+                          });
+                        },
+                      );
+                    },
+                  ),
                 ),
               ),
               const Gap(12),

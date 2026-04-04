@@ -9,6 +9,10 @@ const {
   ensureFaultFormsTable,
   ensureDeviceRegistriesTable,
   ensureBusinessActivityTypesTable,
+  ensureSoftwareCompaniesTable,
+  ensureLicensesSoftwareCompanyColumn,
+  ensureLicensesRegistryNumberColumn,
+  ensureLinesOperatorColumn,
   ensureWorkOrderSignaturesTable,
 } = require('./_lib/schema');
 const {
@@ -47,6 +51,7 @@ const allowedTables = new Set([
   'device_models',
   'fiscal_symbols',
   'business_activity_types',
+  'software_companies',
   'work_order_signatures',
   'invoices',
   'invoice_items',
@@ -94,6 +99,7 @@ const tablePermissions = {
   cities: 'tanimlamalar',
   fiscal_symbols: 'tanimlamalar',
   business_activity_types: 'tanimlamalar',
+  software_companies: 'tanimlamalar',
   work_order_signatures: 'is_emirleri',
   application_forms: 'formlar',
   scrap_forms: 'formlar',
@@ -398,6 +404,16 @@ module.exports = async (req, res) => {
     }
     if (table === 'business_activity_types') {
       await ensureBusinessActivityTypesTable();
+    }
+    if (table === 'software_companies') {
+      await ensureSoftwareCompaniesTable();
+    }
+    if (table === 'licenses') {
+      await ensureLicensesSoftwareCompanyColumn();
+      await ensureLicensesRegistryNumberColumn();
+    }
+    if (table === 'lines') {
+      await ensureLinesOperatorColumn();
     }
     if (table === 'work_order_signatures') {
       await ensureWorkOrderSignaturesTable();

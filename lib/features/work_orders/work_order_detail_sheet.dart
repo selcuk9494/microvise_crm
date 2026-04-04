@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -20,6 +20,7 @@ import '../dashboard/dashboard_providers.dart';
 import 'work_order_model.dart';
 import 'currency_service.dart';
 import 'work_order_share.dart';
+import 'work_order_whatsapp_share.dart';
 
 class _CloseNoteOption {
   const _CloseNoteOption({required this.id, required this.name});
@@ -636,8 +637,10 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('İş emri kapatıldı'),
-          content: const Text(
-            'PDF olarak WhatsApp üzerinden paylaşmak ister misin?',
+          content: Text(
+            kIsWeb
+                ? 'PDF olarak kaydetmek ister misin?'
+                : 'PDF olarak WhatsApp üzerinden paylaşmak ister misin?',
           ),
           actions: [
             TextButton(
@@ -646,7 +649,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Paylaş'),
+              child: Text(kIsWeb ? 'Kaydet' : 'Paylaş'),
             ),
           ],
         ),
@@ -659,14 +662,27 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           'close_notes': closeNotesText,
           'payments': closedPayments.map((e) => e.toJson()).toList(growable: false),
         });
-        await shareWorkOrderPdf(
-          order: pdfOrder,
-          customer: customer,
-          closeNotes: closeNotesText,
-          payments: closedPayments,
-          signaturePngBytes: signaturePng,
-          personnelSignaturePngBytes: personnelSignaturePng,
-        );
+        if (!mounted) return;
+        if (kIsWeb) {
+          await shareWorkOrderPdf(
+            order: pdfOrder,
+            customer: customer,
+            closeNotes: closeNotesText,
+            payments: closedPayments,
+            signaturePngBytes: signaturePng,
+            personnelSignaturePngBytes: personnelSignaturePng,
+          );
+        } else {
+          await shareWorkOrderPdfWithWhatsAppPrompt(
+            context: context,
+            order: pdfOrder,
+            customer: customer,
+            closeNotes: closeNotesText,
+            payments: closedPayments,
+            signaturePngBytes: signaturePng,
+            personnelSignaturePngBytes: personnelSignaturePng,
+          );
+        }
       }
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -881,15 +897,31 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                       }
                     } catch (_) {}
 
-                    await shareWorkOrderPdf(
-                      order: pdfOrder,
-                      customer: customer,
-                      closeNotes:
-                          (pdfOrder.closeNotes ?? '').trim().isEmpty ? null : pdfOrder.closeNotes,
-                      payments: pdfOrder.payments,
-                      signaturePngBytes: customerSigBytes,
-                      personnelSignaturePngBytes: personnelSigBytes,
-                    );
+                    if (!context.mounted) return;
+                    if (kIsWeb) {
+                      await shareWorkOrderPdf(
+                        order: pdfOrder,
+                        customer: customer,
+                        closeNotes: (pdfOrder.closeNotes ?? '').trim().isEmpty
+                            ? null
+                            : pdfOrder.closeNotes,
+                        payments: pdfOrder.payments,
+                        signaturePngBytes: customerSigBytes,
+                        personnelSignaturePngBytes: personnelSigBytes,
+                      );
+                    } else {
+                      await shareWorkOrderPdfWithWhatsAppPrompt(
+                        context: context,
+                        order: pdfOrder,
+                        customer: customer,
+                        closeNotes: (pdfOrder.closeNotes ?? '').trim().isEmpty
+                            ? null
+                            : pdfOrder.closeNotes,
+                        payments: pdfOrder.payments,
+                        signaturePngBytes: customerSigBytes,
+                        personnelSignaturePngBytes: personnelSigBytes,
+                      );
+                    }
                   },
             icon: const Icon(Icons.share_rounded),
           ),

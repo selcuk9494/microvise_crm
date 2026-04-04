@@ -103,6 +103,8 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   List<_CustomerLocationDraft> _locationDrafts = [];
   bool _saving = false;
   bool _loadingLocations = false;
+  final _vknFocusNode = FocusNode();
+  final _tcknMsFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -140,6 +142,17 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     if (widget.isEdit && (initial?.id?.isNotEmpty ?? false)) {
       _loadLocations();
     }
+
+    _vknFocusNode.addListener(() {
+      if (!_vknFocusNode.hasFocus) {
+        _padDigitsController(_vknController, length: 10);
+      }
+    });
+    _tcknMsFocusNode.addListener(() {
+      if (!_tcknMsFocusNode.hasFocus) {
+        _padDigitsController(_tcknMsController, length: 11);
+      }
+    });
   }
 
   @override
@@ -151,6 +164,8 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     _emailController.dispose();
     _vknController.dispose();
     _tcknMsController.dispose();
+    _vknFocusNode.dispose();
+    _tcknMsFocusNode.dispose();
     _phone1TitleController.dispose();
     _phone1Controller.dispose();
     _phone2TitleController.dispose();
@@ -162,6 +177,18 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       draft.dispose();
     }
     super.dispose();
+  }
+
+  void _padDigitsController(TextEditingController controller, {required int length}) {
+    final digits = controller.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return;
+    if (digits.length >= length) return;
+    final padded = digits.padLeft(length, '0');
+    controller.value = TextEditingValue(
+      text: padded,
+      selection: TextSelection.collapsed(offset: padded.length),
+      composing: TextRange.empty,
+    );
   }
 
   Future<void> _loadLocations() async {
@@ -293,6 +320,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     Widget buildVknField() {
       return TextFormField(
         controller: _vknController,
+        focusNode: _vknFocusNode,
         textInputAction: TextInputAction.next,
         keyboardType: TextInputType.number,
         inputFormatters: [
@@ -305,6 +333,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
           prefixIcon: Icon(Icons.badge_outlined),
           counterText: '',
         ),
+        onFieldSubmitted: (_) => _padDigitsController(_vknController, length: 10),
         validator: (value) => validateRequiredDigits(
           value,
           length: 10,
@@ -316,6 +345,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     Widget buildTcknMsField() {
       return TextFormField(
         controller: _tcknMsController,
+        focusNode: _tcknMsFocusNode,
         textInputAction: TextInputAction.next,
         keyboardType: TextInputType.number,
         inputFormatters: [
@@ -328,6 +358,8 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
           prefixIcon: Icon(Icons.perm_identity_rounded),
           counterText: '',
         ),
+        onFieldSubmitted: (_) =>
+            _padDigitsController(_tcknMsController, length: 11),
         validator: (value) => validateRequiredDigits(
           value,
           length: 11,
@@ -907,14 +939,21 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   }
 
   Future<void> _submit() async {
+    _padDigitsController(_vknController, length: 10);
+    _padDigitsController(_tcknMsController, length: 11);
     if (!_formKey.currentState!.validate()) return;
 
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
     if (apiClient == null && client == null) return;
 
-    final normalizedVkn = _normalizeDigits(_vknController.text);
-    final normalizedTcknMs = _normalizeDigits(_tcknMsController.text);
+    if (!widget.isEdit && _phone1Controller.text.trim().isEmpty) {
+      _phone1Controller.text = '05333333333';
+    }
+
+    final normalizedVkn = _normalizeDigitsFixedLength(_vknController.text, length: 10);
+    final normalizedTcknMs =
+        _normalizeDigitsFixedLength(_tcknMsController.text, length: 11);
     _vknController.text = normalizedVkn ?? '';
     _tcknMsController.text = normalizedTcknMs ?? '';
 
@@ -1067,10 +1106,12 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     return trimmed.isEmpty ? null : trimmed;
   }
 
-  String? _normalizeDigits(String value) {
+  String? _normalizeDigitsFixedLength(String value, {required int length}) {
     final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return null;
-    return digits;
+    if (digits.length == length) return digits;
+    if (digits.length > length) return digits.substring(0, length);
+    return digits.padLeft(length, '0');
   }
 
   Future<void> _saveCustomerLocations(

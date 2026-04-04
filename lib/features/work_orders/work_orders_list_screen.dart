@@ -222,13 +222,17 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
               return false;
             }
             if (_fromDate != null) {
-              final d = item.createdAt ?? item.scheduledDate;
+              final d = _statusFilter == 'done'
+                  ? (item.closedAt ?? item.createdAt ?? item.scheduledDate)
+                  : (item.createdAt ?? item.scheduledDate);
               if (d == null) return false;
               final start = DateTime(_fromDate!.year, _fromDate!.month, _fromDate!.day);
               if (d.isBefore(start)) return false;
             }
             if (_toDate != null) {
-              final d = item.createdAt ?? item.scheduledDate;
+              final d = _statusFilter == 'done'
+                  ? (item.closedAt ?? item.createdAt ?? item.scheduledDate)
+                  : (item.createdAt ?? item.scheduledDate);
               if (d == null) return false;
               final end = DateTime(_toDate!.year, _toDate!.month, _toDate!.day, 23, 59, 59);
               if (d.isAfter(end)) return false;
@@ -441,7 +445,16 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                           next.trim().isEmpty) {
                                         return;
                                       }
-                                      setState(() => _statusFilter = next.trim());
+                                      setState(() {
+                                        _statusFilter = next.trim();
+                                        if (_statusFilter == 'done' &&
+                                            _fromDate == null &&
+                                            _toDate == null) {
+                                          final today = DateTime.now();
+                                          _fromDate = DateTime(today.year, today.month, today.day);
+                                          _toDate = DateTime(today.year, today.month, today.day);
+                                        }
+                                      });
                                     },
                                   ),
                                   if (_showPassive)
@@ -547,7 +560,16 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                   if (next == null || next.trim().isEmpty) {
                                     return;
                                   }
-                                  setState(() => _statusFilter = next.trim());
+                                  setState(() {
+                                    _statusFilter = next.trim();
+                                    if (_statusFilter == 'done' &&
+                                        _fromDate == null &&
+                                        _toDate == null) {
+                                      final today = DateTime.now();
+                                      _fromDate = DateTime(today.year, today.month, today.day);
+                                      _toDate = DateTime(today.year, today.month, today.day);
+                                    }
+                                  });
                                 },
                               ),
                               if (_statusFilter == 'open')

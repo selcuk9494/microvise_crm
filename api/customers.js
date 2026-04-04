@@ -328,14 +328,21 @@ module.exports = async (req, res) => {
 
     if (search) {
       values.push(`%${search}%`);
+      const idx = values.length;
+      const normParam = `translate(replace(lower($${idx}), 'i̇', 'i'), 'çğıöşüı', 'cgiosui')`;
+      const normCol = (col) =>
+        `translate(replace(lower(coalesce(${col},'')), 'i̇', 'i'), 'çğıöşüı', 'cgiosui')`;
       conditions.push(
-        `(c.name ilike $${values.length}
-          or c.vkn ilike $${values.length}
-          or c.tckn_ms ilike $${values.length}
-          or c.phone_1 ilike $${values.length}
-          or c.phone_2 ilike $${values.length}
-          or c.phone_3 ilike $${values.length}
-          or c.email ilike $${values.length})`,
+        `(${normCol('c.name')} like ${normParam}
+          or ${normCol('c.director_name')} like ${normParam}
+          or c.name ilike $${idx}
+          or c.director_name ilike $${idx}
+          or c.vkn ilike $${idx}
+          or c.tckn_ms ilike $${idx}
+          or c.phone_1 ilike $${idx}
+          or c.phone_2 ilike $${idx}
+          or c.phone_3 ilike $${idx}
+          or c.email ilike $${idx})`,
       );
     }
 

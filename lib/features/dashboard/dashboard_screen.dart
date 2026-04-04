@@ -10,6 +10,7 @@ import '../../app/theme/app_theme.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/utils/app_time.dart';
 import 'dashboard_providers.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -82,6 +83,8 @@ class DashboardScreen extends ConsumerWidget {
                 canSeeTileLowStock: canSeeTileLowStock,
               ),
             ),
+            const Gap(12),
+            const _BankPasswordsCard(),
             const Gap(16),
             LayoutBuilder(
               builder: (context, constraints) {
@@ -294,6 +297,149 @@ class DashboardScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _BankPasswordsCard extends StatelessWidget {
+  const _BankPasswordsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      onTap: () => _showBankPicker(context),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
+            ),
+            child: const Icon(
+              Icons.lock_rounded,
+              size: 18,
+              color: AppTheme.primary,
+            ),
+          ),
+          const Gap(10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Banka Şifreleri',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const Gap(2),
+                Text(
+                  'İş Bankası / Garanti Bankası',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: const Color(0xFF64748B)),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+        ],
+      ),
+    );
+  }
+
+  void _showBankPicker(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: false,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.account_balance_rounded),
+                title: const Text('İş Bankası'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showPassword(context, _BankPasswordType.isbank);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.account_balance_rounded),
+                title: const Text('Garanti Bankası'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showPassword(context, _BankPasswordType.garanti);
+                },
+              ),
+              const Gap(12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showPassword(BuildContext context, _BankPasswordType type) {
+    final now = AppTime.toTr(DateTime.now());
+    final title = type == _BankPasswordType.isbank ? 'İş Bankası' : 'Garanti Bankası';
+    final password = type == _BankPasswordType.isbank
+        ? _isbankPassword(now)
+        : _garantiPassword(now);
+
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('$title Şifresi'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Şifre'),
+            const Gap(8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: Text(
+                password,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.2,
+                    ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Kapat'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _BankPasswordType { isbank, garanti }
+
+String _isbankPassword(DateTime nowTr) {
+  final startOfYear = DateTime.utc(nowTr.year, 1, 1);
+  final dayOfYear = nowTr.difference(startOfYear).inDays + 1;
+  return dayOfYear.toString().padLeft(3, '0');
+}
+
+String _garantiPassword(DateTime nowTr) {
+  final sum = nowTr.day + nowTr.month;
+  final raw = '$sum' '00';
+  return raw.padLeft(4, '0');
 }
 
 class _MetricsGrid extends StatelessWidget {

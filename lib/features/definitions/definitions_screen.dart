@@ -223,6 +223,31 @@ final businessActivityTypesProvider =
       .toList(growable: false);
 });
 
+final softwareCompaniesProvider =
+    FutureProvider<List<SoftwareCompanyDefinition>>((ref) async {
+  final apiClient = ref.watch(apiClientProvider);
+  if (apiClient != null) {
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {'resource': 'definition_software_companies'},
+    );
+    return ((response['items'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(SoftwareCompanyDefinition.fromJson)
+        .toList(growable: false);
+  }
+
+  final client = ref.watch(supabaseClientProvider);
+  if (client == null) return const [];
+  final rows = await client
+      .from('software_companies')
+      .select('id,name,is_active,created_at')
+      .order('name');
+  return (rows as List)
+      .map((e) => SoftwareCompanyDefinition.fromJson(e as Map<String, dynamic>))
+      .toList(growable: false);
+});
+
 final applicationFormPrintSettingsProvider =
     FutureProvider<ApplicationFormPrintSettings>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
@@ -414,6 +439,26 @@ class BusinessActivityTypeDefinition {
   }
 }
 
+class SoftwareCompanyDefinition {
+  const SoftwareCompanyDefinition({
+    required this.id,
+    required this.name,
+    required this.isActive,
+  });
+
+  final String id;
+  final String name;
+  final bool isActive;
+
+  factory SoftwareCompanyDefinition.fromJson(Map<String, dynamic> json) {
+    return SoftwareCompanyDefinition(
+      id: json['id'].toString(),
+      name: (json['name'] ?? '').toString(),
+      isActive: json['is_active'] as bool? ?? true,
+    );
+  }
+}
+
 class DefinitionsScreen extends ConsumerWidget {
   const DefinitionsScreen({super.key});
 
@@ -423,7 +468,7 @@ class DefinitionsScreen extends ConsumerWidget {
     final height = MediaQuery.sizeOf(context).height;
     final availableHeight = (height - 260).clamp(520.0, 920.0);
     return DefaultTabController(
-      length: 6,
+      length: 7,
       child: AppPageLayout(
         title: 'Tanımlamalar',
         subtitle: 'Sistem tanımları ve ayarları',
@@ -444,6 +489,7 @@ class DefinitionsScreen extends ConsumerWidget {
                       Tab(text: 'Kapanış Açıklaması'),
                       Tab(text: 'KDV Oranları'),
                       Tab(text: 'Faaliyet Türü'),
+                      Tab(text: 'Yazılım Firmaları'),
                     ],
                   ),
                   const Divider(height: 1),
@@ -457,6 +503,7 @@ class DefinitionsScreen extends ConsumerWidget {
                         _WorkOrderCloseNotesTab(isAdmin: isAdmin),
                         _TaxRatesTab(isAdmin: isAdmin),
                         _BusinessActivityTypesTab(isAdmin: isAdmin),
+                        _SoftwareCompaniesTab(isAdmin: isAdmin),
                       ],
                     ),
                   ),
@@ -2136,6 +2183,366 @@ class _BusinessActivityTypesTab extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _SoftwareCompaniesTab extends ConsumerWidget {
+  const _SoftwareCompaniesTab({required this.isAdmin});
+
+  final bool isAdmin;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final companiesAsync = ref.watch(softwareCompaniesProvider);
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Yazılım Firmaları',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: isAdmin
+                    ? () async {
+                        await _showCreateSoftwareCompanyDialog(context, ref);
+                        ref.invalidate(softwareCompaniesProvider);
+                      }
+                    : null,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Ekle'),
+              ),
+            ],
+          ),
+          const Gap(12),
+          Expanded(
+            child: companiesAsync.when(
+              data: (items) {
+                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+                return ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, _) => const Gap(10),
+                  itemBuilder: (context, index) => _SoftwareCompanyRow(
+                    item: items[index],
+                    isAdmin: isAdmin,
+                  ),
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => _Empty(text: 'Yüklenemedi: $error'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SoftwareCompanyRow extends ConsumerStatefulWidget {
+  const _SoftwareCompanyRow({required this.item, required this.isAdmin});
+
+  final SoftwareCompanyDefinition item;
+  final bool isAdmin;
+
+  @override
+  ConsumerState<_SoftwareCompanyRow> createState() => _SoftwareCompanyRowState();
+}
+
+class _SoftwareCompanyRowState extends ConsumerState<_SoftwareCompanyRow> {
+  bool _saving = false;
+
+  Future<void> _toggleActive() async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+    setState(() => _saving = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'software_companies',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.item.id},
+            ],
+            'values': {'is_active': !widget.item.isActive},
+          },
+        );
+      } else {
+        await client!
+            .from('software_companies')
+            .update({'is_active': !widget.item.isActive})
+            .eq('id', widget.item.id);
+      }
+      ref.invalidate(softwareCompaniesProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _edit() async {
+    await _showCreateSoftwareCompanyDialog(
+      context,
+      ref,
+      initial: widget.item,
+    );
+    ref.invalidate(softwareCompaniesProvider);
+  }
+
+  Future<void> _delete() async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Yazılım Firmasını Sil'),
+        content: const Text('Bu kaydı silmek istiyor musunuz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _saving = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'deleteWhere',
+            'table': 'software_companies',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.item.id},
+            ],
+          },
+        );
+      } else {
+        await client!
+            .from('software_companies')
+            .delete()
+            .eq('id', widget.item.id);
+      }
+      ref.invalidate(softwareCompaniesProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              item.name,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    decoration:
+                        item.isActive ? null : TextDecoration.lineThrough,
+                  ),
+            ),
+          ),
+          AppBadge(
+            label: item.isActive ? 'Aktif' : 'Pasif',
+            tone: item.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
+          ),
+          const Gap(10),
+          if (widget.isAdmin) ...[
+            OutlinedButton(
+              onPressed: _saving ? null : _toggleActive,
+              child: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(item.isActive ? 'Pasif Yap' : 'Aktif Yap'),
+            ),
+            const Gap(6),
+            IconButton(
+              tooltip: 'Düzenle',
+              onPressed: _saving ? null : _edit,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+            IconButton(
+              tooltip: 'Sil',
+              onPressed: _saving ? null : _delete,
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _showCreateSoftwareCompanyDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  SoftwareCompanyDefinition? initial,
+}) async {
+  final controller = TextEditingController(text: initial?.name ?? '');
+  bool saving = false;
+
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) => Dialog(
+        insetPadding: const EdgeInsets.all(24),
+        backgroundColor: Colors.transparent,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: AppCard(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        initial == null
+                            ? 'Yazılım Firması Ekle'
+                            : 'Yazılım Firması Düzenle',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: saving ? null : () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Ad',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const Gap(14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed:
+                            saving ? null : () => Navigator.of(context).pop(),
+                        child: const Text('Vazgeç'),
+                      ),
+                    ),
+                    const Gap(12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                final name = controller.text.trim();
+                                if (name.isEmpty) return;
+                                final apiClient = ref.read(apiClientProvider);
+                                final client = ref.read(supabaseClientProvider);
+                                if (apiClient == null && client == null) return;
+                                setState(() => saving = true);
+                                try {
+                                  if (apiClient != null) {
+                                    if (initial == null) {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'insertMany',
+                                          'table': 'software_companies',
+                                          'rows': [
+                                            {'name': name, 'is_active': true},
+                                          ],
+                                        },
+                                      );
+                                    } else {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'updateWhere',
+                                          'table': 'software_companies',
+                                          'filters': [
+                                            {
+                                              'col': 'id',
+                                              'op': 'eq',
+                                              'value': initial.id,
+                                            },
+                                          ],
+                                          'values': {'name': name},
+                                        },
+                                      );
+                                    }
+                                  } else {
+                                    if (initial == null) {
+                                      await client!
+                                          .from('software_companies')
+                                          .insert({
+                                        'name': name,
+                                        'is_active': true,
+                                      });
+                                    } else {
+                                      await client!
+                                          .from('software_companies')
+                                          .update({'name': name}).eq(
+                                        'id',
+                                        initial.id,
+                                      );
+                                    }
+                                  }
+                                  if (!context.mounted) return;
+                                  Navigator.of(context).pop();
+                                } finally {
+                                  setState(() => saving = false);
+                                }
+                              },
+                        child: saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(initial == null ? 'Ekle' : 'Kaydet'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  controller.dispose();
 }
 
 class _BusinessActivityTypeRow extends ConsumerStatefulWidget {

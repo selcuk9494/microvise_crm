@@ -7,6 +7,10 @@ const {
   ensureFaultFormsTable,
   ensureDeviceRegistriesTable,
   ensureBusinessActivityTypesTable,
+  ensureSoftwareCompaniesTable,
+  ensureLicensesSoftwareCompanyColumn,
+  ensureLicensesRegistryNumberColumn,
+  ensureLinesOperatorColumn,
   ensureWorkOrderSignaturesTable,
   ensureWorkOrdersPaymentRequiredColumn,
   ensureWorkOrdersStatusCheckConstraint,
@@ -197,15 +201,47 @@ module.exports = async (req, res) => {
           values.push(true);
           activeSql = `and is_active = $${values.length}`;
         }
+        await ensureLinesOperatorColumn();
         const result = await query(
           `
-            select id,label,number,sim_number,starts_at,ends_at,expires_at,is_active,created_at
+            select id,label,number,sim_number,operator,starts_at,ends_at,expires_at,is_active,created_at
             from public.lines
             where customer_id = $1
               ${activeSql}
             order by created_at desc
           `,
           values,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'customer_lines_numbers_bulk': {
+        const idsRaw = String(req.query.ids || '').trim();
+        if (!idsRaw) return ok(res, { items: [] });
+        const ids = idsRaw
+          .split(',')
+          .map((id) => id.trim())
+          .filter((id) => id.length > 0)
+          .slice(0, 500);
+        if (!ids.length) return ok(res, { items: [] });
+
+        await ensureLinesOperatorColumn();
+        const result = await query(
+          `
+            select distinct on (customer_id, number)
+              id,
+              customer_id,
+              number,
+              sim_number,
+              operator,
+              created_at
+            from public.lines
+            where is_active = true
+              and customer_id::text = any($1::text[])
+              and coalesce(number::text, '') <> ''
+            order by customer_id, number, created_at desc
+          `,
+          [ids],
         );
         return ok(res, { items: result.rows });
       }
@@ -245,13 +281,27 @@ module.exports = async (req, res) => {
           values.push(true);
           activeSql = `and is_active = $${values.length}`;
         }
+        await ensureLicensesSoftwareCompanyColumn();
+        await ensureLicensesRegistryNumberColumn();
         const result = await query(
           `
-            select id,name,license_type,starts_at,ends_at,expires_at,is_active,created_at
-            from public.licenses
-            where customer_id = $1
-              ${activeSql}
-            order by created_at desc
+            select
+              lic.id,
+              lic.name,
+              lic.license_type,
+              lic.software_company_id,
+              sc.name as software_company_name,
+              lic.registry_number,
+              lic.starts_at,
+              lic.ends_at,
+              lic.expires_at,
+              lic.is_active,
+              lic.created_at
+            from public.licenses lic
+            left join public.software_companies sc on sc.id = lic.software_company_id
+            where lic.customer_id = $1
+              ${activeSql.replaceAll('is_active', 'lic.is_active')}
+            order by lic.created_at desc
           `,
           values,
         );
@@ -585,6 +635,14 @@ module.exports = async (req, res) => {
         await ensureBusinessActivityTypesTable();
         const result = await query(
           `select id,name,is_active,created_at from public.business_activity_types order by name asc`,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'definition_software_companies': {
+        await ensureSoftwareCompaniesTable();
+        const result = await query(
+          `select id,name,is_active,created_at from public.software_companies order by name asc`,
         );
         return ok(res, { items: result.rows });
       }
@@ -1511,6 +1569,14 @@ module.exports = async (req, res) => {
 
       case 'products_lines': {
         const search = String(req.query.search || '').trim();
+        const operator = String(req.query.operator || '').trim();
+        const customer = String(req.query.customer || '').trim();
+        const endsFrom = String(req.query.endsFrom || '').trim();
+        const endsTo = String(req.query.endsTo || '').trim();
+        const limitRaw = Number.parseInt(String(req.query.limit || ''), 10);
+        const limit = Number.isFinite(limitRaw)
+          ? Math.min(Math.max(limitRaw, 1), 5000)
+          : 2000;
         const showPassive = parseBoolean(req.query.showPassive, false);
         const values = [];
         let whereSql = 'where true';
@@ -1522,9 +1588,36 @@ module.exports = async (req, res) => {
 
         if (search) {
           values.push(`%${search}%`);
-          whereSql += ` and (l.number ilike $${values.length} or l.sim_number ilike $${values.length})`;
+          whereSql += ` and (
+            l.number ilike $${values.length}
+            or l.sim_number ilike $${values.length}
+            or c.name ilike $${values.length}
+            or b.name ilike $${values.length}
+          )`;
         }
 
+        if (customer) {
+          values.push(`%${customer}%`);
+          whereSql += ` and c.name ilike $${values.length}`;
+        }
+
+        if (operator === 'turkcell') {
+          whereSql += ` and lower(coalesce(l.operator,'')) = 'turkcell'`;
+        }
+        if (operator === 'telsim') {
+          whereSql += ` and lower(coalesce(l.operator,'')) in ('telsim','vodafone')`;
+        }
+
+        if (endsFrom) {
+          values.push(endsFrom);
+          whereSql += ` and coalesce(l.ends_at, l.expires_at) >= $${values.length}`;
+        }
+        if (endsTo) {
+          values.push(endsTo);
+          whereSql += ` and coalesce(l.ends_at, l.expires_at) <= $${values.length}`;
+        }
+
+        await ensureLinesOperatorColumn();
         const result = await query(
           `
             select
@@ -1532,8 +1625,10 @@ module.exports = async (req, res) => {
               l.label,
               l.number,
               l.sim_number,
+              l.operator,
               l.starts_at,
               l.ends_at,
+              l.expires_at,
               l.is_active,
               l.customer_id,
               l.branch_id,
@@ -1544,7 +1639,7 @@ module.exports = async (req, res) => {
             left join public.branches b on b.id = l.branch_id
             ${whereSql}
             order by l.ends_at asc nulls last, l.created_at desc
-            limit 500
+            limit ${limit}
           `,
           values,
         );
@@ -1553,6 +1648,14 @@ module.exports = async (req, res) => {
 
       case 'products_licenses': {
         const search = String(req.query.search || '').trim();
+        const softwareCompanyId = String(req.query.softwareCompanyId || '').trim();
+        const customer = String(req.query.customer || '').trim();
+        const endsFrom = String(req.query.endsFrom || '').trim();
+        const endsTo = String(req.query.endsTo || '').trim();
+        const limitRaw = Number.parseInt(String(req.query.limit || ''), 10);
+        const limit = Number.isFinite(limitRaw)
+          ? Math.min(Math.max(limitRaw, 1), 5000)
+          : 2000;
         const showPassive = parseBoolean(req.query.showPassive, false);
         const values = [];
         let whereSql = `where true`;
@@ -1564,28 +1667,216 @@ module.exports = async (req, res) => {
 
         if (search) {
           values.push(`%${search}%`);
-          whereSql += ` and lic.name ilike $${values.length}`;
+          whereSql += ` and (
+            lic.name ilike $${values.length}
+            or c.name ilike $${values.length}
+            or sc.name ilike $${values.length}
+          )`;
         }
 
+        if (customer) {
+          values.push(`%${customer}%`);
+          whereSql += ` and c.name ilike $${values.length}`;
+        }
+
+        if (softwareCompanyId) {
+          if (softwareCompanyId === 'unknown') {
+            whereSql += ` and lic.software_company_id is null`;
+          } else {
+            values.push(softwareCompanyId);
+            whereSql += ` and lic.software_company_id = $${values.length}`;
+          }
+        }
+
+        if (endsFrom) {
+          values.push(endsFrom);
+          whereSql += ` and coalesce(lic.ends_at, lic.expires_at) >= $${values.length}`;
+        }
+        if (endsTo) {
+          values.push(endsTo);
+          whereSql += ` and coalesce(lic.ends_at, lic.expires_at) <= $${values.length}`;
+        }
+
+        await ensureLicensesSoftwareCompanyColumn();
+        await ensureLicensesRegistryNumberColumn();
         const result = await query(
           `
             select
               lic.id,
               lic.name,
               lic.license_type,
+              lic.software_company_id,
+              sc.name as software_company_name,
+              lic.registry_number,
               lic.starts_at,
               lic.ends_at,
+              lic.expires_at,
               lic.is_active,
               lic.customer_id,
               c.name as customer_name
             from public.licenses lic
             left join public.customers c on c.id = lic.customer_id
+            left join public.software_companies sc on sc.id = lic.software_company_id
             ${whereSql}
             order by lic.ends_at asc nulls last, lic.created_at desc
-            limit 500
+            limit ${limit}
           `,
           values,
         );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'products_licenses_stats': {
+        const search = String(req.query.search || '').trim();
+        const customer = String(req.query.customer || '').trim();
+        const endsFrom = String(req.query.endsFrom || '').trim();
+        const endsTo = String(req.query.endsTo || '').trim();
+        const showPassive = parseBoolean(req.query.showPassive, false);
+        const values = [];
+        let whereSql = `where lic.license_type = 'gmp3'`;
+
+        if (!showPassive) {
+          whereSql += ` and lic.is_active = true`;
+        }
+
+        if (search) {
+          values.push(`%${search}%`);
+          whereSql += ` and (
+            lic.name ilike $${values.length}
+            or c.name ilike $${values.length}
+            or sc.name ilike $${values.length}
+          )`;
+        }
+
+        if (customer) {
+          values.push(`%${customer}%`);
+          whereSql += ` and c.name ilike $${values.length}`;
+        }
+
+        if (endsFrom) {
+          values.push(endsFrom);
+          whereSql += ` and coalesce(lic.ends_at, lic.expires_at) >= $${values.length}`;
+        }
+        if (endsTo) {
+          values.push(endsTo);
+          whereSql += ` and coalesce(lic.ends_at, lic.expires_at) <= $${values.length}`;
+        }
+
+        await ensureLicensesSoftwareCompanyColumn();
+        await ensureLicensesRegistryNumberColumn();
+
+        const totalResult = await query(
+          `
+            select count(*)::int as total
+            from public.licenses lic
+            left join public.customers c on c.id = lic.customer_id
+            left join public.software_companies sc on sc.id = lic.software_company_id
+            ${whereSql}
+          `,
+          values,
+        );
+        const gmp3Total = totalResult.rows?.[0]?.total ?? 0;
+
+        const byCompany = await query(
+          `
+            select
+              sc.name as software_company_name,
+              count(*)::int as total
+            from public.licenses lic
+            left join public.customers c on c.id = lic.customer_id
+            left join public.software_companies sc on sc.id = lic.software_company_id
+            ${whereSql}
+            group by sc.name
+            order by total desc, software_company_name asc nulls last
+          `,
+          values,
+        );
+
+        const byCustomer = await query(
+          `
+            select
+              c.name as customer_name,
+              count(*)::int as total
+            from public.licenses lic
+            left join public.customers c on c.id = lic.customer_id
+            left join public.software_companies sc on sc.id = lic.software_company_id
+            ${whereSql}
+            group by c.name
+            order by total desc, customer_name asc nulls last
+            limit 20
+          `,
+          values,
+        );
+
+        return ok(res, {
+          gmp3_total: gmp3Total,
+          by_company: byCompany.rows,
+          by_customer: byCustomer.rows,
+        });
+      }
+
+      case 'products_customer_totals': {
+        const search = String(req.query.search || '').trim();
+        const showPassive = parseBoolean(req.query.showPassive, false);
+        const limitRaw = Number.parseInt(String(req.query.limit || ''), 10);
+        const limit = Number.isFinite(limitRaw)
+          ? Math.min(Math.max(limitRaw, 1), 5000)
+          : 2000;
+        const values = [];
+
+        let whereCustomerSql = `where true`;
+        if (search) {
+          values.push(`%${search}%`);
+          whereCustomerSql += ` and c.name ilike $${values.length}`;
+        }
+
+        await ensureLinesOperatorColumn();
+        await ensureLicensesSoftwareCompanyColumn();
+        await ensureLicensesRegistryNumberColumn();
+
+        const lineWhere = showPassive ? '' : 'where l.is_active = true';
+        const gmp3Where = showPassive
+          ? `where lic.license_type = 'gmp3'`
+          : `where lic.license_type = 'gmp3' and lic.is_active = true`;
+
+        const result = await query(
+          `
+            with line_counts as (
+              select
+                l.customer_id,
+                count(*)::int as lines_total,
+                sum(case when lower(coalesce(l.operator,'')) = 'turkcell' then 1 else 0 end)::int as lines_turkcell,
+                sum(case when lower(coalesce(l.operator,'')) in ('telsim','vodafone') then 1 else 0 end)::int as lines_telsim
+              from public.lines l
+              ${lineWhere}
+              group by l.customer_id
+            ),
+            gmp3_counts as (
+              select
+                lic.customer_id,
+                count(*)::int as gmp3_total
+              from public.licenses lic
+              ${gmp3Where}
+              group by lic.customer_id
+            )
+            select
+              c.id as customer_id,
+              c.name as customer_name,
+              coalesce(lc.lines_total, 0)::int as lines_total,
+              coalesce(lc.lines_turkcell, 0)::int as lines_turkcell,
+              coalesce(lc.lines_telsim, 0)::int as lines_telsim,
+              coalesce(gc.gmp3_total, 0)::int as gmp3_total
+            from public.customers c
+            left join line_counts lc on lc.customer_id = c.id
+            left join gmp3_counts gc on gc.customer_id = c.id
+            ${whereCustomerSql}
+              and (coalesce(lc.lines_total, 0) > 0 or coalesce(gc.gmp3_total, 0) > 0)
+            order by gmp3_total desc, lines_total desc, customer_name asc
+            limit ${limit}
+          `,
+          values,
+        );
+
         return ok(res, { items: result.rows });
       }
 

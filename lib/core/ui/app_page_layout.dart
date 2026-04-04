@@ -10,12 +10,14 @@ class AppPageLayout extends StatefulWidget {
     this.subtitle,
     required this.body,
     this.actions,
+    this.compactHeader = false,
   });
 
   final String title;
   final String? subtitle;
   final Widget body;
   final List<Widget>? actions;
+  final bool compactHeader;
 
   @override
   State<AppPageLayout> createState() => _AppPageLayoutState();
@@ -60,12 +62,14 @@ class _AppPageLayoutState extends State<AppPageLayout> {
         : width >= 720
         ? AppTheme.pagePaddingTablet.horizontal / 2
         : AppTheme.pagePaddingMobile.horizontal / 2;
-    final topPadding = width >= 720 ? 14.0 : 10.0;
+    final topPadding =
+        width >= 720 ? (widget.compactHeader ? 4.0 : 14.0) : 10.0;
 
     if (isMobile) {
       final hasExtras = (widget.subtitle?.trim().isNotEmpty ?? false) ||
           (normalizedActions != null && normalizedActions.isNotEmpty);
-      final expandedHeight = hasExtras ? 190.0 : kToolbarHeight;
+      final expandedHeight =
+          hasExtras ? (widget.compactHeader ? 160.0 : 190.0) : kToolbarHeight;
 
       return Scaffold(
         backgroundColor: AppTheme.background,
@@ -133,11 +137,15 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                                               .bodyMedium
                                               ?.copyWith(
                                                 color: AppTheme.textMuted,
+                                                fontSize:
+                                                    widget.compactHeader ? 12 : null,
                                               ),
                                         ),
                                       if (normalizedActions != null &&
                                           normalizedActions.isNotEmpty) ...[
-                                        const SizedBox(height: 10),
+                                        SizedBox(
+                                          height: widget.compactHeader ? 8 : 10,
+                                        ),
                                         SingleChildScrollView(
                                           scrollDirection: Axis.horizontal,
                                           child: Row(
@@ -208,12 +216,16 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                       horizontalPadding,
                       topPadding,
                       horizontalPadding,
-                      6,
+                      widget.compactHeader ? 4 : 6,
                     ),
                     child: Container(
                       padding: EdgeInsets.symmetric(
-                        horizontal: width >= 720 ? 18 : 14,
-                        vertical: width >= 720 ? 12 : 10,
+                        horizontal: width >= 720
+                            ? (widget.compactHeader ? 14 : 18)
+                            : 14,
+                        vertical: width >= 720
+                            ? (widget.compactHeader ? 8 : 12)
+                            : 10,
                       ),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.9),
@@ -268,9 +280,13 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                                             .headlineSmall
                                             ?.copyWith(
                                               fontWeight: FontWeight.w800,
+                                              fontSize: widget.compactHeader
+                                                  ? 20
+                                                  : null,
                                             ),
                                       ),
-                                      if (widget.subtitle != null)
+                                      if (!widget.compactHeader &&
+                                          widget.subtitle != null)
                                         Padding(
                                           padding:
                                               const EdgeInsets.only(top: 4),
@@ -281,7 +297,8 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                                                 .bodyMedium
                                                 ?.copyWith(
                                                   color: AppTheme.textMuted,
-                                                  fontSize: 13,
+                                                  fontSize:
+                                                      widget.compactHeader ? 12 : 13,
                                                 ),
                                           ),
                                         ),

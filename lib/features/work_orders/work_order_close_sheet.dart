@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -18,8 +18,10 @@ import '../../core/ui/app_card.dart';
 import '../customers/customer_detail_screen.dart';
 import '../customers/customer_model.dart';
 import '../customers/customers_providers.dart';
+import '../definitions/definitions_screen.dart';
 import 'work_order_model.dart';
 import 'work_order_share.dart';
+import 'work_order_whatsapp_share.dart';
 
 Future<void> showWorkOrderCloseSheet(
   BuildContext context,
@@ -72,8 +74,11 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
 
   final _lineNumberController = TextEditingController();
   final _lineSimController = TextEditingController();
+  String? _lineOperator;
 
   final _gmp3NameController = TextEditingController(text: 'GMP3 Lisansı');
+  String? _selectedSoftwareCompanyId;
+  final _gmp3RegistryController = TextEditingController();
 
   String? _selectedBranchId;
   String? _selectedCustomerLocationId;
@@ -93,6 +98,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     _lineNumberController.dispose();
     _lineSimController.dispose();
     _gmp3NameController.dispose();
+    _gmp3RegistryController.dispose();
     for (final p in _payments) {
       p.dispose();
     }
@@ -120,6 +126,8 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           if (number.isEmpty) {
             throw Exception('Hat numarası gerekli.');
           }
+          final op = (_lineOperator ?? '').trim();
+          if (op.isEmpty) throw Exception('Operatör seçin.');
           final start = DateTime(now.year, now.month, now.day);
           final end = DateTime(now.year, 12, 31);
           final response = await apiClient.postJson(
@@ -132,6 +140,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                 'customer_id': customer.id,
                 'branch_id': branchId,
                 'number': number,
+                'operator': op,
                 'sim_number': _lineSimController.text.trim().isEmpty
                     ? null
                     : _lineSimController.text.trim(),
@@ -148,6 +157,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         if (_addGmp3) {
           final name = _gmp3NameController.text.trim();
           if (name.isEmpty) throw Exception('GMP3 adı gerekli.');
+          final companyId = (_selectedSoftwareCompanyId ?? '').trim();
+          if (companyId.isEmpty) throw Exception('Yazılım firması seçin.');
+          final registry = _gmp3RegistryController.text.trim();
           final start = DateTime(now.year, now.month, now.day);
           final end = DateTime(now.year, 12, 31);
           final response = await apiClient.postJson(
@@ -160,6 +172,8 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                 'customer_id': customer.id,
                 'name': name,
                 'license_type': 'gmp3',
+                'software_company_id': companyId,
+                'registry_number': registry.isEmpty ? null : registry,
                 'starts_at': start.toIso8601String().substring(0, 10),
                 'ends_at': end.toIso8601String().substring(0, 10),
                 'expires_at': end.toIso8601String().substring(0, 10),
@@ -333,11 +347,15 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         } catch (_) {}
 
         if (!mounted) return;
-        final shareNow = await showDialog<bool>(
+          final shareNow = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('İş emri kapatıldı'),
-            content: const Text('PDF olarak WhatsApp üzerinden paylaşmak ister misin?'),
+              content: Text(
+                kIsWeb
+                    ? 'PDF olarak kaydetmek ister misin?'
+                    : 'PDF olarak WhatsApp üzerinden paylaşmak ister misin?',
+              ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
@@ -345,7 +363,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               ),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Paylaş'),
+                  child: Text(kIsWeb ? 'Kaydet' : 'Paylaş'),
               ),
             ],
           ),
@@ -368,14 +386,27 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
             'close_notes': closeNotesText,
             'payments': closedPayments.map((e) => e.toJson()).toList(growable: false),
           });
-          await shareWorkOrderPdf(
-            order: pdfOrder,
-            customer: customer,
-            closeNotes: closeNotesText,
-            payments: closedPayments,
-            signaturePngBytes: signaturePng,
-            personnelSignaturePngBytes: personnelSignaturePng,
-          );
+          if (!mounted) return;
+          if (kIsWeb) {
+            await shareWorkOrderPdf(
+              order: pdfOrder,
+              customer: customer,
+              closeNotes: closeNotesText,
+              payments: closedPayments,
+              signaturePngBytes: signaturePng,
+              personnelSignaturePngBytes: personnelSignaturePng,
+            );
+          } else {
+            await shareWorkOrderPdfWithWhatsAppPrompt(
+              context: context,
+              order: pdfOrder,
+              customer: customer,
+              closeNotes: closeNotesText,
+              payments: closedPayments,
+              signaturePngBytes: signaturePng,
+              personnelSignaturePngBytes: personnelSignaturePng,
+            );
+          }
         }
 
         if (!mounted) return;
@@ -451,6 +482,8 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         if (number.isEmpty) {
           throw Exception('Hat numarası gerekli.');
         }
+        final op = (_lineOperator ?? '').trim();
+        if (op.isEmpty) throw Exception('Operatör seçin.');
 
         final start = DateTime(now.year, now.month, now.day);
         final end = DateTime(now.year, 12, 31);
@@ -460,6 +493,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           'customer_id': customer.id,
           'branch_id': branchId,
           'number': number,
+          'operator': op,
           'sim_number': _lineSimController.text.trim().isEmpty
               ? null
               : _lineSimController.text.trim(),
@@ -485,6 +519,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
       if (_addGmp3) {
         final name = _gmp3NameController.text.trim();
         if (name.isEmpty) throw Exception('GMP3 adı gerekli.');
+        final companyId = (_selectedSoftwareCompanyId ?? '').trim();
+        if (companyId.isEmpty) throw Exception('Yazılım firması seçin.');
+        final registry = _gmp3RegistryController.text.trim();
         final start = DateTime(now.year, now.month, now.day);
         final end = DateTime(now.year, 12, 31);
         final insertedLicense = await client
@@ -493,6 +530,8 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           'customer_id': customer.id,
           'name': name,
           'license_type': 'gmp3',
+          'software_company_id': companyId,
+          'registry_number': registry.isEmpty ? null : registry,
           'starts_at': start.toIso8601String().substring(0, 10),
           'ends_at': end.toIso8601String().substring(0, 10),
           'expires_at': end.toIso8601String().substring(0, 10),
@@ -656,7 +695,11 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('İş emri kapatıldı'),
-          content: const Text('PDF olarak WhatsApp üzerinden paylaşmak ister misin?'),
+          content: Text(
+            kIsWeb
+                ? 'PDF olarak kaydetmek ister misin?'
+                : 'PDF olarak WhatsApp üzerinden paylaşmak ister misin?',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -664,7 +707,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Paylaş'),
+              child: Text(kIsWeb ? 'Kaydet' : 'Paylaş'),
             ),
           ],
         ),
@@ -677,14 +720,27 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           'close_notes': closeNotesText,
           'payments': closedPayments.map((e) => e.toJson()).toList(growable: false),
         });
-        await shareWorkOrderPdf(
-          order: pdfOrder,
-          customer: customer,
-          closeNotes: closeNotesText,
-          payments: closedPayments,
-          signaturePngBytes: signatureBytes,
-          personnelSignaturePngBytes: personnelSignatureBytes,
-        );
+        if (!mounted) return;
+        if (kIsWeb) {
+          await shareWorkOrderPdf(
+            order: pdfOrder,
+            customer: customer,
+            closeNotes: closeNotesText,
+            payments: closedPayments,
+            signaturePngBytes: signatureBytes,
+            personnelSignaturePngBytes: personnelSignatureBytes,
+          );
+        } else {
+          await shareWorkOrderPdfWithWhatsAppPrompt(
+            context: context,
+            order: pdfOrder,
+            customer: customer,
+            closeNotes: closeNotesText,
+            payments: closedPayments,
+            signaturePngBytes: signatureBytes,
+            personnelSignaturePngBytes: personnelSignatureBytes,
+          );
+        }
       }
 
       if (!mounted) return;
@@ -756,6 +812,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     final customerLocationsAsync = ref.watch(
       customerLocationsProvider(widget.order.customerId),
     );
+    final companiesAsync = ref.watch(softwareCompaniesProvider);
 
     return Container(
       decoration: const BoxDecoration(
@@ -777,6 +834,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               customer: customer,
               branchesAsync: branchesAsync,
               customerLocationsAsync: customerLocationsAsync,
+              companiesAsync: companiesAsync,
               selectedBranchId: _selectedBranchId ?? widget.order.branchId,
               onBranchChanged: _saving
                   ? null
@@ -831,7 +889,16 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                   : (v) => setState(() => _addGmp3 = v),
               lineNumberController: _lineNumberController,
               lineSimController: _lineSimController,
+              lineOperator: _lineOperator,
+              onLineOperatorChanged: _saving
+                  ? null
+                  : (v) => setState(() => _lineOperator = v),
               gmp3NameController: _gmp3NameController,
+              gmp3RegistryController: _gmp3RegistryController,
+              selectedSoftwareCompanyId: _selectedSoftwareCompanyId,
+              onSoftwareCompanyChanged: _saving
+                  ? null
+                  : (v) => setState(() => _selectedSoftwareCompanyId = v),
               signatureController: _signatureController,
               personnelSignatureController: _personnelSignatureController,
               payments: _payments,
@@ -875,6 +942,7 @@ class _SheetBody extends StatelessWidget {
     required this.customer,
     required this.branchesAsync,
     required this.customerLocationsAsync,
+    required this.companiesAsync,
     required this.selectedBranchId,
     required this.onBranchChanged,
     required this.selectedCustomerLocationId,
@@ -896,7 +964,12 @@ class _SheetBody extends StatelessWidget {
     required this.onToggleAddGmp3,
     required this.lineNumberController,
     required this.lineSimController,
+    required this.lineOperator,
+    required this.onLineOperatorChanged,
     required this.gmp3NameController,
+    required this.gmp3RegistryController,
+    required this.selectedSoftwareCompanyId,
+    required this.onSoftwareCompanyChanged,
     required this.signatureController,
     required this.personnelSignatureController,
     required this.payments,
@@ -910,6 +983,7 @@ class _SheetBody extends StatelessWidget {
   final CustomerDetail customer;
   final AsyncValue<List<CustomerBranch>> branchesAsync;
   final AsyncValue<List<CustomerLocation>> customerLocationsAsync;
+  final AsyncValue<List<SoftwareCompanyDefinition>> companiesAsync;
   final String? selectedBranchId;
   final ValueChanged<String?>? onBranchChanged;
   final String? selectedCustomerLocationId;
@@ -932,7 +1006,12 @@ class _SheetBody extends StatelessWidget {
   final ValueChanged<bool>? onToggleAddGmp3;
   final TextEditingController lineNumberController;
   final TextEditingController lineSimController;
+  final String? lineOperator;
+  final ValueChanged<String?>? onLineOperatorChanged;
   final TextEditingController gmp3NameController;
+  final TextEditingController gmp3RegistryController;
+  final String? selectedSoftwareCompanyId;
+  final ValueChanged<String?>? onSoftwareCompanyChanged;
   final SignatureController signatureController;
   final SignatureController personnelSignatureController;
   final List<_PaymentDraft> payments;
@@ -948,6 +1027,8 @@ class _SheetBody extends StatelessWidget {
       symbol: '',
       decimalDigits: 2,
     );
+    final lineOperatorValue =
+        (lineOperator ?? '').trim().isEmpty ? null : lineOperator!.trim();
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1315,6 +1396,24 @@ class _SheetBody extends StatelessWidget {
                         ),
                       ),
                       const Gap(10),
+                      DropdownButtonFormField<String>(
+                        initialValue: lineOperatorValue,
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'turkcell',
+                            child: Text('TURKCELL'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'telsim',
+                            child: Text('TELSİM'),
+                          ),
+                        ],
+                        onChanged: saving ? null : onLineOperatorChanged,
+                        decoration: const InputDecoration(
+                          labelText: 'Operatör (Zorunlu)',
+                        ),
+                      ),
+                      const Gap(10),
                       TextField(
                         controller: lineSimController,
                         decoration: const InputDecoration(
@@ -1340,6 +1439,56 @@ class _SheetBody extends StatelessWidget {
                         decoration: const InputDecoration(
                           labelText: 'Lisans Adı',
                           hintText: 'GMP3 Lisansı',
+                        ),
+                      ),
+                      const Gap(10),
+                      TextField(
+                        controller: gmp3RegistryController,
+                        decoration: const InputDecoration(
+                          labelText: 'Sicil No',
+                          hintText: 'SICIL...',
+                        ),
+                      ),
+                      const Gap(10),
+                      companiesAsync.when(
+                        data: (items) {
+                          final active = items.where((e) => e.isActive).toList(growable: false);
+                          final value = (selectedSoftwareCompanyId ?? '').trim();
+                          final initialValue = value.isEmpty ? null : value;
+                          if (active.isEmpty) {
+                            return Text(
+                              'Yazılım firması tanımlanmamış.',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(color: const Color(0xFF64748B)),
+                            );
+                          }
+                          return DropdownButtonFormField<String>(
+                            initialValue: initialValue,
+                            items: [
+                              for (final c in active)
+                                DropdownMenuItem(
+                                  value: c.id,
+                                  child: Text(c.name),
+                                ),
+                            ],
+                            onChanged: saving ? null : onSoftwareCompanyChanged,
+                            decoration: const InputDecoration(
+                              labelText: 'Yazılım Firması (Zorunlu)',
+                            ),
+                          );
+                        },
+                        loading: () => const SizedBox(
+                          height: 56,
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                        error: (error, stackTrace) => Text(
+                          'Yazılım firmaları yüklenemedi.',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: const Color(0xFF64748B)),
                         ),
                       ),
                     ],
