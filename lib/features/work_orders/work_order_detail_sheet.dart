@@ -16,6 +16,8 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../customers/customer_detail_screen.dart';
+import '../customers/customer_model.dart';
+import '../customers/customers_providers.dart';
 import '../dashboard/dashboard_providers.dart';
 import 'work_order_model.dart';
 import 'currency_service.dart';
@@ -90,6 +92,7 @@ class _WorkOrderDetailSheet extends ConsumerStatefulWidget {
 class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   final _notesController = TextEditingController();
   final _locationLinkController = TextEditingController();
+  String? _customerFallbackLocationLink;
 
   final SignatureController _signatureController = SignatureController(
     penStrokeWidth: 2.5,
@@ -187,6 +190,8 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     if (raw.isNotEmpty) return raw;
     final rawFromOrder = (widget.order.locationLink ?? '').trim();
     if (rawFromOrder.isNotEmpty) return rawFromOrder;
+    final fallback = (_customerFallbackLocationLink ?? '').trim();
+    if (fallback.isNotEmpty) return fallback;
     return null;
   }
 
@@ -709,6 +714,8 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         ref.watch(customerDetailProvider(widget.order.customerId));
     final branchesAsync =
         ref.watch(customerBranchesProvider(widget.order.customerId));
+    final customerLocationsAsync =
+        ref.watch(customerLocationsProvider(widget.order.customerId));
     final isDone = widget.order.status == 'done';
 
     return Container(
@@ -747,7 +754,11 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                   child: ListView(
                     shrinkWrap: true,
                     children: [
-                      _buildInfoCard(context, customer),
+                      _buildInfoCard(
+                        context,
+                        customer,
+                        customerLocationsAsync: customerLocationsAsync,
+                      ),
                       const Gap(12),
                       if (!isDone && !_isClosing) ...[
                         _buildStatusActions(context),
@@ -943,7 +954,29 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     }
   }
 
-  Widget _buildInfoCard(BuildContext context, CustomerDetail customer) {
+  ({String title, String link})? _pickCustomerLocationLink(
+    List<CustomerLocation> locations,
+  ) {
+    final active = locations.where((e) => e.isActive).toList(growable: false);
+    for (final l in active) {
+      final link = (l.locationLink ?? '').trim();
+      if (link.isNotEmpty) return (title: l.title.trim(), link: link);
+    }
+    for (final l in active) {
+      final lat = l.locationLat;
+      final lng = l.locationLng;
+      if (lat == null || lng == null) continue;
+      final link = 'https://maps.google.com/?q=${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}';
+      return (title: l.title.trim(), link: link);
+    }
+    return null;
+  }
+
+  Widget _buildInfoCard(
+    BuildContext context,
+    CustomerDetail customer, {
+    required AsyncValue<List<CustomerLocation>> customerLocationsAsync,
+  }) {
     final dateText = widget.order.scheduledDate != null
         ? DateFormat('d MMMM y', 'tr_TR').format(widget.order.scheduledDate!)
         : 'Tarih belirlenmedi';
@@ -958,6 +991,20 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     final assigned = (widget.order.assignedPersonnelName ?? '').trim();
     final description = (widget.order.description ?? '').trim();
     final closeNotes = (widget.order.closeNotes ?? '').trim();
+    final rawOrderLink = (widget.order.locationLink ?? '').trim();
+
+    String? customerLocationTitle;
+    customerLocationsAsync.whenData((locations) {
+      final picked = _pickCustomerLocationLink(locations);
+      final link = (picked?.link ?? '').trim();
+      if (link.isNotEmpty) {
+        _customerFallbackLocationLink = link;
+        customerLocationTitle = picked?.title.trim().isEmpty ?? true
+            ? null
+            : picked!.title.trim();
+      }
+    });
+    final link = _resolvedLocationLink();
 
     return AppCard(
       padding: const EdgeInsets.all(16),
@@ -986,7 +1033,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             const Gap(8),
             _InfoRow(icon: Icons.notes_rounded, label: 'Açıklama', value: description),
           ],
-          if ((widget.order.locationLink ?? '').trim().isNotEmpty) ...[
+          if (link != null) ...[
             const Gap(8),
             Row(
               children: [
@@ -994,7 +1041,11 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                   child: _InfoRow(
                     icon: Icons.location_on_rounded,
                     label: 'Konum',
-                    value: 'Hazır',
+                    value: rawOrderLink.isNotEmpty
+                        ? 'İş Emri Konumu'
+                        : (customerLocationTitle == null
+                            ? 'Müşteri Konumu'
+                            : 'Müşteri: $customerLocationTitle'),
                   ),
                 ),
                 const Gap(10),

@@ -957,8 +957,35 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     _vknController.text = normalizedVkn ?? '';
     _tcknMsController.text = normalizedTcknMs ?? '';
 
-    setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
+
+    if (apiClient == null &&
+        client != null &&
+        normalizedVkn != null &&
+        normalizedVkn.trim().isNotEmpty) {
+      try {
+        var q = client
+            .from('customers')
+            .select('id,name')
+            .eq('vkn', normalizedVkn);
+        if (widget.isEdit) {
+          q = q.neq('id', widget.initialData!.id!);
+        }
+        final row = await q.limit(1).maybeSingle();
+        final existingId = row?['id']?.toString().trim();
+        if ((existingId ?? '').isNotEmpty) {
+          final existingName = (row?['name'] ?? '').toString().trim();
+          final message = existingName.isEmpty
+              ? 'Bu VKN ile kayıtlı müşteri var.'
+              : 'Bu VKN ile kayıtlı müşteri var: $existingName';
+          if (!mounted) return;
+          messenger.showSnackBar(SnackBar(content: Text(message)));
+          return;
+        }
+      } catch (_) {}
+    }
+
+    setState(() => _saving = true);
     final payload = {
       'name': _nameController.text.trim(),
       'city': _nullIfEmpty(_cityController.text),

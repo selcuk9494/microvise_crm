@@ -206,6 +206,28 @@ module.exports = async (req, res) => {
       const keys = Object.keys(payload);
       if (!keys.length) return badRequest(res, 'Kayıt verisi bulunamadı.');
 
+      if (payload.vkn) {
+        const existing = await query(
+          `
+            select id, name
+            from public.customers
+            where vkn = $1
+            limit 1
+          `,
+          [payload.vkn],
+        );
+        if ((existing.rows || []).length) {
+          const row = existing.rows[0] || {};
+          const existingName = String(row.name || '').trim();
+          return badRequest(
+            res,
+            existingName
+              ? `Bu VKN ile kayıtlı müşteri var: ${existingName}`
+              : 'Bu VKN ile kayıtlı müşteri var.',
+          );
+        }
+      }
+
       const colSql = keys.map(quoteIdent).join(', ');
       const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
       const values = keys.map((k) => payload[k]);
@@ -269,6 +291,28 @@ module.exports = async (req, res) => {
       const keys = Object.keys(payload);
       if (keys.length === 0 && !Array.isArray(body.locations)) {
         return badRequest(res, 'Güncellenecek alan bulunamadı.');
+      }
+
+      if (Object.prototype.hasOwnProperty.call(payload, 'vkn') && payload.vkn) {
+        const existing = await query(
+          `
+            select id, name
+            from public.customers
+            where vkn = $1 and id <> $2
+            limit 1
+          `,
+          [payload.vkn, id],
+        );
+        if ((existing.rows || []).length) {
+          const row = existing.rows[0] || {};
+          const existingName = String(row.name || '').trim();
+          return badRequest(
+            res,
+            existingName
+              ? `Bu VKN ile kayıtlı müşteri var: ${existingName}`
+              : 'Bu VKN ile kayıtlı müşteri var.',
+          );
+        }
       }
 
       const setParts = [];
