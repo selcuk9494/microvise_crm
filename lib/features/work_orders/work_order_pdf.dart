@@ -93,13 +93,13 @@ Future<Uint8List> buildWorkOrderPdfBytes({
   } catch (_) {}
 
   pw.TextStyle tLabel() =>
-      pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold);
-  pw.TextStyle tValue() => const pw.TextStyle(fontSize: 9);
-  pw.TextStyle tSmall() => const pw.TextStyle(fontSize: 8);
+      pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold);
+  pw.TextStyle tValue() => const pw.TextStyle(fontSize: 8);
+  pw.TextStyle tSmall() => const pw.TextStyle(fontSize: 7);
 
   pw.Widget section(String title, pw.Widget child) {
     return pw.Container(
-      padding: const pw.EdgeInsets.all(10),
+      padding: const pw.EdgeInsets.all(8),
       decoration: pw.BoxDecoration(
         color: PdfColors.white,
         border: pw.Border.all(color: PdfColors.grey400),
@@ -107,8 +107,11 @@ Future<Uint8List> buildWorkOrderPdfBytes({
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text(title, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 8),
+          pw.Text(
+            title,
+            style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 6),
           child,
         ],
       ),
@@ -117,11 +120,11 @@ Future<Uint8List> buildWorkOrderPdfBytes({
 
   pw.Widget kvRow(String label, String value) {
     return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(vertical: 4),
+      padding: const pw.EdgeInsets.symmetric(vertical: 2),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.SizedBox(width: 110, child: pw.Text(label, style: tLabel())),
+          pw.SizedBox(width: 96, child: pw.Text(label, style: tLabel())),
           pw.SizedBox(width: 8),
           pw.Expanded(child: pw.Text(value, style: tValue())),
         ],
@@ -176,6 +179,7 @@ Future<Uint8List> buildWorkOrderPdfBytes({
       return pw.Text('Ödeme yok.', style: tValue());
     }
 
+    final rows = payments.length > 3 ? payments.take(3).toList() : payments;
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.grey300),
       columnWidths: const {
@@ -189,28 +193,28 @@ Future<Uint8List> buildWorkOrderPdfBytes({
           decoration: pw.BoxDecoration(color: PdfColor.fromHex('#EFF6FF')),
           children: [
             pw.Padding(
-              padding: const pw.EdgeInsets.all(6),
+              padding: const pw.EdgeInsets.all(4),
               child: pw.Text('Tarih', style: tLabel()),
             ),
             pw.Padding(
-              padding: const pw.EdgeInsets.all(6),
+              padding: const pw.EdgeInsets.all(4),
               child: pw.Text('Tutar', style: tLabel()),
             ),
             pw.Padding(
-              padding: const pw.EdgeInsets.all(6),
+              padding: const pw.EdgeInsets.all(4),
               child: pw.Text('Döviz', style: tLabel()),
             ),
             pw.Padding(
-              padding: const pw.EdgeInsets.all(6),
+              padding: const pw.EdgeInsets.all(4),
               child: pw.Text('Açıklama', style: tLabel()),
             ),
           ],
         ),
-        for (final p in payments)
+        for (final p in rows)
           pw.TableRow(
             children: [
               pw.Padding(
-                padding: const pw.EdgeInsets.all(6),
+                padding: const pw.EdgeInsets.all(4),
                 child: pw.Text(
                   p.paidAt == null
                       ? ''
@@ -219,15 +223,15 @@ Future<Uint8List> buildWorkOrderPdfBytes({
                 ),
               ),
               pw.Padding(
-                padding: const pw.EdgeInsets.all(6),
+                padding: const pw.EdgeInsets.all(4),
                 child: pw.Text(money.format(p.amount), style: tValue()),
               ),
               pw.Padding(
-                padding: const pw.EdgeInsets.all(6),
+                padding: const pw.EdgeInsets.all(4),
                 child: pw.Text(p.currency, style: tValue()),
               ),
               pw.Padding(
-                padding: const pw.EdgeInsets.all(6),
+                padding: const pw.EdgeInsets.all(4),
                 child: pw.Text((p.description ?? '').trim(), style: tSmall()),
               ),
             ],
@@ -265,9 +269,10 @@ Future<Uint8List> buildWorkOrderPdfBytes({
     pw.MultiPage(
       theme: theme,
       pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(24),
+      margin: const pw.EdgeInsets.all(16),
+      maxPages: 1,
       header: (context) => pw.Container(
-        padding: const pw.EdgeInsets.only(bottom: 10),
+        padding: const pw.EdgeInsets.only(bottom: 8),
         decoration: const pw.BoxDecoration(
           border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey400)),
         ),
@@ -278,12 +283,12 @@ Future<Uint8List> buildWorkOrderPdfBytes({
               pw.Align(
                 alignment: pw.Alignment.center,
                 child: pw.SizedBox(
-                  width: 180,
-                  height: 46,
+                  width: 220,
+                  height: 54,
                   child: pw.Image(logo, fit: pw.BoxFit.contain),
                 ),
               ),
-              pw.SizedBox(height: 6),
+              pw.SizedBox(height: 4),
             ],
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.end,
@@ -295,7 +300,7 @@ Future<Uint8List> buildWorkOrderPdfBytes({
                       pw.Text(
                         'Microvise Servis Formu',
                         style: pw.TextStyle(
-                          fontSize: 20,
+                          fontSize: 18,
                           fontWeight: pw.FontWeight.bold,
                         ),
                       ),
@@ -319,22 +324,9 @@ Future<Uint8List> buildWorkOrderPdfBytes({
           ],
         ),
       ),
-      footer: (context) => pw.Container(
-        padding: const pw.EdgeInsets.only(top: 10),
-        decoration: const pw.BoxDecoration(
-          border: pw.Border(top: pw.BorderSide(color: PdfColors.grey400)),
-        ),
-        child: pw.Row(
-          children: [
-            pw.Text('Sayfa ${context.pageNumber}/${context.pagesCount}', style: tSmall()),
-            pw.Spacer(),
-            pw.Text('Belge No: $docNo', style: tSmall()),
-          ],
-        ),
-      ),
       build: (context) => [
         section('İş Emri Bilgileri', serviceInfoTable()),
-        pw.SizedBox(height: 10),
+        pw.SizedBox(height: 6),
         section(
           'Servis Detayı',
           pw.Column(
@@ -347,7 +339,7 @@ Future<Uint8List> buildWorkOrderPdfBytes({
             ],
           ),
         ),
-        pw.SizedBox(height: 10),
+        pw.SizedBox(height: 6),
         section(
           'Ödeme Bilgileri',
           pw.Column(
@@ -355,13 +347,21 @@ Future<Uint8List> buildWorkOrderPdfBytes({
             children: [
               paymentsTable(),
               if (payments.isNotEmpty) ...[
-                pw.SizedBox(height: 10),
+                pw.SizedBox(height: 6),
                 totalsRow(),
+                if (payments.length > 3)
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(top: 4),
+                    child: pw.Text(
+                      'Diğer ödemeler: ${payments.length - 3} kayıt daha',
+                      style: tSmall(),
+                    ),
+                  ),
               ],
             ],
           ),
         ),
-        pw.SizedBox(height: 10),
+        pw.SizedBox(height: 6),
         section(
           'İmzalar',
           pw.Row(
@@ -369,8 +369,8 @@ Future<Uint8List> buildWorkOrderPdfBytes({
             children: [
               pw.Expanded(
                 child: pw.Container(
-                  height: 140,
-                  padding: const pw.EdgeInsets.all(8),
+                  height: 110,
+                  padding: const pw.EdgeInsets.all(6),
                   decoration: pw.BoxDecoration(
                     border: pw.Border.all(color: PdfColors.grey400),
                   ),
@@ -378,7 +378,7 @@ Future<Uint8List> buildWorkOrderPdfBytes({
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text('Müşteri İmzası', style: tLabel()),
-                      pw.SizedBox(height: 8),
+                      pw.SizedBox(height: 6),
                       pw.Expanded(
                         child: signature == null
                             ? pw.Center(
@@ -386,9 +386,9 @@ Future<Uint8List> buildWorkOrderPdfBytes({
                               )
                             : pw.Image(signature, fit: pw.BoxFit.contain),
                       ),
-                      pw.SizedBox(height: 8),
+                      pw.SizedBox(height: 6),
                       pw.Text('Firma: ${customer.name.trim()}', style: tSmall()),
-                      pw.SizedBox(height: 4),
+                      pw.SizedBox(height: 3),
                       pw.Text('Tarih: ${dateOnlyFormat.format(headerDate)}', style: tSmall()),
                     ],
                   ),
@@ -397,8 +397,8 @@ Future<Uint8List> buildWorkOrderPdfBytes({
               pw.SizedBox(width: 10),
               pw.Expanded(
                 child: pw.Container(
-                  height: 140,
-                  padding: const pw.EdgeInsets.all(8),
+                  height: 110,
+                  padding: const pw.EdgeInsets.all(6),
                   decoration: pw.BoxDecoration(
                     border: pw.Border.all(color: PdfColors.grey400),
                   ),
@@ -406,7 +406,7 @@ Future<Uint8List> buildWorkOrderPdfBytes({
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text('Servis Personeli', style: tLabel()),
-                      pw.SizedBox(height: 8),
+                      pw.SizedBox(height: 6),
                       pw.Expanded(
                         child: personnelSignature == null
                             ? pw.Center(
@@ -417,12 +417,12 @@ Future<Uint8List> buildWorkOrderPdfBytes({
                                 fit: pw.BoxFit.contain,
                               ),
                       ),
-                      pw.SizedBox(height: 8),
+                      pw.SizedBox(height: 6),
                       pw.Text(
                         'Ad Soyad: ${(order.assignedPersonnelName ?? '').trim().isEmpty ? '—' : (order.assignedPersonnelName ?? '').trim()}',
                         style: tSmall(),
                       ),
-                      pw.SizedBox(height: 4),
+                      pw.SizedBox(height: 3),
                       pw.Text('Tarih: ${dateOnlyFormat.format(headerDate)}', style: tSmall()),
                     ],
                   ),

@@ -1291,6 +1291,7 @@ class _WorkOrderGridCard extends StatelessWidget {
 
         final customerName = (order.customerName ?? '').trim();
         final branchName = (order.branchName ?? '').trim();
+        final assignedName = (order.assignedPersonnelName ?? '').trim();
 
         final scheduled = order.scheduledDate == null
             ? null
@@ -1471,15 +1472,29 @@ class _WorkOrderGridCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontSize: compact ? 13 : null,
                       fontWeight: FontWeight.w900,
                     ),
               ),
-              Gap(compact ? 3 : 6),
+              if (assignedName.isNotEmpty) ...[
+                Gap(compact ? 2 : 4),
+                Text(
+                  assignedName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: (muted ?? const TextStyle()).copyWith(
+                    fontSize: compact ? 11 : null,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+              Gap(compact ? 2 : 6),
               Text(
                 order.title,
                 maxLines: compact ? 1 : 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontSize: compact ? 12 : null,
                       fontWeight: FontWeight.w700,
                       decoration: order.isActive ? null : TextDecoration.lineThrough,
                     ),
