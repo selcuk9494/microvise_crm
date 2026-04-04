@@ -1153,7 +1153,7 @@ class _WorkOrdersList extends StatelessWidget {
           final crossAxisCount =
               (width / targetTileWidth).floor().clamp(2, maxColumns);
           final childAspectRatio = width < 520
-              ? 0.82
+              ? 0.74
               : width < 1000
                   ? 0.98
                   : 1.18;
@@ -1659,7 +1659,7 @@ class _ReorderableWorkOrdersGridState extends State<_ReorderableWorkOrdersGrid> 
                 : 220.0;
         final crossAxisCount = (width / targetTileWidth).floor().clamp(2, maxColumns);
         final childAspectRatio = width < 520
-            ? 0.82
+            ? 0.74
             : width < 1000
                 ? 0.98
                 : 1.18;
