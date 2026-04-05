@@ -18,7 +18,6 @@ import '../../core/ui/app_card.dart';
 import '../customers/customer_detail_screen.dart';
 import '../customers/customer_model.dart';
 import '../customers/customers_providers.dart';
-import '../definitions/definitions_screen.dart';
 import '../stock/line_stock.dart';
 import 'work_order_model.dart';
 import 'work_order_share.dart';
@@ -68,7 +67,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
 
   bool _saving = false;
   bool _addLine = false;
-  bool _addGmp3 = false;
   bool _saveAsCustomerLocation = false;
   bool _fetchingLocation = false;
 
@@ -76,10 +74,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
   final _lineSimController = TextEditingController();
   String? _lineOperator;
   String? _selectedLineStockId;
-
-  final _gmp3NameController = TextEditingController(text: 'GMP3 Lisansı');
-  String? _selectedSoftwareCompanyId;
-  final _gmp3RegistryController = TextEditingController();
 
   String? _selectedBranchId;
   String? _selectedCustomerLocationId;
@@ -98,8 +92,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     _personnelSignatureController.dispose();
     _lineNumberController.dispose();
     _lineSimController.dispose();
-    _gmp3NameController.dispose();
-    _gmp3RegistryController.dispose();
     for (final p in _payments) {
       p.dispose();
     }
@@ -111,17 +103,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     final client = ref.read(supabaseClientProvider);
     if (apiClient == null && client == null) return;
 
-    final canSellGmp3 = ref.read(isAdminProvider);
-    if (_addGmp3 && !canSellGmp3) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('GMP3 satışı sadece admin tarafından yapılabilir.'),
-        ),
-      );
-      return;
-    }
-
     setState(() => _saving = true);
     try {
       final now = DateTime.now().toUtc();
@@ -131,8 +112,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
       final branchId = _selectedBranchId ?? widget.order.branchId;
       if (apiClient != null) {
         String? insertedLineId;
-        String? insertedLicenseId;
-
         if (_addLine) {
           final number = _lineNumberController.text.trim();
           if (number.isEmpty) {
@@ -190,36 +169,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           } catch (_) {}
         }
 
-        if (_addGmp3) {
-          final name = _gmp3NameController.text.trim();
-          if (name.isEmpty) throw Exception('GMP3 adı gerekli.');
-          final companyId = (_selectedSoftwareCompanyId ?? '').trim();
-          if (companyId.isEmpty) throw Exception('Yazılım firması seçin.');
-          final registry = _gmp3RegistryController.text.trim();
-          final start = DateTime(now.year, now.month, now.day);
-          final end = DateTime(now.year, 12, 31);
-          final response = await apiClient.postJson(
-            '/mutate',
-            body: {
-              'op': 'upsert',
-              'table': 'licenses',
-              'returning': 'row',
-              'values': {
-                'customer_id': customer.id,
-                'name': name,
-                'license_type': 'gmp3',
-                'software_company_id': companyId,
-                'registry_number': registry.isEmpty ? null : registry,
-                'starts_at': start.toIso8601String().substring(0, 10),
-                'ends_at': end.toIso8601String().substring(0, 10),
-                'expires_at': end.toIso8601String().substring(0, 10),
-                'is_active': true,
-              },
-            },
-          );
-          insertedLicenseId = (response['row'] as Map?)?['id']?.toString();
-        }
-
         final invoiceRows = <Map<String, dynamic>>[];
         if ((insertedLineId ?? '').trim().isNotEmpty) {
           final number = _lineNumberController.text.trim();
@@ -235,22 +184,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
             'created_by': profile?.id,
             'source_event': 'line_activated',
             'source_label': 'Hat Aktivasyonu',
-          });
-        }
-        if ((insertedLicenseId ?? '').trim().isNotEmpty) {
-          final name = _gmp3NameController.text.trim();
-          invoiceRows.add({
-            'customer_id': customer.id,
-            'item_type': 'gmp3_activation',
-            'source_table': 'licenses',
-            'source_id': insertedLicenseId,
-            'description': 'GMP3 Aktivasyonu - ${customer.name} / $name',
-            'currency': 'TRY',
-            'status': 'pending',
-            'is_active': true,
-            'created_by': profile?.id,
-            'source_event': 'gmp3_activated',
-            'source_label': 'GMP3 Aktivasyonu',
           });
         }
 
@@ -329,9 +262,30 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         );
 
         if (!mounted) return;
-        final closeNotesText = _notesController.text.trim().isEmpty
-            ? null
-            : _notesController.text.trim();
+        String? closeNotesText =
+            _notesController.text.trim().isEmpty ? null : _notesController.text.trim();
+        if (_addLine) {
+          final number = _lineNumberController.text.trim();
+          final sim = _lineSimController.text.trim();
+          final op = (_lineOperator ?? '').trim();
+          String opLabel(String v) {
+            final k = v.toLowerCase();
+            if (k == 'turkcell') return 'TURKCELL';
+            if (k == 'telsim') return 'TELSİM';
+            return v.trim().isEmpty ? '-' : v.toUpperCase();
+          }
+
+          final extra = [
+            'Ek Satış: Hat',
+            if (op.isNotEmpty) opLabel(op),
+            if (number.isNotEmpty) number,
+            if (sim.isNotEmpty) 'SIM: $sim',
+          ].join(' • ');
+          closeNotesText = [
+            if ((closeNotesText ?? '').trim().isNotEmpty) closeNotesText!.trim(),
+            extra,
+          ].join('\n');
+        }
         final closedPayments = _payments
             .map((p) {
               final amount = p.amount;
@@ -553,41 +507,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           description: 'Hat Aktivasyonu - ${customer.name} / $number',
           sourceEvent: 'line_activated',
           sourceLabel: 'Hat Aktivasyonu',
-        );
-      }
-
-      if (_addGmp3) {
-        final name = _gmp3NameController.text.trim();
-        if (name.isEmpty) throw Exception('GMP3 adı gerekli.');
-        final companyId = (_selectedSoftwareCompanyId ?? '').trim();
-        if (companyId.isEmpty) throw Exception('Yazılım firması seçin.');
-        final registry = _gmp3RegistryController.text.trim();
-        final start = DateTime(now.year, now.month, now.day);
-        final end = DateTime(now.year, 12, 31);
-        final insertedLicense = await client
-            .from('licenses')
-            .insert({
-          'customer_id': customer.id,
-          'name': name,
-          'license_type': 'gmp3',
-          'software_company_id': companyId,
-          'registry_number': registry.isEmpty ? null : registry,
-          'starts_at': start.toIso8601String().substring(0, 10),
-          'ends_at': end.toIso8601String().substring(0, 10),
-          'expires_at': end.toIso8601String().substring(0, 10),
-          'is_active': true,
-            })
-            .select('id')
-            .single();
-        await enqueueInvoiceItem(
-          client,
-          itemType: 'gmp3_activation',
-          sourceTable: 'licenses',
-          sourceId: insertedLicense['id'].toString(),
-          customerId: customer.id,
-          description: 'GMP3 Aktivasyonu - ${customer.name} / $name',
-          sourceEvent: 'gmp3_activated',
-          sourceLabel: 'GMP3 Aktivasyonu',
         );
       }
 
@@ -840,8 +759,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     final customerLocationsAsync = ref.watch(
       customerLocationsProvider(widget.order.customerId),
     );
-    final companiesAsync = ref.watch(softwareCompaniesProvider);
-    final canSellGmp3 = ref.watch(isAdminProvider);
     final lineStockAsync = ref.watch(lineStockAvailableProvider);
 
     return Container(
@@ -864,7 +781,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               customer: customer,
               branchesAsync: branchesAsync,
               customerLocationsAsync: customerLocationsAsync,
-              companiesAsync: companiesAsync,
               lineStockAsync: lineStockAsync,
               selectedLineStockId: _selectedLineStockId,
               onLineStockSelected: _saving
@@ -879,7 +795,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                         _lineSimController.text = (item.simNumber ?? '').trim();
                         _lineOperator = normalizeOperator(item.operatorName);
                       }),
-              canSellGmp3: canSellGmp3,
               selectedBranchId: _selectedBranchId ?? widget.order.branchId,
               onBranchChanged: _saving
                   ? null
@@ -925,7 +840,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                   ? null
                   : (value) => setState(() => _saveAsCustomerLocation = value),
               addLine: _addLine,
-              addGmp3: _addGmp3,
               onToggleAddLine: _saving
                   ? null
                   : (v) => setState(() {
@@ -938,23 +852,12 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                           _selectedLineStockId = null;
                         }
                       }),
-              onToggleAddGmp3: _saving
-                  ? null
-                  : (!canSellGmp3
-                      ? null
-                      : (v) => setState(() => _addGmp3 = v)),
               lineNumberController: _lineNumberController,
               lineSimController: _lineSimController,
               lineOperator: _lineOperator,
               onLineOperatorChanged: _saving
                   ? null
                   : (v) => setState(() => _lineOperator = v),
-              gmp3NameController: _gmp3NameController,
-              gmp3RegistryController: _gmp3RegistryController,
-              selectedSoftwareCompanyId: _selectedSoftwareCompanyId,
-              onSoftwareCompanyChanged: _saving
-                  ? null
-                  : (v) => setState(() => _selectedSoftwareCompanyId = v),
               signatureController: _signatureController,
               personnelSignatureController: _personnelSignatureController,
               payments: _payments,
@@ -998,7 +901,6 @@ class _SheetBody extends StatelessWidget {
     required this.customer,
     required this.branchesAsync,
     required this.customerLocationsAsync,
-    required this.companiesAsync,
     required this.lineStockAsync,
     required this.selectedLineStockId,
     required this.onLineStockSelected,
@@ -1018,18 +920,11 @@ class _SheetBody extends StatelessWidget {
     required this.saveAsCustomerLocation,
     required this.onToggleSaveAsCustomerLocation,
     required this.addLine,
-    required this.addGmp3,
-    required this.canSellGmp3,
     required this.onToggleAddLine,
-    required this.onToggleAddGmp3,
     required this.lineNumberController,
     required this.lineSimController,
     required this.lineOperator,
     required this.onLineOperatorChanged,
-    required this.gmp3NameController,
-    required this.gmp3RegistryController,
-    required this.selectedSoftwareCompanyId,
-    required this.onSoftwareCompanyChanged,
     required this.signatureController,
     required this.personnelSignatureController,
     required this.payments,
@@ -1043,7 +938,6 @@ class _SheetBody extends StatelessWidget {
   final CustomerDetail customer;
   final AsyncValue<List<CustomerBranch>> branchesAsync;
   final AsyncValue<List<CustomerLocation>> customerLocationsAsync;
-  final AsyncValue<List<SoftwareCompanyDefinition>> companiesAsync;
   final AsyncValue<List<LineStockItem>> lineStockAsync;
   final String? selectedLineStockId;
   final ValueChanged<LineStockItem?>? onLineStockSelected;
@@ -1064,18 +958,11 @@ class _SheetBody extends StatelessWidget {
   final bool saveAsCustomerLocation;
   final ValueChanged<bool>? onToggleSaveAsCustomerLocation;
   final bool addLine;
-  final bool addGmp3;
-  final bool canSellGmp3;
   final ValueChanged<bool>? onToggleAddLine;
-  final ValueChanged<bool>? onToggleAddGmp3;
   final TextEditingController lineNumberController;
   final TextEditingController lineSimController;
   final String? lineOperator;
   final ValueChanged<String?>? onLineOperatorChanged;
-  final TextEditingController gmp3NameController;
-  final TextEditingController gmp3RegistryController;
-  final String? selectedSoftwareCompanyId;
-  final ValueChanged<String?>? onSoftwareCompanyChanged;
   final SignatureController signatureController;
   final SignatureController personnelSignatureController;
   final List<_PaymentDraft> payments;
@@ -1456,55 +1343,136 @@ class _SheetBody extends StatelessWidget {
                           final available = items
                               .where((e) => e.isActive && !e.isConsumed)
                               .toList(growable: false);
-                          final selectedId =
-                              (selectedLineStockId ?? '').trim().isEmpty
-                                  ? null
-                                  : selectedLineStockId!.trim();
-                          return DropdownButtonFormField<String?>(
-                            initialValue: selectedId,
-                            items: [
-                              const DropdownMenuItem<String?>(
-                                value: null,
-                                child: Text('Stoktan seç (opsiyonel)'),
-                              ),
-                              if (available.isEmpty)
-                                const DropdownMenuItem<String?>(
-                                  value: '__none__',
-                                  enabled: false,
-                                  child: Text('Stok yok'),
-                                )
-                              else
-                                for (final s in available)
-                                  DropdownMenuItem<String?>(
-                                    value: s.id,
-                                    child: Text(
-                                      [
-                                        s.lineNumber,
-                                        if ((s.simNumber ?? '').trim().isNotEmpty)
-                                          'SIM: ${s.simNumber}',
-                                      ].join(' • '),
+                          final selectedId = (selectedLineStockId ?? '').trim();
+                          LineStockItem? selected;
+                          if (selectedId.isNotEmpty) {
+                            for (final s in available) {
+                              if (s.id == selectedId) {
+                                selected = s;
+                                break;
+                              }
+                            }
+                          }
+
+                          Future<void> openPicker() async {
+                            var q = '';
+                            final picked = await showModalBottomSheet<LineStockItem?>(
+                              context: context,
+                              showDragHandle: true,
+                              isScrollControlled: true,
+                              builder: (context) => StatefulBuilder(
+                                builder: (context, setSheetState) {
+                                  List<LineStockItem> filtered() {
+                                    final needle = q.trim().toLowerCase();
+                                    if (needle.isEmpty) return available;
+                                    return available.where((e) {
+                                      final hay = [
+                                        e.lineNumber,
+                                        e.simNumber ?? '',
+                                        e.operatorName,
+                                      ].join(' ').toLowerCase();
+                                      return hay.contains(needle);
+                                    }).toList(growable: false);
+                                  }
+
+                                  final list = filtered();
+                                  return SafeArea(
+                                    child: Padding(
+                                      padding: EdgeInsets.only(
+                                        left: 16,
+                                        right: 16,
+                                        bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+                                        top: 8,
+                                      ),
+                                      child: SizedBox(
+                                        height: MediaQuery.sizeOf(context).height * 0.72,
+                                        child: Column(
+                                          children: [
+                                            TextField(
+                                              onChanged: (v) =>
+                                                  setSheetState(() => q = v),
+                                              decoration: const InputDecoration(
+                                                prefixIcon: Icon(Icons.search_rounded),
+                                                hintText: 'Ara (hat, sim, operatör...)',
+                                              ),
+                                            ),
+                                            const Gap(10),
+                                            Expanded(
+                                              child: ListView(
+                                                children: [
+                                                  ListTile(
+                                                    leading: const Icon(Icons.clear_rounded),
+                                                    title: const Text('Seçimi temizle'),
+                                                    onTap: () =>
+                                                        Navigator.of(context).pop(null),
+                                                  ),
+                                                  const Divider(height: 1),
+                                                  for (final s in list)
+                                                    ListTile(
+                                                      title: Text(s.lineNumber),
+                                                      subtitle: Text(
+                                                        [
+                                                          normalizeOperator(s.operatorName) ==
+                                                                  'turkcell'
+                                                              ? 'TURKCELL'
+                                                              : normalizeOperator(
+                                                                          s.operatorName) ==
+                                                                      'telsim'
+                                                                  ? 'TELSİM'
+                                                                  : s.operatorName,
+                                                          if ((s.simNumber ?? '')
+                                                              .trim()
+                                                              .isNotEmpty)
+                                                            'SIM: ${s.simNumber}',
+                                                        ].where((e) => e.trim().isNotEmpty).join(' • '),
+                                                      ),
+                                                      onTap: () =>
+                                                          Navigator.of(context).pop(s),
+                                                    ),
+                                                  if (list.isEmpty)
+                                                    const Padding(
+                                                      padding: EdgeInsets.all(16),
+                                                      child: Text('Kayıt yok.'),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                  );
+                                },
+                              ),
+                            );
+                            onLineStockSelected?.call(picked);
+                          }
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: saving || available.isEmpty ? null : openPicker,
+                                icon: const Icon(Icons.search_rounded, size: 18),
+                                label: Text(
+                                  selected == null
+                                      ? (available.isEmpty ? 'Stok yok' : 'Stoktan seç (arama)')
+                                      : [
+                                          selected.lineNumber,
+                                          if ((selected.simNumber ?? '').trim().isNotEmpty)
+                                            'SIM: ${selected.simNumber}',
+                                        ].join(' • '),
+                                ),
+                              ),
+                              const Gap(6),
+                              Text(
+                                'Stok: ${available.length} kayıt',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(color: const Color(0xFF64748B)),
+                              ),
                             ],
-                            onChanged: saving
-                                ? null
-                                : (id) {
-                                    if (id == null) {
-                                      onLineStockSelected?.call(null);
-                                      return;
-                                    }
-                                    if (id == '__none__') return;
-                                    for (final s in available) {
-                                      if (s.id == id) {
-                                        onLineStockSelected?.call(s);
-                                        return;
-                                      }
-                                    }
-                                    onLineStockSelected?.call(null);
-                                  },
-                            decoration: const InputDecoration(
-                              labelText: 'Hat Stok',
-                            ),
                           );
                         },
                         loading: () => const SizedBox(
@@ -1555,78 +1523,6 @@ class _SheetBody extends StatelessWidget {
                           hintText: '89...',
                         ),
                         onChanged: saving ? null : (_) => onLineStockSelected?.call(null),
-                      ),
-                    ],
-                    const Divider(height: 24),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      value: addGmp3,
-                      onChanged: canSellGmp3 ? onToggleAddGmp3 : null,
-                      title: const Text('GMP3 Lisansı Sat'),
-                      subtitle: Text(
-                        canSellGmp3
-                            ? 'Başlangıç: bugün • Bitiş: yıl sonu'
-                            : 'Sadece admin',
-                      ),
-                    ),
-                    if (addGmp3) ...[
-                      const Gap(10),
-                      TextField(
-                        controller: gmp3NameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Lisans Adı',
-                          hintText: 'GMP3 Lisansı',
-                        ),
-                      ),
-                      const Gap(10),
-                      TextField(
-                        controller: gmp3RegistryController,
-                        decoration: const InputDecoration(
-                          labelText: 'Sicil No',
-                          hintText: 'SICIL...',
-                        ),
-                      ),
-                      const Gap(10),
-                      companiesAsync.when(
-                        data: (items) {
-                          final active = items.where((e) => e.isActive).toList(growable: false);
-                          final value = (selectedSoftwareCompanyId ?? '').trim();
-                          final initialValue = value.isEmpty ? null : value;
-                          if (active.isEmpty) {
-                            return Text(
-                              'Yazılım firması tanımlanmamış.',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(color: const Color(0xFF64748B)),
-                            );
-                          }
-                          return DropdownButtonFormField<String>(
-                            initialValue: initialValue,
-                            items: [
-                              for (final c in active)
-                                DropdownMenuItem(
-                                  value: c.id,
-                                  child: Text(c.name),
-                                ),
-                            ],
-                            onChanged: saving ? null : onSoftwareCompanyChanged,
-                            decoration: const InputDecoration(
-                              labelText: 'Yazılım Firması (Zorunlu)',
-                            ),
-                          );
-                        },
-                        loading: () => const SizedBox(
-                          height: 56,
-                          child: Center(child: CircularProgressIndicator()),
-                        ),
-                        error: (error, stackTrace) => Text(
-                          'Yazılım firmaları yüklenemedi.',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(color: const Color(0xFF64748B)),
-                        ),
                       ),
                     ],
                   ],

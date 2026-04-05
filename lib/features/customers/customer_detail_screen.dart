@@ -16,6 +16,7 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../dashboard/dashboard_providers.dart';
 import '../definitions/definitions_screen.dart';
+import '../stock/line_stock.dart';
 import '../subscriptions/subscriptions_screen.dart';
 import '../work_orders/work_order_detail_sheet.dart';
 import '../work_orders/work_order_model.dart';
@@ -2766,6 +2767,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
 
   String? _branchId;
   String? _operator;
+  String? _selectedLineStockId;
 
   @override
   void dispose() {
@@ -2848,11 +2850,53 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
             },
           );
         }
+
+        final stockId = (_selectedLineStockId ?? '').trim();
+        if (lineId.isNotEmpty && stockId.isNotEmpty) {
+          try {
+            await apiClient.postJson(
+              '/mutate',
+              body: {
+                'op': 'updateWhere',
+                'table': 'line_stock',
+                'filters': [
+                  {'col': 'id', 'op': 'eq', 'value': stockId},
+                ],
+                'values': {
+                  'consumed_at': now.toIso8601String(),
+                  'consumed_by': createdBy,
+                  'consumed_customer_id': widget.customerId,
+                  'consumed_line_id': lineId,
+                },
+              },
+            );
+            ref.invalidate(lineStockAvailableProvider);
+          } catch (_) {}
+        }
       } else {
-        await client!.from('lines').insert({
-          ...linePayload,
-          'created_by': client.auth.currentUser?.id,
-        });
+        final inserted = await client!
+            .from('lines')
+            .insert({
+              ...linePayload,
+              'created_by': client.auth.currentUser?.id,
+            })
+            .select('id')
+            .single();
+        lineId = inserted['id']?.toString();
+        final stockId = (_selectedLineStockId ?? '').trim();
+        if ((lineId ?? '').trim().isNotEmpty && stockId.isNotEmpty) {
+          try {
+            await client
+                .from('line_stock')
+                .update({
+                  'consumed_at': now.toIso8601String(),
+                  'consumed_by': client.auth.currentUser?.id,
+                  'consumed_customer_id': widget.customerId,
+                  'consumed_line_id': lineId,
+                })
+                .eq('id', stockId);
+          } catch (_) {}
+        }
       }
 
       ref.invalidate(customerLinesProvider(widget.customerId));
@@ -2876,6 +2920,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
   @override
   Widget build(BuildContext context) {
     final branchesAsync = ref.watch(customerBranchesProvider(widget.customerId));
+    final lineStockAsync = ref.watch(lineStockAvailableProvider);
     final now = DateTime.now();
     final startText = DateFormat('d MMM y', 'tr_TR').format(now);
     final endText = DateFormat('d MMM y', 'tr_TR').format(DateTime(now.year, 12, 31));
@@ -2931,6 +2976,143 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                   error: (_, _) => const SizedBox.shrink(),
                 ),
                 const Gap(12),
+                lineStockAsync.when(
+                  data: (items) {
+                    final available = items
+                        .where((e) => e.isActive && !e.isConsumed)
+                        .toList(growable: false);
+
+                    LineStockItem? selected;
+                    final selectedId = (_selectedLineStockId ?? '').trim();
+                    if (selectedId.isNotEmpty) {
+                      for (final s in available) {
+                        if (s.id == selectedId) {
+                          selected = s;
+                          break;
+                        }
+                      }
+                    }
+
+                    Future<void> openPicker() async {
+                      var q = '';
+                      final picked = await showModalBottomSheet<LineStockItem?>(
+                        context: context,
+                        showDragHandle: true,
+                        isScrollControlled: true,
+                        builder: (context) => StatefulBuilder(
+                          builder: (context, setSheetState) {
+                            List<LineStockItem> filtered() {
+                              final needle = q.trim().toLowerCase();
+                              if (needle.isEmpty) return available;
+                              return available.where((e) {
+                                final hay = [
+                                  e.lineNumber,
+                                  e.simNumber ?? '',
+                                  e.operatorName,
+                                ].join(' ').toLowerCase();
+                                return hay.contains(needle);
+                              }).toList(growable: false);
+                            }
+
+                            final list = filtered();
+                            return SafeArea(
+                              child: Padding(
+                                padding: EdgeInsets.only(
+                                  left: 16,
+                                  right: 16,
+                                  bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+                                  top: 8,
+                                ),
+                                child: SizedBox(
+                                  height: MediaQuery.sizeOf(context).height * 0.72,
+                                  child: Column(
+                                    children: [
+                                      TextField(
+                                        onChanged: (v) => setSheetState(() => q = v),
+                                        decoration: const InputDecoration(
+                                          prefixIcon: Icon(Icons.search_rounded),
+                                          hintText: 'Ara (hat, sim, operatör...)',
+                                        ),
+                                      ),
+                                      const Gap(10),
+                                      Expanded(
+                                        child: ListView(
+                                          children: [
+                                            ListTile(
+                                              leading: const Icon(Icons.clear_rounded),
+                                              title: const Text('Seçimi temizle'),
+                                              onTap: () => Navigator.of(context).pop(null),
+                                            ),
+                                            const Divider(height: 1),
+                                            for (final s in list)
+                                              ListTile(
+                                                title: Text(s.lineNumber),
+                                                subtitle: Text(
+                                                  [
+                                                    normalizeOperator(s.operatorName) == 'turkcell'
+                                                        ? 'TURKCELL'
+                                                        : normalizeOperator(s.operatorName) ==
+                                                                'telsim'
+                                                            ? 'TELSİM'
+                                                            : s.operatorName,
+                                                    if ((s.simNumber ?? '').trim().isNotEmpty)
+                                                      'SIM: ${s.simNumber}',
+                                                  ].where((e) => e.trim().isNotEmpty).join(' • '),
+                                                ),
+                                                onTap: () => Navigator.of(context).pop(s),
+                                              ),
+                                            if (list.isEmpty)
+                                              const Padding(
+                                                padding: EdgeInsets.all(16),
+                                                child: Text('Kayıt yok.'),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      );
+
+                      setState(() {
+                        if (picked == null) {
+                          _selectedLineStockId = null;
+                          return;
+                        }
+                        _selectedLineStockId = picked.id;
+                        _numberController.text = picked.lineNumber;
+                        _simController.text = (picked.simNumber ?? '').trim();
+                        _operator = normalizeOperator(picked.operatorName);
+                      });
+                    }
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _saving || available.isEmpty ? null : openPicker,
+                          icon: const Icon(Icons.search_rounded),
+                          label: Text(
+                            selected == null
+                                ? (available.isEmpty ? 'Stok yok' : 'Stoktan seç (arama)')
+                                : [
+                                    selected.lineNumber,
+                                    if ((selected.simNumber ?? '').trim().isNotEmpty)
+                                      'SIM: ${selected.simNumber}',
+                                  ].join(' • '),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, _) => const SizedBox.shrink(),
+                ),
+                const Gap(12),
                 TextFormField(
                   controller: _numberController,
                   keyboardType: TextInputType.phone,
@@ -2942,6 +3124,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                     if (v == null || v.trim().isEmpty) return 'Hat numarası gerekli.';
                     return null;
                   },
+                  onChanged: _saving ? null : (_) => setState(() => _selectedLineStockId = null),
                 ),
                 const Gap(12),
                 DropdownButtonFormField<String>(
@@ -2950,7 +3133,12 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                     DropdownMenuItem(value: 'turkcell', child: Text('TURKCELL')),
                     DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
                   ],
-                  onChanged: _saving ? null : (v) => setState(() => _operator = v),
+                  onChanged: _saving
+                      ? null
+                      : (v) => setState(() {
+                            _operator = v;
+                            _selectedLineStockId = null;
+                          }),
                   decoration: const InputDecoration(
                     labelText: 'Operatör',
                     border: OutlineInputBorder(),
@@ -2965,6 +3153,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                     labelText: 'SIM Numarası',
                     hintText: '89...',
                   ),
+                  onChanged: _saving ? null : (_) => setState(() => _selectedLineStockId = null),
                 ),
                 const Gap(12),
                 TextFormField(

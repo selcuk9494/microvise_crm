@@ -19,6 +19,7 @@ import '../customers/customer_detail_screen.dart';
 import '../customers/customer_model.dart';
 import '../customers/customers_providers.dart';
 import '../dashboard/dashboard_providers.dart';
+import '../stock/line_stock.dart';
 import 'work_order_model.dart';
 import 'currency_service.dart';
 import 'work_order_share.dart';
@@ -106,14 +107,13 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   bool _saving = false;
   bool _fetchingLocation = false;
   bool _addLine = false;
-  bool _addGmp3 = false;
   bool _isClosing = false;
   String? _selectedCloseNoteId;
 
   final _lineNumberController = TextEditingController();
   final _lineSimController = TextEditingController();
-
-  final _gmp3NameController = TextEditingController(text: 'GMP3 Lisansı');
+  String? _lineOperator;
+  String? _selectedLineStockId;
 
   String? _selectedBranchId;
   final List<_PaymentDraft> _payments = [];
@@ -150,7 +150,6 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     _personnelSignatureController.dispose();
     _lineNumberController.dispose();
     _lineSimController.dispose();
-    _gmp3NameController.dispose();
     for (final p in _payments) {
       p.dispose();
     }
@@ -287,9 +286,30 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
               personnelSignatureBytes.isEmpty
           ? null
           : personnelSignatureBytes;
-      final closeNotesText = _notesController.text.trim().isEmpty
-          ? null
-          : _notesController.text.trim();
+      String? closeNotesText =
+          _notesController.text.trim().isEmpty ? null : _notesController.text.trim();
+      if (_addLine) {
+        final number = _lineNumberController.text.trim();
+        final sim = _lineSimController.text.trim();
+        final op = (_lineOperator ?? '').trim();
+        String opLabel(String v) {
+          final k = v.toLowerCase();
+          if (k == 'turkcell') return 'TURKCELL';
+          if (k == 'telsim') return 'TELSİM';
+          return v.trim().isEmpty ? '-' : v.toUpperCase();
+        }
+
+        final extra = [
+          'Ek Satış: Hat',
+          if (op.isNotEmpty) opLabel(op),
+          if (number.isNotEmpty) number,
+          if (sim.isNotEmpty) 'SIM: $sim',
+        ].join(' • ');
+        closeNotesText = [
+          if ((closeNotesText ?? '').trim().isNotEmpty) closeNotesText!.trim(),
+          extra,
+        ].join('\n');
+      }
       final closedPayments = _payments
           .map((p) {
             final amount = p.amount;
@@ -309,13 +329,14 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
 
       final branchId = _selectedBranchId ?? widget.order.branchId;
       String? insertedLineId;
-      String? insertedGmp3Id;
 
       if (_addLine) {
         final number = _lineNumberController.text.trim();
         if (number.isEmpty) {
           throw Exception('Hat numarası gerekli.');
         }
+        final op = (_lineOperator ?? '').trim();
+        if (op.isEmpty) throw Exception('Operatör seçin.');
 
         final start = DateTime(now.year, now.month, now.day);
         final end = DateTime(now.year, 12, 31);
@@ -323,6 +344,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           'customer_id': customer.id,
           'branch_id': branchId,
           'number': number,
+          'operator': op,
           'sim_number':
               _lineSimController.text.trim().isEmpty ? null : _lineSimController.text.trim(),
           'starts_at': start.toIso8601String().substring(0, 10),
@@ -351,39 +373,29 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
         }
       }
 
-      if (_addGmp3) {
-        final name = _gmp3NameController.text.trim();
-        if (name.isEmpty) throw Exception('GMP3 adı gerekli.');
-        final start = DateTime(now.year, now.month, now.day);
-        final end = DateTime(now.year, 12, 31);
-        final licensePayload = {
-          'customer_id': customer.id,
-          'name': name,
-          'license_type': 'gmp3',
-          'starts_at': start.toIso8601String().substring(0, 10),
-          'ends_at': end.toIso8601String().substring(0, 10),
-          'expires_at': end.toIso8601String().substring(0, 10),
-          'is_active': true,
-        };
-        if (apiClient != null) {
-          final response = await apiClient.postJson(
+      if ((insertedLineId ?? '').trim().isNotEmpty &&
+          (_selectedLineStockId ?? '').trim().isNotEmpty &&
+          apiClient != null) {
+        try {
+          await apiClient.postJson(
             '/mutate',
             body: {
-              'op': 'upsert',
-              'table': 'licenses',
-              'returning': 'row',
-              'values': licensePayload,
+              'op': 'updateWhere',
+              'table': 'line_stock',
+              'filters': [
+                {'col': 'id', 'op': 'eq', 'value': _selectedLineStockId},
+              ],
+              'values': {
+                'consumed_at': now.toIso8601String(),
+                'consumed_by': profile?.id,
+                'consumed_customer_id': customer.id,
+                'consumed_work_order_id': widget.order.id,
+                'consumed_line_id': insertedLineId,
+              },
             },
           );
-          insertedGmp3Id = (response['row'] as Map?)?['id']?.toString();
-        } else {
-          final row = await client!
-              .from('licenses')
-              .insert(licensePayload)
-              .select('id')
-              .single();
-          insertedGmp3Id = row['id']?.toString();
-        }
+          ref.invalidate(lineStockAvailableProvider);
+        } catch (_) {}
       }
 
       if (apiClient != null) {
@@ -402,22 +414,6 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             'created_by': profile?.id,
             'source_event': 'line_activated',
             'source_label': 'Hat Aktivasyonu',
-          });
-        }
-        if ((insertedGmp3Id ?? '').trim().isNotEmpty) {
-          final name = _gmp3NameController.text.trim();
-          invoiceRows.add({
-            'customer_id': customer.id,
-            'item_type': 'gmp3_activation',
-            'source_table': 'licenses',
-            'source_id': insertedGmp3Id,
-            'description': 'GMP3 Aktivasyonu - ${customer.name} / $name',
-            'currency': 'TRY',
-            'status': 'pending',
-            'is_active': true,
-            'created_by': profile?.id,
-            'source_event': 'gmp3_activated',
-            'source_label': 'GMP3 Aktivasyonu',
           });
         }
         if (invoiceRows.isNotEmpty) {
@@ -451,36 +447,6 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 'source_table': 'lines',
                 'source_id': insertedLineId,
                 'description': 'Hat Aktivasyonu - ${customer.name} / $number',
-                'currency': 'TRY',
-                'status': 'pending',
-                'is_active': true,
-                'created_by': client.auth.currentUser?.id,
-              });
-            }
-          }
-          if ((insertedGmp3Id ?? '').trim().isNotEmpty) {
-            final name = _gmp3NameController.text.trim();
-            try {
-              await client.from('invoice_items').insert({
-                'customer_id': customer.id,
-                'item_type': 'gmp3_activation',
-                'source_table': 'licenses',
-                'source_id': insertedGmp3Id,
-                'description': 'GMP3 Aktivasyonu - ${customer.name} / $name',
-                'currency': 'TRY',
-                'status': 'pending',
-                'is_active': true,
-                'created_by': client.auth.currentUser?.id,
-                'source_event': 'gmp3_activated',
-                'source_label': 'GMP3 Aktivasyonu',
-              });
-            } catch (_) {
-              await client.from('invoice_items').insert({
-                'customer_id': customer.id,
-                'item_type': 'gmp3_activation',
-                'source_table': 'licenses',
-                'source_id': insertedGmp3Id,
-                'description': 'GMP3 Aktivasyonu - ${customer.name} / $name',
                 'currency': 'TRY',
                 'status': 'pending',
                 'is_active': true,
@@ -1398,6 +1364,8 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   }
 
   Widget _buildAdditionalSalesCard(BuildContext context) {
+    final lineStockAsync = ref.watch(lineStockAvailableProvider);
+    final operatorValue = (_lineOperator ?? '').trim().isEmpty ? null : _lineOperator!.trim();
     return AppCard(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1409,11 +1377,174 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
             value: _addLine,
-            onChanged: _saving ? null : (v) => setState(() => _addLine = v),
+            onChanged: _saving
+                ? null
+                : (v) => setState(() {
+                      _addLine = v;
+                      if (v && (_lineOperator ?? '').trim().isEmpty) {
+                        _lineOperator = 'turkcell';
+                      }
+                      if (!v) {
+                        _lineOperator = null;
+                        _selectedLineStockId = null;
+                      }
+                    }),
             title: const Text('Hat Satışı Ekle'),
             subtitle: const Text('Başlangıç: bugün - Bitiş: yıl sonu'),
           ),
           if (_addLine) ...[
+            const Gap(10),
+            lineStockAsync.when(
+              data: (items) {
+                final available = items
+                    .where((e) => e.isActive && !e.isConsumed)
+                    .toList(growable: false);
+                final selectedId = (_selectedLineStockId ?? '').trim();
+                LineStockItem? selected;
+                if (selectedId.isNotEmpty) {
+                  for (final s in available) {
+                    if (s.id == selectedId) {
+                      selected = s;
+                      break;
+                    }
+                  }
+                }
+
+                Future<void> openPicker() async {
+                  var q = '';
+                  final picked = await showModalBottomSheet<LineStockItem?>(
+                    context: context,
+                    showDragHandle: true,
+                    isScrollControlled: true,
+                    builder: (context) => StatefulBuilder(
+                      builder: (context, setSheetState) {
+                        List<LineStockItem> filtered() {
+                          final needle = q.trim().toLowerCase();
+                          if (needle.isEmpty) return available;
+                          return available.where((e) {
+                            final hay = [
+                              e.lineNumber,
+                              e.simNumber ?? '',
+                              e.operatorName,
+                            ].join(' ').toLowerCase();
+                            return hay.contains(needle);
+                          }).toList(growable: false);
+                        }
+
+                        final list = filtered();
+                        return SafeArea(
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              left: 16,
+                              right: 16,
+                              bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+                              top: 8,
+                            ),
+                            child: SizedBox(
+                              height: MediaQuery.sizeOf(context).height * 0.72,
+                              child: Column(
+                                children: [
+                                  TextField(
+                                    onChanged: (v) => setSheetState(() => q = v),
+                                    decoration: const InputDecoration(
+                                      prefixIcon: Icon(Icons.search_rounded),
+                                      hintText: 'Ara (hat, sim, operatör...)',
+                                    ),
+                                  ),
+                                  const Gap(10),
+                                  Expanded(
+                                    child: ListView(
+                                      children: [
+                                        ListTile(
+                                          leading: const Icon(Icons.clear_rounded),
+                                          title: const Text('Seçimi temizle'),
+                                          onTap: () => Navigator.of(context).pop(null),
+                                        ),
+                                        const Divider(height: 1),
+                                        for (final s in list)
+                                          ListTile(
+                                            title: Text(s.lineNumber),
+                                            subtitle: Text(
+                                              [
+                                                normalizeOperator(s.operatorName) == 'turkcell'
+                                                    ? 'TURKCELL'
+                                                    : normalizeOperator(s.operatorName) ==
+                                                            'telsim'
+                                                        ? 'TELSİM'
+                                                        : s.operatorName,
+                                                if ((s.simNumber ?? '').trim().isNotEmpty)
+                                                  'SIM: ${s.simNumber}',
+                                              ].where((e) => e.trim().isNotEmpty).join(' • '),
+                                            ),
+                                            onTap: () => Navigator.of(context).pop(s),
+                                          ),
+                                        if (list.isEmpty)
+                                          const Padding(
+                                            padding: EdgeInsets.all(16),
+                                            child: Text('Kayıt yok.'),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                  setState(() {
+                    if (picked == null) {
+                      _selectedLineStockId = null;
+                      return;
+                    }
+                    _selectedLineStockId = picked.id;
+                    _lineNumberController.text = picked.lineNumber;
+                    _lineSimController.text = (picked.simNumber ?? '').trim();
+                    _lineOperator = normalizeOperator(picked.operatorName);
+                  });
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _saving || available.isEmpty ? null : openPicker,
+                      icon: const Icon(Icons.search_rounded, size: 18),
+                      label: Text(
+                        selected == null
+                            ? (available.isEmpty ? 'Stok yok' : 'Stoktan seç (arama)')
+                            : [
+                                selected.lineNumber,
+                                if ((selected.simNumber ?? '').trim().isNotEmpty)
+                                  'SIM: ${selected.simNumber}',
+                              ].join(' • '),
+                      ),
+                    ),
+                    const Gap(6),
+                    Text(
+                      'Stok: ${available.length} kayıt',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: AppTheme.textMuted),
+                    ),
+                  ],
+                );
+              },
+              loading: () => const SizedBox(
+                height: 56,
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (error, stackTrace) => Text(
+                'Hat stok yüklenemedi.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: AppTheme.textMuted),
+              ),
+            ),
             const Gap(10),
             TextField(
               controller: _lineNumberController,
@@ -1422,6 +1553,19 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 labelText: 'Hat Numarası',
                 hintText: '90555...',
               ),
+              onChanged: _saving
+                  ? null
+                  : (_) => setState(() => _selectedLineStockId = null),
+            ),
+            const Gap(10),
+            DropdownButtonFormField<String>(
+              initialValue: operatorValue,
+              items: const [
+                DropdownMenuItem(value: 'turkcell', child: Text('TURKCELL')),
+                DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
+              ],
+              onChanged: _saving ? null : (v) => setState(() => _lineOperator = v),
+              decoration: const InputDecoration(labelText: 'Operatör (Zorunlu)'),
             ),
             const Gap(10),
             TextField(
@@ -1430,24 +1574,9 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 labelText: 'SIM Numarası',
                 hintText: '89...',
               ),
-            ),
-          ],
-          const Divider(height: 24),
-          SwitchListTile.adaptive(
-            contentPadding: EdgeInsets.zero,
-            value: _addGmp3,
-            onChanged: _saving ? null : (v) => setState(() => _addGmp3 = v),
-            title: const Text('GMP3 Lisansı Sat'),
-            subtitle: const Text('Başlangıç: bugün - Bitiş: yıl sonu'),
-          ),
-          if (_addGmp3) ...[
-            const Gap(10),
-            TextField(
-              controller: _gmp3NameController,
-              decoration: const InputDecoration(
-                labelText: 'Lisans Adı',
-                hintText: 'GMP3 Lisansı',
-              ),
+              onChanged: _saving
+                  ? null
+                  : (_) => setState(() => _selectedLineStockId = null),
             ),
           ],
         ],
