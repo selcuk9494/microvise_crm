@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
@@ -42,9 +43,11 @@ Future<void> shareWorkOrderPdf({
             view.physicalSize.width / dpr,
             view.physicalSize.height / dpr,
           );
+    final maxX = math.max<double>(size.width - 20, 0);
+    final maxY = math.max<double>(size.height - 20, 0);
     final origin = Rect.fromLTWH(
-      (size.width / 2 - 10).clamp(0.0, size.width - 20),
-      (size.height / 2 - 10).clamp(0.0, size.height - 20),
+      (size.width / 2 - 10).clamp(0.0, maxX),
+      (size.height / 2 - 10).clamp(0.0, maxY),
       20,
       20,
     );
@@ -54,7 +57,7 @@ Future<void> shareWorkOrderPdf({
     );
   } catch (e) {
     throw Exception(
-      'WhatsApp paylaşımı açılamadı. WhatsApp yüklü mü? Hata: $e',
+      'PDF paylaşımı açılamadı. Hata: $e',
     );
   }
 }
