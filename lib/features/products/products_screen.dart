@@ -684,83 +684,111 @@ class ProductsScreen extends ConsumerWidget {
         ],
         body: Column(
           children: [
-            AppCard(
-              padding: const EdgeInsets.all(12),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final isNarrow = constraints.maxWidth < 980;
-                  final searchField = SizedBox(
-                    width: isNarrow ? double.infinity : 320,
-                    child: TextField(
-                      decoration: const InputDecoration(
-                        hintText: 'Ara (müşteri, hat, SIM, firma...)',
-                        prefixIcon: Icon(Icons.search_rounded),
-                      ),
-                      onChanged: (v) =>
-                          ref.read(productSearchProvider.notifier).set(v),
-                    ),
-                  );
-
-                  final passiveToggle = isAdmin
-                      ? FilledButton.tonalIcon(
-                          onPressed: () => ref
-                              .read(showPassiveProvider.notifier)
-                              .set(!showPassive),
-                          icon: const Icon(Icons.visibility_rounded, size: 18),
-                          label: Text(showPassive ? 'Kayıt: Tümü' : 'Kayıt: Aktif'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor:
-                                const Color(0xFF16A34A).withValues(alpha: 0.12),
-                            foregroundColor: const Color(0xFF14532D),
-                            minimumSize: const Size(0, 40),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
-                          ),
-                        )
-                      : const SizedBox.shrink();
-
-                  if (isNarrow) {
-                    return Column(
-                      children: [
-                        searchField,
-                        if (isAdmin) ...[
-                          const Gap(10),
-                          Align(alignment: Alignment.centerLeft, child: passiveToggle),
-                        ],
-                      ],
-                    );
-                  }
-
-                  return Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      searchField,
-                      if (isAdmin) passiveToggle,
-                    ],
-                  );
-                },
-              ),
-            ),
-            const Gap(12),
             Expanded(
               child: AppCard(
                 padding: EdgeInsets.zero,
                 child: Column(
                   children: [
-                    const TabBar(
-                      isScrollable: true,
-                      tabAlignment: TabAlignment.start,
-                              labelPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      tabs: [
-                        Tab(text: 'Hatlar'),
-                        Tab(text: 'Lisanslar (GMP3)'),
-                        Tab(text: 'Toplamlar'),
-                        Tab(text: 'Hat Stok'),
-                      ],
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isNarrow = constraints.maxWidth < 980;
+                        final searchField = SizedBox(
+                          width: isNarrow ? double.infinity : 320,
+                          child: TextField(
+                            decoration: const InputDecoration(
+                              hintText: 'Ara (müşteri, hat, SIM, firma...)',
+                              prefixIcon: Icon(Icons.search_rounded),
+                              isDense: true,
+                            ),
+                            onChanged: (v) =>
+                                ref.read(productSearchProvider.notifier).set(v),
+                          ),
+                        );
+
+                        final passiveToggle = isAdmin
+                            ? FilledButton.tonalIcon(
+                                onPressed: () => ref
+                                    .read(showPassiveProvider.notifier)
+                                    .set(!showPassive),
+                                icon: const Icon(Icons.visibility_rounded, size: 18),
+                                label:
+                                    Text(showPassive ? 'Kayıt: Tümü' : 'Kayıt: Aktif'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFF16A34A)
+                                      .withValues(alpha: 0.12),
+                                  foregroundColor: const Color(0xFF14532D),
+                                  minimumSize: const Size(0, 40),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 10,
+                                  ),
+                                ),
+                              )
+                            : const SizedBox.shrink();
+
+                        if (isNarrow) {
+                          return Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              children: [
+                                searchField,
+                                if (isAdmin) ...[
+                                  const Gap(10),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: passiveToggle,
+                                  ),
+                                ],
+                                const Gap(10),
+                                const TabBar(
+                                  isScrollable: true,
+                                  tabAlignment: TabAlignment.start,
+                                  labelPadding: EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 8,
+                                  ),
+                                  tabs: [
+                                    Tab(text: 'Hatlar'),
+                                    Tab(text: 'Lisanslar (GMP3)'),
+                                    Tab(text: 'Toplamlar'),
+                                    Tab(text: 'Hat Stok'),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          child: Row(
+                            children: [
+                              const Expanded(
+                                child: TabBar(
+                                  isScrollable: true,
+                                  tabAlignment: TabAlignment.start,
+                                  labelPadding: EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 8,
+                                  ),
+                                  tabs: [
+                                    Tab(text: 'Hatlar'),
+                                    Tab(text: 'Lisanslar (GMP3)'),
+                                    Tab(text: 'Toplamlar'),
+                                    Tab(text: 'Hat Stok'),
+                                  ],
+                                ),
+                              ),
+                              const Gap(10),
+                              searchField,
+                              if (isAdmin) ...[
+                                const Gap(10),
+                                passiveToggle,
+                              ],
+                            ],
+                          ),
+                        );
+                      },
                     ),
                     const Divider(height: 1),
                     Expanded(

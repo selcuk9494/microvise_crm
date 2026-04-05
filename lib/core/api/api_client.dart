@@ -90,7 +90,7 @@ class ApiClient {
   }) async {
     final headers = <String, String>{'Accept': 'application/json'};
     if (requiresAuth) {
-      final accessToken = ref.read(accessTokenProvider);
+      final accessToken = ref.read(apiAccessTokenProvider);
       if (accessToken == null || accessToken.isEmpty) {
         throw Exception('Oturum bulunamadı.');
       }

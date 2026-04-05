@@ -5,6 +5,7 @@ import 'package:gap/gap.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/format/search_normalize.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_section_card.dart';
 import 'work_order_model.dart';
@@ -965,18 +966,7 @@ class _CreateWorkOrderDialogState
   }
 }
 
-String _sortKey(String value) {
-  return value
-      .toLowerCase()
-      .replaceAll('ç', 'c')
-      .replaceAll('ğ', 'g')
-      .replaceAll('ı', 'i')
-      .replaceAll('İ', 'i')
-      .replaceAll('ö', 'o')
-      .replaceAll('ş', 's')
-      .replaceAll('ü', 'u')
-      .trim();
-}
+String _sortKey(String value) => normalizeSearchText(value);
 
 class _CustomerOption {
   const _CustomerOption({

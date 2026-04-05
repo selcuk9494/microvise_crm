@@ -9,6 +9,7 @@ import 'package:skeletonizer/skeletonizer.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/utils/app_time.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/format/search_normalize.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
@@ -215,7 +216,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
             );
           }
 
-          final search = _searchController.text.trim().toLowerCase();
+          final search = normalizeSearchText(_searchController.text);
           final filtered = items.where((item) {
             if (!_showPassive && !item.isActive) return false;
             if (_statusFilter != 'all' && item.status != _statusFilter) {
@@ -243,8 +244,9 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
               item.title,
               item.customerName ?? '',
               item.branchName ?? '',
-            ].join(' ').toLowerCase();
-            return haystack.contains(search);
+            ].join(' ');
+            final hay = normalizeSearchText(haystack);
+            return hay.contains(search);
           }).toList(growable: false);
 
           final isMobile = MediaQuery.sizeOf(context).width < 720;

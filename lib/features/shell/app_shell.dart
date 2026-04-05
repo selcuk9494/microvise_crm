@@ -145,9 +145,7 @@ class _DesktopShell extends ConsumerWidget {
           Expanded(
             child: Column(
               children: [
-                _TopBar(
-                  onSearchTap: () => _showSearchSheet(context),
-                ),
+                const _TopBar(),
                 Expanded(child: child),
               ],
             ),
@@ -385,9 +383,7 @@ class _BrandHeader extends StatelessWidget {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onSearchTap});
-
-  final VoidCallback onSearchTap;
+  const _TopBar();
 
   @override
   Widget build(BuildContext context) {
@@ -402,40 +398,7 @@ class _TopBar extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Expanded(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: onSearchTap,
-                child: Container(
-                  height: 40,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.border),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        PhosphorIcons.magnifyingGlass(
-                          PhosphorIconsStyle.regular,
-                        ),
-                        size: 18,
-                        color: const Color(0xFF64748B),
-                      ),
-                      const Gap(10),
-                      Text(
-                        'Ara (müşteri, iş emri, servis...)',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: const Color(0xFF94A3B8),
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const Gap(12),
+            const Spacer(),
             IconButton(
               tooltip: 'Bildirimler',
               onPressed: () {},
@@ -862,44 +825,6 @@ Future<void> _showQuickCreateSheet(BuildContext context) async {
             },
           ),
           const Gap(6),
-        ],
-      ),
-    ),
-  );
-}
-
-Future<void> _showSearchSheet(BuildContext context) async {
-  await showModalBottomSheet<void>(
-    context: context,
-    useSafeArea: true,
-    backgroundColor: AppTheme.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (context) => Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Arama', style: Theme.of(context).textTheme.titleMedium),
-          const Gap(10),
-          const TextField(
-            decoration: InputDecoration(
-              labelText: 'Ara',
-              hintText: 'Müşteri adı, iş emri no, servis...',
-              prefixIcon: Icon(Icons.search_rounded),
-            ),
-          ),
-          const Gap(12),
-          Text(
-            'Son aramalar yakında burada görünecek.',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: const Color(0xFF64748B)),
-          ),
-          const Gap(12),
         ],
       ),
     ),

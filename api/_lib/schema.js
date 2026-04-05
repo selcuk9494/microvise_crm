@@ -12,6 +12,13 @@ const ensured = {
   licenses_registry_number: false,
   lines_operator: false,
   line_stock: false,
+  users_auth: false,
+  service_fault_types: false,
+  service_accessory_types: false,
+  service_records_columns: false,
+  service_records_status_check: false,
+  service_records_extended: false,
+  service_activity_logs: false,
   work_order_signatures: false,
   work_orders_payment_required: false,
   work_orders_status_check: false,
@@ -94,6 +101,97 @@ async function ensureSerialTrackingTable() {
   }
 
   ensured.serial_tracking = true;
+}
+
+async function ensureUsersAuthColumns() {
+  if (ensured.users_auth) return true;
+
+  const exists = await tableExists('users');
+  if (!exists) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
+    if (isProd && allow !== 'true') {
+      throw new Error(
+        'users table is missing. Set ALLOW_SCHEMA_AUTO_CREATE=true to auto-create (non-production recommended).',
+      );
+    }
+    await query(`create extension if not exists pgcrypto`);
+    await query(
+      `
+        create table if not exists public.users (
+          id uuid primary key default gen_random_uuid(),
+          email text not null,
+          full_name text,
+          role text not null default 'personel',
+          page_permissions text[] not null default '{}'::text[],
+          action_permissions text[] not null default '{}'::text[],
+          password_hash text,
+          is_active boolean not null default true,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now()
+        )
+      `,
+    );
+    await query(
+      `
+        create unique index if not exists idx_users_unique_email
+        on public.users (lower(email))
+      `,
+    );
+  } else {
+    await query(`create extension if not exists pgcrypto`);
+    await query(
+      `
+        alter table public.users
+          add column if not exists password_hash text,
+          add column if not exists is_active boolean,
+          add column if not exists created_at timestamptz,
+          add column if not exists updated_at timestamptz
+      `,
+    );
+    await query(
+      `
+        update public.users
+        set
+          is_active = coalesce(is_active, true),
+          created_at = coalesce(created_at, now()),
+          updated_at = coalesce(updated_at, now())
+        where is_active is null or created_at is null or updated_at is null
+      `,
+    );
+    await query(
+      `
+        alter table public.users
+          alter column is_active set default true
+      `,
+    );
+  }
+
+  await query(
+    `
+      create or replace function public.users_set_updated_at()
+      returns trigger
+      language plpgsql
+      as $$
+      begin
+        new.updated_at = now();
+        return new;
+      end;
+      $$;
+    `,
+  );
+  await query(
+    `
+      drop trigger if exists set_users_updated_at on public.users;
+      create trigger set_users_updated_at
+      before update on public.users
+      for each row
+      execute function public.users_set_updated_at();
+    `,
+  );
+
+  ensured.users_auth = true;
+  return true;
 }
 
 async function ensureWorkOrderCloseNotesTable() {
@@ -822,8 +920,334 @@ async function ensureLineStockTable() {
   return true;
 }
 
+async function ensureServiceFaultTypesTable() {
+  if (ensured.service_fault_types) return true;
+
+  const exists = await tableExists('service_fault_types');
+  if (!exists) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
+    if (isProd && allow !== 'true') {
+      throw new Error(
+        'service_fault_types table is missing. Set ALLOW_SCHEMA_AUTO_CREATE=true to auto-create (non-production recommended).',
+      );
+    }
+    await query(`create extension if not exists pgcrypto`);
+    await query(
+      `
+        create table if not exists public.service_fault_types (
+          id uuid primary key default gen_random_uuid(),
+          name text not null,
+          sort_order int not null default 0,
+          is_active boolean not null default true,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now()
+        )
+      `,
+    );
+    await query(
+      `
+        create unique index if not exists idx_service_fault_types_unique_name
+        on public.service_fault_types (upper(btrim(name)))
+      `,
+    );
+    await query(
+      `
+        create or replace function public.service_fault_types_set_updated_at()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          new.updated_at = now();
+          return new;
+        end;
+        $$;
+      `,
+    );
+    await query(
+      `
+        drop trigger if exists set_service_fault_types_updated_at on public.service_fault_types;
+        create trigger set_service_fault_types_updated_at
+        before update on public.service_fault_types
+        for each row
+        execute function public.service_fault_types_set_updated_at();
+      `,
+    );
+  }
+
+  ensured.service_fault_types = true;
+  return true;
+}
+
+async function ensureServiceAccessoryTypesTable() {
+  if (ensured.service_accessory_types) return true;
+
+  const exists = await tableExists('service_accessory_types');
+  if (!exists) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
+    if (isProd && allow !== 'true') {
+      throw new Error(
+        'service_accessory_types table is missing. Set ALLOW_SCHEMA_AUTO_CREATE=true to auto-create (non-production recommended).',
+      );
+    }
+    await query(`create extension if not exists pgcrypto`);
+    await query(
+      `
+        create table if not exists public.service_accessory_types (
+          id uuid primary key default gen_random_uuid(),
+          name text not null,
+          sort_order int not null default 0,
+          is_active boolean not null default true,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now()
+        )
+      `,
+    );
+    await query(
+      `
+        create unique index if not exists idx_service_accessory_types_unique_name
+        on public.service_accessory_types (upper(btrim(name)))
+      `,
+    );
+    await query(
+      `
+        create or replace function public.service_accessory_types_set_updated_at()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          new.updated_at = now();
+          return new;
+        end;
+        $$;
+      `,
+    );
+    await query(
+      `
+        drop trigger if exists set_service_accessory_types_updated_at on public.service_accessory_types;
+        create trigger set_service_accessory_types_updated_at
+        before update on public.service_accessory_types
+        for each row
+        execute function public.service_accessory_types_set_updated_at();
+      `,
+    );
+  }
+
+  ensured.service_accessory_types = true;
+  return true;
+}
+
+async function ensureServiceRecordsColumns() {
+  if (ensured.service_records_columns) return true;
+
+  const exists = await tableExists('service_records');
+  if (!exists) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
+    if (isProd && allow !== 'true') {
+      throw new Error(
+        'service_records table is missing. Set ALLOW_SCHEMA_AUTO_CREATE=true to auto-create (non-production recommended).',
+      );
+    }
+    await query(`create extension if not exists pgcrypto`);
+    await query(
+      `
+        create table if not exists public.service_records (
+          id uuid primary key default gen_random_uuid(),
+          customer_id uuid,
+          device_id uuid,
+          title text,
+          status text not null default 'waiting',
+          notes text,
+          registry_number text,
+          fault_type_id uuid,
+          accessories_received boolean not null default false,
+          accessory_type_ids jsonb,
+          device_images jsonb,
+          intake_customer_signature_data_url text,
+          intake_personnel_signature_data_url text,
+          delivery_customer_signature_data_url text,
+          delivery_personnel_signature_data_url text,
+          steps jsonb,
+          parts jsonb,
+          labor jsonb,
+          total_amount numeric,
+          currency text,
+          is_active boolean not null default true,
+          created_at timestamptz not null default now()
+        )
+      `,
+    );
+  } else {
+    await query(
+      `
+        alter table public.service_records
+          add column if not exists notes text,
+          add column if not exists registry_number text,
+          add column if not exists fault_type_id uuid,
+          add column if not exists accessories_received boolean,
+          add column if not exists accessory_type_ids jsonb,
+          add column if not exists device_images jsonb,
+          add column if not exists intake_customer_signature_data_url text,
+          add column if not exists intake_personnel_signature_data_url text,
+          add column if not exists delivery_customer_signature_data_url text,
+          add column if not exists delivery_personnel_signature_data_url text
+      `,
+    );
+  }
+
+  ensured.service_records_columns = true;
+  return true;
+}
+
+async function ensureServiceRecordsExtendedColumns() {
+  if (ensured.service_records_extended) return true;
+
+  const exists = await tableExists('service_records');
+  if (exists) {
+    await query(`create extension if not exists pgcrypto`);
+    await query(`create sequence if not exists public.service_no_seq`);
+    await query(
+      `
+        alter table public.service_records
+          add column if not exists service_no bigint,
+          add column if not exists priority text,
+          add column if not exists technician_id uuid,
+          add column if not exists appointment_at timestamptz,
+          add column if not exists fault_description text,
+          add column if not exists device_brand text,
+          add column if not exists device_model text,
+          add column if not exists device_serial text,
+          add column if not exists cancelled_reason text,
+          add column if not exists cancelled_at timestamptz,
+          add column if not exists updated_at timestamptz not null default now()
+      `,
+    );
+    await query(
+      `
+        alter table public.service_records
+          alter column service_no set default nextval('public.service_no_seq')
+      `,
+    );
+    await query(
+      `
+        update public.service_records
+        set service_no = nextval('public.service_no_seq')
+        where service_no is null
+      `,
+    );
+    await query(
+      `
+        create unique index if not exists idx_service_records_service_no
+        on public.service_records (service_no)
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_service_records_status_created_at
+        on public.service_records (status, created_at desc)
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_service_records_technician_created_at
+        on public.service_records (technician_id, created_at desc)
+      `,
+    );
+    await query(
+      `
+        create or replace function public.service_records_set_updated_at()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          new.updated_at = now();
+          return new;
+        end;
+        $$;
+      `,
+    );
+    await query(
+      `
+        drop trigger if exists set_service_records_updated_at on public.service_records;
+        create trigger set_service_records_updated_at
+        before update on public.service_records
+        for each row
+        execute function public.service_records_set_updated_at();
+      `,
+    );
+  }
+
+  ensured.service_records_extended = true;
+  return true;
+}
+
+async function ensureServiceRecordsStatusCheckConstraint() {
+  if (ensured.service_records_status_check) return true;
+
+  const exists = await tableExists('service_records');
+  if (exists) {
+    await query(
+      `
+        alter table public.service_records
+          drop constraint if exists service_records_status_check
+      `,
+    );
+    await query(
+      `
+        alter table public.service_records
+          add constraint service_records_status_check
+          check (status in ('open','in_progress','waiting','approval','ready','done','cancelled'))
+      `,
+    );
+  }
+
+  ensured.service_records_status_check = true;
+  return true;
+}
+
+async function ensureServiceActivityLogsTable() {
+  if (ensured.service_activity_logs) return true;
+
+  const exists = await tableExists('service_activity_logs');
+  if (!exists) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
+    if (isProd && allow !== 'true') {
+      throw new Error(
+        'service_activity_logs table is missing. Set ALLOW_SCHEMA_AUTO_CREATE=true to auto-create (non-production recommended).',
+      );
+    }
+    await query(`create extension if not exists pgcrypto`);
+    await query(
+      `
+        create table if not exists public.service_activity_logs (
+          id uuid primary key default gen_random_uuid(),
+          service_id uuid not null,
+          type text not null default 'note',
+          message text,
+          meta jsonb,
+          created_by uuid,
+          created_at timestamptz not null default now()
+        )
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_service_activity_logs_service_created_at
+        on public.service_activity_logs (service_id, created_at desc)
+      `,
+    );
+  }
+
+  ensured.service_activity_logs = true;
+  return true;
+}
+
 module.exports = {
   ensureSerialTrackingTable,
+  ensureUsersAuthColumns,
   ensureWorkOrderCloseNotesTable,
   ensureInvoiceItemsTable,
   ensureFaultFormsTable,
@@ -834,6 +1258,12 @@ module.exports = {
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,
   ensureLineStockTable,
+  ensureServiceFaultTypesTable,
+  ensureServiceAccessoryTypesTable,
+  ensureServiceRecordsColumns,
+  ensureServiceRecordsExtendedColumns,
+  ensureServiceRecordsStatusCheckConstraint,
+  ensureServiceActivityLogsTable,
   ensureWorkOrderSignaturesTable,
   ensureWorkOrdersPaymentRequiredColumn,
   ensureWorkOrdersStatusCheckConstraint,

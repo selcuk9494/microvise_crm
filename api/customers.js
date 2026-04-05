@@ -373,9 +373,9 @@ module.exports = async (req, res) => {
     if (search) {
       values.push(`%${search}%`);
       const idx = values.length;
-      const normParam = `translate(replace(lower($${idx}), 'i̇', 'i'), 'çğıöşüı', 'cgiosui')`;
+      const normParam = `translate(replace(replace(replace(lower($${idx}), 'i̇', 'i'), 'ı', 'i'), 'İ', 'i'), 'çğıöşü', 'cgiosu')`;
       const normCol = (col) =>
-        `translate(replace(lower(coalesce(${col},'')), 'i̇', 'i'), 'çğıöşüı', 'cgiosui')`;
+        `translate(replace(replace(replace(lower(coalesce(${col},'')), 'i̇', 'i'), 'ı', 'i'), 'İ', 'i'), 'çğıöşü', 'cgiosu')`;
       conditions.push(
         `(${normCol('c.name')} like ${normParam}
           or ${normCol('c.director_name')} like ${normParam}

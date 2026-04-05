@@ -8,6 +8,7 @@ import 'package:gap/gap.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../customers/web_download_helper.dart'
@@ -25,6 +26,78 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
   late final TextEditingController _searchController;
 
   excel.CellValue _cell(Object? v) => excel.TextCellValue((v ?? '').toString());
+
+  String _normalizeHeader(String value) {
+    var t = value.trim().toLowerCase();
+    t = t
+        .replaceAll('ı', 'i')
+        .replaceAll('İ', 'i')
+        .replaceAll('ğ', 'g')
+        .replaceAll('Ğ', 'g')
+        .replaceAll('ş', 's')
+        .replaceAll('Ş', 's')
+        .replaceAll('ç', 'c')
+        .replaceAll('Ç', 'c')
+        .replaceAll('ö', 'o')
+        .replaceAll('Ö', 'o')
+        .replaceAll('ü', 'u')
+        .replaceAll('Ü', 'u');
+    t = t.replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+    t = t.replaceAll(RegExp(r'_+'), '_');
+    t = t.replaceAll(RegExp(r'^_+|_+$'), '');
+    return t;
+  }
+
+  String _coerceNumberLike(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty) return '';
+    final lowered = t.toLowerCase();
+    if (lowered.contains('e')) {
+      final d = double.tryParse(lowered.replaceAll('+', ''));
+      if (d != null && d.isFinite) {
+        return d.round().toString();
+      }
+    }
+    if (RegExp(r'^\d+\.0+$').hasMatch(t)) {
+      return t.split('.').first;
+    }
+    return t;
+  }
+
+  String? _toIsoDateTime(Object? raw) {
+    if (raw == null) return null;
+    if (raw is DateTime) return raw.toUtc().toIso8601String();
+    if (raw is num && raw.isFinite) {
+      final days = raw.round();
+      if (days > 0) {
+        final base = DateTime(1899, 12, 30);
+        return base.add(Duration(days: days)).toUtc().toIso8601String();
+      }
+    }
+    final text = _coerceNumberLike(raw.toString());
+    if (text.isEmpty) return null;
+    final normalized = text.replaceAll('/', '.');
+    final dt = DateTime.tryParse(normalized);
+    if (dt != null) return dt.toUtc().toIso8601String();
+    final parts = normalized.split('.');
+    if (parts.length == 3) {
+      final d = int.tryParse(parts[0]);
+      final m = int.tryParse(parts[1]);
+      final y = int.tryParse(parts[2]);
+      if (d != null && m != null && y != null) {
+        return DateTime(y, m, d).toUtc().toIso8601String();
+      }
+    }
+    return null;
+  }
+
+  bool _toBool(String raw, {required bool defaultValue}) {
+    final t = raw.trim().toLowerCase();
+    if (t.isEmpty) return defaultValue;
+    if (t == 'true' || t == '1' || t == 'aktif' || t == 'yes') return true;
+    if (t == 'false' || t == '0' || t == 'pasif' || t == 'no') return false;
+    return defaultValue;
+  }
 
   @override
   void initState() {
@@ -77,7 +150,14 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
 
   Future<void> _importExcel() async {
     final apiClient = ref.read(apiClientProvider);
-    if (apiClient == null) return;
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bağlantı bulunamadı.')),
+      );
+      return;
+    }
 
     if (!kIsWeb) {
       if (!mounted) return;
@@ -95,26 +175,57 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
     final bytes = picked?.files.single.bytes;
     if (bytes == null) return;
 
-    final book = excel.Excel.decodeBytes(Uint8List.fromList(bytes));
-    final sheet = book.tables.values.isEmpty ? null : book.tables.values.first;
+    final book = excel.Excel.decodeBytes(bytes);
+    excel.Sheet? sheet;
+    for (final name in book.tables.keys) {
+      final key = name.trim().toLowerCase();
+      if (key.contains('hat') && key.contains('stok')) {
+        sheet = book.tables[name];
+        break;
+      }
+      if (key == 'hat stok' || key == 'hat_stok' || key == 'line_stock') {
+        sheet = book.tables[name];
+        break;
+      }
+    }
+    sheet ??= book.tables.values.isEmpty ? null : book.tables.values.first;
     if (sheet == null || sheet.rows.length < 2) return;
 
-    String norm(String v) =>
-        v.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '');
-
-    final header = sheet.rows.first
-        .map((c) => norm((c?.value ?? '').toString()))
-        .toList(growable: false);
-
-    int idx(String key) => header.indexOf(key);
-    String cellString(List<excel.Data?> row, int index) {
-      if (index < 0 || index >= row.length) return '';
-      return (row[index]?.value ?? '').toString().trim();
+    final headerRow = sheet.rows.first;
+    final header = <String, int>{};
+    for (var i = 0; i < headerRow.length; i++) {
+      final k = _normalizeHeader((headerRow[i]?.value ?? '').toString());
+      if (k.isEmpty) continue;
+      header.putIfAbsent(k, () => i);
     }
 
-    final opIndex = idx('operator');
-    final numberIndex = idx('line_number');
-    final simIndex = idx('sim_number');
+    int idxAny(List<String> keys) {
+      for (final k in keys) {
+        final normalized = _normalizeHeader(k);
+        final index = header[normalized];
+        if (index != null) return index;
+      }
+      return -1;
+    }
+
+    String cellString(List<excel.Data?> row, int index) {
+      if (index < 0 || index >= row.length) return '';
+      return _coerceNumberLike((row[index]?.value ?? '').toString()).trim();
+    }
+
+    Object? cellValue(List<excel.Data?> row, int index) {
+      if (index < 0 || index >= row.length) return null;
+      return row[index]?.value;
+    }
+
+    final opIndex = idxAny(['operator', 'operatör']);
+    final numberIndex = idxAny(['line_number', 'number', 'hat_no', 'hat_numarasi', 'hat']);
+    final simIndex = idxAny(['sim_number', 'sim_no', 'sim']);
+    final activeIndex = idxAny(['is_active', 'aktif']);
+    final statusIndex = idxAny(['status', 'durum']);
+    final createdAtIndex = idxAny(['created_at', 'created']);
+    final consumedAtIndex = idxAny(['consumed_at', 'kullanildi_at', 'used_at']);
+
     if (numberIndex < 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -125,33 +236,74 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
 
     final profile = await ref.read(currentUserProfileProvider.future);
     int imported = 0;
+    final errors = <String>[];
     for (var i = 1; i < sheet.rows.length; i++) {
       final row = sheet.rows[i];
+      final excelRowNo = i + 1;
       final lineNumber = cellString(row, numberIndex);
       if (lineNumber.isEmpty) continue;
       final operator = opIndex < 0 ? 'turkcell' : cellString(row, opIndex);
       final sim = simIndex < 0 ? '' : cellString(row, simIndex);
-      await apiClient.postJson(
-        '/mutate',
-        body: {
-          'op': 'upsert',
-          'table': 'line_stock',
-          'values': {
-            'operator': normalizeOperator(operator),
-            'line_number': lineNumber,
-            'sim_number': sim.trim().isEmpty ? null : sim.trim(),
-            'is_active': true,
-            'created_by': profile?.id,
-          },
-        },
-      );
-      imported += 1;
+      final status = statusIndex < 0 ? '' : cellString(row, statusIndex);
+      final statusNorm = status.trim().toLowerCase();
+
+      final isActive = activeIndex < 0
+          ? statusNorm == 'passive'
+              ? false
+              : true
+          : _toBool(cellString(row, activeIndex), defaultValue: true);
+
+      final createdAtIso = createdAtIndex < 0
+          ? null
+          : _toIsoDateTime(cellValue(row, createdAtIndex));
+      final consumedAtIso = consumedAtIndex < 0
+          ? null
+          : _toIsoDateTime(cellValue(row, consumedAtIndex));
+
+      final values = <String, dynamic>{
+        'operator': normalizeOperator(operator),
+        'line_number': lineNumber,
+        'sim_number': sim.trim().isEmpty ? null : sim.trim(),
+        'is_active': isActive,
+        'created_by': profile?.id,
+        ...?(() {
+          if (createdAtIso == null) return null;
+          return {'created_at': createdAtIso};
+        })(),
+      };
+      if (consumedAtIso != null) {
+        values['consumed_at'] = consumedAtIso;
+      } else if (statusNorm == 'consumed') {
+        values['consumed_at'] = DateTime.now().toUtc().toIso8601String();
+      }
+
+      try {
+        if (apiClient != null) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {'op': 'upsert', 'table': 'line_stock', 'values': values},
+          );
+        } else {
+          await client!.from('line_stock').upsert(
+                values,
+                onConflict: 'line_number_norm',
+              );
+        }
+        imported += 1;
+      } catch (e) {
+        errors.add('Satır $excelRowNo: $e');
+      }
     }
 
     ref.invalidate(lineStockProvider);
+    ref.invalidate(lineStockAvailableProvider);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('İçe aktarılan kayıt: $imported')),
+      SnackBar(
+        content: Text(
+          'İçe aktarılan kayıt: $imported${errors.isEmpty ? '' : ' • Hata: ${errors.length}'}',
+        ),
+      ),
     );
   }
 
@@ -349,6 +501,8 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
     final operatorName = ref.watch(lineStockOperatorProvider);
     final items = itemsAsync.asData?.value ?? const <LineStockItem>[];
 
+    final totalCount = items.length;
+    final activeCount = items.where((e) => e.isActive).length;
     final availableCount = items.where((e) => e.isActive && !e.isConsumed).length;
     final consumedCount = items.where((e) => e.isConsumed).length;
 
@@ -431,6 +585,16 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     AppBadge(
+                      label: 'Toplam: $totalCount',
+                      tone: AppBadgeTone.neutral,
+                      dense: true,
+                    ),
+                    AppBadge(
+                      label: 'Aktif: $activeCount',
+                      tone: AppBadgeTone.primary,
+                      dense: true,
+                    ),
+                    AppBadge(
                       label: 'Hazır: $availableCount',
                       tone: AppBadgeTone.success,
                       dense: true,
@@ -471,25 +635,19 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                   );
                 }
 
-                return SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      searchField,
-                      const Gap(10),
-                      statusField,
-                      const Gap(10),
-                      operatorField,
-                      const Gap(10),
-                      addBtn,
-                      const Gap(8),
-                      importBtn,
-                      const Gap(8),
-                      exportBtn,
-                      const Gap(10),
-                      summary,
-                    ],
-                  ),
+                return Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    searchField,
+                    statusField,
+                    operatorField,
+                    addBtn,
+                    importBtn,
+                    exportBtn,
+                    summary,
+                  ],
                 );
               },
             ),

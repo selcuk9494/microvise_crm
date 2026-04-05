@@ -2,6 +2,7 @@ const crypto = require('crypto');
 
 const { getAuthenticatedUser, hasPageAccess } = require('../_lib/auth');
 const { query } = require('../_lib/db');
+const { ensureUsersAuthColumns } = require('../_lib/schema');
 const {
   ok,
   badRequest,
@@ -70,12 +71,27 @@ async function tryAdminCreatePersonnel({
   }
 }
 
+async function setPasswordHash({ id, password }) {
+  if (!password || String(password).length < 6) return false;
+  await ensureUsersAuthColumns();
+  await query(
+    `
+      update public.users
+      set password_hash = crypt($2, gen_salt('bf'))
+      where id = $1
+    `,
+    [id, String(password)],
+  );
+  return true;
+}
+
 module.exports = async (req, res) => {
   if (!['POST', 'PATCH'].includes(req.method)) {
     return methodNotAllowed(res, 'POST, PATCH');
   }
 
   try {
+    await ensureUsersAuthColumns();
     const user = await getAuthenticatedUser(req);
     if (!user) return unauthorized(res);
     if (!hasPageAccess(user, 'personel')) {
@@ -91,9 +107,6 @@ module.exports = async (req, res) => {
     if (op === 'delete') {
       const id = String(body.id || '').trim();
       if (!id) return badRequest(res, 'id zorunludur.');
-      try {
-        await query(`delete from auth.users where id = $1`, [id]);
-      } catch (_) {}
       await query(`delete from public.users where id = $1`, [id]);
       return ok(res, { ok: true });
     }
@@ -105,10 +118,14 @@ module.exports = async (req, res) => {
       if (!password || password.length < 6) {
         return badRequest(res, 'Şifre en az 6 karakter olmalıdır.');
       }
-      await query(`select public.admin_update_personnel_password($1,$2)`, [
-        id,
-        password,
-      ]);
+      try {
+        await query(`select public.admin_update_personnel_password($1,$2)`, [
+          id,
+          password,
+        ]);
+      } catch (_) {
+        await setPasswordHash({ id, password });
+      }
       return ok(res, { ok: true });
     }
 
@@ -148,6 +165,10 @@ module.exports = async (req, res) => {
           `,
           [fullName, role, pagePermissions, actionPermissions, existingId],
         );
+        const password = String(body.password || '');
+        if (password && password.length >= 6) {
+          await setPasswordHash({ id: existingId, password });
+        }
         return ok(res, { ok: true, id: existingId, updated: true });
       }
 
@@ -160,7 +181,12 @@ module.exports = async (req, res) => {
         pagePermissions,
         actionPermissions,
       });
-      if (rpcId) return ok(res, { ok: true, id: rpcId, created: true });
+      if (rpcId) {
+        try {
+          await setPasswordHash({ id: rpcId, password });
+        } catch (_) {}
+        return ok(res, { ok: true, id: rpcId, created: true });
+      }
 
       const id = crypto.randomUUID();
       await query(
@@ -171,12 +197,23 @@ module.exports = async (req, res) => {
             full_name,
             role,
             page_permissions,
-            action_permissions
+            action_permissions,
+            is_active
           )
-          values ($1,$2,$3,$4,coalesce($5::text[], '{}'::text[]),coalesce($6::text[], '{}'::text[]))
+          values ($1,$2,$3,$4,coalesce($5::text[], '{}'::text[]),coalesce($6::text[], '{}'::text[]),true)
         `,
-        [id, email, fullName, role, pagePermissions, actionPermissions],
+        [
+          id,
+          email,
+          fullName,
+          role,
+          pagePermissions,
+          actionPermissions,
+        ],
       );
+      if (password && password.length >= 6) {
+        await setPasswordHash({ id, password });
+      }
       return ok(res, { ok: true, id, created: true });
     }
 

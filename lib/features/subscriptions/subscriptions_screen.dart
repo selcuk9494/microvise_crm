@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/format/search_normalize.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
@@ -238,11 +239,11 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
   List<Line> _filterLines(List<Line> lines, SubscriptionsFilters filters) {
     return lines
         .where((line) {
-          final query = filters.query.trim().toLowerCase();
+          final query = normalizeSearchText(filters.query);
           final matchesQuery = query.isEmpty ||
-              line.number.toLowerCase().contains(query) ||
-              (line.simNumber?.toLowerCase().contains(query) ?? false) ||
-              (line.customerName?.toLowerCase().contains(query) ?? false);
+              normalizeSearchText(line.number).contains(query) ||
+              normalizeSearchText(line.simNumber ?? '').contains(query) ||
+              normalizeSearchText(line.customerName ?? '').contains(query);
           final op = (line.operator ?? '').trim().toLowerCase();
           final matchesOperator = switch (filters.operator) {
             LineOperatorFilter.all => true,
@@ -263,11 +264,11 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
   List<License> _filterLicenses(List<License> licenses, SubscriptionsFilters filters) {
     return licenses
         .where((license) {
-          final query = filters.query.trim().toLowerCase();
+          final query = normalizeSearchText(filters.query);
           final matchesQuery = query.isEmpty ||
-              license.name.toLowerCase().contains(query) ||
-              license.licenseType.toLowerCase().contains(query) ||
-              (license.customerName?.toLowerCase().contains(query) ?? false);
+              normalizeSearchText(license.name).contains(query) ||
+              normalizeSearchText(license.licenseType).contains(query) ||
+              normalizeSearchText(license.customerName ?? '').contains(query);
           final matchesCompany = filters.softwareCompanyId == 'all' ||
               (license.softwareCompanyId ?? '') == filters.softwareCompanyId;
           final matchesStatus = switch (filters.status) {

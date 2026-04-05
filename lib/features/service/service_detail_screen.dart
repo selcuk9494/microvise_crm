@@ -1,17 +1,19 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:signature/signature.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
-import '../../core/auth/user_profile_provider.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
-import '../dashboard/dashboard_providers.dart';
+import 'service_definitions.dart';
+import 'service_share.dart';
 
 final serviceDetailProvider =
     FutureProvider.family<ServiceDetail, String>((ref, serviceId) async {
@@ -35,17 +37,7 @@ class ServiceDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
-  bool _closing = false;
-  final SignatureController _signature = SignatureController(
-    penStrokeWidth: 2.5,
-    penColor: const Color(0xFF0F172A),
-  );
-
-  @override
-  void dispose() {
-    _signature.dispose();
-    super.dispose();
-  }
+  final _bodyKey = GlobalKey<_BodyState>();
 
   @override
   Widget build(BuildContext context) {
@@ -56,21 +48,45 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         title: 'Servis',
         subtitle: detail.title,
         actions: [
-          if (detail.status != 'done')
-            FilledButton.icon(
-              onPressed: _closing
-                  ? null
-                  : () async {
-                      await _showCloseDialog(context, detail);
-                      ref.invalidate(serviceDetailProvider(widget.serviceId));
-                    },
-              icon: const Icon(Icons.check_rounded, size: 18),
-              label: const Text('Kapat'),
-            ),
+          Builder(
+            builder: (context) {
+              final accessoryAsync = ref.watch(serviceAccessoryTypesProvider);
+              final accessoryNames = accessoryAsync.asData?.value
+                      .where((e) => detail.accessoryTypeIds.contains(e.id))
+                      .map((e) => e.name)
+                      .toList(growable: false) ??
+                  detail.accessoryTypeIds.toList(growable: false);
+
+              return OutlinedButton.icon(
+                onPressed: () async {
+                  try {
+                    await shareServicePdf(
+                      detail: detail,
+                      accessoryNames: accessoryNames,
+                    );
+                  } catch (_) {}
+                },
+                icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                label: const Text('PDF'),
+              );
+            },
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              await _bodyKey.currentState?._captureSignatures(delivery: true);
+              ref.invalidate(serviceDetailProvider(widget.serviceId));
+            },
+            icon: const Icon(Icons.check_rounded, size: 18),
+            label: const Text('Teslim'),
+          ),
         ],
-        body: _Body(
-          detail: detail,
-          onChanged: () => ref.invalidate(serviceDetailProvider(widget.serviceId)),
+        body: SingleChildScrollView(
+          primary: true,
+          child: _Body(
+            key: _bodyKey,
+            detail: detail,
+            onChanged: () => ref.invalidate(serviceDetailProvider(widget.serviceId)),
+          ),
         ),
       ),
       loading: () => const AppPageLayout(
@@ -95,273 +111,11 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     );
   }
 
-  Future<void> _showCloseDialog(BuildContext context, ServiceDetail detail) async {
-    final apiClient = ref.read(apiClientProvider);
-    if (apiClient == null) return;
-
-    final payments = [_PaymentDraft()];
-    final notesController = TextEditingController(text: detail.notes ?? '');
-    final currencyController = ValueNotifier<String>(detail.currency ?? 'TRY');
-
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => Dialog(
-        insetPadding: const EdgeInsets.all(24),
-        backgroundColor: Colors.transparent,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: AppCard(
-            padding: const EdgeInsets.all(20),
-            child: StatefulBuilder(
-              builder: (context, setState) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Servis Kapat',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Kapat',
-                          onPressed: _closing ? null : () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.close_rounded),
-                        ),
-                      ],
-                    ),
-                    const Gap(12),
-                    Container(
-                      height: 180,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: Signature(
-                          controller: _signature,
-                          backgroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const Gap(10),
-                    Row(
-                      children: [
-                        OutlinedButton(
-                          onPressed: _closing ? null : () => _signature.clear(),
-                          child: const Text('Temizle'),
-                        ),
-                        const Gap(12),
-                        Expanded(
-                          child: Text(
-                            'Müşteri imzası ve ödeme bilgileri.',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: const Color(0xFF64748B)),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Gap(12),
-                    ValueListenableBuilder(
-                      valueListenable: currencyController,
-                      builder: (context, currency, _) => DropdownButtonFormField<String>(
-                        initialValue: currency,
-                        items: const [
-                          DropdownMenuItem(value: 'TRY', child: Text('TRY')),
-                          DropdownMenuItem(value: 'USD', child: Text('USD')),
-                          DropdownMenuItem(value: 'EUR', child: Text('EUR')),
-                        ],
-                        onChanged: _closing
-                            ? null
-                            : (v) => currencyController.value = v ?? 'TRY',
-                        decoration: const InputDecoration(labelText: 'Para Birimi'),
-                      ),
-                    ),
-                    const Gap(12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Ödemeler',
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _closing
-                              ? null
-                              : () => setState(() => payments.add(_PaymentDraft())),
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('Ekle'),
-                        ),
-                      ],
-                    ),
-                    const Gap(10),
-                    for (int i = 0; i < payments.length; i++) ...[
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: payments[i].amountController,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              decoration: const InputDecoration(
-                                labelText: 'Tutar',
-                                hintText: '0.00',
-                              ),
-                            ),
-                          ),
-                          const Gap(10),
-                          if (payments.length > 1)
-                            IconButton(
-                              tooltip: 'Sil',
-                              onPressed: _closing
-                                  ? null
-                                  : () => setState(() {
-                                        payments[i].dispose();
-                                        payments.removeAt(i);
-                                      }),
-                              icon: const Icon(Icons.delete_outline_rounded),
-                            ),
-                        ],
-                      ),
-                      if (i != payments.length - 1) const Gap(10),
-                    ],
-                    const Gap(12),
-                    TextField(
-                      controller: notesController,
-                      minLines: 2,
-                      maxLines: 4,
-                      decoration: const InputDecoration(
-                        labelText: 'Not',
-                        hintText: 'İsteğe bağlı',
-                      ),
-                    ),
-                    const Gap(18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _closing ? null : () => Navigator.of(context).pop(),
-                            child: const Text('Vazgeç'),
-                          ),
-                        ),
-                        const Gap(12),
-                        Expanded(
-                          child: FilledButton(
-                            onPressed: _closing
-                                ? null
-                                : () async {
-                                    setState(() => _closing = true);
-                                    try {
-                                      final profile =
-                                          await ref.read(currentUserProfileProvider.future);
-                                      final now = DateTime.now();
-                                      final sig = await _signature.toPngBytes();
-                                      final sigUrl = sig == null || sig.isEmpty
-                                          ? null
-                                          : 'data:image/png;base64,${base64Encode(sig)}';
-
-                                      final total = detail.totalAmount ?? 0;
-                                      await apiClient.postJson(
-                                        '/mutate',
-                                        body: {
-                                          'op': 'updateWhere',
-                                          'table': 'service_records',
-                                          'filters': [
-                                            {'col': 'id', 'op': 'eq', 'value': detail.id},
-                                          ],
-                                          'values': {
-                                            'status': 'done',
-                                            'notes': notesController.text.trim().isEmpty
-                                                ? null
-                                                : notesController.text.trim(),
-                                            'currency': currencyController.value,
-                                            'total_amount': total,
-                                            'signature_url': sigUrl,
-                                          },
-                                        },
-                                      );
-
-                                      final paymentRows = <Map<String, dynamic>>[];
-                                      for (final p in payments) {
-                                        final amount = p.amount;
-                                        if (amount == null) continue;
-                                        paymentRows.add({
-                                          'customer_id': detail.customerId,
-                                          'work_order_id': detail.workOrderId,
-                                          'amount': amount,
-                                          'currency': currencyController.value,
-                                          'paid_at': now.toIso8601String(),
-                                          'created_by': profile?.id,
-                                          'is_active': true,
-                                        });
-                                      }
-                                      if (paymentRows.isNotEmpty) {
-                                        await apiClient.postJson(
-                                          '/mutate',
-                                          body: {
-                                            'op': 'insertMany',
-                                            'table': 'payments',
-                                            'rows': paymentRows,
-                                          },
-                                        );
-                                      }
-
-                                      if (!context.mounted) return;
-                                      ref.invalidate(dashboardMetricsProvider);
-                                      Navigator.of(context).pop();
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Servis kapatıldı.')),
-                                      );
-                                    } catch (_) {
-                                      if (!context.mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Servis kapatılamadı.')),
-                                      );
-                                    } finally {
-                                      setState(() => _closing = false);
-                                    }
-                                  },
-                            child: _closing
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text('Kapat'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-
-    notesController.dispose();
-    currencyController.dispose();
-    for (final p in payments) {
-      p.dispose();
-    }
-  }
+  
 }
 
 class _Body extends ConsumerStatefulWidget {
-  const _Body({required this.detail, required this.onChanged});
+  const _Body({super.key, required this.detail, required this.onChanged});
 
   final ServiceDetail detail;
   final VoidCallback onChanged;
@@ -371,17 +125,75 @@ class _Body extends ConsumerStatefulWidget {
 }
 
 class _BodyState extends ConsumerState<_Body> {
-  late List<String> _steps;
+  late List<TextEditingController> _stepControllers;
   late List<_LineItemDraft> _parts;
   late List<_LineItemDraft> _labor;
+  late final TextEditingController _registryController;
+  late final TextEditingController _notesController;
+  String? _faultTypeId;
+  bool _accessoriesReceived = false;
+  final Set<String> _selectedAccessoryTypeIds = {};
+  List<String> _deviceImages = const [];
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _steps = [...widget.detail.steps];
+    _stepControllers = [
+      for (final s in widget.detail.steps) TextEditingController(text: s),
+    ];
     _parts = widget.detail.parts.map(_LineItemDraft.from).toList();
     _labor = widget.detail.labor.map(_LineItemDraft.from).toList();
+    _registryController = TextEditingController(text: widget.detail.registryNumber ?? '');
+    _notesController = TextEditingController(text: widget.detail.notes ?? '');
+    _faultTypeId = (widget.detail.faultTypeId ?? '').trim().isEmpty
+        ? null
+        : widget.detail.faultTypeId;
+    _accessoriesReceived = widget.detail.accessoriesReceived;
+    _selectedAccessoryTypeIds
+      ..clear()
+      ..addAll(widget.detail.accessoryTypeIds);
+    _deviceImages = widget.detail.deviceImageDataUrls;
+  }
+
+  @override
+  void didUpdateWidget(covariant _Body oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.detail.id != widget.detail.id) return;
+    final nextReg = widget.detail.registryNumber ?? '';
+    if (_registryController.text != nextReg) {
+      _registryController.text = nextReg;
+    }
+    final nextNotes = widget.detail.notes ?? '';
+    if (_notesController.text != nextNotes) {
+      _notesController.text = nextNotes;
+    }
+    if (oldWidget.detail.steps != widget.detail.steps) {
+      for (final c in _stepControllers) {
+        c.dispose();
+      }
+      _stepControllers = [
+        for (final s in widget.detail.steps) TextEditingController(text: s),
+      ];
+    }
+    _faultTypeId = (widget.detail.faultTypeId ?? '').trim().isEmpty
+        ? null
+        : widget.detail.faultTypeId;
+    _accessoriesReceived = widget.detail.accessoriesReceived;
+    _selectedAccessoryTypeIds
+      ..clear()
+      ..addAll(widget.detail.accessoryTypeIds);
+    _deviceImages = widget.detail.deviceImageDataUrls;
+  }
+
+  @override
+  void dispose() {
+    for (final c in _stepControllers) {
+      c.dispose();
+    }
+    _registryController.dispose();
+    _notesController.dispose();
+    super.dispose();
   }
 
   double get _total {
@@ -401,6 +213,10 @@ class _BodyState extends ConsumerState<_Body> {
 
     setState(() => _saving = true);
     try {
+      final steps = _stepControllers
+          .map((e) => e.text.trim())
+          .where((e) => e.isNotEmpty)
+          .toList(growable: false);
       await apiClient.postJson(
         '/mutate',
         body: {
@@ -410,7 +226,7 @@ class _BodyState extends ConsumerState<_Body> {
             {'col': 'id', 'op': 'eq', 'value': widget.detail.id},
           ],
           'values': {
-            'steps': _steps,
+            'steps': steps,
             'parts': _parts.map((e) => e.toJson()).toList(),
             'labor': _labor.map((e) => e.toJson()).toList(),
             'total_amount': _total,
@@ -433,19 +249,331 @@ class _BodyState extends ConsumerState<_Body> {
     }
   }
 
+  Future<void> _sendToApproval() async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+
+    final steps = _stepControllers
+        .map((e) => e.text.trim())
+        .where((e) => e.isNotEmpty)
+        .toList(growable: false);
+    if (steps.isEmpty && _parts.isEmpty && _labor.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Önce yapılan işlem / parça / işçilik ekleyin.')),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'service_records',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': widget.detail.id},
+          ],
+          'values': {
+            'status': 'approval',
+            'steps': steps,
+            'parts': _parts.map((e) => e.toJson()).toList(),
+            'labor': _labor.map((e) => e.toJson()).toList(),
+            'total_amount': _total,
+          },
+        },
+      );
+      widget.onChanged();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Onaya gönderildi.')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _markReady() async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    setState(() => _saving = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'service_records',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': widget.detail.id},
+          ],
+          'values': {'status': 'ready'},
+        },
+      );
+      widget.onChanged();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hazır durumuna alındı.')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _saveInfo() async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+
+    setState(() => _saving = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'service_records',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': widget.detail.id},
+          ],
+          'values': {
+            'registry_number': _registryController.text.trim().isEmpty
+                ? null
+                : _registryController.text.trim(),
+            'fault_type_id': (_faultTypeId ?? '').trim().isEmpty ? null : _faultTypeId,
+            'accessories_received': _accessoriesReceived,
+            'accessory_type_ids': _selectedAccessoryTypeIds.toList(growable: false),
+            'notes':
+                _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+            'device_images': _deviceImages
+                .map((e) => {'data_url': e})
+                .toList(growable: false),
+          },
+        },
+      );
+      widget.onChanged();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kaydedildi.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kaydedilemedi.')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _setStatus(String status) async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    setState(() => _saving = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'service_records',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': widget.detail.id},
+          ],
+          'values': {'status': status},
+        },
+      );
+      widget.onChanged();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  String _dataUrl(Uint8List bytes, String mimeType) =>
+      'data:$mimeType;base64,${base64Encode(bytes)}';
+
+  Future<void> _addImage(ImageSource source) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: source,
+      imageQuality: 75,
+      maxWidth: 1400,
+    );
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    if (bytes.isEmpty) return;
+
+    final name = picked.name.toLowerCase();
+    final mime = name.endsWith('.png') ? 'image/png' : 'image/jpeg';
+    final url = _dataUrl(bytes, mime);
+    setState(() => _deviceImages = [..._deviceImages, url]);
+    await _saveInfo();
+  }
+
+  Future<void> _captureSignatures({required bool delivery}) async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+
+    final left = SignatureController(
+      penStrokeWidth: 2.5,
+      penColor: const Color(0xFF0F172A),
+    );
+    final right = SignatureController(
+      penStrokeWidth: 2.5,
+      penColor: const Color(0xFF0F172A),
+    );
+    bool markDone = delivery;
+
+    try {
+      final saved = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Dialog(
+          insetPadding: const EdgeInsets.all(24),
+          backgroundColor: Colors.transparent,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 900),
+            child: AppCard(
+              padding: const EdgeInsets.all(16),
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  final leftTitle = delivery ? 'Teslim Eden (Personel)' : 'Teslim Eden (Müşteri)';
+                  final rightTitle = delivery ? 'Teslim Alan (Müşteri)' : 'Teslim Alan (Personel)';
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              delivery ? 'Teslim İmzaları' : 'Teslim Alma İmzaları',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Kapat',
+                            onPressed: () => Navigator.of(context).pop(false),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
+                      ),
+                      const Gap(12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _SignaturePad(
+                              title: leftTitle,
+                              controller: left,
+                              enabled: !_saving,
+                            ),
+                          ),
+                          const Gap(12),
+                          Expanded(
+                            child: _SignaturePad(
+                              title: rightTitle,
+                              controller: right,
+                              enabled: !_saving,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (delivery) ...[
+                        const Gap(8),
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          value: markDone,
+                          onChanged: (v) => setState(() => markDone = v),
+                          title: const Text('Servisi Teslim Et (Durum: Teslim)'),
+                        ),
+                      ],
+                      const Gap(12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () {
+                                left.clear();
+                                right.clear();
+                              },
+                              child: const Text('Temizle'),
+                            ),
+                          ),
+                          const Gap(10),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: const Text('Kaydet'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      if (saved != true) return;
+
+      final leftBytes = await left.toPngBytes();
+      final rightBytes = await right.toPngBytes();
+      final leftUrl =
+          leftBytes == null || leftBytes.isEmpty ? null : _dataUrl(leftBytes, 'image/png');
+      final rightUrl =
+          rightBytes == null || rightBytes.isEmpty ? null : _dataUrl(rightBytes, 'image/png');
+
+      setState(() => _saving = true);
+      try {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'service_records',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.detail.id},
+            ],
+            'values': {
+              if (delivery) ...{
+                'delivery_personnel_signature_data_url': leftUrl,
+                'delivery_customer_signature_data_url': rightUrl,
+                if (markDone) 'status': 'done',
+              } else ...{
+                'intake_customer_signature_data_url': leftUrl,
+                'intake_personnel_signature_data_url': rightUrl,
+              },
+            },
+          },
+        );
+        widget.onChanged();
+      } finally {
+        if (mounted) setState(() => _saving = false);
+      }
+
+      final accessoryAsync = ref.read(serviceAccessoryTypesProvider);
+      final accessoryNames = accessoryAsync.asData?.value
+              .where((e) => widget.detail.accessoryTypeIds.contains(e.id))
+              .map((e) => e.name)
+              .toList(growable: false) ??
+          widget.detail.accessoryTypeIds.toList(growable: false);
+      try {
+        await shareServicePdf(detail: widget.detail, accessoryNames: accessoryNames);
+      } catch (_) {}
+    } finally {
+      left.dispose();
+      right.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final date = DateFormat('d MMM y', 'tr_TR').format(widget.detail.createdAt);
-    final tone = widget.detail.status == 'done'
-        ? AppBadgeTone.success
-        : widget.detail.status == 'in_progress'
-            ? AppBadgeTone.primary
-            : AppBadgeTone.warning;
-    final label = widget.detail.status == 'done'
-        ? 'Tamam'
-        : widget.detail.status == 'in_progress'
-            ? 'Devam'
-            : 'Açık';
+    final status = switch (widget.detail.status) {
+      'open' || 'waiting' => ('Bekliyor', AppBadgeTone.warning),
+      'in_progress' || 'approval' => ('Onayda', AppBadgeTone.primary),
+      'ready' => ('Hazır', AppBadgeTone.success),
+      'done' => ('Teslim', AppBadgeTone.neutral),
+      _ => (widget.detail.status, AppBadgeTone.neutral),
+    };
 
     return Column(
       children: [
@@ -461,7 +589,40 @@ class _BodyState extends ConsumerState<_Body> {
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
                   ),
-                  AppBadge(label: label, tone: tone),
+                  AppBadge(label: status.$1, tone: status.$2),
+                  if (widget.detail.status == 'waiting' || widget.detail.status == 'open') ...[
+                    const Gap(8),
+                    FilledButton.tonal(
+                      onPressed: _saving ? null : _sendToApproval,
+                      child: const Text('Onaya Gönder'),
+                    ),
+                  ],
+                  if (widget.detail.status == 'approval' || widget.detail.status == 'in_progress') ...[
+                    const Gap(8),
+                    FilledButton.tonal(
+                      onPressed: _saving ? null : _markReady,
+                      child: const Text('Hazır'),
+                    ),
+                  ],
+                  const Gap(8),
+                  PopupMenuButton<String>(
+                    tooltip: 'Durum Değiştir',
+                    enabled: !_saving,
+                    onSelected: (v) async {
+                      await _setStatus(v);
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(value: 'waiting', child: Text('Bekliyor')),
+                      PopupMenuItem(value: 'approval', child: Text('Onayda')),
+                      PopupMenuItem(value: 'ready', child: Text('Hazır')),
+                      PopupMenuItem(value: 'done', child: Text('Teslim')),
+                    ],
+                    child: const SizedBox(
+                      width: 36,
+                      height: 34,
+                      child: Icon(Icons.more_horiz_rounded),
+                    ),
+                  ),
                 ],
               ),
               const Gap(6),
@@ -483,19 +644,201 @@ class _BodyState extends ConsumerState<_Body> {
               Row(
                 children: [
                   Expanded(
+                    child: Text(
+                      'Servis Bilgileri',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                  OutlinedButton(
+                    onPressed: _saving ? null : _saveInfo,
+                    child: _saving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Kaydet'),
+                  ),
+                ],
+              ),
+              const Gap(10),
+              TextField(
+                controller: _registryController,
+                decoration: const InputDecoration(
+                  labelText: 'Sicil No',
+                  hintText: 'SN...',
+                ),
+              ),
+              const Gap(10),
+              ref.watch(serviceFaultTypesProvider).when(
+                    data: (items) => DropdownButtonFormField<String?>(
+                      initialValue: (_faultTypeId ?? '').trim().isEmpty ? null : _faultTypeId,
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Arıza Tipi (opsiyonel)'),
+                        ),
+                        for (final t in items)
+                          DropdownMenuItem<String?>(
+                            value: t.id,
+                            child: Text(t.name),
+                          ),
+                      ],
+                      onChanged:
+                          _saving ? null : (v) => setState(() => _faultTypeId = v),
+                      decoration: const InputDecoration(labelText: 'Arıza Tipi'),
+                    ),
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, _) => const SizedBox.shrink(),
+                  ),
+              const Gap(8),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: _accessoriesReceived,
+                onChanged: _saving
+                    ? null
+                    : (v) => setState(() {
+                          _accessoriesReceived = v;
+                          if (!v) _selectedAccessoryTypeIds.clear();
+                        }),
+                title: const Text('Aksesuar Teslim Alındı'),
+              ),
+              if (_accessoriesReceived) ...[
+                ref.watch(serviceAccessoryTypesProvider).when(
+                      data: (items) => Column(
+                        children: [
+                          for (final t in items)
+                            CheckboxListTile(
+                              contentPadding: EdgeInsets.zero,
+                              value: _selectedAccessoryTypeIds.contains(t.id),
+                              onChanged: _saving
+                                  ? null
+                                  : (v) => setState(() {
+                                        if (v == true) {
+                                          _selectedAccessoryTypeIds.add(t.id);
+                                        } else {
+                                          _selectedAccessoryTypeIds.remove(t.id);
+                                        }
+                                      }),
+                              title: Text(t.name),
+                            ),
+                        ],
+                      ),
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, _) => const SizedBox.shrink(),
+                    ),
+              ],
+              const Gap(10),
+              TextField(
+                controller: _notesController,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Not',
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Gap(12),
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Fotoğraflar & İmzalar',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _saving ? null : () => _captureSignatures(delivery: false),
+                    icon: const Icon(Icons.edit_rounded, size: 18),
+                    label: const Text('Teslim Alım İmza'),
+                  ),
+                  const Gap(8),
+                  FilledButton.icon(
+                    onPressed: _saving ? null : () => _captureSignatures(delivery: true),
+                    icon: const Icon(Icons.check_rounded, size: 18),
+                    label: const Text('Teslim İmza'),
+                  ),
+                ],
+              ),
+              const Gap(10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _saving ? null : () => _addImage(ImageSource.camera),
+                    icon: const Icon(Icons.photo_camera_rounded, size: 18),
+                    label: const Text('Kamera'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _saving ? null : () => _addImage(ImageSource.gallery),
+                    icon: const Icon(Icons.photo_library_rounded, size: 18),
+                    label: const Text('Galeri'),
+                  ),
+                ],
+              ),
+              const Gap(10),
+              if (_deviceImages.isEmpty)
+                Text(
+                  'Fotoğraf yok.',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: const Color(0xFF64748B)),
+                )
+              else
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (int i = 0; i < _deviceImages.length; i++)
+                      _ImageThumb(
+                        dataUrl: _deviceImages[i],
+                        onRemove: _saving
+                            ? null
+                            : () async {
+                                setState(() {
+                                  _deviceImages = [
+                                    for (int j = 0; j < _deviceImages.length; j++)
+                                      if (j != i) _deviceImages[j],
+                                  ];
+                                });
+                                await _saveInfo();
+                              },
+                      ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+        const Gap(12),
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
                     child: Text('Adımlar', style: Theme.of(context).textTheme.titleSmall),
                   ),
                   OutlinedButton.icon(
                     onPressed: _saving
                         ? null
-                        : () => setState(() => _steps.add('Yeni adım')),
+                        : () => setState(() => _stepControllers.add(TextEditingController(text: 'Yeni adım'))),
                     icon: const Icon(Icons.add_rounded, size: 18),
                     label: const Text('Ekle'),
                   ),
                 ],
               ),
               const Gap(10),
-              for (int i = 0; i < _steps.length; i++) ...[
+              for (int i = 0; i < _stepControllers.length; i++) ...[
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -520,8 +863,7 @@ class _BodyState extends ConsumerState<_Body> {
                     const Gap(10),
                     Expanded(
                       child: TextField(
-                        controller: TextEditingController(text: _steps[i]),
-                        onChanged: (v) => _steps[i] = v,
+                        controller: _stepControllers[i],
                         decoration: const InputDecoration(
                           labelText: 'Açıklama',
                         ),
@@ -530,12 +872,17 @@ class _BodyState extends ConsumerState<_Body> {
                     const Gap(10),
                     IconButton(
                       tooltip: 'Sil',
-                      onPressed: _saving ? null : () => setState(() => _steps.removeAt(i)),
+                      onPressed: _saving
+                          ? null
+                          : () => setState(() {
+                                _stepControllers[i].dispose();
+                                _stepControllers.removeAt(i);
+                              }),
                       icon: const Icon(Icons.delete_outline_rounded),
                     ),
                   ],
                 ),
-                if (i != _steps.length - 1) const Gap(10),
+                if (i != _stepControllers.length - 1) const Gap(10),
               ],
               const Gap(12),
               Row(
@@ -599,6 +946,107 @@ class _BodyState extends ConsumerState<_Body> {
                     ),
               ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ImageThumb extends StatelessWidget {
+  const _ImageThumb({required this.dataUrl, required this.onRemove});
+
+  final String dataUrl;
+  final VoidCallback? onRemove;
+
+  Uint8List? _decode() {
+    final raw = dataUrl.trim();
+    final idx = raw.indexOf('base64,');
+    if (idx < 0) return null;
+    final b64 = raw.substring(idx + 'base64,'.length).trim();
+    if (b64.isEmpty) return null;
+    try {
+      return base64Decode(b64);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = _decode();
+    return Stack(
+      children: [
+        Container(
+          width: 140,
+          height: 110,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.border),
+            color: const Color(0xFFF8FAFC),
+          ),
+          child: bytes == null
+              ? const Center(child: Icon(Icons.image_not_supported_outlined))
+              : ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(bytes, fit: BoxFit.cover),
+                ),
+        ),
+        if (onRemove != null)
+          Positioned(
+            right: 6,
+            top: 6,
+            child: InkWell(
+              onTap: onRemove,
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: const Icon(Icons.close_rounded, size: 18),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _SignaturePad extends StatelessWidget {
+  const _SignaturePad({
+    required this.title,
+    required this.controller,
+    required this.enabled,
+  });
+
+  final String title;
+  final SignatureController controller;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleSmall),
+        const Gap(8),
+        Container(
+          height: 160,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.border),
+            color: const Color(0xFFF8FAFC),
+          ),
+          child: IgnorePointer(
+            ignoring: !enabled,
+            child: Signature(
+              controller: controller,
+              backgroundColor: Colors.transparent,
+            ),
           ),
         ),
       ],
@@ -753,26 +1201,33 @@ class _LineItemDraft {
   }
 }
 
-class _PaymentDraft {
-  _PaymentDraft();
-
-  final amountController = TextEditingController();
-
-  double? get amount {
-    final raw = amountController.text.trim().replaceAll(',', '.');
-    return double.tryParse(raw);
-  }
-
-  void dispose() => amountController.dispose();
-}
-
 class ServiceDetail {
   const ServiceDetail({
     required this.id,
+    required this.serviceNo,
     required this.title,
     required this.status,
+    required this.priority,
     required this.createdAt,
+    required this.appointmentAt,
+    required this.isActive,
     required this.notes,
+    required this.registryNumber,
+    required this.faultTypeId,
+    required this.faultTypeName,
+    required this.faultDescription,
+    required this.deviceBrand,
+    required this.deviceModel,
+    required this.deviceSerial,
+    required this.technicianId,
+    required this.technicianName,
+    required this.accessoriesReceived,
+    required this.accessoryTypeIds,
+    required this.deviceImageDataUrls,
+    required this.intakeCustomerSignatureDataUrl,
+    required this.intakePersonnelSignatureDataUrl,
+    required this.deliveryCustomerSignatureDataUrl,
+    required this.deliveryPersonnelSignatureDataUrl,
     required this.currency,
     required this.totalAmount,
     required this.steps,
@@ -785,10 +1240,30 @@ class ServiceDetail {
   });
 
   final String id;
+  final int? serviceNo;
   final String title;
   final String status;
+  final String? priority;
   final DateTime createdAt;
+  final DateTime? appointmentAt;
+  final bool isActive;
   final String? notes;
+  final String? registryNumber;
+  final String? faultTypeId;
+  final String? faultTypeName;
+  final String? faultDescription;
+  final String? deviceBrand;
+  final String? deviceModel;
+  final String? deviceSerial;
+  final String? technicianId;
+  final String? technicianName;
+  final bool accessoriesReceived;
+  final List<String> accessoryTypeIds;
+  final List<String> deviceImageDataUrls;
+  final String? intakeCustomerSignatureDataUrl;
+  final String? intakePersonnelSignatureDataUrl;
+  final String? deliveryCustomerSignatureDataUrl;
+  final String? deliveryPersonnelSignatureDataUrl;
   final String? currency;
   final double? totalAmount;
   final List<String> steps;
@@ -804,16 +1279,67 @@ class ServiceDetail {
     final stepsRaw = json['steps'];
     final partsRaw = json['parts'];
     final laborRaw = json['labor'];
+    final accessoryIdsRaw = json['accessory_type_ids'];
+    final deviceImagesRaw = json['device_images'];
+
+    int? toIntAny(Object? v) {
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return int.tryParse(v?.toString() ?? '');
+    }
+
+    double? toDoubleAny(Object? v) {
+      if (v is double) return v;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v?.toString() ?? '');
+    }
 
     return ServiceDetail(
       id: json['id'].toString(),
+      serviceNo: toIntAny(json['service_no']),
       title: (json['title'] ?? '').toString(),
       status: (json['status'] ?? 'open').toString(),
+      priority: json['priority']?.toString(),
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
           DateTime.now(),
+      appointmentAt: DateTime.tryParse(json['appointment_at']?.toString() ?? ''),
+      isActive: json['is_active'] as bool? ?? true,
       notes: json['notes']?.toString(),
+      registryNumber: json['registry_number']?.toString(),
+      faultTypeId: json['fault_type_id']?.toString(),
+      faultTypeName: json['fault_type_name']?.toString(),
+      faultDescription: json['fault_description']?.toString(),
+      deviceBrand: json['device_brand']?.toString(),
+      deviceModel: json['device_model']?.toString(),
+      deviceSerial: json['device_serial']?.toString(),
+      technicianId: json['technician_id']?.toString(),
+      technicianName: json['technician_name']?.toString(),
+      accessoriesReceived: json['accessories_received'] as bool? ?? false,
+      accessoryTypeIds: (accessoryIdsRaw is List)
+          ? accessoryIdsRaw.map((e) => e.toString()).toList(growable: false)
+          : const [],
+      deviceImageDataUrls: (deviceImagesRaw is List)
+          ? deviceImagesRaw
+              .map((e) {
+                if (e is String) return e;
+                if (e is Map) {
+                  return (e['data_url'] ?? e['url'] ?? '').toString();
+                }
+                return '';
+              })
+              .where((e) => e.trim().isNotEmpty)
+              .toList(growable: false)
+          : const [],
+      intakeCustomerSignatureDataUrl:
+          json['intake_customer_signature_data_url']?.toString(),
+      intakePersonnelSignatureDataUrl:
+          json['intake_personnel_signature_data_url']?.toString(),
+      deliveryCustomerSignatureDataUrl:
+          json['delivery_customer_signature_data_url']?.toString(),
+      deliveryPersonnelSignatureDataUrl:
+          json['delivery_personnel_signature_data_url']?.toString(),
       currency: json['currency']?.toString(),
-      totalAmount: (json['total_amount'] as num?)?.toDouble(),
+      totalAmount: toDoubleAny(json['total_amount']),
       steps: (stepsRaw is List)
           ? stepsRaw.map((e) => e.toString()).toList()
           : const [],

@@ -5,8 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../app/app_config.dart';
 import '../core/auth/auth_providers.dart';
 import '../core/auth/user_profile_provider.dart';
-import '../core/routing/go_router_refresh_stream.dart';
-import '../core/supabase/supabase_providers.dart';
 import '../features/auth/login_screen.dart';
 import '../features/customers/customer_detail_screen.dart';
 import '../features/customers/customers_screen.dart';
@@ -30,25 +28,13 @@ import '../features/work_orders/work_orders_list_screen.dart';
 import '../features/work_orders/work_order_payments_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final client = ref.watch(supabaseClientProvider);
   final accessToken = ref.watch(accessTokenProvider);
-
-  final GoRouterRefreshStream? supabaseRefresh = client == null
-      ? null
-      : GoRouterRefreshStream(client.auth.onAuthStateChange);
 
   final apiAuthRefresh = ValueNotifier<int>(0);
   ref.listen<String?>(apiAccessTokenProvider, (previous, next) {
     if (previous != next) apiAuthRefresh.value++;
   });
 
-  final mergedRefresh = Listenable.merge(
-    [apiAuthRefresh, supabaseRefresh]
-        .whereType<Listenable>()
-        .toList(growable: false),
-  );
-
-  ref.onDispose(() => supabaseRefresh?.dispose());
   ref.onDispose(apiAuthRefresh.dispose);
 
   final routes = <RouteBase>[
@@ -189,9 +175,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
   final goRouter = GoRouter(
     routes: routes,
-    refreshListenable: mergedRefresh,
+    refreshListenable: apiAuthRefresh,
     redirect: (context, state) {
-      final isConfigured = AppConfig.apiBaseUrl != null || client != null;
+      final isConfigured = AppConfig.apiBaseUrl != null;
       final isSetup = state.matchedLocation == '/kurulum';
       if (!isConfigured) return isSetup ? null : '/kurulum';
 

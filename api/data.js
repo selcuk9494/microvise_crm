@@ -12,6 +12,12 @@ const {
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,
   ensureLineStockTable,
+  ensureServiceFaultTypesTable,
+  ensureServiceAccessoryTypesTable,
+  ensureServiceRecordsColumns,
+  ensureServiceRecordsExtendedColumns,
+  ensureServiceRecordsStatusCheckConstraint,
+  ensureServiceActivityLogsTable,
   ensureWorkOrderSignaturesTable,
   ensureWorkOrdersPaymentRequiredColumn,
   ensureWorkOrdersStatusCheckConstraint,
@@ -24,6 +30,7 @@ const {
   methodNotAllowed,
   serverError,
   parseBoolean,
+  parseInteger,
 } = require('./_lib/http');
 
 function requirePage(user, pageKey, res) {
@@ -98,6 +105,11 @@ module.exports = async (req, res) => {
           return;
       } else if (resource === 'definition_work_order_close_notes') {
         if (!requireAnyPage(user, ['tanimlamalar', 'is_emirleri'], res)) return;
+      } else if (
+        resource === 'definition_service_fault_types' ||
+        resource === 'definition_service_accessory_types'
+      ) {
+        if (!requireAnyPage(user, ['tanimlamalar', 'servis'], res)) return;
       } else if (resource === 'definition_cities') {
         if (!requireAnyPage(user, ['tanimlamalar', 'musteriler', 'is_emirleri'], res))
           return;
@@ -504,45 +516,148 @@ module.exports = async (req, res) => {
 
       case 'service_list': {
         const showPassive = parseBoolean(req.query.showPassive, false);
+        await ensureServiceRecordsColumns();
+        await ensureServiceRecordsExtendedColumns();
+        await ensureServiceRecordsStatusCheckConstraint();
+        await ensureServiceFaultTypesTable();
+        const page = parseInteger(req.query.page, 1, { min: 1, max: 1000000 });
+        const pageSize = parseInteger(req.query.pageSize, 50, { min: 10, max: 200 });
+        const offset = (page - 1) * pageSize;
+
+        const status = String(req.query.status || '').trim();
+        const priority = String(req.query.priority || '').trim();
+        const technicianId = String(req.query.technicianId || '').trim();
+        const startDate = String(req.query.startDate || '').trim();
+        const endDate = String(req.query.endDate || '').trim();
+        const search = String(req.query.search || '').trim();
+
         const values = [];
         let whereSql = 'where true';
         if (!showPassive) {
           values.push(true);
           whereSql += ` and s.is_active = $${values.length}`;
         }
+        if (status && status !== 'all') {
+          values.push(status);
+          whereSql += ` and s.status = $${values.length}`;
+        }
+        if (priority && priority !== 'all') {
+          values.push(priority);
+          whereSql += ` and s.priority = $${values.length}`;
+        }
+        if (technicianId && technicianId !== 'all') {
+          values.push(technicianId);
+          whereSql += ` and s.technician_id = $${values.length}`;
+        }
+        if (startDate) {
+          values.push(startDate);
+          whereSql += ` and s.created_at >= $${values.length}::timestamptz`;
+        }
+        if (endDate) {
+          values.push(endDate);
+          whereSql += ` and s.created_at <= $${values.length}::timestamptz`;
+        }
+        if (search) {
+          values.push(`%${search}%`);
+          const idx = values.length;
+          const normParam = `translate(replace(replace(replace(lower($${idx}), 'i̇', 'i'), 'ı', 'i'), 'İ', 'i'), 'çğıöşü', 'cgiosu')`;
+          const normCol = (col) =>
+            `translate(replace(replace(replace(lower(coalesce(${col},'')), 'i̇', 'i'), 'ı', 'i'), 'İ', 'i'), 'çğıöşü', 'cgiosu')`;
+          whereSql += ` and (
+            ${normCol('c.name')} like ${normParam}
+            or ${normCol('s.title')} like ${normParam}
+            or ${normCol('s.registry_number')} like ${normParam}
+            or ${normCol('s.device_serial')} like ${normParam}
+            or cast(s.service_no as text) ilike $${idx}
+          )`;
+        }
+
+        const countResult = await query(
+          `
+            select count(*)::int as total
+            from public.service_records s
+            left join public.customers c on c.id = s.customer_id
+            ${whereSql}
+          `,
+          values,
+        );
+        const totalCount = countResult.rows[0]?.total ?? 0;
+
         const result = await query(
           `
             select
               s.id,
+              s.service_no,
               s.title,
               s.status,
+              s.priority,
               s.created_at,
+              s.appointment_at,
               s.customer_id,
               c.name as customer_name,
+              s.registry_number,
+              s.fault_type_id,
+              ft.name as fault_type_name,
+              s.fault_description,
+              s.device_brand,
+              s.device_model,
+              s.device_serial,
+              s.technician_id,
+              u.full_name as technician_name,
+              s.accessories_received,
+              s.accessory_type_ids,
               s.total_amount,
               s.currency
             from public.service_records s
             left join public.customers c on c.id = s.customer_id
+            left join public.service_fault_types ft on ft.id = s.fault_type_id
+            left join public.users u on u.id = s.technician_id
             ${whereSql}
             order by s.created_at desc
-            limit 500
+            limit ${pageSize}
+            offset ${offset}
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+
+        return ok(res, { items: result.rows, totalCount, page, pageSize });
       }
 
       case 'service_detail': {
         const id = String(req.query.serviceId || '').trim();
         if (!id) return badRequest(res, 'serviceId zorunludur.');
+        await ensureServiceRecordsColumns();
+        await ensureServiceRecordsExtendedColumns();
+        await ensureServiceRecordsStatusCheckConstraint();
+        await ensureServiceFaultTypesTable();
         const result = await query(
           `
             select
               s.id,
+              s.service_no,
               s.title,
               s.status,
+              s.priority,
               s.created_at,
+              s.appointment_at,
+              s.is_active,
               s.notes,
+              s.registry_number,
+              s.fault_type_id,
+              ft.name as fault_type_name,
+              s.fault_description,
+              s.device_brand,
+              s.device_model,
+              s.device_serial,
+              s.technician_id,
+              u.full_name as technician_name,
+              s.accessories_received,
+              s.accessory_type_ids,
+              s.device_images,
+              s.intake_customer_signature_data_url,
+              s.intake_personnel_signature_data_url,
+              s.delivery_customer_signature_data_url,
+              s.delivery_personnel_signature_data_url,
               s.currency,
               s.total_amount,
               s.steps,
@@ -553,6 +668,8 @@ module.exports = async (req, res) => {
               json_build_object('name', c.name, 'email', c.email) as customers
             from public.service_records s
             left join public.customers c on c.id = s.customer_id
+            left join public.service_fault_types ft on ft.id = s.fault_type_id
+            left join public.users u on u.id = s.technician_id
             where s.id = $1
             limit 1
           `,
@@ -561,15 +678,63 @@ module.exports = async (req, res) => {
         return ok(res, result.rows[0] || null);
       }
 
+      case 'service_activity': {
+        const id = String(req.query.serviceId || '').trim();
+        if (!id) return badRequest(res, 'serviceId zorunludur.');
+        await ensureServiceActivityLogsTable();
+        const result = await query(
+          `
+            select
+              l.id,
+              l.type,
+              l.message,
+              l.meta,
+              l.created_at,
+              l.created_by,
+              u.full_name as created_by_name
+            from public.service_activity_logs l
+            left join public.users u on u.id = l.created_by
+            where l.service_id = $1
+            order by l.created_at desc
+            limit 200
+          `,
+          [id],
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'service_customer_device_registries': {
+        const customerId = String(req.query.customerId || '').trim();
+        if (!customerId) return ok(res, { items: [] });
+        await ensureDeviceRegistriesTable();
+        const result = await query(
+          `
+            select
+              id,
+              registry_number,
+              model,
+              is_active,
+              created_at
+            from public.device_registries
+            where customer_id = $1
+              and coalesce(is_active, true) = true
+            order by created_at desc
+            limit 1000
+          `,
+          [customerId],
+        );
+        return ok(res, { items: result.rows });
+      }
+
       case 'customer_device_by_serial': {
         if (!requireAnyPage(user, ['servis'], res)) return;
         const serial = String(req.query.serial || '').trim();
-        if (!serial) return ok(res, null);
+        if (!serial) return ok(res, {});
         const result = await query(
           `select id,customer_id,serial_no,is_active from public.customer_devices where serial_no = $1 limit 1`,
           [serial],
         );
-        return ok(res, result.rows[0] || null);
+        return ok(res, result.rows[0] || {});
       }
 
       case 'definition_device_brands': {
@@ -591,6 +756,32 @@ module.exports = async (req, res) => {
             from public.device_models m
             left join public.device_brands b on b.id = m.brand_id
             order by m.name asc
+          `,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'definition_service_fault_types': {
+        await ensureServiceFaultTypesTable();
+        const result = await query(
+          `
+            select id,name,sort_order,is_active,created_at
+            from public.service_fault_types
+            where is_active = true
+            order by sort_order asc, name asc
+          `,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'definition_service_accessory_types': {
+        await ensureServiceAccessoryTypesTable();
+        const result = await query(
+          `
+            select id,name,sort_order,is_active,created_at
+            from public.service_accessory_types
+            where is_active = true
+            order by sort_order asc, name asc
           `,
         );
         return ok(res, { items: result.rows });

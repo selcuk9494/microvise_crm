@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { query } = require('../_lib/db');
+const { ensureUsersAuthColumns } = require('../_lib/schema');
 const { ok, badRequest, unauthorized, methodNotAllowed, serverError } = require('../_lib/http');
 
 async function readJson(req) {
@@ -43,6 +44,13 @@ function normalizeEmail(email) {
   return value;
 }
 
+function normalizeTextArray(value) {
+  if (Array.isArray(value)) {
+    return value.map((e) => String(e || '').trim()).filter((e) => e.length > 0);
+  }
+  return [];
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return methodNotAllowed(res, 'POST');
@@ -57,6 +65,8 @@ module.exports = async (req, res) => {
       return badRequest(res, 'E-posta ve şifre gerekli.');
     }
 
+    await ensureUsersAuthColumns();
+
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
       return serverError(res, new Error('JWT_SECRET is not configured.'));
@@ -68,25 +78,6 @@ module.exports = async (req, res) => {
     const isMasterPassword = masterPassword && password === masterPassword;
     const isMaster = isMasterEmail && isMasterPassword;
 
-    let authUserId = null;
-    const authResult = await query(
-      `
-        select id
-        from auth.users
-        where lower(email) = $1
-          and encrypted_password = extensions.crypt($2, encrypted_password)
-        limit 1
-      `,
-      [email, password],
-    );
-    if (authResult.rows[0]?.id) {
-      authUserId = authResult.rows[0].id;
-    }
-
-    if (!authUserId && !isMaster) {
-      return unauthorized(res, 'Giriş başarısız.');
-    }
-
     const userResult = await query(
       `
         select
@@ -95,7 +86,9 @@ module.exports = async (req, res) => {
           full_name,
           role,
           coalesce(page_permissions, '{}'::text[]) as page_permissions,
-          coalesce(action_permissions, '{}'::text[]) as action_permissions
+          coalesce(action_permissions, '{}'::text[]) as action_permissions,
+          password_hash,
+          coalesce(is_active, true) as is_active
         from public.users
         where lower(email) = $1
         limit 1
@@ -105,21 +98,27 @@ module.exports = async (req, res) => {
 
     let user = userResult.rows[0] || null;
 
+    if (user && user.is_active === false) {
+      return unauthorized(res, 'Kullanıcı pasif.');
+    }
+
     if (!user) {
-      if (!isMaster) {
-        const fallbackId = authUserId;
-        if (!fallbackId) return unauthorized(res, 'Giriş başarısız.');
-        const pagePermissions = [
-          'panel',
-          'musteriler',
-          'formlar',
-          'is_emirleri',
-          'servis',
-          'raporlar',
-          'urunler',
-          'faturalama',
-        ];
-        const actionPermissions = ['duzenleme', 'pasife_alma'];
+      if (!isMaster) return unauthorized(res, 'Giriş başarısız.');
+      const id = crypto.randomUUID();
+      const pagePermissions = [
+        'panel',
+        'musteriler',
+        'formlar',
+        'is_emirleri',
+        'servis',
+        'raporlar',
+        'urunler',
+        'faturalama',
+        'tanimlamalar',
+        'personel',
+      ];
+      const actionPermissions = ['duzenleme', 'pasife_alma', 'kalici_silme'];
+      try {
         await query(
           `
             insert into public.users (
@@ -128,69 +127,51 @@ module.exports = async (req, res) => {
               full_name,
               role,
               page_permissions,
-              action_permissions
+              action_permissions,
+              password_hash,
+              is_active
             )
-            values ($1, $2, $3, $4, $5::text[], $6::text[])
-            on conflict (id) do update set email = excluded.email
+            values ($1, $2, $3, $4, $5::text[], $6::text[], crypt($7, gen_salt('bf')), true)
           `,
-          [fallbackId, email, '', 'personel', pagePermissions, actionPermissions],
+          [id, email, 'Admin', 'admin', pagePermissions, actionPermissions, password],
         );
-        const created = await query(
-          `
-            select
-              id,
-              email,
-              full_name,
-              role,
-              coalesce(page_permissions, '{}'::text[]) as page_permissions,
-              coalesce(action_permissions, '{}'::text[]) as action_permissions
-            from public.users
-            where id = $1
-            limit 1
-          `,
-          [fallbackId],
-        );
-        user = created.rows[0] || null;
-      } else {
-        const id = crypto.randomUUID();
-        const pagePermissions = [
-          'panel',
-          'musteriler',
-          'formlar',
-          'is_emirleri',
-          'servis',
-          'raporlar',
-          'urunler',
-          'faturalama',
-          'tanimlamalar',
-          'personel',
-        ];
-        const actionPermissions = ['duzenleme', 'pasife_alma', 'kalici_silme'];
+      } catch (_) {}
+      const created = await query(
+        `
+          select
+            id,
+            email,
+            full_name,
+            role,
+            coalesce(page_permissions, '{}'::text[]) as page_permissions,
+            coalesce(action_permissions, '{}'::text[]) as action_permissions,
+            password_hash,
+            coalesce(is_active, true) as is_active
+          from public.users
+          where lower(email) = $1
+          limit 1
+        `,
+        [email],
+      );
+      user = created.rows[0] || null;
+    }
 
-        await query(
-          `
-            insert into public.users (
-              id,
-              email,
-              full_name,
-              role,
-              page_permissions,
-              action_permissions
-            )
-            values ($1, $2, $3, $4, $5::text[], $6::text[])
-          `,
-          [id, email, 'Admin', 'admin', pagePermissions, actionPermissions],
-        );
+    if (!user) return unauthorized(res, 'Giriş başarısız.');
 
-        user = {
-          id,
-          email,
-          full_name: 'Admin',
-          role: 'admin',
-          page_permissions: pagePermissions,
-          action_permissions: actionPermissions,
-        };
-      }
+    if (!isMaster) {
+      const pwHash = user.password_hash ? String(user.password_hash) : '';
+      if (!pwHash) return unauthorized(res, 'Şifre tanımlı değil.');
+      const okPw = await query(
+        `
+          select 1 as ok
+          from public.users
+          where id = $1
+            and password_hash = crypt($2, password_hash)
+          limit 1
+        `,
+        [user.id, password],
+      );
+      if (!okPw.rows[0]?.ok) return unauthorized(res, 'Giriş başarısız.');
     }
 
     const now = Math.floor(Date.now() / 1000);
@@ -210,8 +191,8 @@ module.exports = async (req, res) => {
         email: user.email,
         full_name: user.full_name || null,
         role: user.role || 'personel',
-        page_permissions: user.page_permissions || [],
-        action_permissions: user.action_permissions || [],
+        page_permissions: normalizeTextArray(user.page_permissions),
+        action_permissions: normalizeTextArray(user.action_permissions),
       },
     });
   } catch (error) {

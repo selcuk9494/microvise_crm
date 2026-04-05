@@ -15,6 +15,12 @@ const {
   ensureLinesOperatorColumn,
   ensureLineStockTable,
   ensureWorkOrderSignaturesTable,
+  ensureServiceFaultTypesTable,
+  ensureServiceAccessoryTypesTable,
+  ensureServiceRecordsColumns,
+  ensureServiceRecordsExtendedColumns,
+  ensureServiceRecordsStatusCheckConstraint,
+  ensureServiceActivityLogsTable,
 } = require('./_lib/schema');
 const {
   ok,
@@ -65,6 +71,9 @@ const allowedTables = new Set([
   'product_serial_inventory',
   'scrap_forms',
   'service_records',
+  'service_activity_logs',
+  'service_fault_types',
+  'service_accessory_types',
   'serial_tracking',
   'stock_movements',
   'tax_rates',
@@ -93,6 +102,9 @@ const tablePermissions = {
   work_orders: 'is_emirleri',
   payments: ['is_emirleri', 'servis'],
   service_records: 'servis',
+  service_activity_logs: 'servis',
+  service_fault_types: 'tanimlamalar',
+  service_accessory_types: 'tanimlamalar',
   customer_devices: 'servis',
   device_brands: 'tanimlamalar',
   device_models: 'tanimlamalar',
@@ -116,6 +128,7 @@ const tablePermissions = {
 };
 
 const columnsCache = new Map();
+const columnsMetaCache = new Map();
 
 function requireAnyPage(user, pageKeys, res) {
   const keys = Array.isArray(pageKeys)
@@ -148,6 +161,30 @@ async function getColumns(table) {
   return columns;
 }
 
+async function getColumnMeta(table) {
+  if (columnsMetaCache.has(table)) return columnsMetaCache.get(table);
+  const result = await query(
+    `
+      select column_name, data_type
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = $1
+      order by ordinal_position asc
+    `,
+    [table],
+  );
+  const map = new Map();
+  for (const row of result.rows) {
+    const name = row.column_name;
+    const type = row.data_type;
+    if (typeof name === 'string' && name.length > 0) {
+      map.set(name, String(type || '').toLowerCase());
+    }
+  }
+  columnsMetaCache.set(table, map);
+  return map;
+}
+
 function quoteIdent(name) {
   return `"${String(name).replace(/"/g, '""')}"`;
 }
@@ -165,6 +202,7 @@ function pickValues(values, allowedColumns) {
 
 async function upsertRow({ table, values, returningRow }) {
   const columns = await getColumns(table);
+  const meta = await getColumnMeta(table);
   const picked = pickValues(values, columns);
 
   const hasIdColumn = columns.includes('id');
@@ -201,8 +239,23 @@ async function upsertRow({ table, values, returningRow }) {
   }
 
   const colSql = keys.map(quoteIdent).join(', ');
-  const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
-  const insertValues = keys.map((k) => picked[k]);
+  const placeholders = keys
+    .map((k, i) => {
+      const t = meta.get(k);
+      if (t === 'jsonb') return `$${i + 1}::jsonb`;
+      if (t === 'json') return `$${i + 1}::json`;
+      return `$${i + 1}`;
+    })
+    .join(', ');
+  const insertValues = keys.map((k) => {
+    const t = meta.get(k);
+    const v = picked[k];
+    if ((t === 'jsonb' || t === 'json') && v != null) {
+      if (typeof v === 'string') return v;
+      return JSON.stringify(v);
+    }
+    return v;
+  });
 
   const updateKeys = keys.filter((k) => k !== 'id');
   const updateSql = updateKeys
@@ -241,6 +294,7 @@ async function deleteRow({ table, id }) {
 
 async function updateWhere({ table, values, filters }) {
   const columns = await getColumns(table);
+  const meta = await getColumnMeta(table);
   const picked = pickValues(values, columns);
   const keys = Object.keys(picked).filter((k) => k !== 'id');
   if (keys.length === 0) throw new Error('values boş.');
@@ -304,8 +358,15 @@ async function updateWhere({ table, values, filters }) {
 
   const setParts = [];
   for (const k of keys) {
-    params.push(picked[k]);
-    setParts.push(`${quoteIdent(k)} = $${params.length}`);
+    const t = meta.get(k);
+    const v = picked[k];
+    if ((t === 'jsonb' || t === 'json') && v != null) {
+      params.push(typeof v === 'string' ? v : JSON.stringify(v));
+      setParts.push(`${quoteIdent(k)} = $${params.length}::${t}`);
+    } else {
+      params.push(v);
+      setParts.push(`${quoteIdent(k)} = $${params.length}`);
+    }
   }
 
   const sql = `
@@ -358,6 +419,7 @@ async function deleteWhere({ table, filters }) {
 async function insertMany({ table, rows }) {
   if (!Array.isArray(rows) || rows.length === 0) return { inserted: 0 };
   const columns = await getColumns(table);
+  const meta = await getColumnMeta(table);
   const hasIdColumn = columns.includes('id');
 
   for (const row of rows) {
@@ -366,8 +428,23 @@ async function insertMany({ table, rows }) {
     const keys = Object.keys(values);
     if (keys.length === 0) continue;
     const colSql = keys.map(quoteIdent).join(', ');
-    const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
-    const insertValues = keys.map((k) => values[k]);
+    const placeholders = keys
+      .map((k, i) => {
+        const t = meta.get(k);
+        if (t === 'jsonb') return `$${i + 1}::jsonb`;
+        if (t === 'json') return `$${i + 1}::json`;
+        return `$${i + 1}`;
+      })
+      .join(', ');
+    const insertValues = keys.map((k) => {
+      const t = meta.get(k);
+      const v = values[k];
+      if ((t === 'jsonb' || t === 'json') && v != null) {
+        if (typeof v === 'string') return v;
+        return JSON.stringify(v);
+      }
+      return v;
+    });
     await query(
       `
         insert into public.${quoteIdent(table)} (${colSql})
@@ -429,6 +506,20 @@ module.exports = async (req, res) => {
     }
   if (table === 'line_stock') {
     await ensureLineStockTable();
+  }
+  if (table === 'service_fault_types') {
+    await ensureServiceFaultTypesTable();
+  }
+  if (table === 'service_accessory_types') {
+    await ensureServiceAccessoryTypesTable();
+  }
+  if (table === 'service_records') {
+    await ensureServiceRecordsColumns();
+    await ensureServiceRecordsExtendedColumns();
+    await ensureServiceRecordsStatusCheckConstraint();
+  }
+  if (table === 'service_activity_logs') {
+    await ensureServiceActivityLogsTable();
   }
     if (table === 'lines') {
       await ensureLinesOperatorColumn();

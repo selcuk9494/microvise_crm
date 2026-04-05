@@ -12,6 +12,7 @@ import '../../core/ui/app_page_layout.dart';
 import '../application_forms/application_form_model.dart';
 import '../forms/scrap_form_model.dart';
 import '../forms/transfer_form_model.dart';
+import '../service/service_definitions.dart';
 
 final deviceBrandsProvider = FutureProvider<List<DeviceBrand>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
@@ -468,7 +469,7 @@ class DefinitionsScreen extends ConsumerWidget {
     final height = MediaQuery.sizeOf(context).height;
     final availableHeight = (height - 260).clamp(520.0, 920.0);
     return DefaultTabController(
-      length: 7,
+      length: 8,
       child: AppPageLayout(
         title: 'Tanımlamalar',
         subtitle: 'Sistem tanımları ve ayarları',
@@ -490,6 +491,7 @@ class DefinitionsScreen extends ConsumerWidget {
                       Tab(text: 'KDV Oranları'),
                       Tab(text: 'Faaliyet Türü'),
                       Tab(text: 'Yazılım Firmaları'),
+                      Tab(text: 'Servis'),
                     ],
                   ),
                   const Divider(height: 1),
@@ -504,6 +506,7 @@ class DefinitionsScreen extends ConsumerWidget {
                         _TaxRatesTab(isAdmin: isAdmin),
                         _BusinessActivityTypesTab(isAdmin: isAdmin),
                         _SoftwareCompaniesTab(isAdmin: isAdmin),
+                        _ServiceDefinitionsTab(isAdmin: isAdmin),
                       ],
                     ),
                   ),
@@ -3195,6 +3198,384 @@ Future<void> _showCreateTaxRateDialog(
 
   nameController.dispose();
   rateController.dispose();
+}
+
+class _ServiceDefinitionsTab extends ConsumerWidget {
+  const _ServiceDefinitionsTab({required this.isAdmin});
+
+  final bool isAdmin;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final faultTypesAsync = ref.watch(serviceFaultTypesProvider);
+    final accessoryTypesAsync = ref.watch(serviceAccessoryTypesProvider);
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            _ServiceTypesCard<ServiceFaultType>(
+              title: 'Arıza Tipleri',
+              isAdmin: isAdmin,
+              itemsAsync: faultTypesAsync,
+              labelOf: (e) => e.name,
+              isActiveOf: (e) => e.isActive,
+              onAdd: isAdmin ? () => _showServiceTypeDialog(context, ref, table: 'service_fault_types') : null,
+              onEdit: isAdmin
+                  ? (item) => _showServiceTypeDialog(
+                        context,
+                        ref,
+                        table: 'service_fault_types',
+                        initialId: item.id,
+                        initialName: item.name,
+                      )
+                  : null,
+              onToggleActive: isAdmin
+                  ? (item, active) => _setServiceTypeActive(
+                        ref,
+                        table: 'service_fault_types',
+                        id: item.id,
+                        active: active,
+                      )
+                  : null,
+              invalidate: () => ref.invalidate(serviceFaultTypesProvider),
+            ),
+            const Gap(12),
+            _ServiceTypesCard<ServiceAccessoryType>(
+              title: 'Aksesuar Tipleri',
+              isAdmin: isAdmin,
+              itemsAsync: accessoryTypesAsync,
+              labelOf: (e) => e.name,
+              isActiveOf: (e) => e.isActive,
+              onAdd: isAdmin
+                  ? () => _showServiceTypeDialog(context, ref, table: 'service_accessory_types')
+                  : null,
+              onEdit: isAdmin
+                  ? (item) => _showServiceTypeDialog(
+                        context,
+                        ref,
+                        table: 'service_accessory_types',
+                        initialId: item.id,
+                        initialName: item.name,
+                      )
+                  : null,
+              onToggleActive: isAdmin
+                  ? (item, active) => _setServiceTypeActive(
+                        ref,
+                        table: 'service_accessory_types',
+                        id: item.id,
+                        active: active,
+                      )
+                  : null,
+              invalidate: () => ref.invalidate(serviceAccessoryTypesProvider),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ServiceTypesCard<T> extends StatelessWidget {
+  const _ServiceTypesCard({
+    required this.title,
+    required this.isAdmin,
+    required this.itemsAsync,
+    required this.labelOf,
+    required this.isActiveOf,
+    required this.onAdd,
+    required this.onEdit,
+    required this.onToggleActive,
+    required this.invalidate,
+  });
+
+  final String title;
+  final bool isAdmin;
+  final AsyncValue<List<T>> itemsAsync;
+  final String Function(T) labelOf;
+  final bool Function(T) isActiveOf;
+  final VoidCallback? onAdd;
+  final void Function(T)? onEdit;
+  final void Function(T, bool)? onToggleActive;
+  final VoidCallback invalidate;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              if (isAdmin)
+                OutlinedButton.icon(
+                  onPressed: onAdd,
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Ekle'),
+                ),
+            ],
+          ),
+          const Gap(10),
+          itemsAsync.when(
+            data: (items) {
+              if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+              return Column(
+                children: [
+                  for (final item in items)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.border),
+                        color: const Color(0xFFF8FAFC),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              labelOf(item),
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                          ),
+                          const Gap(8),
+                          AppBadge(
+                            label: isActiveOf(item) ? 'Aktif' : 'Pasif',
+                            tone: isActiveOf(item) ? AppBadgeTone.success : AppBadgeTone.neutral,
+                            dense: true,
+                          ),
+                          if (isAdmin) ...[
+                            const Gap(8),
+                            PopupMenuButton<String>(
+                              tooltip: 'İşlem',
+                              onSelected: (v) {
+                                if (v == 'edit') onEdit?.call(item);
+                                if (v == 'passive') onToggleActive?.call(item, false);
+                                if (v == 'active') onToggleActive?.call(item, true);
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+                                if (isActiveOf(item))
+                                  const PopupMenuItem(value: 'passive', child: Text('Pasife Al'))
+                                else
+                                  const PopupMenuItem(value: 'active', child: Text('Aktif Yap')),
+                              ],
+                              child: const SizedBox(
+                                width: 36,
+                                height: 34,
+                                child: Icon(Icons.more_horiz_rounded),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (_, _) => const _Empty(text: 'Yüklenemedi.'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _setServiceTypeActive(
+  WidgetRef ref, {
+  required String table,
+  required String id,
+  required bool active,
+}) async {
+  final apiClient = ref.read(apiClientProvider);
+  final client = ref.read(supabaseClientProvider);
+  if (apiClient == null && client == null) return;
+  if (apiClient != null) {
+    await apiClient.postJson(
+      '/mutate',
+      body: {
+        'op': 'updateWhere',
+        'table': table,
+        'filters': [
+          {'col': 'id', 'op': 'eq', 'value': id},
+        ],
+        'values': {'is_active': active},
+      },
+    );
+  } else {
+    await client!.from(table).update({'is_active': active}).eq('id', id);
+  }
+}
+
+Future<void> _showServiceTypeDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required String table,
+  String? initialId,
+  String? initialName,
+}) async {
+  final nameController = TextEditingController(text: initialName ?? '');
+  final sortController = TextEditingController(text: '0');
+  bool saving = false;
+
+  final ok = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: AppCard(
+          padding: const EdgeInsets.all(20),
+          child: StatefulBuilder(
+            builder: (context, setState) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        initialId == null ? 'Ekle' : 'Düzenle',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Kapat',
+                      onPressed: saving ? null : () => Navigator.of(context).pop(false),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Ad',
+                    hintText: 'Örn: Soğutmuyor',
+                  ),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: sortController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Sıra',
+                    hintText: '0',
+                  ),
+                ),
+                const Gap(18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: saving ? null : () => Navigator.of(context).pop(false),
+                        child: const Text('Vazgeç'),
+                      ),
+                    ),
+                    const Gap(10),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                final apiClient = ref.read(apiClientProvider);
+                                final client = ref.read(supabaseClientProvider);
+                                if (apiClient == null && client == null) return;
+
+                                final name = nameController.text.trim();
+                                if (name.isEmpty) return;
+                                final sortOrder =
+                                    int.tryParse(sortController.text.trim()) ?? 0;
+
+                                setState(() => saving = true);
+                                try {
+                                  if (apiClient != null) {
+                                    if (initialId == null) {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'insertMany',
+                                          'table': table,
+                                          'rows': [
+                                            {
+                                              'name': name,
+                                              'sort_order': sortOrder,
+                                              'is_active': true,
+                                            },
+                                          ],
+                                        },
+                                      );
+                                    } else {
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'updateWhere',
+                                          'table': table,
+                                          'filters': [
+                                            {'col': 'id', 'op': 'eq', 'value': initialId},
+                                          ],
+                                          'values': {
+                                            'name': name,
+                                            'sort_order': sortOrder,
+                                          },
+                                        },
+                                      );
+                                    }
+                                  } else {
+                                    if (initialId == null) {
+                                      await client!.from(table).insert({
+                                        'name': name,
+                                        'sort_order': sortOrder,
+                                        'is_active': true,
+                                      });
+                                    } else {
+                                      await client!.from(table).update({
+                                        'name': name,
+                                        'sort_order': sortOrder,
+                                      }).eq('id', initialId);
+                                    }
+                                  }
+                                  if (!context.mounted) return;
+                                  Navigator.of(context).pop(true);
+                                } finally {
+                                  setState(() => saving = false);
+                                }
+                              },
+                        child: Text(initialId == null ? 'Ekle' : 'Kaydet'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  nameController.dispose();
+  sortController.dispose();
+  if (ok == true) {
+    if (table == 'service_fault_types') {
+      ref.invalidate(serviceFaultTypesProvider);
+    }
+    if (table == 'service_accessory_types') {
+      ref.invalidate(serviceAccessoryTypesProvider);
+    }
+  }
 }
 
 Color _parseColor(String hex) {

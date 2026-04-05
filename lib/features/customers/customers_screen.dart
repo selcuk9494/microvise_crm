@@ -13,6 +13,7 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../../core/ui/empty_state_card.dart';
+import '../../core/supabase/supabase_providers.dart';
 import 'customer_form_dialog.dart';
 import 'customer_model.dart';
 import 'customers_providers.dart';
@@ -46,8 +47,70 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     super.dispose();
   }
 
+  String _normalizeHeader(String value) {
+    var t = value.trim().toLowerCase();
+    t = t
+        .replaceAll('ı', 'i')
+        .replaceAll('İ', 'i')
+        .replaceAll('ğ', 'g')
+        .replaceAll('Ğ', 'g')
+        .replaceAll('ş', 's')
+        .replaceAll('Ş', 's')
+        .replaceAll('ç', 'c')
+        .replaceAll('Ç', 'c')
+        .replaceAll('ö', 'o')
+        .replaceAll('Ö', 'o')
+        .replaceAll('ü', 'u')
+        .replaceAll('Ü', 'u');
+    t = t.replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+    t = t.replaceAll(RegExp(r'_+'), '_');
+    t = t.replaceAll(RegExp(r'^_+|_+$'), '');
+    return t;
+  }
+
+  String _coerceNumberLike(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty) return '';
+    final lowered = t.toLowerCase();
+    if (lowered.contains('e')) {
+      final d = double.tryParse(lowered.replaceAll('+', ''));
+      if (d != null && d.isFinite) {
+        return d.round().toString();
+      }
+    }
+    if (RegExp(r'^\d+\.0+$').hasMatch(t)) {
+      return t.split('.').first;
+    }
+    return t;
+  }
+
+  String _digitsOnly(String raw) => raw.replaceAll(RegExp(r'[^0-9]'), '');
+
+  String _normalizeVkn(String raw) {
+    final coerced = _coerceNumberLike(raw);
+    return _digitsOnly(coerced);
+  }
+
   String? _toIsoDate(Object? raw) {
-    final text = (raw ?? '').toString().trim();
+    if (raw == null) return null;
+    if (raw is DateTime) {
+      final y = raw.year.toString().padLeft(4, '0');
+      final m = raw.month.toString().padLeft(2, '0');
+      final d = raw.day.toString().padLeft(2, '0');
+      return '$y-$m-$d';
+    }
+    if (raw is num && raw.isFinite) {
+      final days = raw.round();
+      if (days > 0) {
+        final base = DateTime(1899, 12, 30);
+        final dt = base.add(Duration(days: days));
+        final y = dt.year.toString().padLeft(4, '0');
+        final m = dt.month.toString().padLeft(2, '0');
+        final d = dt.day.toString().padLeft(2, '0');
+        return '$y-$m-$d';
+      }
+    }
+    final text = _coerceNumberLike(raw.toString());
     if (text.isEmpty) return null;
     final normalized = text.replaceAll('/', '.');
     final iso = DateTime.tryParse(normalized);
@@ -71,14 +134,6 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       }
     }
     return null;
-  }
-
-  String _normalizeVkn(String raw) {
-    final t = raw.trim().replaceAll(' ', '');
-    if (t.isEmpty) return '';
-    final numeric = int.tryParse(t);
-    if (numeric == null) return t;
-    return numeric.toString();
   }
 
   Future<void> _exportCustomers() async {
@@ -221,7 +276,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
 
   Future<void> _importLinesAndGmp3() async {
     final apiClient = ref.read(apiClientProvider);
-    if (apiClient == null) return;
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
 
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -232,14 +288,26 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final bytes = file?.bytes;
     if (bytes == null || bytes.isEmpty) return;
 
-    final lookupResponse = await apiClient.getJson(
-      '/data',
-      queryParameters: {'resource': 'customers_lookup_vkn'},
-    );
-    final lookupItems = ((lookupResponse['items'] as List?) ?? const [])
-        .whereType<Map>()
-        .map((e) => e.cast<String, dynamic>())
-        .toList(growable: false);
+    List<Map<String, dynamic>> lookupItems;
+    if (apiClient != null) {
+      final lookupResponse = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'customers_lookup_vkn'},
+      );
+      lookupItems = ((lookupResponse['items'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList(growable: false);
+    } else {
+      final rows = await client!
+          .from('customers')
+          .select('id,name,vkn,is_active')
+          .order('name', ascending: true)
+          .limit(5000);
+      lookupItems = (rows as List)
+          .cast<Map<String, dynamic>>()
+          .toList(growable: false);
+    }
 
     final customerIdByVkn = <String, String>{};
     for (final row in lookupItems) {
@@ -249,14 +317,26 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       customerIdByVkn[vkn] = id;
     }
 
-    final companiesResponse = await apiClient.getJson(
-      '/data',
-      queryParameters: {'resource': 'definition_software_companies'},
-    );
-    final companyRows = ((companiesResponse['items'] as List?) ?? const [])
-        .whereType<Map>()
-        .map((e) => e.cast<String, dynamic>())
-        .toList(growable: false);
+    List<Map<String, dynamic>> companyRows;
+    if (apiClient != null) {
+      final companiesResponse = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'definition_software_companies'},
+      );
+      companyRows = ((companiesResponse['items'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList(growable: false);
+    } else {
+      final rows = await client!
+          .from('software_companies')
+          .select('id,name,is_active')
+          .order('name', ascending: true)
+          .limit(5000);
+      companyRows = (rows as List)
+          .cast<Map<String, dynamic>>()
+          .toList(growable: false);
+    }
     String normalizeCompanyName(String value) {
       return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
     }
@@ -290,11 +370,20 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     List<String> headerOf(List<List<excel.Data?>> rows) {
       if (rows.isEmpty) return const [];
       return rows.first
-          .map((c) => (c?.value ?? '').toString().trim().toLowerCase())
+          .map((c) => _normalizeHeader((c?.value ?? '').toString()))
           .toList(growable: false);
     }
 
-    int indexOf(List<String> header, String key) => header.indexOf(key);
+    int indexOf(List<String> header, String key) =>
+        header.indexOf(_normalizeHeader(key));
+
+    int indexOfAny(List<String> header, List<String> keys) {
+      for (final k in keys) {
+        final idx = indexOf(header, k);
+        if (idx >= 0) return idx;
+      }
+      return -1;
+    }
 
     String cellString(
       List<excel.Data?> row,
@@ -303,7 +392,17 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     ) {
       final idx = indexOf(header, key);
       if (idx < 0 || idx >= row.length) return '';
-      return (row[idx]?.value ?? '').toString().trim();
+      return _coerceNumberLike((row[idx]?.value ?? '').toString()).trim();
+    }
+
+    String cellStringAny(
+      List<excel.Data?> row,
+      List<String> header,
+      List<String> keys,
+    ) {
+      final idx = indexOfAny(header, keys);
+      if (idx < 0 || idx >= row.length) return '';
+      return _coerceNumberLike((row[idx]?.value ?? '').toString()).trim();
     }
 
     bool cellBool(
@@ -362,7 +461,15 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       for (var rowIndex = 1; rowIndex < linesRows.length; rowIndex++) {
         final row = linesRows[rowIndex];
         final excelRowNo = rowIndex + 1;
-        final vkn = _normalizeVkn(cellString(row, linesHeader, 'customer_vkn'));
+        final vkn = _normalizeVkn(
+          cellStringAny(row, linesHeader, [
+            'customer_vkn',
+            'vkn',
+            'customer_vat',
+            'vergi_no',
+            'vergi',
+          ]),
+        );
         final customerId = customerIdByVkn[vkn];
         if ((customerId ?? '').isEmpty) {
           if (vkn.isNotEmpty) {
@@ -370,7 +477,17 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           }
           continue;
         }
-        final number = cellString(row, linesHeader, 'line_number');
+        final number = _digitsOnly(
+          _coerceNumberLike(
+            cellStringAny(row, linesHeader, [
+              'line_number',
+              'number',
+              'hat_numarasi',
+              'hat_no',
+              'hat',
+            ]),
+          ),
+        );
         if (number.isEmpty) continue;
 
         final startsAt =
@@ -380,13 +497,25 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         final endIso = endsAt ?? expiresAt ?? defaultEndIso;
         final expIso = expiresAt ?? endIso;
 
-        final label = cellString(row, linesHeader, 'line_label');
-        final sim = cellString(row, linesHeader, 'sim_number').isNotEmpty
-            ? cellString(row, linesHeader, 'sim_number')
-            : cellString(row, linesHeader, 'sim_no');
-        final operatorRaw = cellString(row, linesHeader, 'operator').isNotEmpty
-            ? cellString(row, linesHeader, 'operator')
-            : cellString(row, linesHeader, 'operatör');
+        final label = cellStringAny(row, linesHeader, [
+          'line_label',
+          'label',
+          'etiket',
+        ]);
+        final sim = _coerceNumberLike(
+          cellStringAny(row, linesHeader, [
+            'sim_number',
+            'sim_no',
+            'sim',
+            'sim_numarasi',
+          ]),
+        );
+        final operatorRaw = cellStringAny(row, linesHeader, [
+          'operator',
+          'operator_name',
+          'operatör',
+          'operator',
+        ]);
         final operator = normalizeOperator(operatorRaw);
 
         lineRows.add({
@@ -415,17 +544,29 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             .toList(growable: false);
 
         if (uniqueCustomerIds.isNotEmpty) {
-          final response = await apiClient.getJson(
-            '/data',
-            queryParameters: {
-              'resource': 'customer_lines_numbers_bulk',
-              'ids': uniqueCustomerIds.join(','),
-            },
-          );
-          final rows = ((response['items'] as List?) ?? const [])
-              .whereType<Map>()
-              .map((e) => e.cast<String, dynamic>())
-              .toList(growable: false);
+          List<Map<String, dynamic>> rows;
+          if (apiClient != null) {
+            final response = await apiClient.getJson(
+              '/data',
+              queryParameters: {
+                'resource': 'customer_lines_numbers_bulk',
+                'ids': uniqueCustomerIds.join(','),
+              },
+            );
+            rows = ((response['items'] as List?) ?? const [])
+                .whereType<Map>()
+                .map((e) => e.cast<String, dynamic>())
+                .toList(growable: false);
+          } else {
+            final result = await client!
+                .from('lines')
+                .select('id,customer_id,number,sim_number,operator')
+                .inFilter('customer_id', uniqueCustomerIds)
+                .limit(5000);
+            rows = (result as List)
+                .cast<Map<String, dynamic>>()
+                .toList(growable: false);
+          }
 
           final existingByKey = <String, Map<String, dynamic>>{};
           for (final row in rows) {
@@ -495,7 +636,15 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       for (var rowIndex = 1; rowIndex < gmp3Rows.length; rowIndex++) {
         final row = gmp3Rows[rowIndex];
         final excelRowNo = rowIndex + 1;
-        final vkn = _normalizeVkn(cellString(row, gmp3Header, 'customer_vkn'));
+        final vkn = _normalizeVkn(
+          cellStringAny(row, gmp3Header, [
+            'customer_vkn',
+            'vkn',
+            'customer_vat',
+            'vergi_no',
+            'vergi',
+          ]),
+        );
         final customerId = customerIdByVkn[vkn];
         if ((customerId ?? '').isEmpty) {
           if (vkn.isNotEmpty) {
@@ -511,13 +660,23 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         final endIso = endsAt ?? expiresAt ?? defaultEndIso;
         final expIso = expiresAt ?? endIso;
 
-        final name = cellString(row, gmp3Header, 'license_name');
-        final companyText = cellString(row, gmp3Header, 'software_company').isNotEmpty
-            ? cellString(row, gmp3Header, 'software_company')
-            : cellString(row, gmp3Header, 'yazılım firması');
-        final registryNumber = cellString(row, gmp3Header, 'registry_number').isNotEmpty
-            ? cellString(row, gmp3Header, 'registry_number')
-            : cellString(row, gmp3Header, 'sicil');
+        final name = cellStringAny(row, gmp3Header, [
+          'license_name',
+          'name',
+          'lisans_adi',
+          'lisans',
+        ]);
+        final companyText = cellStringAny(row, gmp3Header, [
+          'software_company',
+          'yazilim_firmasi',
+          'yazılım firması',
+          'firma',
+        ]);
+        final registryNumber = cellStringAny(row, gmp3Header, [
+          'registry_number',
+          'sicil',
+          'sicil_no',
+        ]);
         final companyKey = normalizeCompanyName(companyText);
         final companyId = companyKey.isEmpty ? null : companyIdByName[companyKey];
         if (companyKey.isNotEmpty && (companyId ?? '').isEmpty) {
@@ -625,52 +784,99 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       ),
     );
 
+    int insertedLines = 0;
+    int insertedLicenses = 0;
+    int updatedLines = 0;
+
     try {
       const chunkSize = 200;
-      for (var i = 0; i < lineRows.length; i += chunkSize) {
-        final chunk = lineRows.sublist(
-          i,
-          (i + chunkSize) > lineRows.length ? lineRows.length : (i + chunkSize),
-        );
-        final sanitized = [
-          for (final row in chunk) {...row}..remove('_rowIndex'),
-        ];
-        await apiClient.postJson(
-          '/mutate',
-          body: {'op': 'insertMany', 'table': 'lines', 'rows': sanitized},
-        );
+
+      Future<void> insertManySafe({
+        required String table,
+        required List<Map<String, dynamic>> rows,
+        required void Function() onInserted,
+      }) async {
+        if (rows.isEmpty) return;
+        for (var i = 0; i < rows.length; i += chunkSize) {
+          final chunk = rows.sublist(
+            i,
+            (i + chunkSize) > rows.length ? rows.length : (i + chunkSize),
+          );
+          final sanitized = [
+            for (final row in chunk) {...row}..remove('_rowIndex'),
+          ];
+          try {
+            if (apiClient != null) {
+              await apiClient.postJson(
+                '/mutate',
+                body: {'op': 'insertMany', 'table': table, 'rows': sanitized},
+              );
+            } else {
+              await client!.from(table).insert(sanitized);
+            }
+            for (var k = 0; k < sanitized.length; k++) {
+              onInserted();
+            }
+          } catch (e) {
+            for (final row in chunk) {
+              final rn = row['_rowIndex'];
+              try {
+                final one = {...row}..remove('_rowIndex');
+                if (apiClient != null) {
+                  await apiClient.postJson(
+                    '/mutate',
+                    body: {'op': 'insertMany', 'table': table, 'rows': [one]},
+                  );
+                } else {
+                  await client!.from(table).insert(one);
+                }
+                onInserted();
+              } catch (inner) {
+                errors.add('$table satır $rn: $inner');
+              }
+            }
+            errors.add('$table: toplu aktarım hatası: $e');
+          }
+        }
       }
+
+      await insertManySafe(
+        table: 'lines',
+        rows: lineRows,
+        onInserted: () => insertedLines += 1,
+      );
+
       for (final row in lineUpdates) {
         final id = (row['id'] ?? '').toString().trim();
         final values = (row['values'] as Map?)?.cast<String, dynamic>() ?? const {};
         if (id.isEmpty || values.isEmpty) continue;
-        await apiClient.postJson(
-          '/mutate',
-          body: {
-            'op': 'updateWhere',
-            'table': 'lines',
-            'filters': [
-              {'col': 'id', 'op': 'eq', 'value': id},
-            ],
-            'values': values,
-          },
-        );
+        try {
+          if (apiClient != null) {
+            await apiClient.postJson(
+              '/mutate',
+              body: {
+                'op': 'updateWhere',
+                'table': 'lines',
+                'filters': [
+                  {'col': 'id', 'op': 'eq', 'value': id},
+                ],
+                'values': values,
+              },
+            );
+          } else {
+            await client!.from('lines').update(values).eq('id', id);
+          }
+          updatedLines += 1;
+        } catch (e) {
+          errors.add('Hat güncelleme: $id: $e');
+        }
       }
-      for (var i = 0; i < licenseRows.length; i += chunkSize) {
-        final chunk = licenseRows.sublist(
-          i,
-          (i + chunkSize) > licenseRows.length
-              ? licenseRows.length
-              : (i + chunkSize),
-        );
-        final sanitized = [
-          for (final row in chunk) {...row}..remove('_rowIndex'),
-        ];
-        await apiClient.postJson(
-          '/mutate',
-          body: {'op': 'insertMany', 'table': 'licenses', 'rows': sanitized},
-        );
-      }
+
+      await insertManySafe(
+        table: 'licenses',
+        rows: licenseRows,
+        onInserted: () => insertedLicenses += 1,
+      );
     } finally {
       if (mounted) Navigator.of(context).pop();
     }
@@ -681,9 +887,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'İçe aktarıldı: Hat ${lineRows.length} • GMP3 ${licenseRows.length}'
-          '${lineUpdates.isEmpty ? '' : ' • Hat Güncelleme ${lineUpdates.length}'}'
-          '${errors.isEmpty ? '' : ' • Atlanan ${errors.length}'}',
+          'İçe aktarıldı: Hat $insertedLines • GMP3 $insertedLicenses'
+          '${updatedLines == 0 ? '' : ' • Hat Güncelleme $updatedLines'}'
+          '${errors.isEmpty ? '' : ' • Uyarı/Hata ${errors.length}'}',
         ),
       ),
     );

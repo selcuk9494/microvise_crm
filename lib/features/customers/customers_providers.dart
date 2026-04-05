@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/format/search_normalize.dart';
 import '../../core/supabase/supabase_providers.dart';
 import 'customer_model.dart';
 
@@ -141,6 +142,106 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
   }
 
   final start = (page - 1) * customerPageSize;
+  final searchNorm = normalizeSearchText(search);
+
+  if (searchNorm.isNotEmpty) {
+    final allRows = await _selectCustomersWithFallback(
+      client,
+      search: '',
+      city: city,
+      showPassive: showPassive,
+      sort: sort,
+      from: 0,
+      to: 4999,
+    );
+
+    bool matches(Map<String, dynamic> row) {
+      final hay = normalizeSearchText(
+        [
+          row['name'] ?? '',
+          row['director_name'] ?? '',
+          row['email'] ?? '',
+          row['vkn'] ?? '',
+          row['tckn_ms'] ?? '',
+          row['phone_1'] ?? '',
+          row['phone_2'] ?? '',
+          row['phone_3'] ?? '',
+          row['city'] ?? '',
+        ].join(' '),
+      );
+      return hay.contains(searchNorm);
+    }
+
+    final filtered = allRows.where(matches).toList(growable: false);
+    final totalCount = filtered.length;
+    if (totalCount == 0 || start >= totalCount) {
+      return CustomerPageData(
+        items: const [],
+        page: page,
+        hasNextPage: false,
+        totalCount: totalCount,
+      );
+    }
+
+    final pageRows = filtered.skip(start).take(customerPageSize).toList(growable: false);
+    final currentPageIds = pageRows
+        .map((row) => row['id']?.toString())
+        .whereType<String>()
+        .toList(growable: false);
+    final hasNextPage = start + pageRows.length < totalCount;
+
+    if (currentPageIds.isEmpty) {
+      return CustomerPageData(
+        items: const [],
+        page: page,
+        hasNextPage: false,
+        totalCount: totalCount,
+      );
+    }
+
+    final ids = currentPageIds;
+    final lineRows = await client
+        .from('lines')
+        .select('customer_id')
+        .eq('is_active', true)
+        .inFilter('customer_id', ids);
+
+    final gmp3Rows = await client
+        .from('licenses')
+        .select('customer_id')
+        .eq('is_active', true)
+        .eq('license_type', 'gmp3')
+        .inFilter('customer_id', ids);
+
+    final lineCounts = <String, int>{};
+    for (final row in (lineRows as List)) {
+      final id = row['customer_id']?.toString();
+      if (id == null) continue;
+      lineCounts.update(id, (v) => v + 1, ifAbsent: () => 1);
+    }
+
+    final gmp3Counts = <String, int>{};
+    for (final row in (gmp3Rows as List)) {
+      final id = row['customer_id']?.toString();
+      if (id == null) continue;
+      gmp3Counts.update(id, (v) => v + 1, ifAbsent: () => 1);
+    }
+
+    return CustomerPageData(
+      page: page,
+      hasNextPage: hasNextPage,
+      totalCount: totalCount,
+      items: pageRows
+          .map(
+            (e) => Customer.fromJson({
+              ...e,
+              'active_line_count': lineCounts[e['id']?.toString()] ?? 0,
+              'active_gmp3_count': gmp3Counts[e['id']?.toString()] ?? 0,
+            }),
+          )
+          .toList(growable: false),
+    );
+  }
 
   var totalCountQuery = client.from('customers').count();
   totalCountQuery = _applyCustomerFilters(
@@ -331,7 +432,25 @@ dynamic _applyCustomerFilters(
     query = query.eq('is_active', true);
   }
   if (search.isNotEmpty) {
-    query = query.ilike('name', '%$search%');
+    final variants = buildSearchVariants(search);
+    if (variants.isNotEmpty) {
+      final clauses = <String>[];
+      for (final v in variants) {
+        final safe = v.replaceAll(',', ' ').replaceAll('(', ' ').replaceAll(')', ' ');
+        final like = '%$safe%';
+        clauses.add('name.ilike.$like');
+        clauses.add('director_name.ilike.$like');
+        clauses.add('email.ilike.$like');
+        clauses.add('vkn.ilike.$like');
+        clauses.add('tckn_ms.ilike.$like');
+        clauses.add('phone_1.ilike.$like');
+        clauses.add('phone_2.ilike.$like');
+        clauses.add('phone_3.ilike.$like');
+      }
+      query = query.or(clauses.join(','));
+    } else {
+      query = query.ilike('name', '%$search%');
+    }
   }
   return query;
 }
