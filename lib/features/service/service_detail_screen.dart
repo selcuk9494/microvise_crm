@@ -80,13 +80,10 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
             label: const Text('Teslim'),
           ),
         ],
-        body: SingleChildScrollView(
-          primary: true,
-          child: _Body(
-            key: _bodyKey,
-            detail: detail,
-            onChanged: () => ref.invalidate(serviceDetailProvider(widget.serviceId)),
-          ),
+        body: _Body(
+          key: _bodyKey,
+          detail: detail,
+          onChanged: () => ref.invalidate(serviceDetailProvider(widget.serviceId)),
         ),
       ),
       loading: () => const AppPageLayout(
@@ -131,6 +128,7 @@ class _BodyState extends ConsumerState<_Body> {
   late final TextEditingController _registryController;
   late final TextEditingController _notesController;
   String? _faultTypeId;
+  late String _currency;
   bool _accessoriesReceived = false;
   final Set<String> _selectedAccessoryTypeIds = {};
   List<String> _deviceImages = const [];
@@ -146,6 +144,7 @@ class _BodyState extends ConsumerState<_Body> {
     _labor = widget.detail.labor.map(_LineItemDraft.from).toList();
     _registryController = TextEditingController(text: widget.detail.registryNumber ?? '');
     _notesController = TextEditingController(text: widget.detail.notes ?? '');
+    _currency = (widget.detail.currency ?? 'TRY').toUpperCase();
     _faultTypeId = (widget.detail.faultTypeId ?? '').trim().isEmpty
         ? null
         : widget.detail.faultTypeId;
@@ -167,6 +166,10 @@ class _BodyState extends ConsumerState<_Body> {
     final nextNotes = widget.detail.notes ?? '';
     if (_notesController.text != nextNotes) {
       _notesController.text = nextNotes;
+    }
+    final nextCurrency = (widget.detail.currency ?? 'TRY').toUpperCase();
+    if (_currency != nextCurrency) {
+      _currency = nextCurrency;
     }
     if (oldWidget.detail.steps != widget.detail.steps) {
       for (final c in _stepControllers) {
@@ -207,6 +210,17 @@ class _BodyState extends ConsumerState<_Body> {
     return sum;
   }
 
+  String get _currencySymbol {
+    return switch (_currency) {
+      'USD' => r'$',
+      'EUR' => '€',
+      _ => '₺',
+    };
+  }
+
+  NumberFormat get _moneyFormat =>
+      NumberFormat.currency(locale: 'tr_TR', symbol: _currencySymbol, decimalDigits: 2);
+
   Future<void> _save() async {
     final apiClient = ref.read(apiClientProvider);
     if (apiClient == null) return;
@@ -230,6 +244,7 @@ class _BodyState extends ConsumerState<_Body> {
             'parts': _parts.map((e) => e.toJson()).toList(),
             'labor': _labor.map((e) => e.toJson()).toList(),
             'total_amount': _total,
+            'currency': _currency,
           },
         },
       );
@@ -281,6 +296,7 @@ class _BodyState extends ConsumerState<_Body> {
             'parts': _parts.map((e) => e.toJson()).toList(),
             'labor': _labor.map((e) => e.toJson()).toList(),
             'total_amount': _total,
+            'currency': _currency,
           },
         },
       );
@@ -339,6 +355,7 @@ class _BodyState extends ConsumerState<_Body> {
                 ? null
                 : _registryController.text.trim(),
             'fault_type_id': (_faultTypeId ?? '').trim().isEmpty ? null : _faultTypeId,
+            'currency': _currency,
             'accessories_received': _accessoriesReceived,
             'accessory_type_ids': _selectedAccessoryTypeIds.toList(growable: false),
             'notes':
@@ -556,7 +573,8 @@ class _BodyState extends ConsumerState<_Body> {
               .toList(growable: false) ??
           widget.detail.accessoryTypeIds.toList(growable: false);
       try {
-        await shareServicePdf(detail: widget.detail, accessoryNames: accessoryNames);
+        final refreshed = await ref.read(serviceDetailProvider(widget.detail.id).future);
+        await shareServicePdf(detail: refreshed, accessoryNames: accessoryNames);
       } catch (_) {}
     } finally {
       left.dispose();
@@ -575,21 +593,92 @@ class _BodyState extends ConsumerState<_Body> {
       _ => (widget.detail.status, AppBadgeTone.neutral),
     };
 
-    return Column(
-      children: [
-        AppCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
+
+    Future<void> pickAccessories() async {
+      final items = await ref.read(serviceAccessoryTypesProvider.future);
+      if (!context.mounted) return;
+      final selected = {..._selectedAccessoryTypeIds};
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (context) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              bottom: MediaQuery.viewInsetsOf(context).bottom + 12,
+              top: 6,
+            ),
+            child: StatefulBuilder(
+              builder: (context, setLocal) => Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: Text(
-                      widget.detail.customerName ?? '—',
-                      style: Theme.of(context).textTheme.titleSmall,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Aksesuarlar',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _selectedAccessoryTypeIds
+                              ..clear()
+                              ..addAll(selected);
+                          });
+                          Navigator.of(context).pop();
+                        },
+                        child: const Text('Tamam'),
+                      ),
+                    ],
+                  ),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final t in items)
+                          CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            value: selected.contains(t.id),
+                            onChanged: (v) => setLocal(() {
+                              if (v == true) {
+                                selected.add(t.id);
+                              } else {
+                                selected.remove(t.id);
+                              }
+                            }),
+                            title: Text(t.name),
+                          ),
+                      ],
                     ),
                   ),
-                  AppBadge(label: status.$1, tone: status.$2),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget headerCard() {
+      return AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.detail.customerName ?? '—',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                AppBadge(label: status.$1, tone: status.$2),
+                if (!isMobile) ...[
                   if (widget.detail.status == 'waiting' || widget.detail.status == 'open') ...[
                     const Gap(8),
                     FilledButton.tonal(
@@ -624,33 +713,334 @@ class _BodyState extends ConsumerState<_Body> {
                     ),
                   ),
                 ],
+              ],
+            ),
+            const Gap(6),
+            Text(
+              date,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: const Color(0xFF64748B)),
+            ),
+            if (isMobile) ...[
+              const Gap(10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  if (widget.detail.status == 'waiting' || widget.detail.status == 'open')
+                    FilledButton.tonal(
+                      onPressed: _saving ? null : _sendToApproval,
+                      child: const Text('Onaya Gönder'),
+                    ),
+                  if (widget.detail.status == 'approval' || widget.detail.status == 'in_progress')
+                    FilledButton.tonal(
+                      onPressed: _saving ? null : _markReady,
+                      child: const Text('Hazır'),
+                    ),
+                  OutlinedButton(
+                    onPressed: _saving
+                        ? null
+                        : () async {
+                            final next = await showModalBottomSheet<String>(
+                              context: context,
+                              showDragHandle: true,
+                              builder: (context) => SafeArea(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ListTile(
+                                      title: const Text('Bekliyor'),
+                                      onTap: () => Navigator.of(context).pop('waiting'),
+                                    ),
+                                    ListTile(
+                                      title: const Text('Onayda'),
+                                      onTap: () => Navigator.of(context).pop('approval'),
+                                    ),
+                                    ListTile(
+                                      title: const Text('Hazır'),
+                                      onTap: () => Navigator.of(context).pop('ready'),
+                                    ),
+                                    ListTile(
+                                      title: const Text('Teslim'),
+                                      onTap: () => Navigator.of(context).pop('done'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                            if (next == null || next.trim().isEmpty) return;
+                            await _setStatus(next.trim());
+                          },
+                    child: const Text('Durum'),
+                  ),
+                ],
               ),
-              const Gap(6),
+            ],
+          ],
+        ),
+      );
+    }
+
+    Widget infoCard() {
+      return AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Servis Bilgileri',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                OutlinedButton(
+                  onPressed: _saving ? null : _saveInfo,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Kaydet'),
+                ),
+              ],
+            ),
+            const Gap(10),
+            TextField(
+              controller: _registryController,
+              decoration: const InputDecoration(
+                labelText: 'Sicil No',
+                hintText: 'SN...',
+              ),
+            ),
+            const Gap(10),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _currency,
+                    items: const [
+                      DropdownMenuItem(value: 'TRY', child: Text('TRY (₺)')),
+                      DropdownMenuItem(value: 'USD', child: Text(r'USD ($)')),
+                      DropdownMenuItem(value: 'EUR', child: Text('EUR (€)')),
+                    ],
+                    onChanged: _saving ? null : (v) => setState(() => _currency = v ?? 'TRY'),
+                    decoration: const InputDecoration(labelText: 'Para Birimi'),
+                  ),
+                ),
+                const Gap(10),
+                Expanded(
+                  child: ref.watch(serviceFaultTypesProvider).when(
+                        data: (items) => DropdownButtonFormField<String?>(
+                          initialValue: (_faultTypeId ?? '').trim().isEmpty ? null : _faultTypeId,
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('Arıza Tipi'),
+                            ),
+                            for (final t in items)
+                              DropdownMenuItem<String?>(
+                                value: t.id,
+                                child: Text(t.name),
+                              ),
+                          ],
+                          onChanged: _saving ? null : (v) => setState(() => _faultTypeId = v),
+                          decoration: const InputDecoration(labelText: 'Arıza Tipi'),
+                        ),
+                        loading: () => const SizedBox.shrink(),
+                        error: (_, _) => const SizedBox.shrink(),
+                      ),
+                ),
+              ],
+            ),
+            const Gap(8),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              value: _accessoriesReceived,
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() {
+                        _accessoriesReceived = v;
+                        if (!v) _selectedAccessoryTypeIds.clear();
+                      }),
+              title: const Text('Aksesuar Teslim Alındı'),
+            ),
+            if (_accessoriesReceived)
+              OutlinedButton.icon(
+                onPressed: _saving ? null : pickAccessories,
+                icon: const Icon(Icons.tune_rounded, size: 18),
+                label: Text('Aksesuarları Seç (${_selectedAccessoryTypeIds.length})'),
+              ),
+            const Gap(10),
+            TextField(
+              controller: _notesController,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Not',
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget mediaCard() {
+      return AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Fotoğraflar & İmzalar',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _saving ? null : () => _captureSignatures(delivery: false),
+                  icon: const Icon(Icons.edit_rounded, size: 18),
+                  label: const Text('Teslim Alım'),
+                ),
+                const Gap(8),
+                FilledButton.icon(
+                  onPressed: _saving ? null : () => _captureSignatures(delivery: true),
+                  icon: const Icon(Icons.check_rounded, size: 18),
+                  label: const Text('Teslim'),
+                ),
+              ],
+            ),
+            const Gap(10),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _saving ? null : () => _addImage(ImageSource.camera),
+                  icon: const Icon(Icons.photo_camera_rounded, size: 18),
+                  label: const Text('Kamera'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _saving ? null : () => _addImage(ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_rounded, size: 18),
+                  label: const Text('Galeri'),
+                ),
+              ],
+            ),
+            const Gap(10),
+            if (_deviceImages.isEmpty)
               Text(
-                date,
+                'Fotoğraf yok.',
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
                     ?.copyWith(color: const Color(0xFF64748B)),
-              ),
-            ],
-          ),
-        ),
-        const Gap(12),
-        AppCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+              )
+            else
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
                 children: [
-                  Expanded(
-                    child: Text(
-                      'Servis Bilgileri',
-                      style: Theme.of(context).textTheme.titleSmall,
+                  for (int i = 0; i < _deviceImages.length; i++)
+                    _ImageThumb(
+                      dataUrl: _deviceImages[i],
+                      onRemove: _saving
+                          ? null
+                          : () async {
+                              setState(() {
+                                _deviceImages = [
+                                  for (int j = 0; j < _deviceImages.length; j++)
+                                    if (j != i) _deviceImages[j],
+                                ];
+                              });
+                              await _saveInfo();
+                            },
+                    ),
+                ],
+              ),
+          ],
+        ),
+      );
+    }
+
+    Widget stepsCard() {
+      return AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Yapılan İşlemler', style: Theme.of(context).textTheme.titleSmall),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _saving
+                      ? null
+                      : () => setState(
+                            () => _stepControllers.add(TextEditingController(text: 'Yeni adım')),
+                          ),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Ekle'),
+                ),
+              ],
+            ),
+            const Gap(10),
+            for (int i = 0; i < _stepControllers.length; i++) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${i + 1}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primary,
+                            ),
+                      ),
                     ),
                   ),
-                  OutlinedButton(
-                    onPressed: _saving ? null : _saveInfo,
+                  const Gap(10),
+                  Expanded(
+                    child: TextField(
+                      controller: _stepControllers[i],
+                      decoration: const InputDecoration(
+                        labelText: 'Açıklama',
+                      ),
+                    ),
+                  ),
+                  const Gap(10),
+                  IconButton(
+                    tooltip: 'Sil',
+                    onPressed: _saving
+                        ? null
+                        : () => setState(() {
+                              _stepControllers[i].dispose();
+                              _stepControllers.removeAt(i);
+                            }),
+                    icon: const Icon(Icons.delete_outline_rounded),
+                  ),
+                ],
+              ),
+              if (i != _stepControllers.length - 1) const Gap(10),
+            ],
+            const Gap(12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _saving ? null : _save,
                     child: _saving
                         ? const SizedBox(
                             width: 16,
@@ -659,296 +1049,155 @@ class _BodyState extends ConsumerState<_Body> {
                           )
                         : const Text('Kaydet'),
                   ),
-                ],
-              ),
-              const Gap(10),
-              TextField(
-                controller: _registryController,
-                decoration: const InputDecoration(
-                  labelText: 'Sicil No',
-                  hintText: 'SN...',
                 ),
-              ),
-              const Gap(10),
-              ref.watch(serviceFaultTypesProvider).when(
-                    data: (items) => DropdownButtonFormField<String?>(
-                      initialValue: (_faultTypeId ?? '').trim().isEmpty ? null : _faultTypeId,
-                      items: [
-                        const DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text('Arıza Tipi (opsiyonel)'),
-                        ),
-                        for (final t in items)
-                          DropdownMenuItem<String?>(
-                            value: t.id,
-                            child: Text(t.name),
-                          ),
-                      ],
-                      onChanged:
-                          _saving ? null : (v) => setState(() => _faultTypeId = v),
-                      decoration: const InputDecoration(labelText: 'Arıza Tipi'),
-                    ),
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, _) => const SizedBox.shrink(),
-                  ),
-              const Gap(8),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                value: _accessoriesReceived,
-                onChanged: _saving
-                    ? null
-                    : (v) => setState(() {
-                          _accessoriesReceived = v;
-                          if (!v) _selectedAccessoryTypeIds.clear();
-                        }),
-                title: const Text('Aksesuar Teslim Alındı'),
-              ),
-              if (_accessoriesReceived) ...[
-                ref.watch(serviceAccessoryTypesProvider).when(
-                      data: (items) => Column(
-                        children: [
-                          for (final t in items)
-                            CheckboxListTile(
-                              contentPadding: EdgeInsets.zero,
-                              value: _selectedAccessoryTypeIds.contains(t.id),
-                              onChanged: _saving
-                                  ? null
-                                  : (v) => setState(() {
-                                        if (v == true) {
-                                          _selectedAccessoryTypeIds.add(t.id);
-                                        } else {
-                                          _selectedAccessoryTypeIds.remove(t.id);
-                                        }
-                                      }),
-                              title: Text(t.name),
-                            ),
-                        ],
-                      ),
-                      loading: () => const SizedBox.shrink(),
-                      error: (_, _) => const SizedBox.shrink(),
-                    ),
               ],
-              const Gap(10),
-              TextField(
-                controller: _notesController,
-                minLines: 2,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  labelText: 'Not',
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
-        const Gap(12),
-        AppCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      );
+    }
+
+    Widget costsColumn({bool includeTotal = true}) {
+      return Column(
+        children: [
+          _CostCard(
+            title: 'Parçalar',
+            items: _parts,
+            currencySymbol: _currencySymbol,
+            onAdd: _saving ? null : () => setState(() => _parts.add(_LineItemDraft.empty())),
+            onRemove: _saving
+                ? null
+                : (i) => setState(() {
+                      _parts[i].dispose();
+                      _parts.removeAt(i);
+                    }),
+          ),
+          const Gap(12),
+          _CostCard(
+            title: 'İşçilik',
+            items: _labor,
+            currencySymbol: _currencySymbol,
+            onAdd: _saving ? null : () => setState(() => _labor.add(_LineItemDraft.empty())),
+            onRemove: _saving
+                ? null
+                : (i) => setState(() {
+                      _labor[i].dispose();
+                      _labor.removeAt(i);
+                    }),
+          ),
+          if (includeTotal) ...[
+            const Gap(12),
+            AppCard(
+              child: Row(
                 children: [
                   Expanded(
                     child: Text(
-                      'Fotoğraflar & İmzalar',
+                      'Toplam',
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: _saving ? null : () => _captureSignatures(delivery: false),
-                    icon: const Icon(Icons.edit_rounded, size: 18),
-                    label: const Text('Teslim Alım İmza'),
-                  ),
-                  const Gap(8),
-                  FilledButton.icon(
-                    onPressed: _saving ? null : () => _captureSignatures(delivery: true),
-                    icon: const Icon(Icons.check_rounded, size: 18),
-                    label: const Text('Teslim İmza'),
+                  Text(
+                    _moneyFormat.format(_total),
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                   ),
                 ],
               ),
-              const Gap(10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                crossAxisAlignment: WrapCrossAlignment.center,
+            ),
+          ],
+        ],
+      );
+    }
+
+    if (isMobile) {
+      return DefaultTabController(
+        length: 3,
+        child: Column(
+          children: [
+            headerCard(),
+            const Gap(10),
+            const TabBar(
+              isScrollable: true,
+              tabs: [
+                Tab(text: 'Özet'),
+                Tab(text: 'İşlemler'),
+                Tab(text: 'Medya'),
+              ],
+            ),
+            Expanded(
+              child: TabBarView(
                 children: [
-                  OutlinedButton.icon(
-                    onPressed: _saving ? null : () => _addImage(ImageSource.camera),
-                    icon: const Icon(Icons.photo_camera_rounded, size: 18),
-                    label: const Text('Kamera'),
+                  SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Column(
+                      children: [
+                        infoCard(),
+                        const Gap(12),
+                        costsColumn(),
+                      ],
+                    ),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: _saving ? null : () => _addImage(ImageSource.gallery),
-                    icon: const Icon(Icons.photo_library_rounded, size: 18),
-                    label: const Text('Galeri'),
+                  SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Column(
+                      children: [
+                        stepsCard(),
+                        const Gap(12),
+                        costsColumn(includeTotal: false),
+                      ],
+                    ),
+                  ),
+                  SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Column(
+                      children: [
+                        mediaCard(),
+                      ],
+                    ),
                   ),
                 ],
               ),
-              const Gap(10),
-              if (_deviceImages.isEmpty)
-                Text(
-                  'Fotoğraf yok.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
-                )
-              else
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    for (int i = 0; i < _deviceImages.length; i++)
-                      _ImageThumb(
-                        dataUrl: _deviceImages[i],
-                        onRemove: _saving
-                            ? null
-                            : () async {
-                                setState(() {
-                                  _deviceImages = [
-                                    for (int j = 0; j < _deviceImages.length; j++)
-                                      if (j != i) _deviceImages[j],
-                                  ];
-                                });
-                                await _saveInfo();
-                              },
-                      ),
-                  ],
-                ),
-            ],
-          ),
+            ),
+          ],
         ),
-        const Gap(12),
-        AppCard(
-          child: Column(
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        children: [
+          headerCard(),
+          const Gap(12),
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text('Adımlar', style: Theme.of(context).textTheme.titleSmall),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _saving
-                        ? null
-                        : () => setState(() => _stepControllers.add(TextEditingController(text: 'Yeni adım'))),
-                    icon: const Icon(Icons.add_rounded, size: 18),
-                    label: const Text('Ekle'),
-                  ),
-                ],
-              ),
-              const Gap(10),
-              for (int i = 0; i < _stepControllers.length; i++) ...[
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              Expanded(
+                flex: 3,
+                child: Column(
                   children: [
-                    Container(
-                      width: 26,
-                      height: 26,
-                      decoration: BoxDecoration(
-                        color: AppTheme.primary.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '${i + 1}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.primary,
-                              ),
-                        ),
-                      ),
-                    ),
-                    const Gap(10),
-                    Expanded(
-                      child: TextField(
-                        controller: _stepControllers[i],
-                        decoration: const InputDecoration(
-                          labelText: 'Açıklama',
-                        ),
-                      ),
-                    ),
-                    const Gap(10),
-                    IconButton(
-                      tooltip: 'Sil',
-                      onPressed: _saving
-                          ? null
-                          : () => setState(() {
-                                _stepControllers[i].dispose();
-                                _stepControllers.removeAt(i);
-                              }),
-                      icon: const Icon(Icons.delete_outline_rounded),
-                    ),
+                    infoCard(),
+                    const Gap(12),
+                    stepsCard(),
                   ],
                 ),
-                if (i != _stepControllers.length - 1) const Gap(10),
-              ],
-              const Gap(12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _saving ? null : _save,
-                      child: _saving
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Kaydet'),
-                    ),
-                  ),
-                ],
               ),
-            ],
-          ),
-        ),
-        const Gap(12),
-        _CostCard(
-          title: 'Parçalar',
-          items: _parts,
-          onAdd: _saving ? null : () => setState(() => _parts.add(_LineItemDraft.empty())),
-          onRemove: _saving
-              ? null
-              : (i) => setState(() {
-                    _parts[i].dispose();
-                    _parts.removeAt(i);
-                  }),
-        ),
-        const Gap(12),
-        _CostCard(
-          title: 'İşçilik',
-          items: _labor,
-          onAdd: _saving ? null : () => setState(() => _labor.add(_LineItemDraft.empty())),
-          onRemove: _saving
-              ? null
-              : (i) => setState(() {
-                    _labor[i].dispose();
-                    _labor.removeAt(i);
-                  }),
-        ),
-        const Gap(12),
-        AppCard(
-          child: Row(
-            children: [
+              const Gap(12),
               Expanded(
-                child: Text(
-                  'Toplam',
-                  style: Theme.of(context).textTheme.titleSmall,
+                flex: 2,
+                child: Column(
+                  children: [
+                    mediaCard(),
+                    const Gap(12),
+                    costsColumn(),
+                  ],
                 ),
               ),
-              Text(
-                NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 2)
-                    .format(_total),
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
             ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -1058,12 +1307,14 @@ class _CostCard extends StatelessWidget {
   const _CostCard({
     required this.title,
     required this.items,
+    required this.currencySymbol,
     required this.onAdd,
     required this.onRemove,
   });
 
   final String title;
   final List<_LineItemDraft> items;
+  final String currencySymbol;
   final VoidCallback? onAdd;
   final ValueChanged<int>? onRemove;
 
@@ -1098,6 +1349,7 @@ class _CostCard extends StatelessWidget {
             for (int i = 0; i < items.length; i++) ...[
               _LineItemEditor(
                 item: items[i],
+                currencySymbol: currencySymbol,
                 onRemove: onRemove == null ? null : () => onRemove!(i),
               ),
               if (i != items.length - 1) const Gap(10),
@@ -1109,9 +1361,14 @@ class _CostCard extends StatelessWidget {
 }
 
 class _LineItemEditor extends StatelessWidget {
-  const _LineItemEditor({required this.item, required this.onRemove});
+  const _LineItemEditor({
+    required this.item,
+    required this.currencySymbol,
+    required this.onRemove,
+  });
 
   final _LineItemDraft item;
+  final String currencySymbol;
   final VoidCallback? onRemove;
 
   @override
@@ -1140,7 +1397,7 @@ class _LineItemEditor extends StatelessWidget {
           child: TextField(
             controller: item.unitPriceController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Birim Fiyat'),
+            decoration: InputDecoration(labelText: 'Birim Fiyat ($currencySymbol)'),
           ),
         ),
         const Gap(10),
