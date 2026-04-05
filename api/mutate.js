@@ -13,6 +13,7 @@ const {
   ensureLicensesSoftwareCompanyColumn,
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,
+  ensureLineStockTable,
   ensureWorkOrderSignaturesTable,
 } = require('./_lib/schema');
 const {
@@ -58,6 +59,7 @@ const allowedTables = new Set([
   'licenses',
   'line_transfers',
   'lines',
+  'line_stock',
   'payments',
   'products',
   'product_serial_inventory',
@@ -81,6 +83,7 @@ const tablePermissions = {
   customer_locations: 'musteriler',
   branches: ['musteriler', 'is_emirleri'],
   lines: ['urunler', 'is_emirleri', 'musteriler'],
+  line_stock: ['urunler', 'is_emirleri'],
   licenses: ['urunler', 'is_emirleri', 'musteriler'],
   line_transfers: ['urunler', 'is_emirleri', 'musteriler'],
   products: 'urunler',
@@ -167,6 +170,9 @@ async function upsertRow({ table, values, returningRow }) {
   const hasIdColumn = columns.includes('id');
   const hasRegistryNormColumn =
     table === 'device_registries' && columns.includes('registry_number_norm');
+  const hasLineNormColumn =
+    table === 'line_stock' && columns.includes('line_number_norm');
+  const hasSimNormColumn = table === 'line_stock' && columns.includes('sim_number_norm');
   if (
     table === 'device_registries' &&
     hasRegistryNormColumn &&
@@ -175,6 +181,13 @@ async function upsertRow({ table, values, returningRow }) {
     picked.registry_number_norm = String(picked.registry_number || '')
       .trim()
       .toUpperCase();
+  }
+  if (table === 'line_stock' && hasLineNormColumn && picked.line_number != null) {
+    picked.line_number_norm = String(picked.line_number || '').trim().toUpperCase();
+  }
+  if (table === 'line_stock' && hasSimNormColumn) {
+    const sim = String(picked.sim_number || '').trim();
+    picked.sim_number_norm = sim ? sim.toUpperCase() : null;
   }
   if (hasIdColumn) {
     if (!picked.id) {
@@ -199,6 +212,8 @@ async function upsertRow({ table, values, returningRow }) {
   const conflict =
     table === 'device_registries' && hasRegistryNormColumn
       ? ' on conflict (registry_number_norm) do update set ' + updateSql
+      : table === 'line_stock' && hasLineNormColumn
+        ? ' on conflict (line_number_norm) do update set ' + updateSql
       : hasIdColumn
         ? ' on conflict (id) do update set ' + updateSql
         : '';
@@ -412,6 +427,9 @@ module.exports = async (req, res) => {
       await ensureLicensesSoftwareCompanyColumn();
       await ensureLicensesRegistryNumberColumn();
     }
+  if (table === 'line_stock') {
+    await ensureLineStockTable();
+  }
     if (table === 'lines') {
       await ensureLinesOperatorColumn();
     }

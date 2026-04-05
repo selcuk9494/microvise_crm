@@ -19,6 +19,7 @@ import '../customers/customer_detail_screen.dart';
 import '../customers/customer_model.dart';
 import '../customers/customers_providers.dart';
 import '../definitions/definitions_screen.dart';
+import '../stock/line_stock.dart';
 import 'work_order_model.dart';
 import 'work_order_share.dart';
 
@@ -74,6 +75,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
   final _lineNumberController = TextEditingController();
   final _lineSimController = TextEditingController();
   String? _lineOperator;
+  String? _selectedLineStockId;
 
   final _gmp3NameController = TextEditingController(text: 'GMP3 Lisansı');
   String? _selectedSoftwareCompanyId;
@@ -162,6 +164,30 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
             },
           );
           insertedLineId = (response['row'] as Map?)?['id']?.toString();
+        }
+
+        if ((insertedLineId ?? '').trim().isNotEmpty &&
+            (_selectedLineStockId ?? '').trim().isNotEmpty) {
+          try {
+            await apiClient.postJson(
+              '/mutate',
+              body: {
+                'op': 'updateWhere',
+                'table': 'line_stock',
+                'filters': [
+                  {'col': 'id', 'op': 'eq', 'value': _selectedLineStockId!},
+                ],
+                'values': {
+                  'consumed_at': now.toIso8601String(),
+                  'consumed_by': profile?.id,
+                  'consumed_customer_id': customer.id,
+                  'consumed_work_order_id': widget.order.id,
+                  'consumed_line_id': insertedLineId,
+                },
+              },
+            );
+            ref.invalidate(lineStockAvailableProvider);
+          } catch (_) {}
         }
 
         if (_addGmp3) {
@@ -502,11 +528,27 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
             })
             .select('id')
             .single();
+        final insertedLineId = insertedLine['id']?.toString();
+        if ((insertedLineId ?? '').trim().isNotEmpty &&
+            (_selectedLineStockId ?? '').trim().isNotEmpty) {
+          try {
+            await client
+                .from('line_stock')
+                .update({
+                  'consumed_at': now.toIso8601String(),
+                  'consumed_by': client.auth.currentUser?.id,
+                  'consumed_customer_id': customer.id,
+                  'consumed_work_order_id': widget.order.id,
+                  'consumed_line_id': insertedLineId,
+                })
+                .eq('id', _selectedLineStockId!);
+          } catch (_) {}
+        }
         await enqueueInvoiceItem(
           client,
           itemType: 'line_activation',
           sourceTable: 'lines',
-          sourceId: insertedLine['id'].toString(),
+          sourceId: insertedLineId.toString(),
           customerId: customer.id,
           description: 'Hat Aktivasyonu - ${customer.name} / $number',
           sourceEvent: 'line_activated',
@@ -800,6 +842,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     );
     final companiesAsync = ref.watch(softwareCompaniesProvider);
     final canSellGmp3 = ref.watch(isAdminProvider);
+    final lineStockAsync = ref.watch(lineStockAvailableProvider);
 
     return Container(
       decoration: const BoxDecoration(
@@ -822,6 +865,20 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               branchesAsync: branchesAsync,
               customerLocationsAsync: customerLocationsAsync,
               companiesAsync: companiesAsync,
+              lineStockAsync: lineStockAsync,
+              selectedLineStockId: _selectedLineStockId,
+              onLineStockSelected: _saving
+                  ? null
+                  : (item) => setState(() {
+                        if (item == null) {
+                          _selectedLineStockId = null;
+                          return;
+                        }
+                        _selectedLineStockId = item.id;
+                        _lineNumberController.text = item.lineNumber;
+                        _lineSimController.text = (item.simNumber ?? '').trim();
+                        _lineOperator = normalizeOperator(item.operatorName);
+                      }),
               canSellGmp3: canSellGmp3,
               selectedBranchId: _selectedBranchId ?? widget.order.branchId,
               onBranchChanged: _saving
@@ -878,6 +935,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                         }
                         if (!v) {
                           _lineOperator = null;
+                          _selectedLineStockId = null;
                         }
                       }),
               onToggleAddGmp3: _saving
@@ -941,6 +999,9 @@ class _SheetBody extends StatelessWidget {
     required this.branchesAsync,
     required this.customerLocationsAsync,
     required this.companiesAsync,
+    required this.lineStockAsync,
+    required this.selectedLineStockId,
+    required this.onLineStockSelected,
     required this.selectedBranchId,
     required this.onBranchChanged,
     required this.selectedCustomerLocationId,
@@ -983,6 +1044,9 @@ class _SheetBody extends StatelessWidget {
   final AsyncValue<List<CustomerBranch>> branchesAsync;
   final AsyncValue<List<CustomerLocation>> customerLocationsAsync;
   final AsyncValue<List<SoftwareCompanyDefinition>> companiesAsync;
+  final AsyncValue<List<LineStockItem>> lineStockAsync;
+  final String? selectedLineStockId;
+  final ValueChanged<LineStockItem?>? onLineStockSelected;
   final String? selectedBranchId;
   final ValueChanged<String?>? onBranchChanged;
   final String? selectedCustomerLocationId;
@@ -1387,6 +1451,75 @@ class _SheetBody extends StatelessWidget {
                     ),
                     if (addLine) ...[
                       const Gap(10),
+                      lineStockAsync.when(
+                        data: (items) {
+                          final available = items
+                              .where((e) => e.isActive && !e.isConsumed)
+                              .toList(growable: false);
+                          final selectedId =
+                              (selectedLineStockId ?? '').trim().isEmpty
+                                  ? null
+                                  : selectedLineStockId!.trim();
+                          return DropdownButtonFormField<String?>(
+                            initialValue: selectedId,
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('Stoktan seç (opsiyonel)'),
+                              ),
+                              if (available.isEmpty)
+                                const DropdownMenuItem<String?>(
+                                  value: '__none__',
+                                  enabled: false,
+                                  child: Text('Stok yok'),
+                                )
+                              else
+                                for (final s in available)
+                                  DropdownMenuItem<String?>(
+                                    value: s.id,
+                                    child: Text(
+                                      [
+                                        s.lineNumber,
+                                        if ((s.simNumber ?? '').trim().isNotEmpty)
+                                          'SIM: ${s.simNumber}',
+                                      ].join(' • '),
+                                    ),
+                                  ),
+                            ],
+                            onChanged: saving
+                                ? null
+                                : (id) {
+                                    if (id == null) {
+                                      onLineStockSelected?.call(null);
+                                      return;
+                                    }
+                                    if (id == '__none__') return;
+                                    for (final s in available) {
+                                      if (s.id == id) {
+                                        onLineStockSelected?.call(s);
+                                        return;
+                                      }
+                                    }
+                                    onLineStockSelected?.call(null);
+                                  },
+                            decoration: const InputDecoration(
+                              labelText: 'Hat Stok',
+                            ),
+                          );
+                        },
+                        loading: () => const SizedBox(
+                          height: 56,
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                        error: (error, stackTrace) => Text(
+                          'Hat stok yüklenemedi.',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: const Color(0xFF64748B)),
+                        ),
+                      ),
+                      const Gap(10),
                       TextField(
                         controller: lineNumberController,
                         keyboardType: TextInputType.phone,
@@ -1394,6 +1527,7 @@ class _SheetBody extends StatelessWidget {
                           labelText: 'Hat Numarası',
                           hintText: '90555...',
                         ),
+                        onChanged: saving ? null : (_) => onLineStockSelected?.call(null),
                       ),
                       const Gap(10),
                       DropdownButtonFormField<String>(
@@ -1420,6 +1554,7 @@ class _SheetBody extends StatelessWidget {
                           labelText: 'SIM Numarası',
                           hintText: '89...',
                         ),
+                        onChanged: saving ? null : (_) => onLineStockSelected?.call(null),
                       ),
                     ],
                     const Divider(height: 24),

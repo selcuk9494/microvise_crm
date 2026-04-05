@@ -16,6 +16,7 @@ import '../billing/billing_screen.dart';
 import '../customers/web_download_helper.dart'
     if (dart.library.io) '../customers/io_download_helper.dart';
 import '../definitions/definitions_screen.dart';
+import 'line_stock_tab.dart';
 
 final productSearchProvider =
     NotifierProvider<ProductSearchNotifier, String>(ProductSearchNotifier.new);
@@ -565,7 +566,7 @@ class ProductsScreen extends ConsumerWidget {
     }
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: AppPageLayout(
         title: 'Hat & Lisanslar',
         subtitle: 'Verilen hatlar ve GMP3 lisansları tek listede.',
@@ -758,6 +759,7 @@ class ProductsScreen extends ConsumerWidget {
                         Tab(text: 'Hatlar'),
                         Tab(text: 'Lisanslar (GMP3)'),
                         Tab(text: 'Toplamlar'),
+                        Tab(text: 'Hat Stok'),
                       ],
                     ),
                     const Divider(height: 1),
@@ -781,6 +783,7 @@ class ProductsScreen extends ConsumerWidget {
                             ),
                           ),
                           const _TotalsTab(),
+                          const LineStockTab(),
                         ],
                       ),
                     ),

@@ -11,6 +11,7 @@ const {
   ensureLicensesSoftwareCompanyColumn,
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,
+  ensureLineStockTable,
   ensureWorkOrderSignaturesTable,
   ensureWorkOrdersPaymentRequiredColumn,
   ensureWorkOrdersStatusCheckConstraint,
@@ -1639,6 +1640,62 @@ module.exports = async (req, res) => {
             left join public.branches b on b.id = l.branch_id
             ${whereSql}
             order by l.ends_at asc nulls last, l.created_at desc
+            limit ${limit}
+          `,
+          values,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'line_stock': {
+        if (!requireAnyPage(user, ['urunler', 'is_emirleri'], res)) return;
+        await ensureLineStockTable();
+
+        const search = String(req.query.search || '').trim();
+        const status = String(req.query.status || '').trim();
+        const operator = String(req.query.operator || '').trim();
+        const limitRaw = Number.parseInt(String(req.query.limit || ''), 10);
+        const limit = Number.isFinite(limitRaw)
+          ? Math.min(Math.max(limitRaw, 1), 5000)
+          : 2000;
+
+        const values = [];
+        let whereSql = `where true`;
+
+        if (status === 'available') {
+          whereSql += ` and ls.is_active = true and ls.consumed_at is null`;
+        } else if (status === 'consumed') {
+          whereSql += ` and ls.consumed_at is not null`;
+        } else if (status === 'passive') {
+          whereSql += ` and ls.is_active = false`;
+        }
+
+        if (operator) {
+          values.push(operator);
+          whereSql += ` and lower(coalesce(ls.operator,'')) = lower($${values.length})`;
+        }
+
+        if (search) {
+          values.push(`%${search}%`);
+          whereSql += ` and (
+            ls.line_number ilike $${values.length}
+            or coalesce(ls.sim_number,'') ilike $${values.length}
+            or coalesce(ls.operator,'') ilike $${values.length}
+            or coalesce(c.name,'') ilike $${values.length}
+          )`;
+        }
+
+        const result = await query(
+          `
+            select
+              ls.*,
+              c.name as consumed_customer_name,
+              wo.title as consumed_work_order_title
+            from public.line_stock ls
+            left join public.customers c on c.id = ls.consumed_customer_id
+            left join public.work_orders wo on wo.id = ls.consumed_work_order_id
+            ${whereSql}
+            order by ls.created_at desc
             limit ${limit}
           `,
           values,

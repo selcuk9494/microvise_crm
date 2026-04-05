@@ -11,6 +11,7 @@ const ensured = {
   licenses_software_company: false,
   licenses_registry_number: false,
   lines_operator: false,
+  line_stock: false,
   work_order_signatures: false,
   work_orders_payment_required: false,
   work_orders_status_check: false,
@@ -740,6 +741,87 @@ async function ensureWorkOrdersStatusCheckConstraint() {
   return true;
 }
 
+async function ensureLineStockTable() {
+  if (ensured.line_stock) return true;
+
+  const exists = await tableExists('line_stock');
+  if (!exists) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
+    if (isProd && allow !== 'true') {
+      throw new Error(
+        'line_stock table is missing. Set ALLOW_SCHEMA_AUTO_CREATE=true to auto-create (non-production recommended).',
+      );
+    }
+    await query(`create extension if not exists pgcrypto`);
+    await query(
+      `
+        create table if not exists public.line_stock (
+          id uuid primary key default gen_random_uuid(),
+          operator text not null default 'turkcell',
+          line_number text not null,
+          line_number_norm text not null,
+          sim_number text,
+          sim_number_norm text,
+          is_active boolean not null default true,
+          consumed_at timestamptz,
+          consumed_by uuid,
+          consumed_customer_id uuid,
+          consumed_work_order_id uuid,
+          consumed_line_id uuid,
+          created_by uuid,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now()
+        )
+      `,
+    );
+    await query(
+      `
+        create unique index if not exists idx_line_stock_unique_line_number
+        on public.line_stock (line_number_norm)
+      `,
+    );
+    await query(
+      `
+        create unique index if not exists idx_line_stock_unique_sim_number
+        on public.line_stock (sim_number_norm)
+        where sim_number_norm is not null and sim_number_norm <> ''
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_line_stock_available
+        on public.line_stock (is_active, consumed_at)
+      `,
+    );
+    await query(
+      `
+        create or replace function public.line_stock_set_updated_at()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          new.updated_at = now();
+          return new;
+        end;
+        $$;
+      `,
+    );
+    await query(
+      `
+        drop trigger if exists set_line_stock_updated_at on public.line_stock;
+        create trigger set_line_stock_updated_at
+        before update on public.line_stock
+        for each row
+        execute function public.line_stock_set_updated_at();
+      `,
+    );
+  }
+
+  ensured.line_stock = true;
+  return true;
+}
+
 module.exports = {
   ensureSerialTrackingTable,
   ensureWorkOrderCloseNotesTable,
@@ -751,6 +833,7 @@ module.exports = {
   ensureLicensesSoftwareCompanyColumn,
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,
+  ensureLineStockTable,
   ensureWorkOrderSignaturesTable,
   ensureWorkOrdersPaymentRequiredColumn,
   ensureWorkOrdersStatusCheckConstraint,
