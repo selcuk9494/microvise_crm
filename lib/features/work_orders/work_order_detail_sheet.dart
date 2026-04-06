@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -1000,7 +1001,12 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           ],
           if (customer.phone1?.isNotEmpty ?? false) ...[
             const Gap(8),
-            _InfoRow(icon: Icons.phone_rounded, label: 'Telefon', value: customer.phone1!),
+            _InfoRow(
+              icon: Icons.phone_rounded,
+              label: 'Telefon',
+              value: customer.phone1!,
+              phoneActions: true,
+            ),
           ],
           const Gap(8),
           Row(
@@ -1038,28 +1044,14 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           ),
           if ((widget.order.contactPhone ?? '').trim().isNotEmpty) ...[
             const Gap(8),
-            Row(
-              children: [
-                const Icon(Icons.phone_in_talk_rounded, size: 18, color: Colors.red),
-                const Gap(10),
-                Text(
-                  'İrtibat:',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.red,
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const Gap(8),
-                Expanded(
-                  child: Text(
-                    widget.order.contactPhone!.trim(),
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Colors.red,
-                          fontWeight: FontWeight.w900,
-                        ),
-                  ),
-                ),
-              ],
+            _InfoRow(
+              icon: Icons.phone_in_talk_rounded,
+              iconColor: Colors.red,
+              label: 'İrtibat',
+              labelColor: Colors.red,
+              value: widget.order.contactPhone!.trim(),
+              valueColor: Colors.red,
+              phoneActions: true,
             ),
           ],
           if (closeNotes.isNotEmpty) ...[
@@ -1751,34 +1743,168 @@ class _InfoRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    this.iconColor,
+    this.labelColor,
+    this.valueColor,
+    this.phoneActions = false,
   });
 
   final IconData icon;
   final String label;
   final String value;
+  final Color? iconColor;
+  final Color? labelColor;
+  final Color? valueColor;
+  final bool phoneActions;
 
   @override
   Widget build(BuildContext context) {
+    final v = value.trim();
+    final canAct = phoneActions && v.isNotEmpty && v != '—';
+
+    String normalizeDigits(String input) {
+      final digits = input.replaceAll(RegExp(r'[^0-9+]'), '');
+      if (digits.startsWith('+')) return digits.substring(1);
+      if (digits.startsWith('00')) return digits.substring(2);
+      return digits;
+    }
+
+    String normalizeForWhatsApp(String input) {
+      final d = normalizeDigits(input);
+      if (d.startsWith('90') && d.length >= 11) return d;
+      if (d.startsWith('0') && d.length == 11) return '90${d.substring(1)}';
+      if (d.length == 10) return '90$d';
+      return d;
+    }
+
+    Future<void> copy() async {
+      await Clipboard.setData(ClipboardData(text: v));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kopyalandı.')),
+      );
+    }
+
+    Future<void> openActions() async {
+      final tel = normalizeDigits(v);
+      final wa = normalizeForWhatsApp(v);
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: Theme.of(context).textTheme.titleMedium),
+                const Gap(4),
+                Text(
+                  v,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: const Color(0xFF64748B)),
+                ),
+                const Gap(12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.call_rounded),
+                  title: const Text('Ara'),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    final uri = Uri(scheme: 'tel', path: tel.isEmpty ? v : tel);
+                    final ok = await launchUrl(uri, mode: LaunchMode.platformDefault);
+                    if (!ok && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Arama açılamadı.')),
+                      );
+                    }
+                  },
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.chat_bubble_rounded),
+                  title: const Text('WhatsApp'),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    if (wa.trim().isEmpty && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Numara geçersiz.')),
+                      );
+                      return;
+                    }
+                    final url = Uri.parse('https://wa.me/$wa');
+                    final ok = await launchUrl(url, mode: LaunchMode.externalApplication);
+                    if (!ok && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('WhatsApp açılamadı.')),
+                      );
+                    }
+                  },
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.copy_rounded),
+                  title: const Text('Kopyala'),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await copy();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Row(
       children: [
-        Icon(icon, size: 16, color: const Color(0xFF64748B)),
+        Icon(icon, size: 16, color: iconColor ?? const Color(0xFF64748B)),
         const Gap(10),
         Text(
           '$label:',
           style: Theme.of(context)
               .textTheme
               .bodySmall
-              ?.copyWith(color: const Color(0xFF64748B)),
+              ?.copyWith(color: labelColor ?? const Color(0xFF64748B)),
         ),
         const Gap(8),
         Expanded(
-          child: Text(
-            value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w500,
+          child: canAct
+              ? InkWell(
+                  onTap: openActions,
+                  onLongPress: copy,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      value,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: valueColor,
+                          ),
+                    ),
+                  ),
+                )
+              : Text(
+                  value,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                        color: valueColor,
+                      ),
                 ),
-          ),
         ),
+        if (canAct) ...[
+          const Gap(6),
+          IconButton(
+            tooltip: 'Kopyala',
+            onPressed: copy,
+            icon: Icon(Icons.copy_rounded, size: 18, color: valueColor),
+          ),
+        ],
       ],
     );
   }

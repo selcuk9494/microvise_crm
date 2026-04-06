@@ -4269,21 +4269,22 @@ class _InfoRow extends StatelessWidget {
     Future<void> openActions() async {
       final tel = normalizeDigits(v);
       final wa = normalizeForWhatsApp(v);
+      final parentContext = context;
       await showModalBottomSheet<void>(
         context: context,
         showDragHandle: true,
-        builder: (context) => SafeArea(
+        builder: (sheetContext) => SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: Theme.of(context).textTheme.titleMedium),
+                Text(label, style: Theme.of(sheetContext).textTheme.titleMedium),
                 const Gap(4),
                 Text(
                   v,
-                  style: Theme.of(context)
+                  style: Theme.of(sheetContext)
                       .textTheme
                       .bodySmall
                       ?.copyWith(color: const Color(0xFF64748B)),
@@ -4294,9 +4295,14 @@ class _InfoRow extends StatelessWidget {
                   leading: const Icon(Icons.call_rounded),
                   title: const Text('Ara'),
                   onTap: () async {
-                    Navigator.of(context).pop();
+                    Navigator.of(sheetContext).pop();
                     final uri = Uri(scheme: 'tel', path: tel.isEmpty ? v : tel);
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    final ok = await launchUrl(uri, mode: LaunchMode.platformDefault);
+                    if (!ok && parentContext.mounted) {
+                      ScaffoldMessenger.of(parentContext).showSnackBar(
+                        const SnackBar(content: Text('Arama açılamadı.')),
+                      );
+                    }
                   },
                 ),
                 ListTile(
@@ -4304,9 +4310,20 @@ class _InfoRow extends StatelessWidget {
                   leading: const Icon(Icons.chat_bubble_rounded),
                   title: const Text('WhatsApp'),
                   onTap: () async {
-                    Navigator.of(context).pop();
+                    Navigator.of(sheetContext).pop();
+                    if (wa.trim().isEmpty && parentContext.mounted) {
+                      ScaffoldMessenger.of(parentContext).showSnackBar(
+                        const SnackBar(content: Text('Numara geçersiz.')),
+                      );
+                      return;
+                    }
                     final url = Uri.parse('https://wa.me/$wa');
-                    await launchUrl(url, mode: LaunchMode.externalApplication);
+                    final ok = await launchUrl(url, mode: LaunchMode.externalApplication);
+                    if (!ok && parentContext.mounted) {
+                      ScaffoldMessenger.of(parentContext).showSnackBar(
+                        const SnackBar(content: Text('WhatsApp açılamadı.')),
+                      );
+                    }
                   },
                 ),
                 ListTile(
@@ -4314,7 +4331,7 @@ class _InfoRow extends StatelessWidget {
                   leading: const Icon(Icons.copy_rounded),
                   title: const Text('Kopyala'),
                   onTap: () async {
-                    Navigator.of(context).pop();
+                    Navigator.of(sheetContext).pop();
                     await copy();
                   },
                 ),
