@@ -8,12 +8,14 @@ class AppCard extends StatefulWidget {
     required this.child,
     this.padding = const EdgeInsets.all(14),
     this.color,
+    this.borderColor,
     this.onTap,
   });
 
   final Widget child;
   final EdgeInsets padding;
   final Color? color;
+  final Color? borderColor;
   final VoidCallback? onTap;
 
   @override
@@ -60,8 +62,8 @@ class _AppCardState extends State<AppCard> {
           ),
           border: Border.all(
             color: clickable && _hovered
-                ? AppTheme.primary.withValues(alpha: 0.22)
-                : AppTheme.border,
+                ? (widget.borderColor ?? AppTheme.primary).withValues(alpha: 0.55)
+                : (widget.borderColor ?? AppTheme.border),
           ),
           boxShadow: clickable && _hovered
               ? AppTheme.hoverShadow

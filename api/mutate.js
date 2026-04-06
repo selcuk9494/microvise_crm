@@ -4,6 +4,7 @@ const { getAuthenticatedUser, hasPageAccess } = require('./_lib/auth');
 const { query } = require('./_lib/db');
 const {
   ensureSerialTrackingTable,
+  ensureRegionColorsTable,
   ensureWorkOrderCloseNotesTable,
   ensureInvoiceItemsTable,
   ensureFaultFormsTable,
@@ -59,6 +60,7 @@ const allowedTables = new Set([
   'fiscal_symbols',
   'business_activity_types',
   'software_companies',
+  'region_colors',
   'work_order_signatures',
   'invoices',
   'invoice_items',
@@ -115,6 +117,7 @@ const tablePermissions = {
   fiscal_symbols: 'tanimlamalar',
   business_activity_types: 'tanimlamalar',
   software_companies: 'tanimlamalar',
+  region_colors: 'tanimlamalar',
   work_order_signatures: 'is_emirleri',
   application_forms: 'formlar',
   scrap_forms: 'formlar',
@@ -476,6 +479,9 @@ module.exports = async (req, res) => {
 
     if (table === 'serial_tracking') {
       await ensureSerialTrackingTable();
+    }
+    if (table === 'region_colors') {
+      await ensureRegionColorsTable();
     }
     if (table === 'work_order_close_notes') {
       await ensureWorkOrderCloseNotesTable();

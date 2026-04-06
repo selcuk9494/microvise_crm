@@ -3,6 +3,7 @@ const { query } = require('./_lib/db');
 const https = require('https');
 const {
   ensureSerialTrackingTable,
+  ensureRegionColorsTable,
   ensureWorkOrderCloseNotesTable,
   ensureInvoiceItemsTable,
   ensureFaultFormsTable,
@@ -197,6 +198,9 @@ module.exports = async (req, res) => {
     }
     if (resource === 'halkbank_exchange_rates') {
       if (!requirePage(user, 'panel', res)) return;
+    }
+    if (resource === 'definition_region_colors') {
+      if (!requirePage(user, 'tanimlamalar', res)) return;
     }
     if (resource.startsWith('form_')) {
       if (!requirePage(user, 'formlar', res)) return;
@@ -861,6 +865,25 @@ module.exports = async (req, res) => {
       case 'definition_tax_rates': {
         const result = await query(
           `select * from public.tax_rates where is_active = true order by sort_order asc`,
+        );
+        return ok(res, { items: result.rows });
+      }
+
+      case 'definition_region_colors': {
+        await ensureRegionColorsTable();
+        const result = await query(
+          `
+            select
+              region_key,
+              label,
+              bg_color,
+              border_color,
+              sort_order,
+              is_active
+            from public.region_colors
+            where is_active = true
+            order by sort_order asc, label asc
+          `,
         );
         return ok(res, { items: result.rows });
       }

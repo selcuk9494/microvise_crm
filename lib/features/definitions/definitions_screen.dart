@@ -13,6 +13,7 @@ import '../application_forms/application_form_model.dart';
 import '../forms/scrap_form_model.dart';
 import '../forms/transfer_form_model.dart';
 import '../service/service_definitions.dart';
+import '../work_orders/work_order_region_colors.dart';
 
 final deviceBrandsProvider = FutureProvider<List<DeviceBrand>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
@@ -117,6 +118,55 @@ final workOrderCloseNotesProvider =
   return (rows as List)
       .map((e) => WorkOrderCloseNoteDefinition.fromJson(e as Map<String, dynamic>))
       .toList(growable: false);
+});
+
+class RegionColorDefinition {
+  const RegionColorDefinition({
+    required this.regionKey,
+    required this.label,
+    required this.bgColor,
+    required this.borderColor,
+    required this.sortOrder,
+  });
+
+  final String regionKey;
+  final String label;
+  final String bgColor;
+  final String borderColor;
+  final int sortOrder;
+
+  factory RegionColorDefinition.fromJson(Map<String, dynamic> json) {
+    int toIntAny(Object? v) {
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return int.tryParse(v?.toString() ?? '') ?? 0;
+    }
+
+    return RegionColorDefinition(
+      regionKey: (json['region_key'] ?? '').toString(),
+      label: (json['label'] ?? '').toString(),
+      bgColor: (json['bg_color'] ?? '').toString(),
+      borderColor: (json['border_color'] ?? '').toString(),
+      sortOrder: toIntAny(json['sort_order']),
+    );
+  }
+}
+
+final regionColorDefinitionsProvider =
+    FutureProvider<List<RegionColorDefinition>>((ref) async {
+  final apiClient = ref.watch(apiClientProvider);
+  if (apiClient != null) {
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {'resource': 'definition_region_colors'},
+    );
+    return ((response['items'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(RegionColorDefinition.fromJson)
+        .toList(growable: false);
+  }
+
+  return const [];
 });
 
 // KDV Oranları Provider
@@ -469,7 +519,7 @@ class DefinitionsScreen extends ConsumerWidget {
     final height = MediaQuery.sizeOf(context).height;
     final availableHeight = (height - 260).clamp(520.0, 920.0);
     return DefaultTabController(
-      length: 8,
+      length: 9,
       child: AppPageLayout(
         title: 'Tanımlamalar',
         subtitle: 'Sistem tanımları ve ayarları',
@@ -487,6 +537,7 @@ class DefinitionsScreen extends ConsumerWidget {
                       Tab(text: 'Markalar'),
                       Tab(text: 'Modeller'),
                       Tab(text: 'İş Emri Tipleri'),
+                      Tab(text: 'Bölge Renkleri'),
                       Tab(text: 'Kapanış Açıklaması'),
                       Tab(text: 'KDV Oranları'),
                       Tab(text: 'Faaliyet Türü'),
@@ -502,6 +553,7 @@ class DefinitionsScreen extends ConsumerWidget {
                         _BrandsTab(isAdmin: isAdmin),
                         _ModelsTab(isAdmin: isAdmin),
                         _WorkOrderTypesTab(isAdmin: isAdmin),
+                        _RegionColorsTab(isAdmin: isAdmin),
                         _WorkOrderCloseNotesTab(isAdmin: isAdmin),
                         _TaxRatesTab(isAdmin: isAdmin),
                         _BusinessActivityTypesTab(isAdmin: isAdmin),
@@ -1301,6 +1353,325 @@ class _WorkOrderTypesTab extends ConsumerWidget {
                     type: items[index],
                     isAdmin: isAdmin,
                   ),
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, _) => const _Empty(text: 'Yüklenemedi.'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RegionColorsTab extends ConsumerWidget {
+  const _RegionColorsTab({required this.isAdmin});
+
+  final bool isAdmin;
+
+  String? _normalizeHex(String raw) {
+    final cleaned = raw.trim().replaceAll(' ', '').toUpperCase();
+    final v = cleaned.startsWith('#') ? cleaned.substring(1) : cleaned;
+    if (!RegExp(r'^[0-9A-F]{6}$').hasMatch(v)) return null;
+    return '#$v';
+  }
+
+  Future<void> _edit(BuildContext context, WidgetRef ref, RegionColorDefinition item) async {
+    if (!isAdmin) return;
+    final bgController = TextEditingController(text: item.bgColor);
+    final borderController = TextEditingController(text: item.borderColor);
+    final bgPalette = const [
+      '#EEF2FF',
+      '#EBFBEE',
+      '#FFF9DB',
+      '#FFF4E6',
+      '#F1F3F5',
+      '#FFF8F0',
+      '#FFF5F5',
+      '#E6FCF5',
+    ];
+    final borderPalette = const [
+      '#364FC7',
+      '#2B8A3E',
+      '#F59F00',
+      '#F76707',
+      '#495057',
+      '#7C4A2D',
+      '#C92A2A',
+      '#0CA678',
+    ];
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.all(24),
+        backgroundColor: Colors.transparent,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: AppCard(
+            padding: const EdgeInsets.all(16),
+            child: StatefulBuilder(
+              builder: (context, setLocal) {
+                final bg = _parseColor(bgController.text);
+                final border = _parseColor(borderController.text);
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${item.label} Rengi',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+                    const Gap(12),
+                    Container(
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: bg,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: border, width: 2),
+                      ),
+                    ),
+                    const Gap(12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: bgController,
+                            onChanged: (_) => setLocal(() {}),
+                            decoration: const InputDecoration(
+                              labelText: 'Arka Plan (HEX)',
+                              hintText: '#EEF2FF',
+                            ),
+                          ),
+                        ),
+                        const Gap(10),
+                        Expanded(
+                          child: TextField(
+                            controller: borderController,
+                            onChanged: (_) => setLocal(() {}),
+                            decoration: const InputDecoration(
+                              labelText: 'Çerçeve (HEX)',
+                              hintText: '#364FC7',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Gap(12),
+                    Text(
+                      'Arka plan hazır renkler',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: const Color(0xFF64748B)),
+                    ),
+                    const Gap(8),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        for (final c in bgPalette)
+                          InkWell(
+                            onTap: () {
+                              bgController.text = c;
+                              setLocal(() {});
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: _parseColor(c),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AppTheme.border),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const Gap(12),
+                    Text(
+                      'Çerçeve hazır renkler',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: const Color(0xFF64748B)),
+                    ),
+                    const Gap(8),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        for (final c in borderPalette)
+                          InkWell(
+                            onTap: () {
+                              borderController.text = c;
+                              setLocal(() {});
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: _parseColor(c),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AppTheme.border),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const Gap(16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('Vazgeç'),
+                          ),
+                        ),
+                        const Gap(10),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () async {
+                              final bgHex = _normalizeHex(bgController.text);
+                              final borderHex = _normalizeHex(borderController.text);
+                              if (bgHex == null || borderHex == null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('HEX formatı geçersiz.')),
+                                );
+                                return;
+                              }
+                              final apiClient = ref.read(apiClientProvider);
+                              if (apiClient == null) return;
+                              try {
+                                await apiClient.postJson(
+                                  '/mutate',
+                                  body: {
+                                    'op': 'updateWhere',
+                                    'table': 'region_colors',
+                                    'filters': [
+                                      {
+                                        'col': 'region_key',
+                                        'op': 'eq',
+                                        'value': item.regionKey,
+                                      },
+                                    ],
+                                    'values': {
+                                      'bg_color': bgHex,
+                                      'border_color': borderHex,
+                                    },
+                                  },
+                                );
+                                ref.invalidate(regionColorDefinitionsProvider);
+                                ref.invalidate(workOrderRegionThemeProvider);
+                                if (context.mounted) Navigator.of(context).pop();
+                              } catch (_) {
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Kaydedilemedi.')),
+                                );
+                              }
+                            },
+                            child: const Text('Kaydet'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final itemsAsync = ref.watch(regionColorDefinitionsProvider);
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('Bölge Renkleri', style: Theme.of(context).textTheme.titleMedium),
+              ),
+              IconButton(
+                tooltip: 'Yenile',
+                onPressed: () => ref.invalidate(regionColorDefinitionsProvider),
+                icon: const Icon(Icons.refresh_rounded),
+              ),
+            ],
+          ),
+          const Gap(12),
+          Expanded(
+            child: itemsAsync.when(
+              data: (items) {
+                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+                return ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, _) => const Gap(10),
+                  itemBuilder: (context, index) {
+                    final it = items[index];
+                    final bg = _parseColor(it.bgColor);
+                    final border = _parseColor(it.borderColor);
+                    return AppCard(
+                      onTap: isAdmin ? () => _edit(context, ref, it) : null,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: bg,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: border, width: 2),
+                            ),
+                          ),
+                          const Gap(12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  it.label,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const Gap(2),
+                                Text(
+                                  '${it.bgColor} • ${it.borderColor}',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(color: const Color(0xFF64748B)),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (isAdmin)
+                            const Icon(Icons.edit_rounded, color: Color(0xFF94A3B8)),
+                        ],
+                      ),
+                    );
+                  },
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),

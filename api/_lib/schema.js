@@ -13,6 +13,7 @@ const ensured = {
   lines_operator: false,
   line_stock: false,
   users_auth: false,
+  region_colors: false,
   service_fault_types: false,
   service_accessory_types: false,
   service_records_columns: false,
@@ -191,6 +192,65 @@ async function ensureUsersAuthColumns() {
   );
 
   ensured.users_auth = true;
+  return true;
+}
+
+async function ensureRegionColorsTable() {
+  if (ensured.region_colors) return true;
+
+  await query(
+    `
+      create table if not exists public.region_colors (
+        region_key text primary key,
+        label text not null,
+        bg_color text not null,
+        border_color text not null,
+        sort_order int not null default 0,
+        is_active boolean not null default true,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      )
+    `,
+  );
+
+  await query(
+    `
+      create or replace function public.region_colors_set_updated_at()
+      returns trigger
+      language plpgsql
+      as $$
+      begin
+        new.updated_at = now();
+        return new;
+      end;
+      $$;
+    `,
+  );
+  await query(
+    `
+      drop trigger if exists set_region_colors_updated_at on public.region_colors;
+      create trigger set_region_colors_updated_at
+      before update on public.region_colors
+      for each row
+      execute function public.region_colors_set_updated_at();
+    `,
+  );
+
+  await query(
+    `
+      insert into public.region_colors (region_key, label, bg_color, border_color, sort_order, is_active)
+      values
+        ('girne', 'Girne', '#EEF2FF', '#364FC7', 10, true),
+        ('guzelyurt', 'Güzelyurt', '#EBFBEE', '#2B8A3E', 20, true),
+        ('iskele', 'İskele', '#FFF9DB', '#F59F00', 30, true),
+        ('magusa', 'Gazimağusa', '#FFF4E6', '#F76707', 40, true),
+        ('lefke', 'Lefke', '#F1F3F5', '#495057', 50, true),
+        ('lefkosa', 'Lefkoşa', '#FFF8F0', '#7C4A2D', 60, true)
+      on conflict (region_key) do nothing
+    `,
+  );
+
+  ensured.region_colors = true;
   return true;
 }
 
@@ -1248,6 +1308,7 @@ async function ensureServiceActivityLogsTable() {
 module.exports = {
   ensureSerialTrackingTable,
   ensureUsersAuthColumns,
+  ensureRegionColorsTable,
   ensureWorkOrderCloseNotesTable,
   ensureInvoiceItemsTable,
   ensureFaultFormsTable,

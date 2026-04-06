@@ -16,6 +16,7 @@ import '../../core/ui/app_page_layout.dart';
 import 'work_order_create_dialog.dart';
 import 'work_order_detail_sheet.dart';
 import 'work_order_model.dart';
+import 'work_order_region_colors.dart';
 import 'work_orders_providers.dart';
 
 String _shortId(String id) {
@@ -24,27 +25,16 @@ String _shortId(String id) {
   return trimmed.substring(0, 6);
 }
 
-int _hashString32(String input) {
-  var hash = 0x811C9DC5;
-  for (final codeUnit in input.codeUnits) {
-    hash ^= codeUnit;
-    hash = (hash * 0x01000193) & 0xFFFFFFFF;
-  }
-  return hash;
+Color _cityAccentColor(
+  String? city, {
+  required int fallbackIndex,
+  required WorkOrderRegionThemeResolver resolver,
+}) {
+  return resolver.accent(city, fallbackIndex: fallbackIndex);
 }
 
-Color _cityAccentColor(String? city, {required int fallbackIndex}) {
-  final v = (city ?? '').trim();
-  if (v.isEmpty) return _rowAccentColor(fallbackIndex);
-  final h = _hashString32(v) % 360;
-  return HSLColor.fromAHSL(1, h.toDouble(), 0.62, 0.42).toColor();
-}
-
-Color? _cityBackgroundColor(String? city) {
-  final v = (city ?? '').trim();
-  if (v.isEmpty) return null;
-  final h = _hashString32(v) % 360;
-  return HSLColor.fromAHSL(1, h.toDouble(), 0.60, 0.94).toColor();
+Color? _cityBackgroundColor(String? city, {required WorkOrderRegionThemeResolver resolver}) {
+  return resolver.background(city);
 }
 
 Widget _compactStatusPill(String status) {
@@ -1267,7 +1257,7 @@ class _WorkOrdersList extends StatelessWidget {
   }
 }
 
-class _WorkOrderGridCard extends StatelessWidget {
+class _WorkOrderGridCard extends ConsumerWidget {
   const _WorkOrderGridCard({
     required this.order,
     required this.indexNumber,
@@ -1301,17 +1291,28 @@ class _WorkOrderGridCard extends StatelessWidget {
   final bool showDelete;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final resolver =
+        ref.watch(workOrderRegionThemeProvider).value ??
+        WorkOrderRegionThemeResolver.defaults();
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxHeight < 190 || constraints.maxWidth < 210;
         final statusColor = _statusColor(order.status);
-        final accent = _cityAccentColor(order.city, fallbackIndex: colorIndex);
-        final backgroundColor = _cityBackgroundColor(order.city);
+        final accent = _cityAccentColor(
+          order.city,
+          fallbackIndex: colorIndex,
+          resolver: resolver,
+        );
+        final backgroundColor = _cityBackgroundColor(order.city, resolver: resolver);
+        final isDarkCard = backgroundColor != null && backgroundColor.computeLuminance() < 0.42;
+        final primaryTextColor = isDarkCard ? Colors.white : null;
+        final mutedTextColor = isDarkCard ? Colors.white.withValues(alpha: 0.78) : AppTheme.textMuted;
+        final iconColor = isDarkCard ? Colors.white.withValues(alpha: 0.86) : null;
         final muted = Theme.of(context)
             .textTheme
             .bodySmall
-            ?.copyWith(color: AppTheme.textMuted);
+            ?.copyWith(color: mutedTextColor);
 
         final customerName = (order.customerName ?? '').trim();
         final branchName = (order.branchName ?? '').trim();
@@ -1366,6 +1367,7 @@ class _WorkOrderGridCard extends StatelessWidget {
           onTap: onOpen,
           padding: EdgeInsets.all(compact ? 6 : 10),
           color: backgroundColor,
+          borderColor: accent,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1375,16 +1377,22 @@ class _WorkOrderGridCard extends StatelessWidget {
                     width: compact ? 28 : 32,
                     height: compact ? 28 : 32,
                     decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.12),
+                      color: isDarkCard
+                          ? Colors.white.withValues(alpha: 0.14)
+                          : accent.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: accent.withValues(alpha: 0.22)),
+                      border: Border.all(
+                        color: isDarkCard
+                            ? Colors.white.withValues(alpha: 0.24)
+                            : accent.withValues(alpha: 0.22),
+                      ),
                     ),
                     child: Center(
                       child: Text(
                         indexNumber?.toString() ?? _shortId(order.id),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               fontWeight: FontWeight.w900,
-                              color: accent,
+                              color: isDarkCard ? Colors.white : accent,
                             ),
                       ),
                     ),
@@ -1426,7 +1434,7 @@ class _WorkOrderGridCard extends StatelessWidget {
                   PopupMenuButton<String>(
                     padding: EdgeInsets.zero,
                     tooltip: 'İşlemler',
-                    icon: const Icon(Icons.more_horiz_rounded),
+                    icon: Icon(Icons.more_horiz_rounded, color: iconColor),
                     itemBuilder: (context) => [
                       const PopupMenuItem(value: 'detail', child: Text('Detay')),
                       if (showEdit)
@@ -1498,6 +1506,7 @@ class _WorkOrderGridCard extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontSize: compact ? 13 : null,
                       fontWeight: FontWeight.w900,
+                      color: primaryTextColor,
                     ),
               ),
               if (assignedName.isNotEmpty) ...[
@@ -1509,6 +1518,7 @@ class _WorkOrderGridCard extends StatelessWidget {
                   style: (muted ?? const TextStyle()).copyWith(
                     fontSize: compact ? 11 : null,
                     fontWeight: FontWeight.w700,
+                    color: mutedTextColor,
                   ),
                 ),
               ],
@@ -1520,6 +1530,7 @@ class _WorkOrderGridCard extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontSize: compact ? 12 : null,
                       fontWeight: FontWeight.w700,
+                      color: primaryTextColor,
                       decoration: order.isActive ? null : TextDecoration.lineThrough,
                     ),
               ),
@@ -1803,7 +1814,7 @@ class _ReorderableWorkOrdersGridState extends State<_ReorderableWorkOrdersGrid> 
   }
 }
 
-class _WorkOrderCard extends StatelessWidget {
+class _WorkOrderCard extends ConsumerWidget {
   const _WorkOrderCard({
     super.key,
     required this.order,
@@ -1840,7 +1851,10 @@ class _WorkOrderCard extends StatelessWidget {
   final bool showDelete;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final resolver =
+        ref.watch(workOrderRegionThemeProvider).value ??
+        WorkOrderRegionThemeResolver.defaults();
     final scheduled = order.scheduledDate == null
         ? null
         : DateFormat('d MMM y HH:mm', 'tr_TR')
@@ -1879,15 +1893,24 @@ class _WorkOrderCard extends StatelessWidget {
       const Color(0xFFF5F3FF),
     ];
     final backgroundColor =
-        _cityBackgroundColor(order.city) ??
+        _cityBackgroundColor(order.city, resolver: resolver) ??
         (order.status == 'open'
             ? openBackgrounds[reorderIndex % openBackgrounds.length]
             : null);
+    final isDarkCard = backgroundColor != null && backgroundColor.computeLuminance() < 0.42;
+    final primaryTextColor = isDarkCard ? Colors.white : null;
+    final iconColor = isDarkCard ? Colors.white.withValues(alpha: 0.86) : null;
+    final accent = _cityAccentColor(
+      order.city,
+      fallbackIndex: reorderIndex,
+      resolver: resolver,
+    );
 
     return AppCard(
       onTap: onOpen,
       padding: const EdgeInsets.all(14),
       color: backgroundColor,
+      borderColor: accent,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1904,12 +1927,14 @@ class _WorkOrderCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: _cityAccentColor(order.city, fallbackIndex: reorderIndex)
-                  .withValues(alpha: 0.12),
+              color: isDarkCard
+                  ? Colors.white.withValues(alpha: 0.14)
+                  : accent.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: _cityAccentColor(order.city, fallbackIndex: reorderIndex)
-                    .withValues(alpha: 0.22),
+                color: isDarkCard
+                    ? Colors.white.withValues(alpha: 0.24)
+                    : accent.withValues(alpha: 0.22),
               ),
             ),
             child: Center(
@@ -1917,10 +1942,7 @@ class _WorkOrderCard extends StatelessWidget {
                 indexNumber?.toString() ?? _shortId(order.id),
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w900,
-                      color: _cityAccentColor(
-                        order.city,
-                        fallbackIndex: reorderIndex,
-                      ),
+                      color: isDarkCard ? Colors.white : accent,
                     ),
               ),
             ),
@@ -1939,6 +1961,7 @@ class _WorkOrderCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.w800,
+                              color: primaryTextColor,
                               decoration: order.isActive
                                   ? null
                                   : TextDecoration.lineThrough,
@@ -2053,6 +2076,7 @@ class _WorkOrderCard extends StatelessWidget {
                     break;
                 }
               },
+              icon: Icon(Icons.more_horiz_rounded, color: iconColor),
             ),
           ]
         ],
@@ -2076,18 +2100,6 @@ Color _statusColor(String status) {
     default:
       return const Color(0xFF94A3B8);
   }
-}
-
-Color _rowAccentColor(int index) {
-  const palette = [
-    Color(0xFF2563EB),
-    Color(0xFF16A34A),
-    Color(0xFFF59E0B),
-    Color(0xFF7C3AED),
-    Color(0xFFEF4444),
-    Color(0xFF0EA5E9),
-  ];
-  return palette[index % palette.length];
 }
 
 class _InfoChip extends StatelessWidget {
