@@ -1,5 +1,6 @@
 const { getAuthenticatedUser, hasPageAccess } = require('./_lib/auth');
 const { query } = require('./_lib/db');
+const https = require('https');
 const {
   ensureSerialTrackingTable,
   ensureWorkOrderCloseNotesTable,
@@ -32,6 +33,58 @@ const {
   parseBoolean,
   parseInteger,
 } = require('./_lib/http');
+
+let halkbankRatesCache = { fetchedAtMs: 0, payload: null };
+
+function fetchText(url, { timeoutMs = 9000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      {
+        headers: {
+          'user-agent': 'microvise-crm/1.0',
+          accept: 'text/html,*/*',
+          'accept-encoding': 'identity',
+        },
+      },
+      (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        res.on('end', () => resolve(data));
+      },
+    );
+    req.on('error', reject);
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error('timeout'));
+    });
+  });
+}
+
+function parseTrNumber(input) {
+  const v = String(input || '').trim();
+  if (!v) return null;
+  const normalized = v.replace(/\./g, '').replace(',', '.');
+  const n = Number.parseFloat(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseHalkbankRow(html, slug, code) {
+  const idx = html.indexOf(`/halkbank/${slug}`);
+  if (idx < 0) return null;
+  const slice = html.substring(idx, Math.min(html.length, idx + 1000));
+  const bold = [...slice.matchAll(/<td class="text-bold"[^>]*>([^<]+)<\/td>/g)].map((m) =>
+    String(m[1] || '').trim(),
+  );
+  const timeMatch = slice.match(/<td class="time">([^<]+)<\/td>/);
+  const buying = parseTrNumber(bold[0]);
+  const selling = parseTrNumber(bold[1]);
+  const time = timeMatch ? String(timeMatch[1] || '').trim() : null;
+  if (buying == null || selling == null) return null;
+  return { code, buying, selling, time };
+}
 
 function requirePage(user, pageKey, res) {
   if (!hasPageAccess(user, pageKey)) {
@@ -141,6 +194,9 @@ module.exports = async (req, res) => {
     }
     if (resource === 'work_order_payments') {
       if (!requirePage(user, 'is_emirleri', res)) return;
+    }
+    if (resource === 'halkbank_exchange_rates') {
+      if (!requirePage(user, 'panel', res)) return;
     }
     if (resource.startsWith('form_')) {
       if (!requirePage(user, 'formlar', res)) return;
@@ -2126,6 +2182,32 @@ module.exports = async (req, res) => {
         );
 
         return ok(res, { items: result.rows });
+      }
+
+      case 'halkbank_exchange_rates': {
+        const nowMs = Date.now();
+        if (halkbankRatesCache.payload && nowMs - halkbankRatesCache.fetchedAtMs < 60 * 1000) {
+          return ok(res, halkbankRatesCache.payload);
+        }
+
+        const sourceUrl = 'https://kur.doviz.com/halkbank';
+        const html = await fetchText(sourceUrl);
+        if (!html || html.length < 1000) {
+          return serverError(res, new Error('Döviz verisi okunamadı.'));
+        }
+
+        const usd = parseHalkbankRow(html, 'amerikan-dolari', 'USD');
+        const eur = parseHalkbankRow(html, 'euro', 'EUR');
+        const gbp = parseHalkbankRow(html, 'sterlin', 'GBP');
+        const items = [usd, eur, gbp].filter(Boolean);
+
+        const payload = {
+          sourceUrl,
+          fetchedAt: new Date().toISOString(),
+          items,
+        };
+        halkbankRatesCache = { fetchedAtMs: nowMs, payload };
+        return ok(res, payload);
       }
 
       default:

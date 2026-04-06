@@ -5,6 +5,7 @@ import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/auth/user_profile_provider.dart';
@@ -85,6 +86,8 @@ class DashboardScreen extends ConsumerWidget {
             ),
             const Gap(12),
             const _BankPasswordsCard(),
+            const Gap(12),
+            const _ExchangeRatesCard(),
             const Gap(16),
             LayoutBuilder(
               builder: (context, constraints) {
@@ -292,6 +295,185 @@ class DashboardScreen extends ConsumerWidget {
                 );
               },
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExchangeRatesCard extends ConsumerWidget {
+  const _ExchangeRatesCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ratesAsync = ref.watch(dashboardHalkbankRatesProvider);
+    final format = NumberFormat('#,##0.0000', 'tr_TR');
+
+    String subtitleFromRates(DashboardExchangeRates rates) {
+      if (rates.items.isEmpty) return 'Halkbank • USD, EUR, GBP';
+      final parts = rates.items.map((r) {
+        final value = format.format(r.selling);
+        return '${r.code}: $value';
+      }).join(' • ');
+      return 'Halkbank • $parts';
+    }
+
+    return Skeletonizer(
+      enabled: ratesAsync.isLoading,
+      child: AppCard(
+        onTap: () {
+          ref.invalidate(dashboardHalkbankRatesProvider);
+          showDialog<void>(
+            context: context,
+            builder: (context) {
+              return AlertDialog(
+                title: const Text('Döviz Kurları (Halkbank)'),
+                content: SizedBox(
+                  width: 520,
+                  child: Consumer(
+                    builder: (context, ref, _) {
+                      final async = ref.watch(dashboardHalkbankRatesProvider);
+                      return async.when(
+                        data: (rates) {
+                          final updatedText = rates.fetchedAt == null
+                              ? '—'
+                              : DateFormat('d MMM y HH:mm', 'tr_TR')
+                                  .format(AppTime.toTr(rates.fetchedAt!));
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Güncelleme: $updatedText',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(color: const Color(0xFF64748B)),
+                              ),
+                              const Gap(12),
+                              if (rates.items.isEmpty)
+                                const Text('Kur bilgisi alınamadı.')
+                              else
+                                Column(
+                                  children: [
+                                    for (final r in rates.items)
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 8),
+                                        child: Row(
+                                          children: [
+                                            SizedBox(
+                                              width: 56,
+                                              child: Text(
+                                                r.code,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .titleSmall,
+                                              ),
+                                            ),
+                                            Expanded(
+                                              child: Text(
+                                                'Alış: ${format.format(r.buying)}',
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodyMedium,
+                                              ),
+                                            ),
+                                            Expanded(
+                                              child: Text(
+                                                'Satış: ${format.format(r.selling)}',
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodyMedium
+                                                    ?.copyWith(fontWeight: FontWeight.w700),
+                                              ),
+                                            ),
+                                            SizedBox(
+                                              width: 52,
+                                              child: Text(
+                                                (r.time ?? '').trim().isEmpty ? '—' : r.time!,
+                                                textAlign: TextAlign.end,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodySmall
+                                                    ?.copyWith(color: const Color(0xFF64748B)),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                            ],
+                          );
+                        },
+                        loading: () => const SizedBox(
+                          height: 140,
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                        error: (err, st) => const Text('Kur bilgisi alınamadı.'),
+                      );
+                    },
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () async {
+                      final url = ratesAsync.value?.sourceUrl ?? 'https://kur.doviz.com/halkbank';
+                      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                    },
+                    child: const Text('Kaynak'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Kapat'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppTheme.warning.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppTheme.warning.withValues(alpha: 0.18)),
+              ),
+              child: const Icon(
+                Icons.currency_exchange_rounded,
+                size: 18,
+                color: AppTheme.warning,
+              ),
+            ),
+            const Gap(10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Döviz Kurları',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const Gap(2),
+                  Text(
+                    ratesAsync.when(
+                      data: subtitleFromRates,
+                      loading: () => 'Halkbank • yükleniyor…',
+                      error: (err, st) => 'Halkbank • USD, EUR, GBP',
+                    ),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: const Color(0xFF64748B)),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.open_in_new_rounded, color: Color(0xFF94A3B8)),
           ],
         ),
       ),

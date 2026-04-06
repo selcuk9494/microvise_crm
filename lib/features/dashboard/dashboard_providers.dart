@@ -9,6 +9,73 @@ import '../../core/format/app_date_time.dart';
 import '../../core/storage/app_cache.dart';
 import '../../core/supabase/supabase_providers.dart';
 
+class DashboardExchangeRate {
+  const DashboardExchangeRate({
+    required this.code,
+    required this.buying,
+    required this.selling,
+    required this.time,
+  });
+
+  final String code;
+  final double buying;
+  final double selling;
+  final String? time;
+
+  factory DashboardExchangeRate.fromJson(Map<String, dynamic> json) {
+    double? toDoubleAny(Object? v) {
+      if (v is double) return v;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v?.toString() ?? '');
+    }
+
+    return DashboardExchangeRate(
+      code: (json['code'] ?? '').toString(),
+      buying: toDoubleAny(json['buying']) ?? 0,
+      selling: toDoubleAny(json['selling']) ?? 0,
+      time: json['time']?.toString(),
+    );
+  }
+}
+
+class DashboardExchangeRates {
+  const DashboardExchangeRates({
+    required this.sourceUrl,
+    required this.fetchedAt,
+    required this.items,
+  });
+
+  final String sourceUrl;
+  final DateTime? fetchedAt;
+  final List<DashboardExchangeRate> items;
+
+  static DashboardExchangeRates empty() =>
+      const DashboardExchangeRates(sourceUrl: '', fetchedAt: null, items: []);
+}
+
+final dashboardHalkbankRatesProvider = FutureProvider<DashboardExchangeRates>((ref) async {
+  final apiClient = ref.watch(apiClientProvider);
+  if (apiClient == null) return DashboardExchangeRates.empty();
+  final response = await apiClient.getJson(
+    '/data',
+    queryParameters: const {'resource': 'halkbank_exchange_rates'},
+  );
+  final fetchedAtRaw = response['fetchedAt']?.toString();
+  final fetchedAt = fetchedAtRaw == null ? null : DateTime.tryParse(fetchedAtRaw);
+  final itemsRaw = response['items'];
+  final items = (itemsRaw is List)
+      ? itemsRaw
+          .whereType<Map>()
+          .map((e) => DashboardExchangeRate.fromJson(e.cast<String, dynamic>()))
+          .toList(growable: false)
+      : const <DashboardExchangeRate>[];
+  return DashboardExchangeRates(
+    sourceUrl: (response['sourceUrl'] ?? '').toString(),
+    fetchedAt: fetchedAt,
+    items: items,
+  );
+});
+
 final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
   final canSeeCustomers = ref.watch(hasPageAccessProvider(kPageCustomers));
