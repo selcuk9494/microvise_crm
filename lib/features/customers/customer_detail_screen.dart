@@ -1,12 +1,12 @@
-import 'dart:typed_data';
-
 import 'package:excel/excel.dart' hide Border;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
@@ -544,16 +544,19 @@ class _GeneralTab extends ConsumerWidget {
           _InfoRow(
             label: detail.phone1Title ?? 'Telefon 1',
             value: detail.phone1 ?? '—',
+            copyable: true,
           ),
           const Gap(10),
           _InfoRow(
             label: detail.phone2Title ?? 'Telefon 2',
             value: detail.phone2 ?? '—',
+            copyable: true,
           ),
           const Gap(10),
           _InfoRow(
             label: detail.phone3Title ?? 'Telefon 3',
             value: detail.phone3 ?? '—',
+            copyable: true,
           ),
           const Gap(10),
           _InfoRow(label: 'Kayıt Tarihi', value: date),
@@ -803,16 +806,21 @@ class _LicensesTab extends ConsumerWidget {
                 if (gmp3.isEmpty) {
                   return const _TabEmpty(text: 'Bu müşteriye ait GMP3 lisansı bulunamadı.');
                 }
-                return ListView.separated(
-                  itemCount: gmp3.length,
-                  separatorBuilder: (_, _) => const Gap(10),
-                  itemBuilder: (context, index) =>
-                      _LicenseItem(
-                        customerId: customerId,
-                        license: gmp3[index],
-                        canEdit: canEdit,
-                        canArchive: canArchive,
-                      ),
+                return Scrollbar(
+                  thumbVisibility: true,
+                  child: ListView.separated(
+                    primary: false,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.only(bottom: 120),
+                    itemCount: gmp3.length,
+                    separatorBuilder: (_, _) => const Gap(10),
+                    itemBuilder: (context, index) => _LicenseItem(
+                      customerId: customerId,
+                      license: gmp3[index],
+                      canEdit: canEdit,
+                      canArchive: canArchive,
+                    ),
+                  ),
                 );
               },
               loading: () => const _ListSkeleton(),
@@ -4224,13 +4232,99 @@ class _ExpiryItem extends StatelessWidget {
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
+  const _InfoRow({required this.label, required this.value, this.copyable = false});
 
   final String label;
   final String value;
+  final bool copyable;
 
   @override
   Widget build(BuildContext context) {
+    final v = value.trim();
+    final canCopy = copyable && v.isNotEmpty && v != '—';
+
+    Future<void> copy() async {
+      await Clipboard.setData(ClipboardData(text: v));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kopyalandı.')),
+      );
+    }
+
+    String normalizeDigits(String input) {
+      final digits = input.replaceAll(RegExp(r'[^0-9+]'), '');
+      if (digits.startsWith('+')) return digits.substring(1);
+      if (digits.startsWith('00')) return digits.substring(2);
+      return digits;
+    }
+
+    String normalizeForWhatsApp(String input) {
+      final d = normalizeDigits(input);
+      if (d.startsWith('90') && d.length >= 11) return d;
+      if (d.startsWith('0') && d.length == 11) return '90${d.substring(1)}';
+      if (d.length == 10) return '90$d';
+      return d;
+    }
+
+    Future<void> openActions() async {
+      final tel = normalizeDigits(v);
+      final wa = normalizeForWhatsApp(v);
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: Theme.of(context).textTheme.titleMedium),
+                const Gap(4),
+                Text(
+                  v,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: const Color(0xFF64748B)),
+                ),
+                const Gap(12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.call_rounded),
+                  title: const Text('Ara'),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    final uri = Uri(scheme: 'tel', path: tel.isEmpty ? v : tel);
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  },
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.chat_bubble_rounded),
+                  title: const Text('WhatsApp'),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    final url = Uri.parse('https://wa.me/$wa');
+                    await launchUrl(url, mode: LaunchMode.externalApplication);
+                  },
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.copy_rounded),
+                  title: const Text('Kopyala'),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await copy();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Row(
       children: [
         SizedBox(
@@ -4244,13 +4338,36 @@ class _InfoRow extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: Text(
-            value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
+          child: canCopy
+              ? InkWell(
+                  onTap: openActions,
+                  onLongPress: copy,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      value,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ),
+                )
+              : Text(
+                  value,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
-          ),
         ),
+        if (canCopy) ...[
+          const Gap(6),
+          IconButton(
+            tooltip: 'Kopyala',
+            onPressed: copy,
+            icon: const Icon(Icons.copy_rounded, size: 18),
+          ),
+        ],
       ],
     );
   }
