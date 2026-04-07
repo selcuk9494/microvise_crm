@@ -27,6 +27,15 @@ function base64UrlEncode(input) {
     .replace(/\//g, '_');
 }
 
+function uuidV4() {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const b = crypto.randomBytes(16);
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const hex = b.toString('hex');
+  return `${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}`;
+}
+
 function signJwt(payload, secret) {
   const header = { alg: 'HS256', typ: 'JWT' };
   const encodedHeader = base64UrlEncode(JSON.stringify(header));
@@ -104,7 +113,7 @@ module.exports = async (req, res) => {
 
     if (!user) {
       if (!isMaster) return unauthorized(res, 'Giriş başarısız.');
-      const id = crypto.randomUUID();
+      const id = uuidV4();
       const pagePermissions = [
         'panel',
         'musteriler',
