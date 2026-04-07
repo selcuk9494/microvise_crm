@@ -12,6 +12,8 @@ class LineStockItem {
     required this.simNumber,
     required this.isActive,
     required this.consumedAt,
+    required this.consumedCustomerName,
+    required this.consumedWorkOrderTitle,
     required this.createdAt,
   });
 
@@ -21,6 +23,8 @@ class LineStockItem {
   final String? simNumber;
   final bool isActive;
   final DateTime? consumedAt;
+  final String? consumedCustomerName;
+  final String? consumedWorkOrderTitle;
   final DateTime? createdAt;
 
   bool get isConsumed => consumedAt != null;
@@ -33,6 +37,8 @@ class LineStockItem {
       simNumber: json['sim_number']?.toString(),
       isActive: (json['is_active'] as bool?) ?? true,
       consumedAt: DateTime.tryParse(json['consumed_at']?.toString() ?? ''),
+      consumedCustomerName: json['consumed_customer_name']?.toString(),
+      consumedWorkOrderTitle: json['consumed_work_order_title']?.toString(),
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
     );
   }
@@ -60,9 +66,35 @@ final lineStockStatusProvider =
 
 class LineStockStatusNotifier extends Notifier<String> {
   @override
-  String build() => 'available';
+  String build() => 'all';
 
   void set(String value) => state = value;
+}
+
+final lineStockConsumedFromProvider =
+    NotifierProvider<LineStockConsumedFromNotifier, DateTime?>(
+        LineStockConsumedFromNotifier.new);
+
+class LineStockConsumedFromNotifier extends Notifier<DateTime?> {
+  @override
+  DateTime? build() => null;
+
+  void set(DateTime? value) => state = value;
+
+  void clear() => state = null;
+}
+
+final lineStockConsumedToProvider =
+    NotifierProvider<LineStockConsumedToNotifier, DateTime?>(
+        LineStockConsumedToNotifier.new);
+
+class LineStockConsumedToNotifier extends Notifier<DateTime?> {
+  @override
+  DateTime? build() => null;
+
+  void set(DateTime? value) => state = value;
+
+  void clear() => state = null;
 }
 
 final lineStockOperatorProvider =
@@ -80,6 +112,14 @@ final lineStockProvider = FutureProvider.autoDispose<List<LineStockItem>>((ref) 
   final search = ref.watch(lineStockSearchProvider).trim();
   final status = ref.watch(lineStockStatusProvider).trim();
   final operatorName = ref.watch(lineStockOperatorProvider).trim();
+  final consumedFrom = ref.watch(lineStockConsumedFromProvider);
+  final consumedTo = ref.watch(lineStockConsumedToProvider);
+
+  String? isoDate(DateTime? d) {
+    if (d == null) return null;
+    final s = d.toIso8601String();
+    return s.substring(0, 10);
+  }
 
   if (apiClient != null) {
     final response = await apiClient.getJson(
@@ -89,6 +129,8 @@ final lineStockProvider = FutureProvider.autoDispose<List<LineStockItem>>((ref) 
         if (search.isNotEmpty) 'search': search,
         if (status.isNotEmpty) 'status': status,
         if (operatorName != 'all') 'operator': operatorName,
+        if (isoDate(consumedFrom) != null) 'consumedFrom': isoDate(consumedFrom)!,
+        if (isoDate(consumedTo) != null) 'consumedTo': isoDate(consumedTo)!,
         'limit': '5000',
       },
     );
@@ -114,6 +156,10 @@ final lineStockProvider = FutureProvider.autoDispose<List<LineStockItem>>((ref) 
 
   final q = search.toLowerCase();
   final opNorm = operatorName == 'all' ? null : normalizeOperator(operatorName);
+  final fromDate = isoDate(consumedFrom);
+  final toDate = isoDate(consumedTo);
+  final from = fromDate == null ? null : DateTime.tryParse('${fromDate}T00:00:00Z');
+  final to = toDate == null ? null : DateTime.tryParse('${toDate}T23:59:59Z');
 
   bool matches(LineStockItem item) {
     if (status == 'available') {
@@ -122,6 +168,12 @@ final lineStockProvider = FutureProvider.autoDispose<List<LineStockItem>>((ref) 
       if (!item.isConsumed) return false;
     } else if (status == 'passive') {
       if (item.isActive) return false;
+    }
+    if (from != null || to != null) {
+      final d = item.consumedAt;
+      if (d == null) return false;
+      if (from != null && d.isBefore(from)) return false;
+      if (to != null && d.isAfter(to)) return false;
     }
     if (opNorm != null && normalizeOperator(item.operatorName) != opNorm) {
       return false;

@@ -2795,6 +2795,10 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
 
     setState(() => _saving = true);
     try {
+      final isAdmin = ref.read(isAdminProvider);
+      if (!isAdmin && ((_selectedLineStockId ?? '').trim().isEmpty)) {
+        throw Exception('Personel stoktan hat seçmelidir.');
+      }
       final now = DateTime.now();
       final start = DateTime(now.year, now.month, now.day);
       final end = DateTime(now.year, 12, 31);
@@ -2859,7 +2863,23 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
           );
         }
 
-        final stockId = (_selectedLineStockId ?? '').trim();
+        String normalizeDigits(String input) =>
+            input.replaceAll(RegExp(r'[^0-9]'), '');
+        var stockId = (_selectedLineStockId ?? '').trim();
+        if (isAdmin && lineId.isNotEmpty && stockId.isEmpty) {
+          final entered = normalizeDigits(_numberController.text.trim());
+          if (entered.isNotEmpty) {
+            final available = await ref.read(lineStockAvailableProvider.future);
+            final matched = available.where((e) {
+              final n = normalizeDigits(e.lineNumber);
+              return n.isNotEmpty && n == entered;
+            }).toList(growable: false);
+            if (matched.isNotEmpty) {
+              stockId = matched.first.id;
+            }
+          }
+        }
+
         if (lineId.isNotEmpty && stockId.isNotEmpty) {
           try {
             await apiClient.postJson(
@@ -2891,7 +2911,23 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
             .select('id')
             .single();
         lineId = inserted['id']?.toString();
-        final stockId = (_selectedLineStockId ?? '').trim();
+        String normalizeDigits(String input) =>
+            input.replaceAll(RegExp(r'[^0-9]'), '');
+        var stockId = (_selectedLineStockId ?? '').trim();
+        if (isAdmin && (lineId ?? '').trim().isNotEmpty && stockId.isEmpty) {
+          final entered = normalizeDigits(_numberController.text.trim());
+          if (entered.isNotEmpty) {
+            final available = await ref.read(lineStockAvailableProvider.future);
+            final matched = available.where((e) {
+              final n = normalizeDigits(e.lineNumber);
+              return n.isNotEmpty && n == entered;
+            }).toList(growable: false);
+            if (matched.isNotEmpty) {
+              stockId = matched.first.id;
+            }
+          }
+        }
+
         if ((lineId ?? '').trim().isNotEmpty && stockId.isNotEmpty) {
           try {
             await client
@@ -2915,10 +2951,13 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Hat kaydedildi.')),
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
+      final msg = e is Exception
+          ? e.toString().replaceFirst('Exception: ', '')
+          : 'Hat kaydedilemedi.';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat kaydedilemedi.')),
+        SnackBar(content: Text(msg)),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -2929,6 +2968,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
   Widget build(BuildContext context) {
     final branchesAsync = ref.watch(customerBranchesProvider(widget.customerId));
     final lineStockAsync = ref.watch(lineStockAvailableProvider);
+    final isAdmin = ref.watch(isAdminProvider);
     final now = DateTime.now();
     final startText = DateFormat('d MMM y', 'tr_TR').format(now);
     final endText = DateFormat('d MMM y', 'tr_TR').format(DateTime(now.year, 12, 31));
@@ -3124,6 +3164,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                 TextFormField(
                   controller: _numberController,
                   keyboardType: TextInputType.phone,
+                  readOnly: !isAdmin,
                   decoration: const InputDecoration(
                     labelText: 'Hat Numarası',
                     hintText: '90555...',
@@ -3132,7 +3173,9 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                     if (v == null || v.trim().isEmpty) return 'Hat numarası gerekli.';
                     return null;
                   },
-                  onChanged: _saving ? null : (_) => setState(() => _selectedLineStockId = null),
+                  onChanged: _saving || !isAdmin
+                      ? null
+                      : (_) => setState(() => _selectedLineStockId = null),
                 ),
                 const Gap(12),
                 DropdownButtonFormField<String>(
@@ -3141,7 +3184,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                     DropdownMenuItem(value: 'turkcell', child: Text('TURKCELL')),
                     DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
                   ],
-                  onChanged: _saving
+                  onChanged: _saving || !isAdmin
                       ? null
                       : (v) => setState(() {
                             _operator = v;
@@ -3157,11 +3200,14 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                 const Gap(12),
                 TextFormField(
                   controller: _simController,
+                  readOnly: !isAdmin,
                   decoration: const InputDecoration(
                     labelText: 'SIM Numarası',
                     hintText: '89...',
                   ),
-                  onChanged: _saving ? null : (_) => setState(() => _selectedLineStockId = null),
+                  onChanged: _saving || !isAdmin
+                      ? null
+                      : (_) => setState(() => _selectedLineStockId = null),
                 ),
                 const Gap(12),
                 TextFormField(

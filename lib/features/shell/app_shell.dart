@@ -63,10 +63,31 @@ class _DesktopShell extends ConsumerWidget {
           Container(
             width: 280,
             decoration: BoxDecoration(
-              color: AppTheme.surface,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color.alphaBlend(
+                    AppTheme.primary.withValues(alpha: 0.06),
+                    AppTheme.surface,
+                  ),
+                  AppTheme.surface,
+                  Color.alphaBlend(
+                    AppTheme.accent.withValues(alpha: 0.06),
+                    AppTheme.surface,
+                  ),
+                ],
+              ),
               border: Border(
                 right: BorderSide(color: AppTheme.border),
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 18,
+                  offset: const Offset(6, 0),
+                ),
+              ],
             ),
             child: SafeArea(
               child: Padding(
@@ -84,6 +105,7 @@ class _DesktopShell extends ConsumerWidget {
                                 label: item.label,
                                 icon: item.icon,
                                 active: _isActive(location, item.path),
+                                accentColor: _navAccentColor(item.pageKey),
                                 expanded: isFormsExpanded,
                                 onHeaderTap: () {
                                   ref
@@ -122,6 +144,7 @@ class _DesktopShell extends ConsumerWidget {
                                 label: item.label,
                                 icon: item.icon,
                                 active: _isActive(location, item.path),
+                                accentColor: _navAccentColor(item.pageKey),
                                 onTap: () => context.go(item.path),
                               ),
                             const Gap(10),
@@ -338,19 +361,44 @@ class _BrandHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final surface = Theme.of(context).cardTheme.color ?? AppTheme.surface;
+    final bgTop =
+        Color.alphaBlend(AppTheme.primary.withValues(alpha: 0.12), surface);
+    final bgBottom =
+        Color.alphaBlend(AppTheme.accent.withValues(alpha: 0.08), surface);
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
-      child: Padding(
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [bgTop, bgBottom],
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppTheme.border),
+        ),
         child: Row(
           children: [
             Container(
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: AppTheme.primary,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppTheme.primary, AppTheme.primaryDeep],
+                ),
                 borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primary.withValues(alpha: 0.22),
+                    blurRadius: 18,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
               ),
               child: const Icon(
                 Icons.grid_view_rounded,
@@ -364,7 +412,9 @@ class _BrandHeader extends StatelessWidget {
               children: [
                 Text(
                   'Microvise',
-                  style: Theme.of(context).textTheme.titleSmall,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                 ),
                 Text(
                   'CRM & Servis',
@@ -468,46 +518,81 @@ class _SidebarItem extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.active,
+    required this.accentColor,
     required this.onTap,
   });
 
   final String label;
   final IconData icon;
   final bool active;
+  final Color accentColor;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final bg =
-        active ? AppTheme.primary.withValues(alpha: 0.10) : Colors.transparent;
-    final border =
-        active ? AppTheme.primary.withValues(alpha: 0.18) : AppTheme.border;
-    final fg = active ? AppTheme.primary : const Color(0xFF0F172A);
-
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
         height: 44,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: bg,
+          color: active
+              ? Color.alphaBlend(
+                  accentColor.withValues(alpha: 0.16),
+                  AppTheme.surfaceMuted,
+                )
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: border),
+          border: Border.all(
+            color: active
+                ? accentColor.withValues(alpha: 0.32)
+                : AppTheme.border,
+          ),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: fg),
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: active
+                    ? accentColor.withValues(alpha: 0.16)
+                    : accentColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: active
+                      ? accentColor.withValues(alpha: 0.30)
+                      : accentColor.withValues(alpha: 0.18),
+                ),
+              ),
+              child: Icon(
+                icon,
+                size: 18,
+                color: active ? accentColor : accentColor.withValues(alpha: 0.92),
+              ),
+            ),
             const Gap(10),
             Expanded(
               child: Text(
                 label,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-                      color: fg,
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w600,
+                      color: active ? accentColor : const Color(0xFF0F172A),
                     ),
               ),
             ),
+            if (active)
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: accentColor,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
           ],
         ),
       ),
@@ -527,6 +612,7 @@ class _FormsNavGroup extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.active,
+    required this.accentColor,
     required this.expanded,
     required this.onHeaderTap,
     required this.subItems,
@@ -536,6 +622,7 @@ class _FormsNavGroup extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool active;
+  final Color accentColor;
   final bool expanded;
   final VoidCallback onHeaderTap;
   final List<_FormsNavSubItem> subItems;
@@ -545,11 +632,6 @@ class _FormsNavGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     final anySubActive = subItems.any((e) => _isActive(matchedLocation, e.path));
     final isActive = active || anySubActive;
-    final bg =
-        isActive ? AppTheme.primary.withValues(alpha: 0.10) : Colors.transparent;
-    final border =
-        isActive ? AppTheme.primary.withValues(alpha: 0.18) : AppTheme.border;
-    final fg = isActive ? AppTheme.primary : const Color(0xFF0F172A);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -557,25 +639,57 @@ class _FormsNavGroup extends StatelessWidget {
         InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: onHeaderTap,
-          child: Container(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
             height: 44,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: bg,
+              color: isActive
+                  ? Color.alphaBlend(
+                      accentColor.withValues(alpha: 0.16),
+                      AppTheme.surfaceMuted,
+                    )
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: border),
+              border: Border.all(
+                color: isActive
+                    ? accentColor.withValues(alpha: 0.32)
+                    : AppTheme.border,
+              ),
             ),
             child: Row(
               children: [
-                Icon(icon, size: 18, color: fg),
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? accentColor.withValues(alpha: 0.16)
+                        : accentColor.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isActive
+                          ? accentColor.withValues(alpha: 0.30)
+                          : accentColor.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 18,
+                    color: isActive
+                        ? accentColor
+                        : accentColor.withValues(alpha: 0.92),
+                  ),
+                ),
                 const Gap(10),
                 Expanded(
                   child: Text(
                     label,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontWeight:
-                              isActive ? FontWeight.w600 : FontWeight.w500,
-                          color: fg,
+                          isActive ? FontWeight.w700 : FontWeight.w600,
+                      color: isActive ? accentColor : const Color(0xFF0F172A),
                         ),
                   ),
                 ),
@@ -584,7 +698,8 @@ class _FormsNavGroup extends StatelessWidget {
                       ? Icons.expand_less_rounded
                       : Icons.expand_more_rounded,
                   size: 20,
-                  color: fg.withValues(alpha: 0.9),
+                  color: (isActive ? accentColor : const Color(0xFF64748B))
+                      .withValues(alpha: 0.9),
                 ),
               ],
             ),
@@ -598,9 +713,16 @@ class _FormsNavGroup extends StatelessWidget {
               margin: const EdgeInsets.only(left: 10),
               padding: const EdgeInsets.symmetric(vertical: 6),
               decoration: BoxDecoration(
-                color: AppTheme.surfaceMuted,
+                color: Color.alphaBlend(
+                  accentColor.withValues(alpha: 0.06),
+                  AppTheme.surfaceMuted,
+                ),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.border),
+                border: Border.all(
+                  color: isActive
+                      ? accentColor.withValues(alpha: 0.18)
+                      : AppTheme.border,
+                ),
               ),
               child: Column(
                 children: [
@@ -608,6 +730,7 @@ class _FormsNavGroup extends StatelessWidget {
                     _SidebarSubItem(
                       label: item.label,
                       active: _isActive(matchedLocation, item.path),
+                      accentColor: accentColor,
                       onTap: () => context.go(item.path),
                     ),
                     if (item != subItems.last) const Gap(6),
@@ -629,32 +752,36 @@ class _SidebarSubItem extends StatelessWidget {
   const _SidebarSubItem({
     required this.label,
     required this.active,
+    required this.accentColor,
     required this.onTap,
   });
 
   final String label;
   final bool active;
+  final Color accentColor;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final bg =
-        active ? AppTheme.primary.withValues(alpha: 0.08) : Colors.transparent;
-    final border =
-        active ? AppTheme.primary.withValues(alpha: 0.16) : AppTheme.border;
-    final fg = active ? AppTheme.primary : const Color(0xFF334155);
+    final fg = active ? accentColor : const Color(0xFF334155);
 
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
         height: 40,
         margin: const EdgeInsets.only(left: 22),
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: bg,
+          color: active ? accentColor.withValues(alpha: 0.10) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: border),
+          border: Border.all(
+            color: active
+                ? accentColor.withValues(alpha: 0.20)
+                : AppTheme.border,
+          ),
         ),
         child: Row(
           children: [
@@ -733,10 +860,19 @@ class _AccountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final surface = Theme.of(context).cardTheme.color ?? AppTheme.surface;
+    final bgTop =
+        Color.alphaBlend(AppTheme.primary.withValues(alpha: 0.12), surface);
+    final bgBottom =
+        Color.alphaBlend(AppTheme.accent.withValues(alpha: 0.08), surface);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [bgTop, bgBottom],
+        ),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -781,6 +917,33 @@ class _AccountCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+Color _navAccentColor(String pageKey) {
+  switch (pageKey) {
+    case 'panel':
+      return AppTheme.primary;
+    case 'musteriler':
+      return AppTheme.accent;
+    case 'formlar':
+      return AppTheme.warning;
+    case 'is_emirleri':
+      return const Color(0xFF16A34A);
+    case 'servis':
+      return const Color(0xFF0EA5E9);
+    case 'raporlar':
+      return const Color(0xFF7C3AED);
+    case 'urunler':
+      return const Color(0xFF2563EB);
+    case 'faturalama':
+      return const Color(0xFFF97316);
+    case 'tanimlamalar':
+      return const Color(0xFF334155);
+    case 'personel':
+      return const Color(0xFFDB2777);
+    default:
+      return AppTheme.primary;
   }
 }
 

@@ -108,10 +108,16 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
       final now = DateTime.now().toUtc();
       final locationLink = _resolvedLocationLink();
       final profile = await ref.read(currentUserProfileProvider.future);
+      final isAdmin = ref.read(isAdminProvider);
+      if (_addLine && !isAdmin && ((_selectedLineStockId ?? '').trim().isEmpty)) {
+        throw Exception('Personel stoktan hat seçmelidir.');
+      }
 
       final branchId = _selectedBranchId ?? widget.order.branchId;
       if (apiClient != null) {
         String? insertedLineId;
+        String normalizeDigits(String input) =>
+            input.replaceAll(RegExp(r'[^0-9]'), '');
         if (_addLine) {
           final number = _lineNumberController.text.trim();
           if (number.isEmpty) {
@@ -145,8 +151,22 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           insertedLineId = (response['row'] as Map?)?['id']?.toString();
         }
 
-        if ((insertedLineId ?? '').trim().isNotEmpty &&
-            (_selectedLineStockId ?? '').trim().isNotEmpty) {
+        var stockId = (_selectedLineStockId ?? '').trim();
+        if (isAdmin && (insertedLineId ?? '').trim().isNotEmpty && stockId.isEmpty) {
+          final entered = normalizeDigits(_lineNumberController.text.trim());
+          if (entered.isNotEmpty) {
+            final available = await ref.read(lineStockAvailableProvider.future);
+            final matched = available.where((e) {
+              final n = normalizeDigits(e.lineNumber);
+              return n.isNotEmpty && n == entered;
+            }).toList(growable: false);
+            if (matched.isNotEmpty) {
+              stockId = matched.first.id;
+            }
+          }
+        }
+
+        if ((insertedLineId ?? '').trim().isNotEmpty && stockId.isNotEmpty) {
           try {
             await apiClient.postJson(
               '/mutate',
@@ -154,7 +174,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                 'op': 'updateWhere',
                 'table': 'line_stock',
                 'filters': [
-                  {'col': 'id', 'op': 'eq', 'value': _selectedLineStockId!},
+                  {'col': 'id', 'op': 'eq', 'value': stockId},
                 ],
                 'values': {
                   'consumed_at': now.toIso8601String(),
@@ -456,6 +476,12 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
       }
 
       if (_addLine) {
+        final isAdmin = ref.read(isAdminProvider);
+        if (!isAdmin && ((_selectedLineStockId ?? '').trim().isEmpty)) {
+          throw Exception('Personel stoktan hat seçmelidir.');
+        }
+        String normalizeDigits(String input) =>
+            input.replaceAll(RegExp(r'[^0-9]'), '');
         final number = _lineNumberController.text.trim();
         if (number.isEmpty) {
           throw Exception('Hat numarası gerekli.');
@@ -483,8 +509,22 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
             .select('id')
             .single();
         final insertedLineId = insertedLine['id']?.toString();
-        if ((insertedLineId ?? '').trim().isNotEmpty &&
-            (_selectedLineStockId ?? '').trim().isNotEmpty) {
+        var stockId = (_selectedLineStockId ?? '').trim();
+        if (isAdmin && (insertedLineId ?? '').trim().isNotEmpty && stockId.isEmpty) {
+          final entered = normalizeDigits(_lineNumberController.text.trim());
+          if (entered.isNotEmpty) {
+            final available = await ref.read(lineStockAvailableProvider.future);
+            final matched = available.where((e) {
+              final n = normalizeDigits(e.lineNumber);
+              return n.isNotEmpty && n == entered;
+            }).toList(growable: false);
+            if (matched.isNotEmpty) {
+              stockId = matched.first.id;
+            }
+          }
+        }
+
+        if ((insertedLineId ?? '').trim().isNotEmpty && stockId.isNotEmpty) {
           try {
             await client
                 .from('line_stock')
@@ -495,7 +535,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                   'consumed_work_order_id': widget.order.id,
                   'consumed_line_id': insertedLineId,
                 })
-                .eq('id', _selectedLineStockId!);
+                .eq('id', stockId);
           } catch (_) {}
         }
         await enqueueInvoiceItem(
@@ -839,6 +879,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               onToggleSaveAsCustomerLocation: _saving
                   ? null
                   : (value) => setState(() => _saveAsCustomerLocation = value),
+              isAdmin: ref.watch(isAdminProvider),
               addLine: _addLine,
               onToggleAddLine: _saving
                   ? null
@@ -919,6 +960,7 @@ class _SheetBody extends StatelessWidget {
     required this.onFetchLocation,
     required this.saveAsCustomerLocation,
     required this.onToggleSaveAsCustomerLocation,
+    required this.isAdmin,
     required this.addLine,
     required this.onToggleAddLine,
     required this.lineNumberController,
@@ -957,6 +999,7 @@ class _SheetBody extends StatelessWidget {
   final VoidCallback? onFetchLocation;
   final bool saveAsCustomerLocation;
   final ValueChanged<bool>? onToggleSaveAsCustomerLocation;
+  final bool isAdmin;
   final bool addLine;
   final ValueChanged<bool>? onToggleAddLine;
   final TextEditingController lineNumberController;
@@ -980,6 +1023,7 @@ class _SheetBody extends StatelessWidget {
     );
     final lineOperatorValue =
         (lineOperator ?? '').trim().isEmpty ? null : lineOperator!.trim();
+    final manualAllowed = isAdmin;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1330,7 +1374,7 @@ class _SheetBody extends StatelessWidget {
                     SwitchListTile.adaptive(
                       contentPadding: EdgeInsets.zero,
                       value: addLine,
-                      onChanged: onToggleAddLine,
+                      onChanged: manualAllowed ? onToggleAddLine : null,
                       title: const Text('Hat Satışı Ekle'),
                       subtitle: const Text(
                         'Başlangıç: bugün • Bitiş: yıl sonu',
@@ -1487,43 +1531,54 @@ class _SheetBody extends StatelessWidget {
                               ?.copyWith(color: const Color(0xFF64748B)),
                         ),
                       ),
-                      const Gap(10),
-                      TextField(
-                        controller: lineNumberController,
-                        keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(
-                          labelText: 'Hat Numarası',
-                          hintText: '90555...',
-                        ),
-                        onChanged: saving ? null : (_) => onLineStockSelected?.call(null),
-                      ),
-                      const Gap(10),
-                      DropdownButtonFormField<String>(
-                        initialValue: lineOperatorValue,
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'turkcell',
-                            child: Text('TURKCELL'),
+                      if (manualAllowed) ...[
+                        const Gap(10),
+                        TextField(
+                          controller: lineNumberController,
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(
+                            labelText: 'Hat Numarası',
+                            hintText: '90555...',
                           ),
-                          DropdownMenuItem(
-                            value: 'telsim',
-                            child: Text('TELSİM'),
+                          onChanged: saving ? null : (_) => onLineStockSelected?.call(null),
+                        ),
+                        const Gap(10),
+                        DropdownButtonFormField<String>(
+                          initialValue: lineOperatorValue,
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'turkcell',
+                              child: Text('TURKCELL'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'telsim',
+                              child: Text('TELSİM'),
+                            ),
+                          ],
+                          onChanged: saving ? null : onLineOperatorChanged,
+                          decoration: const InputDecoration(
+                            labelText: 'Operatör (Zorunlu)',
                           ),
-                        ],
-                        onChanged: saving ? null : onLineOperatorChanged,
-                        decoration: const InputDecoration(
-                          labelText: 'Operatör (Zorunlu)',
                         ),
-                      ),
-                      const Gap(10),
-                      TextField(
-                        controller: lineSimController,
-                        decoration: const InputDecoration(
-                          labelText: 'SIM Numarası',
-                          hintText: '89...',
+                        const Gap(10),
+                        TextField(
+                          controller: lineSimController,
+                          decoration: const InputDecoration(
+                            labelText: 'SIM Numarası',
+                            hintText: '89...',
+                          ),
+                          onChanged: saving ? null : (_) => onLineStockSelected?.call(null),
                         ),
-                        onChanged: saving ? null : (_) => onLineStockSelected?.call(null),
-                      ),
+                      ] else ...[
+                        const Gap(8),
+                        Text(
+                          'Personel sadece stoktan hat seçebilir.',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: const Color(0xFF64748B)),
+                        ),
+                      ],
                     ],
                   ],
                 ),

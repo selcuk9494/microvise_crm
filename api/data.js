@@ -1924,6 +1924,8 @@ module.exports = async (req, res) => {
         const search = String(req.query.search || '').trim();
         const status = String(req.query.status || '').trim();
         const operator = String(req.query.operator || '').trim();
+        const consumedFrom = String(req.query.consumedFrom || '').trim();
+        const consumedTo = String(req.query.consumedTo || '').trim();
         const limitRaw = Number.parseInt(String(req.query.limit || ''), 10);
         const limit = Number.isFinite(limitRaw)
           ? Math.min(Math.max(limitRaw, 1), 5000)
@@ -1953,6 +1955,15 @@ module.exports = async (req, res) => {
             or coalesce(ls.operator,'') ilike $${values.length}
             or coalesce(c.name,'') ilike $${values.length}
           )`;
+        }
+
+        if (consumedFrom) {
+          values.push(`${consumedFrom}T00:00:00Z`);
+          whereSql += ` and ls.consumed_at >= $${values.length}`;
+        }
+        if (consumedTo) {
+          values.push(`${consumedTo}T23:59:59Z`);
+          whereSql += ` and ls.consumed_at <= $${values.length}`;
         }
 
         const result = await query(

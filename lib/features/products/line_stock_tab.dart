@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
@@ -11,6 +12,7 @@ import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/utils/app_time.dart';
 import '../customers/web_download_helper.dart'
     if (dart.library.io) '../customers/io_download_helper.dart';
 import '../stock/line_stock.dart';
@@ -499,6 +501,9 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
     final itemsAsync = ref.watch(lineStockProvider);
     final status = ref.watch(lineStockStatusProvider);
     final operatorName = ref.watch(lineStockOperatorProvider);
+    final consumedFrom = ref.watch(lineStockConsumedFromProvider);
+    final consumedTo = ref.watch(lineStockConsumedToProvider);
+    final isAdmin = ref.watch(isAdminProvider);
     final items = itemsAsync.asData?.value ?? const <LineStockItem>[];
 
     final totalCount = items.length;
@@ -540,7 +545,7 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                     ],
                     onChanged: (v) => ref
                         .read(lineStockStatusProvider.notifier)
-                        .set(v ?? 'available'),
+                        .set(v ?? 'all'),
                     decoration: const InputDecoration(labelText: 'Durum', isDense: true),
                   ),
                 );
@@ -561,14 +566,73 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                   ),
                 );
 
+                Future<void> pickDate({required bool from}) async {
+                  final initial = from ? consumedFrom : consumedTo;
+                  final now = DateTime.now();
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: initial ?? now,
+                    firstDate: DateTime(now.year - 5, 1, 1),
+                    lastDate: DateTime(now.year + 2, 12, 31),
+                  );
+                  if (picked == null) return;
+                  if (from) {
+                    ref.read(lineStockConsumedFromProvider.notifier).set(picked);
+                  } else {
+                    ref.read(lineStockConsumedToProvider.notifier).set(picked);
+                  }
+                  if (ref.read(lineStockStatusProvider) == 'available') {
+                    ref.read(lineStockStatusProvider.notifier).set('consumed');
+                  }
+                  ref.invalidate(lineStockProvider);
+                }
+
+                String fmtDate(DateTime? d) {
+                  if (d == null) return '—';
+                  return DateFormat('d MMM y', 'tr_TR').format(AppTime.toTr(d));
+                }
+
+                final dateFilters = SizedBox(
+                  width: narrow ? double.infinity : 420,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => pickDate(from: true),
+                          icon: const Icon(Icons.event_rounded, size: 18),
+                          label: Text('Başlangıç: ${fmtDate(consumedFrom)}'),
+                        ),
+                      ),
+                      const Gap(8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => pickDate(from: false),
+                          icon: const Icon(Icons.event_rounded, size: 18),
+                          label: Text('Bitiş: ${fmtDate(consumedTo)}'),
+                        ),
+                      ),
+                      const Gap(8),
+                      IconButton(
+                        tooltip: 'Tarih Temizle',
+                        onPressed: () {
+                          ref.read(lineStockConsumedFromProvider.notifier).clear();
+                          ref.read(lineStockConsumedToProvider.notifier).clear();
+                          ref.invalidate(lineStockProvider);
+                        },
+                        icon: const Icon(Icons.clear_rounded),
+                      ),
+                    ],
+                  ),
+                );
+
                 final addBtn = FilledButton.icon(
-                  onPressed: () => _showEditDialog(),
+                  onPressed: isAdmin ? () => _showEditDialog() : null,
                   icon: const Icon(Icons.add_rounded, size: 18),
                   label: const Text('Hat Ekle'),
                 );
 
                 final importBtn = OutlinedButton.icon(
-                  onPressed: _importExcel,
+                  onPressed: isAdmin ? _importExcel : null,
                   icon: const Icon(Icons.upload_file_rounded, size: 18),
                   label: const Text('İçe Aktar'),
                 );
@@ -614,6 +678,8 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                       const Gap(8),
                       statusField,
                       const Gap(8),
+                      dateFilters,
+                      const Gap(8),
                       operatorField,
                       const Gap(8),
                       Row(
@@ -642,6 +708,7 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                   children: [
                     searchField,
                     statusField,
+                    dateFilters,
                     operatorField,
                     addBtn,
                     importBtn,
@@ -672,6 +739,12 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                               ? 'TELSİM'
                               : (item.operatorName.trim().isEmpty ? '-' : item.operatorName);
                       final isAvailable = item.isActive && !item.isConsumed;
+                      final consumedCustomer = (item.consumedCustomerName ?? '').trim();
+                      final consumedWorkOrder = (item.consumedWorkOrderTitle ?? '').trim();
+                      final consumedAtText = item.consumedAt == null
+                          ? ''
+                          : DateFormat('d MMM y HH:mm', 'tr_TR')
+                              .format(AppTime.toTr(item.consumedAt!));
                       return Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
@@ -682,18 +755,46 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                         child: Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                [
-                                  item.lineNumber,
-                                  if ((item.simNumber ?? '').trim().isNotEmpty)
-                                    'SIM: ${item.simNumber}',
-                                ].join(' • '),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      fontWeight: FontWeight.w800,
-                                      color: const Color(0xFF0F172A),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    [
+                                      item.lineNumber,
+                                      if ((item.simNumber ?? '').trim().isNotEmpty)
+                                        'SIM: ${item.simNumber}',
+                                    ].join(' • '),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                          color: const Color(0xFF0F172A),
+                                        ),
+                                  ),
+                                  if (item.isConsumed &&
+                                      (consumedCustomer.isNotEmpty ||
+                                          consumedWorkOrder.isNotEmpty ||
+                                          consumedAtText.isNotEmpty)) ...[
+                                    const Gap(2),
+                                    Text(
+                                      [
+                                        if (consumedAtText.isNotEmpty)
+                                          'Kullanım: $consumedAtText',
+                                        if (consumedCustomer.isNotEmpty)
+                                          'Müşteri: $consumedCustomer',
+                                        if (consumedWorkOrder.isNotEmpty)
+                                          'İş Emri: $consumedWorkOrder',
+                                      ].join(' • '),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(color: const Color(0xFF64748B)),
                                     ),
+                                  ],
+                                ],
                               ),
                             ),
                             const Gap(8),
@@ -717,6 +818,7 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                             const Gap(8),
                             PopupMenuButton<String>(
                               tooltip: 'İşlem',
+                              enabled: isAdmin,
                               onSelected: (value) async {
                                 if (value == 'edit') {
                                   await _showEditDialog(initial: item);

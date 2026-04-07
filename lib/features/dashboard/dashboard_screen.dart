@@ -53,16 +53,19 @@ class DashboardScreen extends ConsumerWidget {
     return AppPageLayout(
       title: 'Panel',
       subtitle: 'Genel görünüm, bugün ve yaklaşan işler.',
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(dashboardMetricsProvider);
-          ref.invalidate(dashboardRevenueSeriesProvider);
-          ref.invalidate(dashboardActivitiesProvider);
-          await ref.read(dashboardMetricsProvider.future);
-        },
-        child: ListView(
-          padding: const EdgeInsets.only(bottom: 120),
-          children: [
+      body: Stack(
+        children: [
+          const Positioned.fill(child: IgnorePointer(child: _DashboardBackground())),
+          RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(dashboardMetricsProvider);
+              ref.invalidate(dashboardRevenueSeriesProvider);
+              ref.invalidate(dashboardActivitiesProvider);
+              await ref.read(dashboardMetricsProvider.future);
+            },
+            child: ListView(
+              padding: const EdgeInsets.only(bottom: 120),
+              children: [
             Skeletonizer(
               enabled: metricsAsync.isLoading,
               child: _MetricsGrid(
@@ -93,167 +96,237 @@ class DashboardScreen extends ConsumerWidget {
               builder: (context, constraints) {
                 final twoCols = constraints.maxWidth >= 980;
 
+              final surface = Theme.of(context).cardTheme.color ?? AppTheme.surface;
+              final revenueBgTop =
+                  Color.alphaBlend(AppTheme.success.withValues(alpha: 0.14), surface);
+              final revenueBgBottom =
+                  Color.alphaBlend(AppTheme.success.withValues(alpha: 0.06), surface);
+
               final revenueCard = AppCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: AppTheme.success.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: AppTheme.success.withValues(alpha: 0.18),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.show_chart_rounded,
-                            size: 18,
-                            color: AppTheme.success,
-                          ),
-                        ),
-                        const Gap(10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                padding: EdgeInsets.zero,
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.all(
+                    Radius.circular(AppTheme.radiusMd),
+                  ),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [revenueBgTop, revenueBgBottom],
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             children: [
-                              Text(
-                                'Gelir (Son 14 Gün)',
-                                style: Theme.of(context).textTheme.titleMedium,
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.success.withValues(alpha: 0.16),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: AppTheme.success.withValues(alpha: 0.26),
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.show_chart_rounded,
+                                  size: 18,
+                                  color: AppTheme.success,
+                                ),
                               ),
-                              const Gap(2),
-                              Text(
-                                'Ödemeler üzerinden günlük toplam.',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(color: const Color(0xFF64748B)),
+                              const Gap(10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Gelir (Son 14 Gün)',
+                                      style: Theme.of(context).textTheme.titleMedium,
+                                    ),
+                                    const Gap(2),
+                                    Text(
+                                      'Ödemeler üzerinden günlük toplam.',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(color: const Color(0xFF64748B)),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
-                        ),
-                      ],
-                    ),
-                    const Gap(16),
-                    SizedBox(
-                      height: 240,
-                      child: seriesAsync.when(
-                        data: (points) => _RevenueChart(points: points),
-                        loading: () => const _ChartSkeleton(),
-                        error: (_, _) => const _ChartError(),
+                          const Gap(16),
+                          SizedBox(
+                            height: 240,
+                            child: seriesAsync.when(
+                              data: (points) => _RevenueChart(points: points),
+                              loading: () => const _ChartSkeleton(),
+                              error: (_, _) => const _ChartError(),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               );
+
+              final statusBgTop =
+                  Color.alphaBlend(AppTheme.primary.withValues(alpha: 0.14), surface);
+              final statusBgBottom =
+                  Color.alphaBlend(AppTheme.primary.withValues(alpha: 0.06), surface);
 
               final workOrderStatusCard = AppCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: AppTheme.primary.withValues(alpha: 0.18),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.assignment_rounded,
-                            size: 18,
-                            color: AppTheme.primary,
-                          ),
-                        ),
-                        const Gap(10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                padding: EdgeInsets.zero,
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.all(
+                    Radius.circular(AppTheme.radiusMd),
+                  ),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [statusBgTop, statusBgBottom],
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             children: [
-                              Text(
-                                'İş Emri Durumu',
-                                style: Theme.of(context).textTheme.titleMedium,
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primary.withValues(alpha: 0.16),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: AppTheme.primary.withValues(alpha: 0.26),
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.assignment_rounded,
+                                  size: 18,
+                                  color: AppTheme.primary,
+                                ),
                               ),
-                              const Gap(2),
-                              Text(
-                                'Açık, devam eden ve tamamlanan işler.',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(color: const Color(0xFF64748B)),
+                              const Gap(10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'İş Emri Durumu',
+                                      style: Theme.of(context).textTheme.titleMedium,
+                                    ),
+                                    const Gap(2),
+                                    Text(
+                                      'Açık, devam eden ve tamamlanan işler.',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(color: const Color(0xFF64748B)),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
-                        ),
-                      ],
-                    ),
-                    const Gap(16),
-                    SizedBox(
-                      height: 160,
-                      child: metricsAsync.when(
-                        data: (m) => _WorkOrderPieChart(metrics: m),
-                        loading: () => const _ChartSkeleton(),
-                        error: (_, _) => const _ChartError(),
+                          const Gap(16),
+                          SizedBox(
+                            height: 160,
+                            child: metricsAsync.when(
+                              data: (m) => _WorkOrderPieChart(metrics: m),
+                              loading: () => const _ChartSkeleton(),
+                              error: (_, _) => const _ChartError(),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               );
 
+              final activityBgTop =
+                  Color.alphaBlend(AppTheme.warning.withValues(alpha: 0.12), surface);
+              final activityBgBottom =
+                  Color.alphaBlend(AppTheme.warning.withValues(alpha: 0.05), surface);
+
               final activityCard = AppCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: AppTheme.warning.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: AppTheme.warning.withValues(alpha: 0.18),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.bolt_rounded,
-                            size: 18,
-                            color: AppTheme.warning,
-                          ),
-                        ),
-                        const Gap(10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                padding: EdgeInsets.zero,
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.all(
+                    Radius.circular(AppTheme.radiusMd),
+                  ),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [activityBgTop, activityBgBottom],
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             children: [
-                              Text(
-                                'Son Aktiviteler',
-                                style: Theme.of(context).textTheme.titleMedium,
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.warning.withValues(alpha: 0.16),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: AppTheme.warning.withValues(alpha: 0.26),
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.bolt_rounded,
+                                  size: 18,
+                                  color: AppTheme.warning,
+                                ),
                               ),
-                              const Gap(2),
-                              Text(
-                                'İş emirleri ve servis kayıtları.',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(color: const Color(0xFF64748B)),
+                              const Gap(10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Son Aktiviteler',
+                                      style: Theme.of(context).textTheme.titleMedium,
+                                    ),
+                                    const Gap(2),
+                                    Text(
+                                      'İş emirleri ve servis kayıtları.',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(color: const Color(0xFF64748B)),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
-                        ),
-                      ],
+                          const Gap(14),
+                          const _ActivityTimeline(),
+                        ],
+                      ),
                     ),
-                    const Gap(14),
-                    const _ActivityTimeline(),
-                  ],
+                  ),
                 ),
               );
 
@@ -296,8 +369,90 @@ class DashboardScreen extends ConsumerWidget {
               },
             ),
           ],
-        ),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+class _DashboardBackground extends StatelessWidget {
+  const _DashboardBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final isWide = width >= 980;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppTheme.backgroundAlt.withValues(alpha: 0.92),
+                  AppTheme.background,
+                  AppTheme.background,
+                ],
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: -180,
+          right: isWide ? -120 : -160,
+          child: Container(
+            width: isWide ? 520 : 420,
+            height: isWide ? 520 : 420,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  AppTheme.primary.withValues(alpha: 0.22),
+                  AppTheme.primary.withValues(alpha: 0.0),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: 120,
+          left: isWide ? -140 : -180,
+          child: Container(
+            width: isWide ? 520 : 440,
+            height: isWide ? 520 : 440,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  AppTheme.accent.withValues(alpha: 0.18),
+                  AppTheme.accent.withValues(alpha: 0.0),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: -220,
+          left: isWide ? 180 : 40,
+          child: Container(
+            width: isWide ? 620 : 520,
+            height: isWide ? 620 : 520,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  AppTheme.warning.withValues(alpha: 0.12),
+                  AppTheme.warning.withValues(alpha: 0.0),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -309,6 +464,9 @@ class _ExchangeRatesCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final ratesAsync = ref.watch(dashboardHalkbankRatesProvider);
     final format = NumberFormat('#,##0.0000', 'tr_TR');
+    final surface = Theme.of(context).cardTheme.color ?? AppTheme.surface;
+    final bgTop = Color.alphaBlend(AppTheme.warning.withValues(alpha: 0.14), surface);
+    final bgBottom = Color.alphaBlend(AppTheme.warning.withValues(alpha: 0.06), surface);
 
     String subtitleFromRates(DashboardExchangeRates rates) {
       if (rates.items.isEmpty) return 'Halkbank • USD, EUR, GBP';
@@ -322,6 +480,7 @@ class _ExchangeRatesCard extends ConsumerWidget {
     return Skeletonizer(
       enabled: ratesAsync.isLoading,
       child: AppCard(
+        padding: EdgeInsets.zero,
         onTap: () {
           ref.invalidate(dashboardHalkbankRatesProvider);
           showDialog<void>(
@@ -433,48 +592,63 @@ class _ExchangeRatesCard extends ConsumerWidget {
             },
           );
         },
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppTheme.warning.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.warning.withValues(alpha: 0.18)),
-              ),
-              child: const Icon(
-                Icons.currency_exchange_rounded,
-                size: 18,
-                color: AppTheme.warning,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusMd)),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [bgTop, bgBottom],
               ),
             ),
-            const Gap(10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
                 children: [
-                  Text(
-                    'Döviz Kurları',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const Gap(2),
-                  Text(
-                    ratesAsync.when(
-                      data: subtitleFromRates,
-                      loading: () => 'Halkbank • yükleniyor…',
-                      error: (err, st) => 'Halkbank • USD, EUR, GBP',
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: AppTheme.warning.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppTheme.warning.withValues(alpha: 0.26)),
                     ),
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: const Color(0xFF64748B)),
+                    child: const Icon(
+                      Icons.currency_exchange_rounded,
+                      size: 18,
+                      color: AppTheme.warning,
+                    ),
                   ),
+                  const Gap(10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Döviz Kurları',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const Gap(2),
+                        Text(
+                          ratesAsync.when(
+                            data: subtitleFromRates,
+                            loading: () => 'Halkbank • yükleniyor…',
+                            error: (err, st) => 'Halkbank • USD, EUR, GBP',
+                          ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: const Color(0xFF64748B)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.open_in_new_rounded, color: Color(0xFF94A3B8)),
                 ],
               ),
             ),
-            const Icon(Icons.open_in_new_rounded, color: Color(0xFF94A3B8)),
-          ],
+          ),
         ),
       ),
     );
@@ -486,46 +660,66 @@ class _BankPasswordsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final surface = Theme.of(context).cardTheme.color ?? AppTheme.surface;
+    final bgTop = Color.alphaBlend(AppTheme.primary.withValues(alpha: 0.14), surface);
+    final bgMid = Color.alphaBlend(AppTheme.accent.withValues(alpha: 0.08), surface);
+    final bgBottom = Color.alphaBlend(AppTheme.primary.withValues(alpha: 0.06), surface);
     return AppCard(
+      padding: EdgeInsets.zero,
       onTap: () => _showBankPicker(context),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
-            ),
-            child: const Icon(
-              Icons.lock_rounded,
-              size: 18,
-              color: AppTheme.primary,
+      child: ClipRRect(
+        borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusMd)),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [bgTop, bgMid, bgBottom],
             ),
           ),
-          const Gap(10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
-                Text(
-                  'Banka Şifreleri',
-                  style: Theme.of(context).textTheme.titleMedium,
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppTheme.primary.withValues(alpha: 0.26)),
+                  ),
+                  child: const Icon(
+                    Icons.lock_rounded,
+                    size: 18,
+                    color: AppTheme.primary,
+                  ),
                 ),
-                const Gap(2),
-                Text(
-                  'İş Bankası / Garanti Bankası',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                const Gap(10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Banka Şifreleri',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const Gap(2),
+                      Text(
+                        'İş Bankası / Garanti Bankası',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: const Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
                 ),
+                const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
               ],
             ),
           ),
-          const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
-        ],
+        ),
       ),
     );
   }
@@ -814,8 +1008,8 @@ class _MetricTile extends StatelessWidget {
     };
 
     final surface = Theme.of(context).cardTheme.color ?? AppTheme.surface;
-    final bgTop = Color.alphaBlend(accent.withValues(alpha: 0.10), surface);
-    final bgBottom = Color.alphaBlend(accent.withValues(alpha: 0.04), surface);
+    final bgTop = Color.alphaBlend(accent.withValues(alpha: 0.16), surface);
+    final bgBottom = Color.alphaBlend(accent.withValues(alpha: 0.08), surface);
 
     return ClipRRect(
       borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusMd)),
@@ -838,9 +1032,9 @@ class _MetricTile extends StatelessWidget {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.12),
+                      color: accent.withValues(alpha: 0.16),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: accent.withValues(alpha: 0.18)),
+                      border: Border.all(color: accent.withValues(alpha: 0.26)),
                     ),
                     child: Icon(icon, size: 18, color: accent),
                   ),

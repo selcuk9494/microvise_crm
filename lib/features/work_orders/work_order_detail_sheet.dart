@@ -277,6 +277,10 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
 
     setState(() => _saving = true);
     try {
+      final isAdmin = ref.read(isAdminProvider);
+      if (_addLine && !isAdmin && ((_selectedLineStockId ?? '').trim().isEmpty)) {
+        throw Exception('Personel stoktan hat seçmelidir.');
+      }
       final now = DateTime.now().toUtc();
       final profile = await ref.read(currentUserProfileProvider.future);
       final signatureBytes = await _signatureController.toPngBytes();
@@ -1358,6 +1362,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   Widget _buildAdditionalSalesCard(BuildContext context) {
     final lineStockAsync = ref.watch(lineStockAvailableProvider);
     final operatorValue = (_lineOperator ?? '').trim().isEmpty ? null : _lineOperator!.trim();
+    final isAdmin = ref.watch(isAdminProvider);
     return AppCard(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1369,7 +1374,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
             value: _addLine,
-            onChanged: _saving
+            onChanged: _saving || !isAdmin
                 ? null
                 : (v) => setState(() {
                       _addLine = v;
@@ -1537,39 +1542,49 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                     ?.copyWith(color: AppTheme.textMuted),
               ),
             ),
-            const Gap(10),
-            TextField(
-              controller: _lineNumberController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Hat Numarası',
-                hintText: '90555...',
+            if (isAdmin) ...[
+              const Gap(10),
+              TextField(
+                controller: _lineNumberController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Hat Numarası',
+                  hintText: '90555...',
+                ),
+                onChanged: _saving
+                    ? null
+                    : (_) => setState(() => _selectedLineStockId = null),
               ),
-              onChanged: _saving
-                  ? null
-                  : (_) => setState(() => _selectedLineStockId = null),
-            ),
-            const Gap(10),
-            DropdownButtonFormField<String>(
-              initialValue: operatorValue,
-              items: const [
-                DropdownMenuItem(value: 'turkcell', child: Text('TURKCELL')),
-                DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
-              ],
-              onChanged: _saving ? null : (v) => setState(() => _lineOperator = v),
-              decoration: const InputDecoration(labelText: 'Operatör (Zorunlu)'),
-            ),
-            const Gap(10),
-            TextField(
-              controller: _lineSimController,
-              decoration: const InputDecoration(
-                labelText: 'SIM Numarası',
-                hintText: '89...',
+              const Gap(10),
+              DropdownButtonFormField<String>(
+                initialValue: operatorValue,
+                items: const [
+                  DropdownMenuItem(value: 'turkcell', child: Text('TURKCELL')),
+                  DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
+                ],
+                onChanged: _saving ? null : (v) => setState(() => _lineOperator = v),
+                decoration: const InputDecoration(labelText: 'Operatör (Zorunlu)'),
               ),
-              onChanged: _saving
-                  ? null
-                  : (_) => setState(() => _selectedLineStockId = null),
-            ),
+              const Gap(10),
+              TextField(
+                controller: _lineSimController,
+                decoration: const InputDecoration(
+                  labelText: 'SIM Numarası',
+                  hintText: '89...',
+                ),
+                onChanged: _saving
+                    ? null
+                    : (_) => setState(() => _selectedLineStockId = null),
+              ),
+            ] else ...[
+              const Gap(8),
+              Text(
+                'Personel sadece stoktan hat seçebilir.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+              ),
+            ],
           ],
         ],
       ),
