@@ -66,6 +66,9 @@ function getPool() {
       max: 4,
       idleTimeoutMillis: 10000,
     });
+    pool.on('error', (err) => {
+      console.error(err);
+    });
   }
   return pool;
 }
