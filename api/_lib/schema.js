@@ -909,6 +909,12 @@ async function ensureWorkOrdersStatusCheckConstraint() {
     await query(
       `
         alter table public.work_orders
+          drop constraint if exists work_orders_assigned_to_fkey
+      `,
+    );
+    await query(
+      `
+        alter table public.work_orders
           add constraint work_orders_status_check
           check (status in ('open','in_progress','approval_pending','done','cancelled'))
       `,
