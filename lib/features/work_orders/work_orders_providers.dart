@@ -15,6 +15,8 @@ final workOrdersBoardProvider =
 
 class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
   String? _cacheKey;
+  Timer? _liveTimer;
+  bool _liveRefreshInFlight = false;
 
   @override
   Future<List<WorkOrder>> build() async {
@@ -24,6 +26,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     _cacheKey = _makeCacheKey(apiClient, client);
     final cached = _tryReadCache();
     if (cached != null) {
+      _ensureLiveRefresh();
       unawaited(_refreshFromRemoteAndCache());
       return cached;
     }
@@ -31,6 +34,7 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     if (apiClient != null) {
       final initial = await _fetchApi(pageSize: 200);
       unawaited(_persistCache(initial));
+      _ensureLiveRefresh();
       unawaited(_refreshFromRemoteAndCache());
       return initial;
     }
@@ -38,7 +42,22 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     if (client == null) return const [];
     final items = await _fetchSupabase();
     unawaited(_persistCache(items));
+    _ensureLiveRefresh();
     return items;
+  }
+
+  void _ensureLiveRefresh() {
+    if (_liveTimer != null) return;
+    ref.onDispose(() {
+      _liveTimer?.cancel();
+      _liveTimer = null;
+    });
+
+    const interval = Duration(seconds: 6);
+    _liveTimer = Timer.periodic(interval, (_) {
+      if (!ref.mounted) return;
+      unawaited(_refreshFromRemoteAndCache());
+    });
   }
 
   Future<List<WorkOrder>> _fetchApi({required int pageSize}) async {
@@ -243,6 +262,8 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
 
   Future<void> _refreshFromRemoteAndCache() async {
     if (!ref.mounted) return;
+    if (_liveRefreshInFlight) return;
+    _liveRefreshInFlight = true;
     try {
       final apiClient = ref.read(apiClientProvider);
       final items =
@@ -250,7 +271,10 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
       if (!ref.mounted) return;
       state = AsyncData(items);
       await _persistCache(items);
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      _liveRefreshInFlight = false;
+    }
   }
 
   String _makeCacheKey(ApiClient? apiClient, dynamic supabaseClient) {
