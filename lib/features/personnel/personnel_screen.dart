@@ -1167,10 +1167,13 @@ class _CreatePersonnelDialogState extends ConsumerState<_CreatePersonnelDialog> 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Personel oluşturuldu.')),
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
+      final msg = e is Exception
+          ? e.toString().replaceFirst('Exception: ', '')
+          : 'Personel oluşturulamadı.';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Personel oluşturulamadı.')),
+        SnackBar(content: Text(msg)),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
