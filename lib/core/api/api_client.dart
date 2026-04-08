@@ -110,6 +110,9 @@ class ApiClient {
     final response = await http.Response.fromStream(streamed);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (requiresAuth && response.statusCode == 401) {
+        ref.read(apiAccessTokenProvider.notifier).clear();
+      }
       String message = 'API hatası (${response.statusCode})';
       try {
         final decoded = jsonDecode(response.body);

@@ -52,7 +52,7 @@ async function getAuthenticatedUser(req) {
 
   const jwtSecret = process.env.JWT_SECRET;
   if (!jwtSecret) {
-    return null;
+    throw new Error('JWT_SECRET is not configured.');
   }
 
   const payload = verifyJwt(accessToken, jwtSecret);
