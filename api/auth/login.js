@@ -144,7 +144,26 @@ module.exports = async (req, res) => {
           `,
           [id, email, 'Admin', 'admin', pagePermissions, actionPermissions, password],
         );
-      } catch (_) {}
+      } catch (_) {
+        try {
+          await query(
+            `
+              insert into public.users (
+                id,
+                email,
+                full_name,
+                role,
+                page_permissions,
+                action_permissions,
+                password_hash,
+                is_active
+              )
+              values ($1, $2, $3, $4, $5::text[], $6::text[], 'md5:' || md5($7 || ':' || $1::text), true)
+            `,
+            [id, email, 'Admin', 'admin', pagePermissions, actionPermissions, password],
+          );
+        } catch (_) {}
+      }
       const created = await query(
         `
           select
@@ -170,16 +189,34 @@ module.exports = async (req, res) => {
     if (!isMaster) {
       const pwHash = user.password_hash ? String(user.password_hash) : '';
       if (!pwHash) return unauthorized(res, 'Şifre tanımlı değil.');
-      const okPw = await query(
-        `
-          select 1 as ok
-          from public.users
-          where id = $1
-            and password_hash = crypt($2, password_hash)
-          limit 1
-        `,
-        [user.id, password],
-      );
+      let okPw;
+      if (pwHash.startsWith('md5:')) {
+        okPw = await query(
+          `
+            select 1 as ok
+            from public.users
+            where id = $1
+              and password_hash = ('md5:' || md5($2 || ':' || $1::text))
+            limit 1
+          `,
+          [user.id, password],
+        );
+      } else {
+        try {
+          okPw = await query(
+            `
+              select 1 as ok
+              from public.users
+              where id = $1
+                and password_hash = crypt($2, password_hash)
+              limit 1
+            `,
+            [user.id, password],
+          );
+        } catch (_) {
+          return unauthorized(res, 'Şifre doğrulama yapılamıyor.');
+        }
+      }
       if (!okPw.rows[0]?.ok) return unauthorized(res, 'Giriş başarısız.');
     }
 

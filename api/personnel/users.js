@@ -83,14 +83,25 @@ async function tryAdminCreatePersonnel({
 async function setPasswordHash({ id, password }) {
   if (!password || String(password).length < 6) return false;
   await ensureUsersAuthColumns();
-  await query(
-    `
-      update public.users
-      set password_hash = crypt($2, gen_salt('bf'))
-      where id = $1
-    `,
-    [id, String(password)],
-  );
+  try {
+    await query(
+      `
+        update public.users
+        set password_hash = crypt($2, gen_salt('bf'))
+        where id = $1
+      `,
+      [id, String(password)],
+    );
+  } catch (_) {
+    await query(
+      `
+        update public.users
+        set password_hash = 'md5:' || md5($2 || ':' || $1::text)
+        where id = $1
+      `,
+      [id, String(password)],
+    );
+  }
   return true;
 }
 
