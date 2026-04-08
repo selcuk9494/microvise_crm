@@ -94,8 +94,12 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                 pinned: true,
                 floating: false,
                 expandedHeight: expandedHeight,
+                toolbarHeight: kToolbarHeight,
+                titleSpacing: horizontalPadding,
                 title: Text(
                   widget.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: Theme.of(context)
                       .textTheme
                       .titleLarge
@@ -113,53 +117,61 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                           final opacity = Curves.easeOut.transform(t);
 
                           return ClipRect(
-                            child: Align(
-                              alignment: Alignment.bottomLeft,
-                              child: Opacity(
-                                opacity: opacity,
-                                child: Padding(
-                                  padding: EdgeInsets.fromLTRB(
-                                    horizontalPadding,
-                                    0,
-                                    horizontalPadding,
-                                    10,
-                                  ),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      if (widget.subtitle != null)
-                                        Text(
-                                          widget.subtitle!,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodyMedium
-                                              ?.copyWith(
-                                                color: AppTheme.textMuted,
-                                                fontSize:
-                                                    widget.compactHeader ? 12 : null,
-                                              ),
-                                        ),
-                                      if (normalizedActions != null &&
-                                          normalizedActions.isNotEmpty) ...[
-                                        SizedBox(
-                                          height: widget.compactHeader ? 8 : 10,
-                                        ),
-                                        SingleChildScrollView(
-                                          scrollDirection: Axis.horizontal,
-                                          child: Row(
-                                            children: [
-                                              for (final w
-                                                  in normalizedActions) ...[
-                                                w,
-                                                const SizedBox(width: 10),
-                                              ],
-                                            ],
+                            child: SafeArea(
+                              bottom: false,
+                              child: Align(
+                                alignment: Alignment.bottomLeft,
+                                child: Opacity(
+                                  opacity: opacity,
+                                  child: Padding(
+                                    padding: EdgeInsets.fromLTRB(
+                                      horizontalPadding,
+                                      0,
+                                      horizontalPadding,
+                                      12,
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        if (widget.subtitle != null)
+                                          Text(
+                                            widget.subtitle!,
+                                            maxLines:
+                                                widget.compactHeader ? 1 : 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.copyWith(
+                                                  color: AppTheme.textMuted,
+                                                  fontSize: widget.compactHeader
+                                                      ? 12
+                                                      : null,
+                                                ),
                                           ),
-                                        ),
+                                        if (normalizedActions != null &&
+                                            normalizedActions.isNotEmpty) ...[
+                                          SizedBox(
+                                            height:
+                                                widget.compactHeader ? 8 : 10,
+                                          ),
+                                          SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            child: Row(
+                                              children: [
+                                                for (final w
+                                                    in normalizedActions) ...[
+                                                  w,
+                                                  const SizedBox(width: 10),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                        ],
                                       ],
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ),
