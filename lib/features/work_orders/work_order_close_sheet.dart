@@ -281,6 +281,84 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           },
         );
 
+        if (branchId != null) {
+          final lat = double.tryParse(_latController.text.trim());
+          final lng = double.tryParse(_lngController.text.trim());
+          final address = _addressController.text.trim();
+          final latMap = lat == null ? null : {'location_lat': lat};
+          final lngMap = lng == null ? null : {'location_lng': lng};
+          final addressMap = address.isEmpty ? null : {'address': address};
+          final values = {...?latMap, ...?lngMap, ...?addressMap};
+          if (values.isNotEmpty) {
+            await apiClient.postJson(
+              '/mutate',
+              body: {
+                'op': 'updateWhere',
+                'table': 'branches',
+                'filters': [
+                  {'col': 'id', 'op': 'eq', 'value': branchId},
+                ],
+                'values': values,
+              },
+            );
+          }
+        }
+
+        if (_saveAsCustomerLocation) {
+          final title = _locationTitleController.text.trim();
+          final description = _locationDescriptionController.text.trim();
+          final address = _addressController.text.trim();
+          final lat = double.tryParse(_latController.text.trim());
+          final lng = double.tryParse(_lngController.text.trim());
+
+          if (title.isNotEmpty ||
+              description.isNotEmpty ||
+              address.isNotEmpty ||
+              locationLink != null ||
+              lat != null ||
+              lng != null) {
+            final payload = {
+              'customer_id': customer.id,
+              'title': title.isEmpty ? 'İş Emri Konumu' : title,
+              'description': description.isEmpty ? null : description,
+              'address': address.isEmpty ? null : address,
+              'location_link': locationLink,
+              'location_lat': lat,
+              'location_lng': lng,
+              'is_active': true,
+            };
+
+            if (_selectedCustomerLocationId != null) {
+              await apiClient.postJson(
+                '/mutate',
+                body: {
+                  'op': 'updateWhere',
+                  'table': 'customer_locations',
+                  'filters': [
+                    {'col': 'id', 'op': 'eq', 'value': _selectedCustomerLocationId},
+                  ],
+                  'values': payload,
+                },
+              );
+            } else {
+              await apiClient.postJson(
+                '/mutate',
+                body: {
+                  'op': 'insertMany',
+                  'table': 'customer_locations',
+                  'rows': [
+                    {
+                      ...payload,
+                      'created_by': profile?.id,
+                    },
+                  ],
+                },
+              );
+            }
+            ref.invalidate(customerLocationsProvider(customer.id));
+          }
+        }
+
         if (!mounted) return;
         String? closeNotesText =
             _notesController.text.trim().isEmpty ? null : _notesController.text.trim();
@@ -1110,7 +1188,23 @@ class _SheetBody extends StatelessWidget {
                           ...locations.map(
                             (location) => DropdownMenuItem<String?>(
                               value: location.id,
-                              child: Text(location.title),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(location.title),
+                                  if ((location.description ?? '').trim().isNotEmpty)
+                                    Text(
+                                      location.description!.trim(),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(color: const Color(0xFF64748B)),
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                         ],

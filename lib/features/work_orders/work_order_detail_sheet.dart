@@ -24,6 +24,7 @@ import '../stock/line_stock.dart';
 import 'work_order_model.dart';
 import 'currency_service.dart';
 import 'work_order_share.dart';
+import 'work_orders_providers.dart';
 
 class _CloseNoteOption {
   const _CloseNoteOption({required this.id, required this.name});
@@ -239,6 +240,375 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             'https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}',
           );
     return launchUrl(url, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _editWorkOrderLocation(
+    CustomerDetail customer,
+    List<CustomerLocation> locations,
+  ) async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    final titleController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final addressController = TextEditingController(
+      text: (widget.order.address ?? '').trim(),
+    );
+    final linkController = TextEditingController(
+      text: (widget.order.locationLink ?? '').trim(),
+    );
+    final latController = TextEditingController();
+    final lngController = TextEditingController();
+
+    String? selectedCustomerLocationId;
+    var saveToCustomer = true;
+    var fetching = false;
+
+    String? resolvedLink() {
+      final raw = linkController.text.trim();
+      if (raw.isNotEmpty) return raw;
+      final lat = latController.text.trim();
+      final lng = lngController.text.trim();
+      if (lat.isEmpty || lng.isEmpty) return null;
+      return 'https://maps.google.com/?q=$lat,$lng';
+    }
+
+    CustomerLocation? findById(String id) {
+      for (final l in locations) {
+        if (l.id == id) return l;
+      }
+      return null;
+    }
+
+    void applyLocation(CustomerLocation? l) {
+      if (l == null) return;
+      titleController.text = l.title;
+      descriptionController.text = l.description ?? '';
+      addressController.text = l.address ?? '';
+      linkController.text = l.locationLink ?? '';
+      latController.text = l.locationLat?.toString() ?? '';
+      lngController.text = l.locationLng?.toString() ?? '';
+    }
+
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (sheetContext) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 12,
+              bottom: MediaQuery.viewInsetsOf(sheetContext).bottom + 16,
+            ),
+            child: StatefulBuilder(
+              builder: (sheetContext, setLocal) {
+                Future<void> fetch() async {
+                  setLocal(() => fetching = true);
+                  try {
+                    final result = await fetchCurrentPosition();
+                    if (result == null) return;
+                    final lat = result.latitude.toStringAsFixed(6);
+                    final lng = result.longitude.toStringAsFixed(6);
+                    latController.text = lat;
+                    lngController.text = lng;
+                    linkController.text = 'https://maps.google.com/?q=$lat,$lng';
+                  } finally {
+                    setLocal(() => fetching = false);
+                  }
+                }
+
+                Future<void> save() async {
+                  final link = resolvedLink();
+                  if (link == null || link.trim().isEmpty) {
+                    if (sheetContext.mounted) {
+                      ScaffoldMessenger.of(sheetContext).showSnackBar(
+                        const SnackBar(content: Text('Konum linki boş olamaz.')),
+                      );
+                    }
+                    return;
+                  }
+
+                  final title = titleController.text.trim();
+                  final description = descriptionController.text.trim();
+                  final address = addressController.text.trim();
+                  final lat = double.tryParse(latController.text.trim());
+                  final lng = double.tryParse(lngController.text.trim());
+
+                  if (apiClient != null) {
+                    await apiClient.patchJson(
+                      '/work-orders',
+                      body: {
+                        'id': widget.order.id,
+                        'location_link': link,
+                        if (address.isNotEmpty) 'address': address,
+                      },
+                    );
+
+                    if (saveToCustomer) {
+                      final profile =
+                          await ref.read(currentUserProfileProvider.future);
+                      final payload = {
+                        'customer_id': customer.id,
+                        'title': title.isEmpty ? 'İş Emri Konumu' : title,
+                        'description': description.isEmpty ? null : description,
+                        'address': address.isEmpty ? null : address,
+                        'location_link': link,
+                        'location_lat': lat,
+                        'location_lng': lng,
+                        'is_active': true,
+                      };
+                      if (selectedCustomerLocationId != null) {
+                        await apiClient.postJson(
+                          '/mutate',
+                          body: {
+                            'op': 'updateWhere',
+                            'table': 'customer_locations',
+                            'filters': [
+                              {
+                                'col': 'id',
+                                'op': 'eq',
+                                'value': selectedCustomerLocationId,
+                              },
+                            ],
+                            'values': payload,
+                          },
+                        );
+                      } else {
+                        await apiClient.postJson(
+                          '/mutate',
+                          body: {
+                            'op': 'insertMany',
+                            'table': 'customer_locations',
+                            'rows': [
+                              {
+                                ...payload,
+                                'created_by': profile?.id,
+                              },
+                            ],
+                          },
+                        );
+                      }
+                      ref.invalidate(customerLocationsProvider(customer.id));
+                    }
+                  } else {
+                    await client!.from('work_orders').update({
+                      'location_link': link,
+                      if (address.isNotEmpty) 'address': address,
+                    }).eq('id', widget.order.id);
+
+                    if (saveToCustomer) {
+                      final payload = {
+                        'customer_id': customer.id,
+                        'title': title.isEmpty ? 'İş Emri Konumu' : title,
+                        'description': description.isEmpty ? null : description,
+                        'address': address.isEmpty ? null : address,
+                        'location_link': link,
+                        'location_lat': lat,
+                        'location_lng': lng,
+                        'is_active': true,
+                      };
+                      if (selectedCustomerLocationId != null) {
+                        await client
+                            .from('customer_locations')
+                            .update(payload)
+                            .eq('id', selectedCustomerLocationId!);
+                      } else {
+                        await client.from('customer_locations').insert({
+                          ...payload,
+                          'created_by': client.auth.currentUser?.id,
+                        });
+                      }
+                      ref.invalidate(customerLocationsProvider(customer.id));
+                    }
+                  }
+
+                  ref.invalidate(workOrdersBoardProvider);
+                  if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Konum kaydedildi.')),
+                  );
+                }
+
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Konum',
+                            style: Theme.of(sheetContext).textTheme.titleMedium,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.of(sheetContext).pop(),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+                    const Gap(12),
+                    DropdownButtonFormField<String?>(
+                      initialValue: selectedCustomerLocationId,
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Yeni konum'),
+                        ),
+                        ...locations.map(
+                          (l) => DropdownMenuItem<String?>(
+                            value: l.id,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(l.title),
+                                if ((l.description ?? '').trim().isNotEmpty)
+                                  Text(
+                                    l.description!.trim(),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(sheetContext)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(color: const Color(0xFF64748B)),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                      onChanged: (id) {
+                        setLocal(() {
+                          selectedCustomerLocationId = id;
+                          if (id == null) return;
+                          applyLocation(findById(id));
+                        });
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Müşteri Konumu',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: titleController,
+                      decoration: const InputDecoration(
+                        labelText: 'Konum Başlığı',
+                        hintText: 'Örn. Şube / Mağaza / Depo',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: descriptionController,
+                      minLines: 2,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Konum Açıklaması',
+                        hintText: 'Kapı, kat, mağaza içi notlar...',
+                      ),
+                    ),
+                    const Gap(12),
+                    TextField(
+                      controller: addressController,
+                      minLines: 2,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Adres',
+                        hintText: 'Cadde, sokak, no, ilçe...',
+                      ),
+                    ),
+                    const Gap(12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: linkController,
+                            decoration: const InputDecoration(
+                              labelText: 'Konum Linki',
+                              hintText: 'Google Maps linki',
+                            ),
+                          ),
+                        ),
+                        const Gap(12),
+                        OutlinedButton.icon(
+                          onPressed: fetching ? null : fetch,
+                          icon: fetching
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.my_location_rounded),
+                          label: const Text('Konum Al'),
+                        ),
+                      ],
+                    ),
+                    const Gap(12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: latController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                              signed: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Lat',
+                            ),
+                          ),
+                        ),
+                        const Gap(12),
+                        Expanded(
+                          child: TextField(
+                            controller: lngController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                              signed: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Lng',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Gap(12),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      value: saveToCustomer,
+                      onChanged: (v) => setLocal(() => saveToCustomer = v),
+                      title: const Text('Müşteriye konum olarak kaydet'),
+                      subtitle: const Text('Bu konum müşteri kayıtlarına işlensin.'),
+                    ),
+                    const Gap(12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: save,
+                        child: const Text('Kaydet'),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      );
+    } finally {
+      titleController.dispose();
+      descriptionController.dispose();
+      addressController.dispose();
+      linkController.dispose();
+      latController.dispose();
+      lngController.dispose();
+    }
   }
 
   Future<void> _updateStatus(String newStatus) async {
@@ -945,9 +1315,8 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     final closeNotes = (widget.order.closeNotes ?? '').trim();
     final rawOrderLink = (widget.order.locationLink ?? '').trim();
 
-    final locationItems = _customerLocationLinks(
-      customerLocationsAsync.asData?.value ?? const [],
-    );
+    final rawLocations = customerLocationsAsync.asData?.value ?? const [];
+    final locationItems = _customerLocationLinks(rawLocations);
     if (rawOrderLink.isEmpty && locationItems.isNotEmpty) {
       _customerFallbackLocationLink = locationItems.first.link;
     }
@@ -1001,6 +1370,12 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                   onPressed: _openDirections,
                   icon: const Icon(Icons.directions_rounded, size: 18),
                   label: const Text('Tarif Al'),
+                ),
+                const Gap(6),
+                IconButton(
+                  tooltip: 'Konumu Düzenle',
+                  onPressed: () => _editWorkOrderLocation(customer, rawLocations),
+                  icon: const Icon(Icons.edit_location_alt_rounded),
                 ),
               ],
             ),
