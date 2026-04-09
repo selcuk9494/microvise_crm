@@ -223,18 +223,22 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       );
       return;
     }
+    final ok = await _openDirectionsLink(link);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Harita açılamadı.')),
+      );
+    }
+  }
+
+  Future<bool> _openDirectionsLink(String link) async {
     final coords = _extractLatLng(link);
     final url = coords == null
         ? Uri.parse(link)
         : Uri.parse(
             'https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}',
           );
-    final ok = await launchUrl(url, mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Harita açılamadı.')),
-      );
-    }
+    return launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _updateStatus(String newStatus) async {
@@ -896,22 +900,28 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     }
   }
 
-  ({String title, String link})? _pickCustomerLocationLink(
-    List<CustomerLocation> locations,
-  ) {
+  List<({String title, String? description, String? address, String link})>
+      _customerLocationLinks(List<CustomerLocation> locations) {
     final active = locations.where((e) => e.isActive).toList(growable: false);
+    final result = <({String title, String? description, String? address, String link})>[];
     for (final l in active) {
-      final link = (l.locationLink ?? '').trim();
-      if (link.isNotEmpty) return (title: l.title.trim(), link: link);
-    }
-    for (final l in active) {
+      final direct = (l.locationLink ?? '').trim();
       final lat = l.locationLat;
       final lng = l.locationLng;
-      if (lat == null || lng == null) continue;
-      final link = 'https://maps.google.com/?q=${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}';
-      return (title: l.title.trim(), link: link);
+      final link = direct.isNotEmpty
+          ? direct
+          : (lat == null || lng == null)
+              ? ''
+              : 'https://maps.google.com/?q=${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}';
+      if (link.isEmpty) continue;
+      result.add((
+        title: l.title.trim().isEmpty ? 'Konum' : l.title.trim(),
+        description: l.description?.trim().isEmpty ?? true ? null : l.description!.trim(),
+        address: l.address?.trim().isEmpty ?? true ? null : l.address!.trim(),
+        link: link,
+      ));
     }
-    return null;
+    return result;
   }
 
   Widget _buildInfoCard(
@@ -935,17 +945,13 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
     final closeNotes = (widget.order.closeNotes ?? '').trim();
     final rawOrderLink = (widget.order.locationLink ?? '').trim();
 
-    String? customerLocationTitle;
-    customerLocationsAsync.whenData((locations) {
-      final picked = _pickCustomerLocationLink(locations);
-      final link = (picked?.link ?? '').trim();
-      if (link.isNotEmpty) {
-        _customerFallbackLocationLink = link;
-        customerLocationTitle = picked?.title.trim().isEmpty ?? true
-            ? null
-            : picked!.title.trim();
-      }
-    });
+    final locationItems = _customerLocationLinks(
+      customerLocationsAsync.asData?.value ?? const [],
+    );
+    if (rawOrderLink.isEmpty && locationItems.isNotEmpty) {
+      _customerFallbackLocationLink = locationItems.first.link;
+    }
+    final customerLocationTitle = locationItems.isEmpty ? null : locationItems.first.title;
     final link = _resolvedLocationLink();
 
     return AppCard(
@@ -998,6 +1004,89 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 ),
               ],
             ),
+            if (locationItems.length >= 2) ...[
+              const Gap(10),
+              Text(
+                'Tüm Konumlar',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: const Color(0xFF64748B)),
+              ),
+              const Gap(6),
+              Column(
+                children: [
+                  for (final item in locationItems)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.border),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.place_rounded,
+                            size: 18,
+                            color: Color(0xFF64748B),
+                          ),
+                          const Gap(10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.title,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                if ((item.description ?? '').trim().isNotEmpty) ...[
+                                  const Gap(2),
+                                  Text(
+                                    item.description!,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(color: const Color(0xFF64748B)),
+                                  ),
+                                ],
+                                if ((item.address ?? '').trim().isNotEmpty) ...[
+                                  const Gap(2),
+                                  Text(
+                                    item.address!,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(color: const Color(0xFF64748B)),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const Gap(10),
+                          IconButton(
+                            tooltip: 'Tarif',
+                            onPressed: () async {
+                              final ok = await _openDirectionsLink(item.link);
+                              if (!ok && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Harita açılamadı.')),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.directions_rounded),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ],
           ],
           if (customer.email?.isNotEmpty ?? false) ...[
             const Gap(8),
