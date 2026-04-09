@@ -1374,7 +1374,7 @@ class _SheetBody extends StatelessWidget {
                     SwitchListTile.adaptive(
                       contentPadding: EdgeInsets.zero,
                       value: addLine,
-                      onChanged: manualAllowed ? onToggleAddLine : null,
+                      onChanged: onToggleAddLine,
                       title: const Text('Hat Satışı Ekle'),
                       subtitle: const Text(
                         'Başlangıç: bugün • Bitiş: yıl sonu',

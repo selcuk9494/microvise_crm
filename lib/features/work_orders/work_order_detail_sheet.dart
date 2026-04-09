@@ -1374,7 +1374,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
             value: _addLine,
-            onChanged: _saving || !isAdmin
+            onChanged: _saving
                 ? null
                 : (v) => setState(() {
                       _addLine = v;
