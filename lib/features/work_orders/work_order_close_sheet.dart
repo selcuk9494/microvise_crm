@@ -1178,43 +1178,60 @@ class _SheetBody extends StatelessWidget {
                     ),
                     const Gap(12),
                     customerLocationsAsync.when(
-                      data: (locations) => DropdownButtonFormField<String?>(
-                        initialValue: selectedCustomerLocationId,
-                        items: [
-                          const DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text('Kayıtlı konum seç (opsiyonel)'),
-                          ),
-                          ...locations.map(
-                            (location) => DropdownMenuItem<String?>(
-                              value: location.id,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(location.title),
-                                  if ((location.description ?? '').trim().isNotEmpty)
-                                    Text(
-                                      location.description!.trim(),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(color: const Color(0xFF64748B)),
-                                    ),
-                                ],
+                      data: (locations) => Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          DropdownButtonFormField<String?>(
+                            initialValue: selectedCustomerLocationId,
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('Kayıtlı konum seç (opsiyonel)'),
                               ),
+                              ...locations.map(
+                                (location) => DropdownMenuItem<String?>(
+                                  value: location.id,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(location.title),
+                                      if ((location.description ?? '').trim().isNotEmpty)
+                                        Text(
+                                          location.description!.trim(),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: const Color(0xFF64748B),
+                                              ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                            onChanged: onCustomerLocationChanged == null
+                                ? null
+                                : (value) =>
+                                      onCustomerLocationChanged!(value, locations),
+                            decoration: const InputDecoration(
+                              labelText: 'Müşteri Konumu',
                             ),
                           ),
+                          if (locations.isEmpty) ...[
+                            const Gap(6),
+                            Text(
+                              'Kayıtlı konum yok. Konum Al ile konum getirip “Müşteriye konum olarak kaydet” seçeneğiyle ekleyebilirsin.',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(color: const Color(0xFF64748B)),
+                            ),
+                          ],
                         ],
-                        onChanged: onCustomerLocationChanged == null
-                            ? null
-                            : (value) =>
-                                  onCustomerLocationChanged!(value, locations),
-                        decoration: const InputDecoration(
-                          labelText: 'Müşteri Konumu',
-                        ),
                       ),
                       loading: () => const SizedBox.shrink(),
                       error: (error, stackTrace) => const SizedBox.shrink(),

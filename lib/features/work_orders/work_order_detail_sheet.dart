@@ -1350,22 +1350,30 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             const Gap(8),
             _InfoRow(icon: Icons.notes_rounded, label: 'Açıklama', value: description),
           ],
-          if (link != null) ...[
-            const Gap(8),
-            Row(
-              children: [
-                Expanded(
-                  child: _InfoRow(
-                    icon: Icons.location_on_rounded,
-                    label: 'Konum',
-                    value: rawOrderLink.isNotEmpty
-                        ? 'İş Emri Konumu'
-                        : (customerLocationTitle == null
-                            ? 'Müşteri Konumu'
-                            : 'Müşteri: $customerLocationTitle'),
-                  ),
+          const Gap(8),
+          Row(
+            children: [
+              Expanded(
+                child: _InfoRow(
+                  icon: Icons.location_on_rounded,
+                  label: 'Konum',
+                  value: link == null
+                      ? 'Konum yok'
+                      : rawOrderLink.isNotEmpty
+                          ? 'İş Emri Konumu'
+                          : (customerLocationTitle == null
+                              ? 'Müşteri Konumu'
+                              : 'Müşteri: $customerLocationTitle'),
                 ),
-                const Gap(10),
+              ),
+              const Gap(10),
+              if (link == null)
+                OutlinedButton.icon(
+                  onPressed: () => _editWorkOrderLocation(customer, rawLocations),
+                  icon: const Icon(Icons.add_location_alt_rounded, size: 18),
+                  label: const Text('Konum Ekle'),
+                )
+              else ...[
                 OutlinedButton.icon(
                   onPressed: _openDirections,
                   icon: const Icon(Icons.directions_rounded, size: 18),
@@ -1373,12 +1381,17 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 ),
                 const Gap(6),
                 IconButton(
-                  tooltip: 'Konumu Düzenle',
+                  tooltip: rawLocations.isEmpty ? 'Müşteriye Konum Ekle' : 'Konumu Düzenle',
                   onPressed: () => _editWorkOrderLocation(customer, rawLocations),
-                  icon: const Icon(Icons.edit_location_alt_rounded),
+                  icon: Icon(
+                    rawLocations.isEmpty
+                        ? Icons.add_location_alt_rounded
+                        : Icons.edit_location_alt_rounded,
+                  ),
                 ),
               ],
-            ),
+            ],
+          ),
             if (locationItems.length >= 2) ...[
               const Gap(10),
               Text(
@@ -1462,7 +1475,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 ],
               ),
             ],
-          ],
+          
           if (customer.email?.isNotEmpty ?? false) ...[
             const Gap(8),
             _InfoRow(icon: Icons.email_rounded, label: 'E-posta', value: customer.email!),
