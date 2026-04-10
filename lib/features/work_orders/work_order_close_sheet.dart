@@ -11,7 +11,6 @@ import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../billing/invoice_queue_helper.dart';
-import '../../core/platform/current_position.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
@@ -68,14 +67,12 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
   bool _saving = false;
   bool _addLine = false;
   bool _saveAsCustomerLocation = false;
-  bool _fetchingLocation = false;
 
   final _lineNumberController = TextEditingController();
   final _lineSimController = TextEditingController();
   String? _lineOperator;
   String? _selectedLineStockId;
 
-  String? _selectedBranchId;
   String? _selectedCustomerLocationId;
   final List<_PaymentDraft> _payments = [_PaymentDraft()];
 
@@ -113,7 +110,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         throw Exception('Personel stoktan hat seçmelidir.');
       }
 
-      final branchId = _selectedBranchId ?? widget.order.branchId;
+      final branchId = widget.order.branchId;
       if (apiClient != null) {
         String? insertedLineId;
         String normalizeDigits(String input) =>
@@ -822,37 +819,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     }
   }
 
-  Future<void> _fetchLocation() async {
-    setState(() => _fetchingLocation = true);
-    try {
-      final result = await fetchCurrentPosition();
-      if (result == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Konum alınamadı. İzin veya tarayıcı desteğini kontrol edin.',
-            ),
-          ),
-        );
-        return;
-      }
-
-      final lat = result.latitude.toStringAsFixed(6);
-      final lng = result.longitude.toStringAsFixed(6);
-      _latController.text = lat;
-      _lngController.text = lng;
-      _locationLinkController.text = 'https://maps.google.com/?q=$lat,$lng';
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Konum alındı.')));
-    } finally {
-      if (mounted) setState(() => _fetchingLocation = false);
-    }
-  }
-
   String? _resolvedLocationLink() {
     final rawLink = _locationLinkController.text.trim();
     if (rawLink.isNotEmpty) {
@@ -870,9 +836,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
   Widget build(BuildContext context) {
     final customerAsync = ref.watch(
       customerDetailProvider(widget.order.customerId),
-    );
-    final branchesAsync = ref.watch(
-      customerBranchesProvider(widget.order.customerId),
     );
     final customerLocationsAsync = ref.watch(
       customerLocationsProvider(widget.order.customerId),
@@ -897,7 +860,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
             data: (customer) => _SheetBody(
               order: widget.order,
               customer: customer,
-              branchesAsync: branchesAsync,
               customerLocationsAsync: customerLocationsAsync,
               lineStockAsync: lineStockAsync,
               selectedLineStockId: _selectedLineStockId,
@@ -913,10 +875,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                         _lineSimController.text = (item.simNumber ?? '').trim();
                         _lineOperator = normalizeOperator(item.operatorName);
                       }),
-              selectedBranchId: _selectedBranchId ?? widget.order.branchId,
-              onBranchChanged: _saving
-                  ? null
-                  : (id) => setState(() => _selectedBranchId = id),
               selectedCustomerLocationId: _selectedCustomerLocationId,
               onCustomerLocationChanged: _saving
                   ? null
@@ -951,8 +909,6 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               locationLinkController: _locationLinkController,
               locationTitleController: _locationTitleController,
               locationDescriptionController: _locationDescriptionController,
-              fetchingLocation: _fetchingLocation,
-              onFetchLocation: _saving ? null : _fetchLocation,
               saveAsCustomerLocation: _saveAsCustomerLocation,
               onToggleSaveAsCustomerLocation: _saving
                   ? null
@@ -1018,13 +974,10 @@ class _SheetBody extends StatelessWidget {
   const _SheetBody({
     required this.order,
     required this.customer,
-    required this.branchesAsync,
     required this.customerLocationsAsync,
     required this.lineStockAsync,
     required this.selectedLineStockId,
     required this.onLineStockSelected,
-    required this.selectedBranchId,
-    required this.onBranchChanged,
     required this.selectedCustomerLocationId,
     required this.onCustomerLocationChanged,
     required this.notesController,
@@ -1034,8 +987,6 @@ class _SheetBody extends StatelessWidget {
     required this.locationLinkController,
     required this.locationTitleController,
     required this.locationDescriptionController,
-    required this.fetchingLocation,
-    required this.onFetchLocation,
     required this.saveAsCustomerLocation,
     required this.onToggleSaveAsCustomerLocation,
     required this.isAdmin,
@@ -1056,13 +1007,10 @@ class _SheetBody extends StatelessWidget {
 
   final WorkOrder order;
   final CustomerDetail customer;
-  final AsyncValue<List<CustomerBranch>> branchesAsync;
   final AsyncValue<List<CustomerLocation>> customerLocationsAsync;
   final AsyncValue<List<LineStockItem>> lineStockAsync;
   final String? selectedLineStockId;
   final ValueChanged<LineStockItem?>? onLineStockSelected;
-  final String? selectedBranchId;
-  final ValueChanged<String?>? onBranchChanged;
   final String? selectedCustomerLocationId;
   final void Function(String?, List<CustomerLocation>)?
   onCustomerLocationChanged;
@@ -1073,8 +1021,6 @@ class _SheetBody extends StatelessWidget {
   final TextEditingController locationLinkController;
   final TextEditingController locationTitleController;
   final TextEditingController locationDescriptionController;
-  final bool fetchingLocation;
-  final VoidCallback? onFetchLocation;
   final bool saveAsCustomerLocation;
   final ValueChanged<bool>? onToggleSaveAsCustomerLocation;
   final bool isAdmin;
@@ -1151,30 +1097,8 @@ class _SheetBody extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Şube & Konum',
+                      'Konum',
                       style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const Gap(10),
-                    branchesAsync.when(
-                      data: (branches) => DropdownButtonFormField<String?>(
-                        initialValue: selectedBranchId,
-                        items: [
-                          const DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text('Şube seç'),
-                          ),
-                          ...branches.map(
-                            (b) => DropdownMenuItem<String?>(
-                              value: b.id,
-                              child: Text(b.name),
-                            ),
-                          ),
-                        ],
-                        onChanged: onBranchChanged,
-                        decoration: const InputDecoration(labelText: 'Şube'),
-                      ),
-                      loading: () => const SizedBox.shrink(),
-                      error: (error, stackTrace) => const SizedBox.shrink(),
                     ),
                     const Gap(12),
                     customerLocationsAsync.when(
@@ -1265,32 +1189,12 @@ class _SheetBody extends StatelessWidget {
                       ),
                     ),
                     const Gap(12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: locationLinkController,
-                            decoration: const InputDecoration(
-                              labelText: 'Konum Linki',
-                              hintText: 'Google Maps veya paylaşım linki',
-                            ),
-                          ),
-                        ),
-                        const Gap(12),
-                        OutlinedButton.icon(
-                          onPressed: fetchingLocation ? null : onFetchLocation,
-                          icon: fetchingLocation
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.my_location_rounded),
-                          label: const Text('Konum Al'),
-                        ),
-                      ],
+                    TextField(
+                      controller: locationLinkController,
+                      decoration: const InputDecoration(
+                        labelText: 'Konum Linki',
+                        hintText: 'Google Maps veya paylaşım linki',
+                      ),
                     ),
                     const Gap(12),
                     Row(
