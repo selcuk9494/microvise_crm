@@ -1042,8 +1042,6 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   Widget build(BuildContext context) {
     final customerAsync =
         ref.watch(customerDetailProvider(widget.order.customerId));
-    final branchesAsync =
-        ref.watch(customerBranchesProvider(widget.order.customerId));
     final customerLocationsAsync =
         ref.watch(customerLocationsProvider(widget.order.customerId));
     final isDone = widget.order.status == 'done';
@@ -1103,10 +1101,6 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                         ],
                         if (!isDone) ...[
                           _buildSignatureCard(context, customer),
-                          const Gap(12),
-                          _buildBranchLocationCard(context, branchesAsync),
-                          const Gap(12),
-                          _buildLocationCard(context),
                           const Gap(12),
                           _buildAdditionalSalesCard(context),
                           const Gap(12),
@@ -1796,40 +1790,6 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 .textTheme
                 .bodySmall
                 ?.copyWith(color: const Color(0xFF64748B)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBranchLocationCard(
-      BuildContext context, AsyncValue<List<CustomerBranch>> branchesAsync) {
-    return AppCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          branchesAsync.when(
-            data: (branches) => DropdownButtonFormField<String?>(
-              initialValue: _selectedBranchId ?? widget.order.branchId,
-              items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('Şube seç'),
-                ),
-                ...branches.map(
-                  (b) => DropdownMenuItem<String?>(
-                    value: b.id,
-                    child: Text(b.name),
-                  ),
-                ),
-              ],
-              onChanged:
-                  _saving ? null : (v) => setState(() => _selectedBranchId = v),
-              decoration: const InputDecoration(labelText: 'Şube'),
-            ),
-            loading: () => const SizedBox.shrink(),
-            error: (_, _) => const SizedBox.shrink(),
           ),
         ],
       ),
