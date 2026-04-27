@@ -734,16 +734,90 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
     setState(() => _applyCustomerSelection(created));
   }
 
-  Future<void> _pickCustomer(List<_FaultCustomerOption> customers) async {
-    final selected = await showDialog<_FaultCustomerOption>(
-      context: context,
-      builder: (context) => _FaultCustomerPickerDialog(
-        customers: customers,
-        initialSelectedId: _selectedCustomerId,
-      ),
+  Widget _customerPickerField(List<_FaultCustomerOption> customers) {
+    return Autocomplete<_FaultCustomerOption>(
+      optionsBuilder: (textEditingValue) {
+        final query = _sortKey(textEditingValue.text.trim());
+        if (query.isEmpty) return customers.take(20);
+        return customers.where((customer) {
+          final haystack = _sortKey(
+            '${customer.name} ${customer.vkn ?? ''} ${customer.city ?? ''}',
+          );
+          return haystack.contains(query);
+        }).take(20);
+      },
+      displayStringForOption: (option) => option.name,
+      onSelected: (option) => setState(() => _applyCustomerSelection(option)),
+      fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+        if (controller.text != _customerPickerController.text) {
+          controller.value = TextEditingValue(
+            text: _customerPickerController.text,
+            selection: TextSelection.collapsed(
+              offset: _customerPickerController.text.length,
+            ),
+          );
+        }
+        return TextFormField(
+          controller: controller,
+          focusNode: focusNode,
+          validator: (value) {
+            if ((_selectedCustomerId ?? '').trim().isEmpty) {
+              return 'Müşteri seçin';
+            }
+            return null;
+          },
+          onChanged: (value) {
+            _customerPickerController.text = value;
+            _selectedCustomerId = null;
+          },
+          decoration: const InputDecoration(
+            labelText: 'Müşteri seç',
+            hintText: 'Firma adı, VKN veya şehir yazarak ara',
+            prefixIcon: Icon(Icons.search_rounded),
+          ),
+        );
+      },
+      optionsViewBuilder: (context, onSelected, options) {
+        final items = options.toList(growable: false);
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(12),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: 520,
+                maxHeight: 320,
+              ),
+              child: items.isEmpty
+                  ? const SizedBox.shrink()
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shrinkWrap: true,
+                      itemCount: items.length,
+                      separatorBuilder: (context, index) =>
+                          const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final item = items[index];
+                        return ListTile(
+                          title: Text(item.name),
+                          subtitle: Text(
+                            [
+                              if (item.vkn?.trim().isNotEmpty ?? false) item.vkn!,
+                              if (item.city?.trim().isNotEmpty ?? false)
+                                item.city!,
+                              item.isActive ? 'Aktif' : 'Pasif',
+                            ].join(' • '),
+                          ),
+                          onTap: () => onSelected(item),
+                        );
+                      },
+                    ),
+            ),
+          ),
+        );
+      },
     );
-    if (selected == null || !mounted) return;
-    setState(() => _applyCustomerSelection(selected));
   }
 
   @override
@@ -852,24 +926,7 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
                         Row(
                           children: <Widget>[
                             Expanded(
-                              child: TextFormField(
-                                controller: _customerPickerController,
-                                readOnly: true,
-                                validator: (value) {
-                                  if ((_selectedCustomerId ?? '').trim().isEmpty) {
-                                    return 'Müşteri seçin';
-                                  }
-                                  return null;
-                                },
-                                onTap: _saving
-                                    ? null
-                                    : () => _pickCustomer(customers),
-                                decoration: const InputDecoration(
-                                  labelText: 'Müşteri seç',
-                                  hintText: 'Müşteriyi seçin',
-                                  prefixIcon: Icon(Icons.business_rounded),
-                                ),
-                              ),
+                              child: _customerPickerField(customers),
                             ),
                             const Gap(8),
                             OutlinedButton(

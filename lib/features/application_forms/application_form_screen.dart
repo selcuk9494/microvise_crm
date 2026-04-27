@@ -4949,7 +4949,7 @@ class _CustomerPickerField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showEditAction =
+    final canEditCustomer =
         (selectedCustomerId ?? '').isNotEmpty || controller.text.trim().isNotEmpty;
     return Row(
       children: [
@@ -4983,22 +4983,20 @@ class _CustomerPickerField extends StatelessWidget {
             ),
           ),
         ),
-        if (showEditAction) ...[
-          const Gap(8),
-          OutlinedButton.icon(
-            onPressed: onEditCustomer,
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(0, 44),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
+        const Gap(8),
+        OutlinedButton.icon(
+          onPressed: canEditCustomer ? onEditCustomer : null,
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(0, 44),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
             ),
-            icon: const Icon(Icons.edit_rounded, size: 16),
-            label: const Text('Düzenle'),
           ),
-        ],
+          icon: const Icon(Icons.edit_rounded, size: 16),
+          label: const Text('Düzenle'),
+        ),
         const Gap(8),
         OutlinedButton.icon(
           onPressed: onCreateCustomer,
