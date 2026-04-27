@@ -1986,7 +1986,20 @@ class _ApplicationFormDialogState
   }
 
   Future<void> _editSelectedCustomer() async {
-    final customerId = (_selectedCustomerId ?? '').trim();
+    var customerId = (_selectedCustomerId ?? '').trim();
+    if (customerId.isEmpty) {
+      final currentName = _customerController.text.trim();
+      if (currentName.isNotEmpty) {
+        final customers = ref.read(applicationFormCustomersProvider).asData?.value;
+        final matched = customers
+            ?.where((item) => _sortKey(item.name) == _sortKey(currentName))
+            .firstOrNull;
+        if (matched != null) {
+          customerId = matched.id;
+          _selectedCustomerId = matched.id;
+        }
+      }
+    }
     if (customerId.isEmpty) return;
     try {
       final initialData = await _loadCustomerFormData(customerId);
@@ -4936,6 +4949,8 @@ class _CustomerPickerField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final showEditAction =
+        (selectedCustomerId ?? '').isNotEmpty || controller.text.trim().isNotEmpty;
     return Row(
       children: [
         Expanded(
@@ -4968,7 +4983,7 @@ class _CustomerPickerField extends StatelessWidget {
             ),
           ),
         ),
-        if ((selectedCustomerId ?? '').isNotEmpty) ...[
+        if (showEditAction) ...[
           const Gap(8),
           OutlinedButton.icon(
             onPressed: onEditCustomer,

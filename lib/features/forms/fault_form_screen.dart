@@ -11,6 +11,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../customers/customer_form_dialog.dart';
 import 'fault_form_model.dart';
 import 'fault_form_print.dart';
 
@@ -647,6 +648,7 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
   String? _selectedCustomerId;
   DateTime? _lastZReportDate;
 
+  late final TextEditingController _customerPickerController;
   late final TextEditingController _customerNameController;
   late final TextEditingController _customerAddressController;
   late final TextEditingController _customerTaxOfficeController;
@@ -675,6 +677,8 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
     _selectedCustomerId = initial?.customerId;
     _lastZReportDate = initial?.lastZReportDate ?? DateTime.now();
 
+    _customerPickerController =
+        TextEditingController(text: initial?.customerName ?? '');
     _customerNameController =
         TextEditingController(text: initial?.customerName ?? '');
     _customerAddressController =
@@ -709,10 +713,25 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
 
   void _applyCustomerSelection(_FaultCustomerOption customer) {
     _selectedCustomerId = customer.id;
+    _customerPickerController.text = customer.name;
     _customerNameController.text = customer.name;
     _customerAddressController.text = (customer.address ?? '').trim();
     _customerTaxOfficeController.text = (customer.city ?? '').trim();
     _customerVknController.text = (customer.vkn ?? '').trim();
+  }
+
+  Future<void> _createCustomer() async {
+    final newCustomerId = await showCreateCustomerDialog(context);
+    if (newCustomerId == null) return;
+    ref.invalidate(faultFormCustomersProvider);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    final customers = await ref.read(faultFormCustomersProvider.future);
+    final created = customers
+        .where((item) => item.id == newCustomerId)
+        .cast<_FaultCustomerOption?>()
+        .firstWhere((_) => true, orElse: () => null);
+    if (created == null || !mounted) return;
+    setState(() => _applyCustomerSelection(created));
   }
 
   Future<void> _pickCustomer(List<_FaultCustomerOption> customers) async {
@@ -729,6 +748,7 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
 
   @override
   void dispose() {
+    _customerPickerController.dispose();
     _customerNameController.dispose();
     _customerAddressController.dispose();
     _customerTaxOfficeController.dispose();
@@ -829,21 +849,34 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        TextFormField(
-                          controller: _customerNameController,
-                          readOnly: true,
-                          validator: (value) {
-                            if ((_selectedCustomerId ?? '').trim().isEmpty) {
-                              return 'Müşteri seçin';
-                            }
-                            return null;
-                          },
-                          onTap: _saving ? null : () => _pickCustomer(customers),
-                          decoration: const InputDecoration(
-                            labelText: 'Müşteri seç',
-                            hintText: 'Müşteriyi seçin',
-                            prefixIcon: Icon(Icons.business_rounded),
-                          ),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: TextFormField(
+                                controller: _customerPickerController,
+                                readOnly: true,
+                                validator: (value) {
+                                  if ((_selectedCustomerId ?? '').trim().isEmpty) {
+                                    return 'Müşteri seçin';
+                                  }
+                                  return null;
+                                },
+                                onTap: _saving
+                                    ? null
+                                    : () => _pickCustomer(customers),
+                                decoration: const InputDecoration(
+                                  labelText: 'Müşteri seç',
+                                  hintText: 'Müşteriyi seçin',
+                                  prefixIcon: Icon(Icons.business_rounded),
+                                ),
+                              ),
+                            ),
+                            const Gap(8),
+                            OutlinedButton(
+                              onPressed: _saving ? null : _createCustomer,
+                              child: const Text('Yeni Müşteri'),
+                            ),
+                          ],
                         ),
                         const Gap(10),
                         if (selected != null)
