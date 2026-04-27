@@ -17,6 +17,7 @@ import '../customers/web_download_helper.dart'
     if (dart.library.io) '../customers/io_download_helper.dart';
 import 'application_form_model.dart';
 import '../customers/customer_form_dialog.dart';
+import '../customers/customer_model.dart';
 import '../definitions/definitions_screen.dart';
 import 'application_form_print.dart';
 import '../work_orders/work_orders_providers.dart';
@@ -1880,24 +1881,144 @@ class _ApplicationFormDialogState
         .firstOrNull;
     if (created == null || !mounted) return;
     setState(() {
-      _selectedCustomerId = created.id;
-      _customerController.text = created.name;
-      _workAddressController.text = (created.address ?? '').trim();
-      _directorController.text = (created.directorName ?? '').trim();
-      if (_fileRegistryController.text.trim().isEmpty) {
-        _fileRegistryController.text = created.vkn ?? '';
-      }
-      _customerTcknMsController.text = created.tcknMs ?? '';
-      final city = ref
-          .read(cityDefinitionsProvider)
-          .asData
-          ?.value
-          .where((item) => _sortKey(item.name) == _sortKey(created.city ?? ''))
-          .firstOrNull;
-      if (city != null) {
-        _selectedCityId = city.id;
-      }
+      _applyCustomerSelection(created, preserveFileRegistryIfFilled: true);
     });
+  }
+
+  void _applyCustomerSelection(
+    _CustomerOption customer, {
+    bool preserveFileRegistryIfFilled = false,
+  }) {
+    _selectedCustomerId = customer.id;
+    _customerController.text = customer.name;
+    _workAddressController.text = (customer.address ?? '').trim();
+    _directorController.text = (customer.directorName ?? '').trim();
+    if (!preserveFileRegistryIfFilled ||
+        _fileRegistryController.text.trim().isEmpty) {
+      _fileRegistryController.text = customer.vkn ?? '';
+    }
+    _customerTcknMsController.text = customer.tcknMs ?? '';
+    final city = ref
+        .read(cityDefinitionsProvider)
+        .asData
+        ?.value
+        .where((item) => _sortKey(item.name) == _sortKey(customer.city ?? ''))
+        .firstOrNull;
+    if (city != null) {
+      _selectedCityId = city.id;
+    }
+  }
+
+  Future<CustomerFormData?> _loadCustomerFormData(String customerId) async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+
+    Map<String, dynamic>? customerRow;
+    List<Map<String, dynamic>> locationRows = const [];
+
+    if (apiClient != null) {
+      final response = await apiClient.getJson(
+        '/customers',
+        queryParameters: {
+          'export': 'true',
+          'showPassive': 'true',
+        },
+      );
+      final rows = ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>();
+      customerRow = rows
+          .where((row) => row['id']?.toString() == customerId)
+          .firstOrNull;
+      final locationResponse = await apiClient.getJson(
+        '/data',
+        queryParameters: {
+          'resource': 'customer_locations',
+          'customerId': customerId,
+        },
+      );
+      locationRows = ((locationResponse['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList(growable: false);
+    } else {
+      if (client == null) return null;
+      customerRow = await client
+          .from('customers')
+          .select(
+            'id,name,city,address,director_name,email,vkn,tckn_ms,phone_1_title,phone_1,phone_2_title,phone_2,phone_3_title,phone_3,notes,is_active',
+          )
+          .eq('id', customerId)
+          .maybeSingle();
+      final locations = await client
+          .from('customer_locations')
+          .select(
+            'id,customer_id,title,description,address,location_link,location_lat,location_lng,is_active',
+          )
+          .eq('customer_id', customerId)
+          .order('created_at', ascending: false);
+      locationRows = (locations as List)
+          .whereType<Map<String, dynamic>>()
+          .toList(growable: false);
+    }
+
+    if (customerRow == null) return null;
+    final locations = locationRows
+        .map(CustomerLocation.fromJson)
+        .toList(growable: false);
+    return CustomerFormData(
+      id: customerRow['id']?.toString(),
+      name: (customerRow['name'] ?? '').toString(),
+      city: customerRow['city']?.toString(),
+      address: customerRow['address']?.toString(),
+      directorName: customerRow['director_name']?.toString(),
+      email: customerRow['email']?.toString(),
+      vkn: customerRow['vkn']?.toString(),
+      tcknMs: customerRow['tckn_ms']?.toString(),
+      phone1Title: customerRow['phone_1_title']?.toString(),
+      phone1: customerRow['phone_1']?.toString(),
+      phone2Title: customerRow['phone_2_title']?.toString(),
+      phone2: customerRow['phone_2']?.toString(),
+      phone3Title: customerRow['phone_3_title']?.toString(),
+      phone3: customerRow['phone_3']?.toString(),
+      notes: customerRow['notes']?.toString(),
+      isActive: customerRow['is_active'] as bool? ?? true,
+      locations: locations,
+    );
+  }
+
+  Future<void> _editSelectedCustomer() async {
+    final customerId = (_selectedCustomerId ?? '').trim();
+    if (customerId.isEmpty) return;
+    try {
+      final initialData = await _loadCustomerFormData(customerId);
+      if (initialData == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Müşteri bilgisi yüklenemedi.')),
+        );
+        return;
+      }
+      if (!mounted) return;
+      final updated = await showEditCustomerDialog(
+        context,
+        initialData: initialData,
+      );
+      if (!updated) return;
+      ref.invalidate(applicationFormCustomersProvider);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      final customers = await ref.read(applicationFormCustomersProvider.future);
+      final refreshed = customers
+          .where((item) => item.id == customerId)
+          .firstOrNull;
+      if (refreshed == null || !mounted) return;
+      setState(() {
+        _applyCustomerSelection(refreshed);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Müşteri düzenleme açılamadı: $e')),
+      );
+    }
   }
 
   Future<void> _pickCustomer(List<_CustomerOption> customers) async {
@@ -1910,21 +2031,7 @@ class _ApplicationFormDialogState
     );
     if (selected == null || !mounted) return;
     setState(() {
-      _selectedCustomerId = selected.id;
-      _customerController.text = selected.name;
-      _workAddressController.text = (selected.address ?? '').trim();
-      _directorController.text = (selected.directorName ?? '').trim();
-      _fileRegistryController.text = selected.vkn ?? '';
-      _customerTcknMsController.text = selected.tcknMs ?? '';
-      final city = ref
-          .read(cityDefinitionsProvider)
-          .asData
-          ?.value
-          .where((item) => _sortKey(item.name) == _sortKey(selected.city ?? ''))
-          .firstOrNull;
-      if (city != null) {
-        _selectedCityId = city.id;
-      }
+      _applyCustomerSelection(selected);
     });
   }
 
@@ -2528,6 +2635,7 @@ class _ApplicationFormDialogState
             controller: _customerController,
             selectedCustomerId: _selectedCustomerId,
             onPickCustomer: () => _pickCustomer(items),
+            onEditCustomer: _editSelectedCustomer,
             onCreateCustomer: _createCustomer,
           ),
           loading: () => const _ContentLoading(),
@@ -4816,12 +4924,14 @@ class _CustomerPickerField extends StatelessWidget {
     required this.controller,
     required this.selectedCustomerId,
     required this.onPickCustomer,
+    required this.onEditCustomer,
     required this.onCreateCustomer,
   });
 
   final TextEditingController controller;
   final String? selectedCustomerId;
   final VoidCallback onPickCustomer;
+  final VoidCallback onEditCustomer;
   final VoidCallback onCreateCustomer;
 
   @override
@@ -4858,6 +4968,22 @@ class _CustomerPickerField extends StatelessWidget {
             ),
           ),
         ),
+        if ((selectedCustomerId ?? '').isNotEmpty) ...[
+          const Gap(8),
+          OutlinedButton.icon(
+            onPressed: onEditCustomer,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+            icon: const Icon(Icons.edit_rounded, size: 16),
+            label: const Text('Düzenle'),
+          ),
+        ],
         const Gap(8),
         OutlinedButton.icon(
           onPressed: onCreateCustomer,

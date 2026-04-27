@@ -707,6 +707,26 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
     _totalVatController = TextEditingController(text: initial?.totalVat ?? '');
   }
 
+  void _applyCustomerSelection(_FaultCustomerOption customer) {
+    _selectedCustomerId = customer.id;
+    _customerNameController.text = customer.name;
+    _customerAddressController.text = (customer.address ?? '').trim();
+    _customerTaxOfficeController.text = (customer.city ?? '').trim();
+    _customerVknController.text = (customer.vkn ?? '').trim();
+  }
+
+  Future<void> _pickCustomer(List<_FaultCustomerOption> customers) async {
+    final selected = await showDialog<_FaultCustomerOption>(
+      context: context,
+      builder: (context) => _FaultCustomerPickerDialog(
+        customers: customers,
+        initialSelectedId: _selectedCustomerId,
+      ),
+    );
+    if (selected == null || !mounted) return;
+    setState(() => _applyCustomerSelection(selected));
+  }
+
   @override
   void dispose() {
     _customerNameController.dispose();
@@ -805,57 +825,25 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
                         .where((c) => c.id == _selectedCustomerId)
                         .cast<_FaultCustomerOption?>()
                         .firstWhere((_) => true, orElse: () => null);
-                    if (selected != null) {
-                      if (_customerNameController.text.trim().isEmpty ||
-                          !widget.isEdit) {
-                        _customerNameController.text = selected.name;
-                      }
-                      if (_customerAddressController.text.trim().isEmpty ||
-                          !widget.isEdit) {
-                        _customerAddressController.text =
-                            (selected.address ?? '').trim();
-                      }
-                      if (_customerTaxOfficeController.text.trim().isEmpty ||
-                          !widget.isEdit) {
-                        _customerTaxOfficeController.text =
-                            (selected.city ?? '').trim();
-                      }
-                      if (_customerVknController.text.trim().isEmpty ||
-                          !widget.isEdit) {
-                        _customerVknController.text = (selected.vkn ?? '').trim();
-                      }
-                    }
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        DropdownButtonFormField<String>(
-                          key: ValueKey(_selectedCustomerId ?? ''),
-                          initialValue: _selectedCustomerId ?? '',
-                          decoration:
-                              const InputDecoration(labelText: 'Müşteri seç'),
-                          items: [
-                            const DropdownMenuItem<String>(
-                              value: '',
-                              child: Text('Müşteri seç'),
-                            ),
-                            ...customers.map(
-                              (c) => DropdownMenuItem<String>(
-                                value: c.id,
-                                child: Text(c.name),
-                              ),
-                            ),
-                          ],
+                        TextFormField(
+                          controller: _customerNameController,
+                          readOnly: true,
                           validator: (value) {
-                            if ((value ?? '').trim().isEmpty) {
+                            if ((_selectedCustomerId ?? '').trim().isEmpty) {
                               return 'Müşteri seçin';
                             }
                             return null;
                           },
-                          onChanged: _saving
-                              ? null
-                              : (value) => setState(() => _selectedCustomerId =
-                                  (value == null || value.isEmpty) ? null : value),
+                          onTap: _saving ? null : () => _pickCustomer(customers),
+                          decoration: const InputDecoration(
+                            labelText: 'Müşteri seç',
+                            hintText: 'Müşteriyi seçin',
+                            prefixIcon: Icon(Icons.business_rounded),
+                          ),
                         ),
                         const Gap(10),
                         if (selected != null)
@@ -1268,6 +1256,119 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+}
+
+class _FaultCustomerPickerDialog extends StatefulWidget {
+  const _FaultCustomerPickerDialog({
+    required this.customers,
+    required this.initialSelectedId,
+  });
+
+  final List<_FaultCustomerOption> customers;
+  final String? initialSelectedId;
+
+  @override
+  State<_FaultCustomerPickerDialog> createState() =>
+      _FaultCustomerPickerDialogState();
+}
+
+class _FaultCustomerPickerDialogState extends State<_FaultCustomerPickerDialog> {
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _sortKey(_searchController.text);
+    final items = widget.customers
+        .where((item) {
+          if (query.isEmpty) return true;
+          final haystack = _sortKey(
+            '${item.name} ${item.vkn ?? ''} ${item.city ?? ''}',
+          );
+          return haystack.contains(query);
+        })
+        .toList(growable: false);
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 680),
+        child: AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Müşteri Seç',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const Gap(12),
+              TextField(
+                controller: _searchController,
+                autofocus: true,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  labelText: 'Ara',
+                  hintText: 'Firma adı, VKN veya şehir',
+                  prefixIcon: Icon(Icons.search_rounded),
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: items.isEmpty
+                    ? const Center(child: Text('Eşleşen müşteri bulunamadı.'))
+                    : ListView.separated(
+                        itemCount: items.length,
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = items[index];
+                          final selected =
+                              item.id == widget.initialSelectedId;
+                          return ListTile(
+                            selected: selected,
+                            selectedTileColor: AppTheme.primary.withValues(
+                              alpha: 0.08,
+                            ),
+                            title: Text(item.name),
+                            subtitle: Text(
+                              [
+                                if (item.vkn?.trim().isNotEmpty ?? false)
+                                  item.vkn!,
+                                if (item.city?.trim().isNotEmpty ?? false)
+                                  item.city!,
+                                item.isActive ? 'Aktif' : 'Pasif',
+                              ].join(' • '),
+                            ),
+                            trailing: selected
+                                ? const Icon(Icons.check_circle_rounded)
+                                : null,
+                            onTap: () => Navigator.of(context).pop(item),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

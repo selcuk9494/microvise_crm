@@ -78,6 +78,8 @@ class _CreateWorkOrderDialogState
       _assignedTo = initialOrder.assignedTo;
       _paymentRequired = initialOrder.paymentRequired;
       _selectedStatus = initialOrder.status;
+    } else {
+      _paymentRequired = true;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadCustomers();
