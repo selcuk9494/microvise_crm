@@ -1117,6 +1117,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.12.2"
+  syncfusion_flutter_core:
+    dependency: transitive
+    description:
+      name: syncfusion_flutter_core
+      sha256: "799dd6683b0902491b4b194cfaa5b5a100f87205db083923dbb5f77ff6f509e4"
+      url: "https://pub.dev"
+    source: hosted
+    version: "33.2.3"
+  syncfusion_flutter_pdf:
+    dependency: "direct main"
+    description:
+      name: syncfusion_flutter_pdf
+      sha256: cd6e04012544d650483a8bc58841032e5cc5cb6f6a34a0cafdadcbbd99344ca1
+      url: "https://pub.dev"
+    source: hosted
+    version: "33.2.3"
   term_glyph:
     dependency: transitive
     description:

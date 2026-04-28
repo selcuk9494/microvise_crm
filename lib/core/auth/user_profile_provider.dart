@@ -11,6 +11,7 @@ const kPageService = 'servis';
 const kPageReports = 'raporlar';
 const kPageProducts = 'urunler';
 const kPageBilling = 'faturalama';
+const kPageVatAnalysis = 'kdv_analizi';
 const kPageDefinitions = 'tanimlamalar';
 const kPagePersonnel = 'personel';
 
@@ -36,6 +37,7 @@ const allPagePermissions = <String>{
   kPageReports,
   kPageProducts,
   kPageBilling,
+  kPageVatAnalysis,
   kPageDefinitions,
   kPagePersonnel,
 };
@@ -49,6 +51,7 @@ const defaultPersonnelPagePermissions = <String>{
   kPageReports,
   kPageProducts,
   kPageBilling,
+  kPageVatAnalysis,
 };
 
 const pagePermissionLabels = <String, String>{
@@ -60,6 +63,7 @@ const pagePermissionLabels = <String, String>{
   kPageReports: 'Raporlar',
   kPageProducts: 'Hat & Lisans',
   kPageBilling: 'Faturalama',
+  kPageVatAnalysis: 'KDV Analizi',
   kPageDefinitions: 'Tanımlamalar',
   kPagePersonnel: 'Personel',
 };

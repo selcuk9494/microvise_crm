@@ -10,6 +10,7 @@ import '../features/customers/customer_detail_screen.dart';
 import '../features/customers/customers_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
 import '../features/billing/billing_screen.dart';
+import '../features/billing/invoice_pdf_analysis_screen.dart';
 import '../features/products/products_screen.dart';
 import '../features/definitions/definitions_screen.dart';
 import '../features/forms/forms_screen.dart';
@@ -158,6 +159,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
         ),
         GoRoute(
+          path: '/kdv-analizi',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: InvoicePdfAnalysisScreen(),
+          ),
+        ),
+        GoRoute(
           path: '/urunler',
           pageBuilder: (context, state) => const NoTransitionPage(
             child: ProductsScreen(),
@@ -195,6 +202,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (location.startsWith('/raporlar')) requiredPage = 'raporlar';
       if (location.startsWith('/urunler')) requiredPage = 'urunler';
       if (location.startsWith('/faturalama')) requiredPage = 'faturalama';
+      if (location.startsWith('/kdv-analizi')) requiredPage = 'kdv_analizi';
       if (location.startsWith('/tanimlamalar')) requiredPage = 'tanimlamalar';
       if (location.startsWith('/personel')) requiredPage = 'personel';
       if (location.startsWith('/panel')) requiredPage = 'panel';

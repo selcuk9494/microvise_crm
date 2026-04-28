@@ -33,7 +33,7 @@ class _AppState extends ConsumerState<App> {
 
     final router = ref.watch(appRouterProvider);
 
-    final enableSelection = kIsWeb ||
+    final enableSelection = !kIsWeb &&
         const {
           TargetPlatform.macOS,
           TargetPlatform.windows,

@@ -938,6 +938,8 @@ Color _navAccentColor(String pageKey) {
       return const Color(0xFF2563EB);
     case 'faturalama':
       return const Color(0xFFF97316);
+    case 'kdv_analizi':
+      return const Color(0xFFDC2626);
     case 'tanimlamalar':
       return const Color(0xFF334155);
     case 'personel':
@@ -1094,6 +1096,12 @@ final _navItems = <_NavItem>[
     label: 'Faturalama',
     icon: PhosphorIcons.receipt(PhosphorIconsStyle.regular),
     pageKey: 'faturalama',
+  ),
+  _NavItem(
+    path: '/kdv-analizi',
+    label: 'KDV Analizi',
+    icon: PhosphorIcons.chartPieSlice(PhosphorIconsStyle.regular),
+    pageKey: 'kdv_analizi',
   ),
   _NavItem(
     path: '/tanimlamalar',

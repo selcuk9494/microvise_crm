@@ -1146,6 +1146,7 @@ class _CreatePersonnelDialogState extends ConsumerState<_CreatePersonnelDialog> 
               'raporlar',
               'urunler',
               'faturalama',
+              'kdv_analizi',
             ],
             'action_permissions': const [
               'duzenleme',

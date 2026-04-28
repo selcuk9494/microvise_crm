@@ -188,7 +188,8 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                       queryController: _queryController,
                       onChanged: (next) =>
                           ref.read(invoiceFiltersProvider.notifier).set(next),
-                      onClear: () => ref.read(invoiceFiltersProvider.notifier).reset(),
+                      onClear: () =>
+                          ref.read(invoiceFiltersProvider.notifier).reset(),
                     ),
                     const Gap(12),
                     if (filtered.isEmpty)
