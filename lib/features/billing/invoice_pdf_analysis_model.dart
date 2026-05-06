@@ -183,8 +183,18 @@ class InvoicePdfAnalysisListRow {
     return 0;
   }
 
+  double baseAmountForRate(double rate) {
+    for (final item in vatBreakdowns) {
+      if (item.taxRate == rate) return item.baseAmount;
+    }
+    return 0;
+  }
+
   double get totalTaxAmount =>
       vatBreakdowns.fold<double>(0, (sum, item) => sum + item.taxAmount);
+
+  double get totalBaseAmount =>
+      vatBreakdowns.fold<double>(0, (sum, item) => sum + item.baseAmount);
 }
 
 class InvoicePdfAnalysisVatBreakdown {

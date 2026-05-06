@@ -55,6 +55,16 @@ Future<Uint8List> buildInvoicePdfAnalysisExcelBytes(
     ]);
     rowIndex += 1;
   }
+  if (rows.isNotEmpty) {
+    sheet.appendRow(_buildExcelBaseTotalsRow(rows, vatRates));
+    _applyRowStyle(
+      sheet,
+      rowIndex: rowIndex,
+      columnCount: 6 + vatRates.length,
+      style: boldStyle,
+    );
+    rowIndex += 1;
+  }
 
   final summaries = _buildRateSummaries(rows, fxRules);
   if (rows.isNotEmpty) {
@@ -122,6 +132,24 @@ Future<Uint8List> buildInvoicePdfAnalysisExcelBytes(
           .cellStyle = tlHighlightStyle;
       rowIndex += 1;
     }
+    sheet.appendRow(_buildExcelRateSummaryTotalsRow(summaries));
+    final totalRow = rowIndex;
+    _applyRowStyle(
+      sheet,
+      rowIndex: totalRow,
+      columnCount: 8,
+      style: boldStyle,
+    );
+    sheet
+        .cell(excel.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: totalRow))
+        .cellStyle = tlHighlightStyle;
+    sheet
+        .cell(excel.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: totalRow))
+        .cellStyle = tlHighlightStyle;
+    sheet
+        .cell(excel.CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: totalRow))
+        .cellStyle = tlHighlightStyle;
+    rowIndex += 1;
   }
 
 
@@ -154,6 +182,24 @@ Future<Uint8List> buildInvoicePdfAnalysisPdfBytes(
   final dateFormat = DateFormat('dd.MM.yyyy', 'tr_TR');
   final vatRates = _collectVatRates(rows);
   final summaries = _buildRateSummaries(rows, fxRules);
+  final tableData = rows
+      .map(
+        (row) => [
+          row.invoiceNumber,
+          row.customerName,
+          row.invoiceDate == null ? '' : dateFormat.format(row.invoiceDate!),
+          row.currency,
+          row.invoiceTotal.toStringAsFixed(2),
+          ...vatRates.map(
+            (rate) => row.taxAmountForRate(rate).toStringAsFixed(2),
+          ),
+          row.totalTaxAmount.toStringAsFixed(2),
+        ],
+      )
+      .toList(growable: true);
+  if (rows.isNotEmpty) {
+    tableData.add(_buildPdfBaseTotalsRow(rows, vatRates));
+  }
   doc.addPage(
     pw.MultiPage(
       pageFormat: PdfPageFormat.a4.landscape,
@@ -189,21 +235,7 @@ Future<Uint8List> buildInvoicePdfAnalysisPdfBytes(
             ...vatRates.map((rate) => 'KDV ${_formatPercentValue(rate)}'),
             'Toplam KDV',
           ],
-          data: rows
-              .map(
-                (row) => [
-                  row.invoiceNumber,
-                  row.customerName,
-                  row.invoiceDate == null ? '' : dateFormat.format(row.invoiceDate!),
-                  row.currency,
-                  row.invoiceTotal.toStringAsFixed(2),
-                  ...vatRates.map(
-                    (rate) => row.taxAmountForRate(rate).toStringAsFixed(2),
-                  ),
-                  row.totalTaxAmount.toStringAsFixed(2),
-                ],
-              )
-              .toList(growable: false),
+          data: tableData,
         ),
         pw.SizedBox(height: 20),
         pw.Text(
@@ -228,6 +260,40 @@ String _formatAmountWithCurrency(double amount, String currency) {
   final normalized = currency.trim().toUpperCase();
   final label = normalized == 'TRY' ? 'TL' : normalized;
   return '${amount.toStringAsFixed(2)} $label';
+}
+
+List<excel.CellValue> _buildExcelBaseTotalsRow(
+  List<InvoicePdfAnalysisListRow> rows,
+  List<double> vatRates,
+) {
+  return [
+    excel.TextCellValue('Matrah Toplami'),
+    excel.TextCellValue(''),
+    excel.TextCellValue(''),
+    excel.TextCellValue(''),
+    excel.TextCellValue(_sumBaseAmounts(rows).toStringAsFixed(2)),
+    ...vatRates.map(
+      (rate) => excel.TextCellValue(
+        _sumBaseAmountsForRate(rows, rate).toStringAsFixed(2),
+      ),
+    ),
+    excel.TextCellValue(''),
+  ];
+}
+
+List<String> _buildPdfBaseTotalsRow(
+  List<InvoicePdfAnalysisListRow> rows,
+  List<double> vatRates,
+) {
+  return [
+    'Matrah Toplami',
+    '',
+    '',
+    '',
+    _sumBaseAmounts(rows).toStringAsFixed(2),
+    ...vatRates.map((rate) => _sumBaseAmountsForRate(rows, rate).toStringAsFixed(2)),
+    '',
+  ];
 }
 
 List<_RateSummary> _buildRateSummaries(
@@ -362,8 +428,48 @@ pw.Widget _buildPdfRateSummaryTable(List<_RateSummary> summaries) {
           ],
         ),
       ),
+      pw.TableRow(
+        children: [
+          _pdfBodyCell('Toplam', headerStyle),
+          _pdfBodyCell('', baseStyle),
+          _pdfBodyCell('', baseStyle),
+          _pdfBodyCell(
+            _formatAmountWithCurrency(_sumBaseTlEquivalent(summaries), 'TRY'),
+            tlStyle,
+          ),
+          _pdfBodyCell('', baseStyle),
+          _pdfBodyCell(
+            _formatAmountWithCurrency(_sumTaxTlEquivalent(summaries), 'TRY'),
+            tlStyle,
+          ),
+          _pdfBodyCell('', baseStyle),
+          _pdfBodyCell(
+            _formatAmountWithCurrency(_sumTlEquivalent(summaries), 'TRY'),
+            tlStyle,
+          ),
+        ],
+      ),
     ],
   );
+}
+
+List<excel.CellValue> _buildExcelRateSummaryTotalsRow(List<_RateSummary> summaries) {
+  return [
+    excel.TextCellValue('Toplam'),
+    excel.TextCellValue(''),
+    excel.TextCellValue(''),
+    excel.TextCellValue(
+      _formatAmountWithCurrency(_sumBaseTlEquivalent(summaries), 'TRY'),
+    ),
+    excel.TextCellValue(''),
+    excel.TextCellValue(
+      _formatAmountWithCurrency(_sumTaxTlEquivalent(summaries), 'TRY'),
+    ),
+    excel.TextCellValue(''),
+    excel.TextCellValue(
+      _formatAmountWithCurrency(_sumTlEquivalent(summaries), 'TRY'),
+    ),
+  ];
 }
 
 pw.Widget _pdfHeaderCell(String text, pw.TextStyle style) {
@@ -400,6 +506,26 @@ double _computeTlEquivalent(
 }
 
 DateTime _normalizeDate(DateTime value) => DateTime(value.year, value.month, value.day);
+
+double _sumBaseAmounts(List<InvoicePdfAnalysisListRow> rows) {
+  return rows.fold<double>(0, (sum, row) => sum + row.totalBaseAmount);
+}
+
+double _sumBaseAmountsForRate(List<InvoicePdfAnalysisListRow> rows, double rate) {
+  return rows.fold<double>(0, (sum, row) => sum + row.baseAmountForRate(rate));
+}
+
+double _sumBaseTlEquivalent(List<_RateSummary> summaries) {
+  return summaries.fold<double>(0, (sum, item) => sum + item.baseTlEquivalent);
+}
+
+double _sumTaxTlEquivalent(List<_RateSummary> summaries) {
+  return summaries.fold<double>(0, (sum, item) => sum + item.taxTlEquivalent);
+}
+
+double _sumTlEquivalent(List<_RateSummary> summaries) {
+  return summaries.fold<double>(0, (sum, item) => sum + item.tlEquivalent);
+}
 
 void _applyRowStyle(
   excel.Sheet sheet, {
