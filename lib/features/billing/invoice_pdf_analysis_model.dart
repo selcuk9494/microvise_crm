@@ -161,6 +161,7 @@ class InvoicePdfVatGroup {
 
 class InvoicePdfAnalysisListRow {
   const InvoicePdfAnalysisListRow({
+    required this.customerName,
     required this.invoiceNumber,
     required this.invoiceDate,
     required this.currency,
@@ -168,6 +169,7 @@ class InvoicePdfAnalysisListRow {
     required this.vatBreakdowns,
   });
 
+  final String customerName;
   final String invoiceNumber;
   final DateTime? invoiceDate;
   final String currency;

@@ -1120,6 +1120,7 @@ class _InvoicePdfRowsTable extends StatelessWidget {
             child: DataTable(
               columns: [
                 const DataColumn(label: Text('Fatura No')),
+                const DataColumn(label: Text('Musteri')),
                 const DataColumn(label: Text('Tarih')),
                 const DataColumn(label: Text('PB')),
                 const DataColumn(label: Text('Fatura Tutari')),
@@ -1135,6 +1136,7 @@ class _InvoicePdfRowsTable extends StatelessWidget {
                     (row) => DataRow(
                       cells: [
                         DataCell(Text(row.invoiceNumber)),
+                        DataCell(Text(row.customerName)),
                         DataCell(Text(_formatDate(row.invoiceDate))),
                         DataCell(Text(row.currency)),
                         DataCell(Text(_formatAmount(row.invoiceTotal, row.currency))),
@@ -1282,6 +1284,7 @@ List<InvoicePdfAnalysisListRow> _buildListRows(
     if (grouped.isEmpty) {
       rows.add(
         InvoicePdfAnalysisListRow(
+          customerName: entry.customerName,
           invoiceNumber: entry.invoiceNumber,
           invoiceDate: entry.invoiceDate,
           currency: entry.currency,
@@ -1301,6 +1304,7 @@ List<InvoicePdfAnalysisListRow> _buildListRows(
     final sortedRates = grouped.keys.toList()..sort();
     rows.add(
       InvoicePdfAnalysisListRow(
+        customerName: entry.customerName,
         invoiceNumber: entry.invoiceNumber,
         invoiceDate: entry.invoiceDate,
         currency: entry.currency,

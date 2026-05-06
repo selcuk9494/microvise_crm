@@ -21,6 +21,7 @@ Future<Uint8List> buildInvoicePdfAnalysisExcelBytes(
   );
   sheet.appendRow([
     excel.TextCellValue('Fatura No'),
+    excel.TextCellValue('Musteri'),
     excel.TextCellValue('Tarih'),
     excel.TextCellValue('Para Birimi'),
     excel.TextCellValue('Fatura Tutari'),
@@ -32,7 +33,7 @@ Future<Uint8List> buildInvoicePdfAnalysisExcelBytes(
   _applyRowStyle(
     sheet,
     rowIndex: rowIndex,
-    columnCount: 5 + vatRates.length,
+    columnCount: 6 + vatRates.length,
     style: boldStyle,
   );
   rowIndex += 1;
@@ -41,6 +42,7 @@ Future<Uint8List> buildInvoicePdfAnalysisExcelBytes(
   for (final row in rows) {
     sheet.appendRow([
       excel.TextCellValue(row.invoiceNumber),
+      excel.TextCellValue(row.customerName),
       excel.TextCellValue(
         row.invoiceDate == null ? '' : dateFormat.format(row.invoiceDate!),
       ),
@@ -180,6 +182,7 @@ Future<Uint8List> buildInvoicePdfAnalysisPdfBytes(
           cellAlignment: pw.Alignment.centerLeft,
           headers: [
             'Fatura No',
+            'Musteri',
             'Tarih',
             'PB',
             'Fatura Tutari',
@@ -190,6 +193,7 @@ Future<Uint8List> buildInvoicePdfAnalysisPdfBytes(
               .map(
                 (row) => [
                   row.invoiceNumber,
+                  row.customerName,
                   row.invoiceDate == null ? '' : dateFormat.format(row.invoiceDate!),
                   row.currency,
                   row.invoiceTotal.toStringAsFixed(2),
