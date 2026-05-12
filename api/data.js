@@ -25,6 +25,7 @@ const {
   ensureWorkOrdersStatusCheckConstraint,
 } = require('./_lib/schema');
 const {
+  handleCors,
   ok,
   badRequest,
   forbidden,
@@ -89,7 +90,7 @@ function parseHalkbankRow(html, slug, code) {
 
 function requirePage(user, pageKey, res) {
   if (!hasPageAccess(user, pageKey)) {
-    forbidden(res, 'Erişim yetkiniz yok.');
+    forbidden(req, res, 'Erişim yetkiniz yok.');
     return false;
   }
   return true;
@@ -103,7 +104,7 @@ function requireAnyPage(user, pageKeys, res) {
   for (const key of keys) {
     if (hasPageAccess(user, key)) return true;
   }
-  forbidden(res, 'Erişim yetkiniz yok.');
+  forbidden(req, res, 'Erişim yetkiniz yok.');
   return false;
 }
 
@@ -129,8 +130,9 @@ async function getTableColumns(tableName) {
 }
 
 module.exports = async (req, res) => {
+  if (handleCors(req, res)) return;
   if (req.method !== 'GET') {
-    return methodNotAllowed(res, 'GET');
+    return methodNotAllowed(req, res, 'GET');
   }
 
   try {
@@ -138,7 +140,7 @@ module.exports = async (req, res) => {
     if (!user) return unauthorized(res);
 
     const resource = String(req.query.resource || '').trim();
-    if (!resource) return badRequest(res, 'resource zorunludur.');
+    if (!resource) return badRequest(req, res, 'resource zorunludur.');
 
     if (
       resource.startsWith('customer') ||
@@ -216,7 +218,7 @@ module.exports = async (req, res) => {
             order by name asc
           `,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'customers_lookup_vkn': {
@@ -229,12 +231,12 @@ module.exports = async (req, res) => {
             limit 5000
           `,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'customer_detail': {
         const id = String(req.query.customerId || '').trim();
-        if (!id) return badRequest(res, 'customerId zorunludur.');
+        if (!id) return badRequest(req, res, 'customerId zorunludur.');
         const result = await query(
           `
             select
@@ -261,12 +263,12 @@ module.exports = async (req, res) => {
           `,
           [id],
         );
-        return ok(res, result.rows[0] || null);
+        return ok(req, res, result.rows[0] || null);
       }
 
       case 'customer_lines': {
         const customerId = String(req.query.customerId || '').trim();
-        if (!customerId) return badRequest(res, 'customerId zorunludur.');
+        if (!customerId) return badRequest(req, res, 'customerId zorunludur.');
         const showPassive = parseBoolean(req.query.showPassive, true);
         const values = [customerId];
         let activeSql = '';
@@ -285,18 +287,18 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'customer_lines_numbers_bulk': {
         const idsRaw = String(req.query.ids || '').trim();
-        if (!idsRaw) return ok(res, { items: [] });
+        if (!idsRaw) return ok(req, res, { items: [] });
         const ids = idsRaw
           .split(',')
           .map((id) => id.trim())
           .filter((id) => id.length > 0)
           .slice(0, 500);
-        if (!ids.length) return ok(res, { items: [] });
+        if (!ids.length) return ok(req, res, { items: [] });
 
         await ensureLinesOperatorColumn();
         const result = await query(
@@ -316,12 +318,12 @@ module.exports = async (req, res) => {
           `,
           [ids],
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'customer_locations': {
         const customerId = String(req.query.customerId || '').trim();
-        if (!customerId) return badRequest(res, 'customerId zorunludur.');
+        if (!customerId) return badRequest(req, res, 'customerId zorunludur.');
         const result = await query(
           `
             select
@@ -341,12 +343,12 @@ module.exports = async (req, res) => {
           `,
           [customerId],
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'customer_licenses': {
         const customerId = String(req.query.customerId || '').trim();
-        if (!customerId) return badRequest(res, 'customerId zorunludur.');
+        if (!customerId) return badRequest(req, res, 'customerId zorunludur.');
         const showPassive = parseBoolean(req.query.showPassive, true);
         const values = [customerId];
         let activeSql = '';
@@ -378,12 +380,12 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'customer_device_registries': {
         const customerId = String(req.query.customerId || '').trim();
-        if (!customerId) return badRequest(res, 'customerId zorunludur.');
+        if (!customerId) return badRequest(req, res, 'customerId zorunludur.');
         await ensureDeviceRegistriesTable();
         const showPassive = parseBoolean(req.query.showPassive, true);
         const values = [customerId];
@@ -412,12 +414,12 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'customer_branches': {
         const customerId = String(req.query.customerId || '').trim();
-        if (!customerId) return badRequest(res, 'customerId zorunludur.');
+        if (!customerId) return badRequest(req, res, 'customerId zorunludur.');
         const showPassive = parseBoolean(req.query.showPassive, true);
         const values = [customerId];
         let activeSql = '';
@@ -435,12 +437,12 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'customer_work_orders': {
         const customerId = String(req.query.customerId || '').trim();
-        if (!customerId) return badRequest(res, 'customerId zorunludur.');
+        if (!customerId) return badRequest(req, res, 'customerId zorunludur.');
         await ensureWorkOrdersPaymentRequiredColumn();
         await ensureWorkOrdersStatusCheckConstraint();
         const showPassive = parseBoolean(req.query.showPassive, true);
@@ -495,7 +497,7 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'work_order_detail': {
@@ -504,7 +506,7 @@ module.exports = async (req, res) => {
         await ensureWorkOrdersPaymentRequiredColumn();
         await ensureWorkOrdersStatusCheckConstraint();
         const workOrderId = String(req.query.workOrderId || '').trim();
-        if (!workOrderId) return ok(res, { item: null });
+        if (!workOrderId) return ok(req, res, { item: null });
 
         const result = await query(
           `
@@ -564,14 +566,14 @@ module.exports = async (req, res) => {
           [workOrderId],
         );
 
-        return ok(res, { item: result.rows[0] || null });
+        return ok(req, res, { item: result.rows[0] || null });
       }
 
       case 'customers_for_transfer': {
         const result = await query(
           `select id,name,is_active from public.customers order by name asc`,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'service_list': {
@@ -680,12 +682,12 @@ module.exports = async (req, res) => {
           values,
         );
 
-        return ok(res, { items: result.rows, totalCount, page, pageSize });
+        return ok(req, res, { items: result.rows, totalCount, page, pageSize });
       }
 
       case 'service_detail': {
         const id = String(req.query.serviceId || '').trim();
-        if (!id) return badRequest(res, 'serviceId zorunludur.');
+        if (!id) return badRequest(req, res, 'serviceId zorunludur.');
         await ensureServiceRecordsColumns();
         await ensureServiceRecordsExtendedColumns();
         await ensureServiceRecordsStatusCheckConstraint();
@@ -735,12 +737,12 @@ module.exports = async (req, res) => {
           `,
           [id],
         );
-        return ok(res, result.rows[0] || null);
+        return ok(req, res, result.rows[0] || null);
       }
 
       case 'service_activity': {
         const id = String(req.query.serviceId || '').trim();
-        if (!id) return badRequest(res, 'serviceId zorunludur.');
+        if (!id) return badRequest(req, res, 'serviceId zorunludur.');
         await ensureServiceActivityLogsTable();
         const result = await query(
           `
@@ -760,12 +762,12 @@ module.exports = async (req, res) => {
           `,
           [id],
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'service_customer_device_registries': {
         const customerId = String(req.query.customerId || '').trim();
-        if (!customerId) return ok(res, { items: [] });
+        if (!customerId) return ok(req, res, { items: [] });
         await ensureDeviceRegistriesTable();
         const result = await query(
           `
@@ -783,25 +785,25 @@ module.exports = async (req, res) => {
           `,
           [customerId],
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'customer_device_by_serial': {
         if (!requireAnyPage(user, ['servis'], res)) return;
         const serial = String(req.query.serial || '').trim();
-        if (!serial) return ok(res, {});
+        if (!serial) return ok(req, res, {});
         const result = await query(
           `select id,customer_id,serial_no,is_active from public.customer_devices where serial_no = $1 limit 1`,
           [serial],
         );
-        return ok(res, result.rows[0] || {});
+        return ok(req, res, result.rows[0] || {});
       }
 
       case 'definition_device_brands': {
         const result = await query(
           `select id,name,is_active,created_at from public.device_brands order by name asc`,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'definition_device_models': {
@@ -818,7 +820,7 @@ module.exports = async (req, res) => {
             order by m.name asc
           `,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'definition_service_fault_types': {
@@ -831,7 +833,7 @@ module.exports = async (req, res) => {
             order by sort_order asc, name asc
           `,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'definition_service_accessory_types': {
@@ -844,14 +846,14 @@ module.exports = async (req, res) => {
             order by sort_order asc, name asc
           `,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'definition_work_order_types': {
         const result = await query(
           `select * from public.work_order_types where is_active = true order by sort_order asc`,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'definition_work_order_close_notes': {
@@ -859,14 +861,14 @@ module.exports = async (req, res) => {
         const result = await query(
           `select id,name,is_active,sort_order,created_at from public.work_order_close_notes where is_active = true order by sort_order asc`,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'definition_tax_rates': {
         const result = await query(
           `select * from public.tax_rates where is_active = true order by sort_order asc`,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'definition_region_colors': {
@@ -885,21 +887,21 @@ module.exports = async (req, res) => {
             order by sort_order asc, label asc
           `,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'definition_cities': {
         const result = await query(
           `select id,name,code,is_active,created_at from public.cities where is_active = true order by name asc`,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'definition_fiscal_symbols': {
         const result = await query(
           `select id,name,code,is_active,created_at from public.fiscal_symbols where is_active = true order by name asc`,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'definition_business_activity_types': {
@@ -907,7 +909,7 @@ module.exports = async (req, res) => {
         const result = await query(
           `select id,name,is_active,created_at from public.business_activity_types order by name asc`,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'definition_software_companies': {
@@ -915,7 +917,7 @@ module.exports = async (req, res) => {
         const result = await query(
           `select id,name,is_active,created_at from public.software_companies order by name asc`,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'serial_tracking': {
@@ -935,7 +937,7 @@ module.exports = async (req, res) => {
             limit 1000
           `,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'serial_tracking_lookup': {
@@ -944,7 +946,7 @@ module.exports = async (req, res) => {
           (req.query && typeof req.query.serial === 'string'
             ? req.query.serial
             : String(req.query?.serial || '')).trim();
-        if (!serial) return ok(res, { item: null });
+        if (!serial) return ok(req, res, { item: null });
         const result = await query(
           `
             select
@@ -961,7 +963,7 @@ module.exports = async (req, res) => {
           `,
           [serial],
         );
-        return ok(res, { item: result.rows[0] || null });
+        return ok(req, res, { item: result.rows[0] || null });
       }
 
       case 'work_order_payments': {
@@ -1006,28 +1008,28 @@ module.exports = async (req, res) => {
           values,
         );
 
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'application_form_print_settings': {
         const result = await query(
           `select * from public.application_form_settings where id = 'default' limit 1`,
         );
-        return ok(res, result.rows[0] || null);
+        return ok(req, res, result.rows[0] || null);
       }
 
       case 'scrap_form_print_settings': {
         const result = await query(
           `select * from public.scrap_form_settings where id = 'default' limit 1`,
         );
-        return ok(res, result.rows[0] || null);
+        return ok(req, res, result.rows[0] || null);
       }
 
       case 'transfer_form_print_settings': {
         const result = await query(
           `select * from public.transfer_form_settings where id = 'default' limit 1`,
         );
-        return ok(res, result.rows[0] || null);
+        return ok(req, res, result.rows[0] || null);
       }
 
       case 'form_application_customers': {
@@ -1046,18 +1048,18 @@ module.exports = async (req, res) => {
             order by name asc
           `,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'form_customers_bulk': {
         const idsRaw = String(req.query.ids || '').trim();
-        if (!idsRaw) return ok(res, { items: [] });
+        if (!idsRaw) return ok(req, res, { items: [] });
         const ids = idsRaw
           .split(',')
           .map((id) => id.trim())
           .filter((id) => id.length > 0)
           .slice(0, 500);
-        if (!ids.length) return ok(res, { items: [] });
+        if (!ids.length) return ok(req, res, { items: [] });
 
         const result = await query(
           `
@@ -1073,7 +1075,7 @@ module.exports = async (req, res) => {
           `,
           [ids],
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'form_stock_products': {
@@ -1085,7 +1087,7 @@ module.exports = async (req, res) => {
             order by name asc
           `,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'form_application_list': {
@@ -1128,7 +1130,7 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'form_scrap_customers': {
@@ -1153,7 +1155,7 @@ module.exports = async (req, res) => {
             order by c.name asc
           `,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'form_scrap_list': {
@@ -1191,7 +1193,7 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'form_fault_list': {
@@ -1233,7 +1235,7 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'form_transfer_customers': {
@@ -1258,7 +1260,7 @@ module.exports = async (req, res) => {
             order by c.name asc
           `,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'form_transfer_list': {
@@ -1302,7 +1304,7 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'personnel_users': {
@@ -1320,13 +1322,13 @@ module.exports = async (req, res) => {
             order by created_at desc
           `,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'invoice_items_queue': {
         if (!requireAnyPage(user, ['faturalama'], res)) return;
         const okTable = await ensureInvoiceItemsTable();
-        if (!okTable) return ok(res, { items: [] });
+        if (!okTable) return ok(req, res, { items: [] });
         const cols = await getTableColumns('invoice_items');
         const has = (c) => cols.includes(c);
 
@@ -1486,7 +1488,7 @@ module.exports = async (req, res) => {
             limit 600
           `,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'invoices_list': {
@@ -1538,13 +1540,13 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'customer_open_invoices': {
         if (!requireAnyPage(user, ['faturalama', 'musteriler'], res)) return;
         const customerId = String(req.query.customerId || '').trim();
-        if (!customerId) return badRequest(res, 'customerId zorunludur.');
+        if (!customerId) return badRequest(req, res, 'customerId zorunludur.');
         const result = await query(
           `
             select
@@ -1559,13 +1561,13 @@ module.exports = async (req, res) => {
           `,
           [customerId],
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'invoice_detail': {
         if (!requireAnyPage(user, ['faturalama'], res)) return;
         const id = String(req.query.invoiceId || '').trim();
-        if (!id) return badRequest(res, 'invoiceId zorunludur.');
+        if (!id) return badRequest(req, res, 'invoiceId zorunludur.');
         const result = await query(
           `
             select
@@ -1586,7 +1588,7 @@ module.exports = async (req, res) => {
           `,
           [id],
         );
-        return ok(res, result.rows[0] || null);
+        return ok(req, res, result.rows[0] || null);
       }
 
       case 'account_balances': {
@@ -1594,7 +1596,7 @@ module.exports = async (req, res) => {
         const result = await query(
           `select * from public.account_balances order by name asc`,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'transactions_list': {
@@ -1648,7 +1650,7 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'reports_users': {
@@ -1656,7 +1658,7 @@ module.exports = async (req, res) => {
         const result = await query(
           `select id,full_name,role from public.users order by full_name asc`,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'reports_payments': {
@@ -1689,7 +1691,7 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'reports_work_orders': {
@@ -1716,18 +1718,18 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'invoice_number': {
         if (!requireAnyPage(user, ['faturalama'], res)) return;
         const invoiceType = String(req.query.invoiceType || '').trim();
-        if (!invoiceType) return badRequest(res, 'invoiceType zorunludur.');
+        if (!invoiceType) return badRequest(req, res, 'invoiceType zorunludur.');
         const result = await query(
           `select public.generate_invoice_number($1) as value`,
           [invoiceType],
         );
-        return ok(res, { value: result.rows[0]?.value || '' });
+        return ok(req, res, { value: result.rows[0]?.value || '' });
       }
 
       case 'products_list': {
@@ -1749,13 +1751,13 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'stock_levels': {
         if (!requireAnyPage(user, ['urunler', 'faturalama'], res)) return;
         const result = await query(`select * from public.stock_levels`);
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'product_serial_inventory': {
@@ -1784,7 +1786,7 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'product_serial_inventory_summary': {
@@ -1792,14 +1794,14 @@ module.exports = async (req, res) => {
         const result = await query(
           `select product_id,total_count,available_count,consumed_count from public.product_serial_inventory_summary`,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'customers_lookup': {
         const result = await query(
           `select id,name,is_active from public.customers order by name asc`,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'customers_basic': {
@@ -1819,13 +1821,13 @@ module.exports = async (req, res) => {
             order by name asc
           `,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'customer_branches': {
         if (!requireAnyPage(user, ['musteriler', 'is_emirleri'], res)) return;
         const customerId = String(req.query.customerId || '').trim();
-        if (!customerId) return ok(res, { items: [] });
+        if (!customerId) return ok(req, res, { items: [] });
         const result = await query(
           `
             select id,name,is_active
@@ -1835,7 +1837,7 @@ module.exports = async (req, res) => {
           `,
           [customerId],
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'products_lines': {
@@ -1914,7 +1916,7 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'line_stock': {
@@ -1981,7 +1983,7 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'products_licenses': {
@@ -2061,7 +2063,7 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'products_licenses_stats': {
@@ -2146,7 +2148,7 @@ module.exports = async (req, res) => {
           values,
         );
 
-        return ok(res, {
+        return ok(req, res, {
           gmp3_total: gmp3Total,
           by_company: byCompany.rows,
           by_customer: byCustomer.rows,
@@ -2215,19 +2217,19 @@ module.exports = async (req, res) => {
           values,
         );
 
-        return ok(res, { items: result.rows });
+        return ok(req, res, { items: result.rows });
       }
 
       case 'halkbank_exchange_rates': {
         const nowMs = Date.now();
         if (halkbankRatesCache.payload && nowMs - halkbankRatesCache.fetchedAtMs < 60 * 1000) {
-          return ok(res, halkbankRatesCache.payload);
+          return ok(req, res, halkbankRatesCache.payload);
         }
 
         const sourceUrl = 'https://kur.doviz.com/halkbank';
         const html = await fetchText(sourceUrl);
         if (!html || html.length < 1000) {
-          return serverError(res, new Error('Döviz verisi okunamadı.'));
+          return serverError(req, res, new Error('Döviz verisi okunamadı.'));
         }
 
         const usd = parseHalkbankRow(html, 'amerikan-dolari', 'USD');
@@ -2241,13 +2243,13 @@ module.exports = async (req, res) => {
           items,
         };
         halkbankRatesCache = { fetchedAtMs: nowMs, payload };
-        return ok(res, payload);
+        return ok(req, res, payload);
       }
 
       default:
-        return badRequest(res, `Bilinmeyen resource: ${resource}`);
+        return badRequest(req, res, `Bilinmeyen resource: ${resource}`);
     }
   } catch (error) {
-    return serverError(res, error);
+    return serverError(req, res, error);
   }
 };

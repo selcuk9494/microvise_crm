@@ -1,6 +1,10 @@
 const crypto = require('crypto');
 
-const { getAuthenticatedUser, hasPageAccess } = require('./_lib/auth');
+const {
+  getAuthenticatedUser,
+  hasPageAccess,
+  resolvePublicUserAuthId,
+} = require('./_lib/auth');
 const { query } = require('./_lib/db');
 const {
   ensureSerialTrackingTable,
@@ -24,6 +28,7 @@ const {
   ensureServiceActivityLogsTable,
 } = require('./_lib/schema');
 const {
+  handleCors,
   ok,
   badRequest,
   forbidden,
@@ -141,7 +146,7 @@ function requireAnyPage(user, pageKeys, res) {
   for (const key of keys) {
     if (hasPageAccess(user, key)) return true;
   }
-  forbidden(res, 'Erişim yetkiniz yok.');
+  forbidden(req, res, 'Erişim yetkiniz yok.');
   return false;
 }
 
@@ -203,10 +208,55 @@ function pickValues(values, allowedColumns) {
   return out;
 }
 
-async function upsertRow({ table, values, returningRow }) {
+async function sanitizeWorkOrderValues(values, user) {
+  if (!values || typeof values !== 'object') return values;
+  const next = { ...values };
+  const actorUserId = user?.auth_user_id || user?.id || null;
+
+  if (Object.prototype.hasOwnProperty.call(next, 'closed_by')) {
+    const rawClosedBy = String(next.closed_by || '').trim();
+    if (!rawClosedBy) {
+      next.closed_by = actorUserId;
+    } else {
+      next.closed_by =
+        (await resolvePublicUserAuthId(rawClosedBy)) ||
+        (rawClosedBy === String(actorUserId || '') ? actorUserId : null);
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(next, 'created_by')) {
+    const rawCreatedBy = String(next.created_by || '').trim();
+    if (!rawCreatedBy) {
+      next.created_by = actorUserId;
+    } else {
+      next.created_by =
+        (await resolvePublicUserAuthId(rawCreatedBy)) ||
+        (rawCreatedBy === String(actorUserId || '') ? actorUserId : null);
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(next, 'assigned_to')) {
+    const rawAssignedTo = String(next.assigned_to || '').trim();
+    next.assigned_to = rawAssignedTo
+      ? await resolvePublicUserAuthId(rawAssignedTo)
+      : null;
+  }
+
+  return next;
+}
+
+async function sanitizeValuesForTable({ table, values, user }) {
+  if (table === 'work_orders') {
+    return sanitizeWorkOrderValues(values, user);
+  }
+  return values;
+}
+
+async function upsertRow({ table, values, returningRow, user }) {
   const columns = await getColumns(table);
   const meta = await getColumnMeta(table);
-  const picked = pickValues(values, columns);
+  const sanitizedValues = await sanitizeValuesForTable({ table, values, user });
+  const picked = pickValues(sanitizedValues, columns);
 
   const hasIdColumn = columns.includes('id');
   const hasRegistryNormColumn =
@@ -295,10 +345,11 @@ async function deleteRow({ table, id }) {
   await query(`delete from public.${quoteIdent(table)} where id = $1`, [id]);
 }
 
-async function updateWhere({ table, values, filters }) {
+async function updateWhere({ table, values, filters, user }) {
   const columns = await getColumns(table);
   const meta = await getColumnMeta(table);
-  const picked = pickValues(values, columns);
+  const sanitizedValues = await sanitizeValuesForTable({ table, values, user });
+  const picked = pickValues(sanitizedValues, columns);
   const keys = Object.keys(picked).filter((k) => k !== 'id');
   if (keys.length === 0) throw new Error('values boş.');
 
@@ -419,14 +470,19 @@ async function deleteWhere({ table, filters }) {
   );
 }
 
-async function insertMany({ table, rows }) {
+async function insertMany({ table, rows, user }) {
   if (!Array.isArray(rows) || rows.length === 0) return { inserted: 0 };
   const columns = await getColumns(table);
   const meta = await getColumnMeta(table);
   const hasIdColumn = columns.includes('id');
 
   for (const row of rows) {
-    const values = pickValues(row, columns);
+    const sanitizedRow = await sanitizeValuesForTable({
+      table,
+      values: row,
+      user,
+    });
+    const values = pickValues(sanitizedRow, columns);
     if (hasIdColumn && !values.id) values.id = crypto.randomUUID();
     const keys = Object.keys(values);
     if (keys.length === 0) continue;
@@ -461,8 +517,9 @@ async function insertMany({ table, rows }) {
 }
 
 module.exports = async (req, res) => {
+  if (handleCors(req, res)) return;
   if (req.method !== 'POST') {
-    return methodNotAllowed(res, 'POST');
+    return methodNotAllowed(req, res, 'POST');
   }
 
   try {
@@ -473,9 +530,9 @@ module.exports = async (req, res) => {
     const op = String(body.op || '').trim();
     const table = String(body.table || '').trim();
 
-    if (!op) return badRequest(res, 'op zorunludur.');
-    if (!table) return badRequest(res, 'table zorunludur.');
-    if (!allowedTables.has(table)) return badRequest(res, 'table desteklenmiyor.');
+    if (!op) return badRequest(req, res, 'op zorunludur.');
+    if (!table) return badRequest(req, res, 'table zorunludur.');
+    if (!allowedTables.has(table)) return badRequest(req, res, 'table desteklenmiyor.');
 
     if (table === 'serial_tracking') {
       await ensureSerialTrackingTable();
@@ -540,38 +597,38 @@ module.exports = async (req, res) => {
     if (op === 'upsert') {
       const values = body.values;
       const returningRow = body.returning === 'row';
-      const result = await upsertRow({ table, values, returningRow });
-      return ok(res, { ok: true, ...result });
+      const result = await upsertRow({ table, values, returningRow, user });
+      return ok(req, res, { ok: true, ...result });
     }
 
     if (op === 'delete') {
       const id = String(body.id || '').trim();
-      if (!id) return badRequest(res, 'id zorunludur.');
+      if (!id) return badRequest(req, res, 'id zorunludur.');
       await deleteRow({ table, id });
-      return ok(res, { ok: true });
+      return ok(req, res, { ok: true });
     }
 
     if (op === 'insertMany') {
       const rows = body.rows;
-      const result = await insertMany({ table, rows });
-      return ok(res, { ok: true, ...result });
+      const result = await insertMany({ table, rows, user });
+      return ok(req, res, { ok: true, ...result });
     }
 
     if (op === 'updateWhere') {
       const values = body.values;
       const filters = body.filters;
-      await updateWhere({ table, values, filters });
-      return ok(res, { ok: true });
+      await updateWhere({ table, values, filters, user });
+      return ok(req, res, { ok: true });
     }
 
     if (op === 'deleteWhere') {
       const filters = body.filters;
       await deleteWhere({ table, filters });
-      return ok(res, { ok: true });
+      return ok(req, res, { ok: true });
     }
 
-    return badRequest(res, `Bilinmeyen op: ${op}`);
+    return badRequest(req, res, `Bilinmeyen op: ${op}`);
   } catch (error) {
-    return serverError(res, error);
+    return serverError(req, res, error);
   }
 };

@@ -1,10 +1,15 @@
-const { getAuthenticatedUser, hasPageAccess } = require('./_lib/auth');
+const {
+  getAuthenticatedUser,
+  hasPageAccess,
+  resolvePublicUserAuthId,
+} = require('./_lib/auth');
 const { query } = require('./_lib/db');
 const {
   ensureWorkOrdersPaymentRequiredColumn,
   ensureWorkOrdersStatusCheckConstraint,
 } = require('./_lib/schema');
 const {
+  handleCors,
   ok,
   badRequest,
   forbidden,
@@ -30,11 +35,13 @@ async function readJson(req) {
 }
 
 module.exports = async (req, res) => {
+  if (handleCors(req, res)) return;
   try {
     const user = await getAuthenticatedUser(req);
     if (!user) return unauthorized(res);
+    const actorUserId = user.auth_user_id || user.id || null;
     if (!hasPageAccess(user, 'is_emirleri')) {
-      return forbidden(res, 'İş emirlerine erişim yetkiniz yok.');
+      return forbidden(req, res, 'İş emirlerine erişim yetkiniz yok.');
     }
 
     await ensureWorkOrdersPaymentRequiredColumn();
@@ -44,17 +51,22 @@ module.exports = async (req, res) => {
       const body = await readJson(req);
 
       const customerId = String(body.customer_id || '').trim();
-      if (!customerId) return badRequest(res, 'customer_id zorunludur.');
+      if (!customerId) return badRequest(req, res, 'customer_id zorunludur.');
 
       const title = String(body.title || '').trim();
-      if (!title) return badRequest(res, 'title zorunludur.');
+      if (!title) return badRequest(req, res, 'title zorunludur.');
 
       const assignedToRaw = String(body.assigned_to || '').trim();
-      const assignedTo = user.role === 'admin' ? assignedToRaw : user.id;
-      if (!assignedTo) return badRequest(res, 'assigned_to zorunludur.');
+      const assignedTo = user.role === 'admin'
+        ? await resolvePublicUserAuthId(assignedToRaw)
+        : actorUserId;
+      if (user.role !== 'admin' && !actorUserId) {
+        return badRequest(req, res, 'Kullanici auth eslestirmesi bulunamadi.');
+      }
+      if (!assignedTo) return badRequest(req, res, 'assigned_to zorunludur.');
 
       if (typeof body.payment_required !== 'boolean') {
-        return badRequest(res, 'payment_required zorunludur.');
+        return badRequest(req, res, 'payment_required zorunludur.');
       }
 
       const allowedStatuses = new Set([
@@ -95,7 +107,7 @@ module.exports = async (req, res) => {
         body.contact_phone ? String(body.contact_phone).trim() : null,
         body.location_link ? String(body.location_link).trim() : null,
         body.payment_required,
-        user.id,
+        actorUserId,
       ];
 
       const result = await query(
@@ -128,13 +140,13 @@ module.exports = async (req, res) => {
         values,
       );
 
-      return ok(res, { ok: true, id: result.rows[0]?.id || null });
+      return ok(req, res, { ok: true, id: result.rows[0]?.id || null });
     }
 
     if (req.method === 'PATCH') {
       const body = await readJson(req);
       const id = String(body.id || '').trim();
-      if (!id) return badRequest(res, 'id zorunludur.');
+      if (!id) return badRequest(req, res, 'id zorunludur.');
 
       const status =
         body.status == null ? null : String(body.status || '').trim() || null;
@@ -183,6 +195,13 @@ module.exports = async (req, res) => {
         body.assigned_to == null
           ? null
           : String(body.assigned_to || '').trim() || null;
+      const resolvedAssignedTo =
+        user.role === 'admin' && assignedTo != null
+          ? await resolvePublicUserAuthId(assignedTo)
+          : null;
+      if (user.role === 'admin' && assignedTo != null && !resolvedAssignedTo) {
+        return badRequest(req, res, 'assigned_to icin gecerli auth kullanicisi bulunamadi.');
+      }
 
       if (
         status == null &&
@@ -197,10 +216,10 @@ module.exports = async (req, res) => {
         contactPhone == null &&
         locationLink == null &&
         scheduledDate == null &&
-        assignedTo == null &&
+        resolvedAssignedTo == null &&
         paymentRequired == null
       ) {
-        return badRequest(res, 'Güncellenecek alan bulunamadı.');
+        return badRequest(req, res, 'Güncellenecek alan bulunamadı.');
       }
 
       const values = [
@@ -217,12 +236,12 @@ module.exports = async (req, res) => {
         contactPhone,
         locationLink,
         scheduledDate,
-        user.role === 'admin' ? assignedTo : null,
+        user.role === 'admin' ? resolvedAssignedTo : null,
         id,
       ];
       let assignedSql = '';
       if (user.role !== 'admin') {
-        values.push(user.id);
+        values.push(actorUserId);
         assignedSql = `and assigned_to = $${values.length}`;
       }
 
@@ -250,11 +269,11 @@ module.exports = async (req, res) => {
         values,
       );
 
-      return ok(res, { ok: true });
+      return ok(req, res, { ok: true });
     }
 
     if (req.method !== 'GET') {
-      return methodNotAllowed(res, 'GET, POST, PATCH');
+      return methodNotAllowed(req, res, 'GET, POST, PATCH');
     }
 
     const status = String(req.query.status || 'all').trim();
@@ -288,7 +307,7 @@ module.exports = async (req, res) => {
       );
     }
     if (user.role !== 'admin') {
-      values.push(user.id);
+      values.push(actorUserId);
       const p = `$${values.length}`;
       conditions.push(`(w.assigned_to = ${p} or w.created_by = ${p})`);
     }
@@ -348,8 +367,8 @@ module.exports = async (req, res) => {
       values,
     );
 
-    return ok(res, { items: result.rows });
+    return ok(req, res, { items: result.rows });
   } catch (error) {
-    return serverError(res, error);
+    return serverError(req, res, error);
   }
 };

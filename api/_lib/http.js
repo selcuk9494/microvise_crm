@@ -1,33 +1,56 @@
-function json(res, statusCode, payload) {
+function setCorsHeaders(req, res, allowedMethods = 'GET,POST,PATCH,DELETE,OPTIONS') {
+  const origin = req?.headers?.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-Requested-With',
+  );
+  res.setHeader('Access-Control-Allow-Methods', allowedMethods);
+}
+
+function handleCors(req, res, allowedMethods = 'GET,POST,PATCH,DELETE,OPTIONS') {
+  setCorsHeaders(req, res, allowedMethods);
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.end();
+    return true;
+  }
+  return false;
+}
+
+function json(req, res, statusCode, payload) {
+  setCorsHeaders(req, res);
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.end(JSON.stringify(payload));
 }
 
-function ok(res, payload) {
-  return json(res, 200, payload);
+function ok(req, res, payload) {
+  return json(req, res, 200, payload);
 }
 
-function badRequest(res, message) {
-  return json(res, 400, { error: message });
+function badRequest(req, res, message) {
+  return json(req, res, 400, { error: message });
 }
 
-function unauthorized(res, message = 'Unauthorized') {
-  return json(res, 401, { error: message });
+function unauthorized(req, res, message = 'Unauthorized') {
+  return json(req, res, 401, { error: message });
 }
 
-function forbidden(res, message = 'Forbidden') {
-  return json(res, 403, { error: message });
+function forbidden(req, res, message = 'Forbidden') {
+  return json(req, res, 403, { error: message });
 }
 
-function methodNotAllowed(res, method = 'GET') {
+function methodNotAllowed(req, res, method = 'GET') {
+  setCorsHeaders(req, res, `${method},OPTIONS`);
   res.setHeader('Allow', method);
-  return json(res, 405, { error: `Method not allowed. Use ${method}.` });
+  return json(req, res, 405, { error: `Method not allowed. Use ${method}.` });
 }
 
-function serverError(res, error) {
+function serverError(req, res, error) {
   console.error(error);
-  return json(res, 500, {
+  return json(req, res, 500, {
     error: error instanceof Error ? error.message : 'Internal server error',
   });
 }
@@ -47,6 +70,7 @@ function parseInteger(value, fallback, { min, max } = {}) {
 }
 
 module.exports = {
+  handleCors,
   ok,
   json,
   badRequest,

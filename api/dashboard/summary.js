@@ -1,6 +1,6 @@
 const { getAuthenticatedUser, hasPageAccess } = require('../_lib/auth');
 const { query } = require('../_lib/db');
-const { ok, forbidden, unauthorized, methodNotAllowed, serverError } = require('../_lib/http');
+const { handleCors, ok, forbidden, unauthorized, methodNotAllowed, serverError } = require('../_lib/http');
 
 async function scalarNumber(sql, params = [], fallback = 0) {
   try {
@@ -24,15 +24,16 @@ async function listRows(sql, params = []) {
 }
 
 module.exports = async (req, res) => {
+  if (handleCors(req, res)) return;
   if (req.method !== 'GET') {
-    return methodNotAllowed(res, 'GET');
+    return methodNotAllowed(req, res, 'GET');
   }
 
   try {
     const user = await getAuthenticatedUser(req);
     if (!user) return unauthorized(res);
     if (!hasPageAccess(user, 'panel')) {
-      return forbidden(res, 'Panele erişim yetkiniz yok.');
+      return forbidden(req, res, 'Panele erişim yetkiniz yok.');
     }
 
     const totalCustomers = await scalarNumber(
@@ -141,7 +142,7 @@ module.exports = async (req, res) => {
       if (balance < 0) totalPayable += Math.abs(balance);
     }
 
-    return ok(res, {
+    return ok(req, res, {
       total_customers: totalCustomers,
       open_work_orders: openWorkOrders,
       in_progress_work_orders: inProgressWorkOrders,
@@ -160,6 +161,6 @@ module.exports = async (req, res) => {
       invoice_queue_pending: invoiceQueuePending,
     });
   } catch (error) {
-    return serverError(res, error);
+    return serverError(req, res, error);
   }
 };

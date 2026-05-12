@@ -4,6 +4,7 @@ const { getAuthenticatedUser, hasPageAccess } = require('../_lib/auth');
 const { query } = require('../_lib/db');
 const { ensureUsersAuthColumns } = require('../_lib/schema');
 const {
+  handleCors,
   ok,
   badRequest,
   forbidden,
@@ -106,8 +107,9 @@ async function setPasswordHash({ id, password }) {
 }
 
 module.exports = async (req, res) => {
+  if (handleCors(req, res)) return;
   if (!['POST', 'PATCH'].includes(req.method)) {
-    return methodNotAllowed(res, 'POST, PATCH');
+    return methodNotAllowed(req, res, 'POST, PATCH');
   }
 
   try {
@@ -115,10 +117,10 @@ module.exports = async (req, res) => {
     const user = await getAuthenticatedUser(req);
     if (!user) return unauthorized(res);
     if (!hasPageAccess(user, 'personel')) {
-      return forbidden(res, 'Personel yönetimine erişim yetkiniz yok.');
+      return forbidden(req, res, 'Personel yönetimine erişim yetkiniz yok.');
     }
     if (user.role !== 'admin') {
-      return forbidden(res, 'Bu işlem için admin yetkisi gerekir.');
+      return forbidden(req, res, 'Bu işlem için admin yetkisi gerekir.');
     }
 
     const body = await readJson(req);
@@ -126,17 +128,17 @@ module.exports = async (req, res) => {
 
     if (op === 'delete') {
       const id = String(body.id || '').trim();
-      if (!id) return badRequest(res, 'id zorunludur.');
+      if (!id) return badRequest(req, res, 'id zorunludur.');
       await query(`delete from public.users where id = $1`, [id]);
-      return ok(res, { ok: true });
+      return ok(req, res, { ok: true });
     }
 
     if (op === 'set_password') {
       const id = String(body.id || '').trim();
       const password = String(body.password || '');
-      if (!id) return badRequest(res, 'id zorunludur.');
+      if (!id) return badRequest(req, res, 'id zorunludur.');
       if (!password || password.length < 6) {
-        return badRequest(res, 'Şifre en az 6 karakter olmalıdır.');
+        return badRequest(req, res, 'Şifre en az 6 karakter olmalıdır.');
       }
       try {
         await query(`select public.admin_update_personnel_password($1,$2)`, [
@@ -146,7 +148,7 @@ module.exports = async (req, res) => {
       } catch (_) {
         await setPasswordHash({ id, password });
       }
-      return ok(res, { ok: true });
+      return ok(req, res, { ok: true });
     }
 
     const email = normalizeEmail(body.email);
@@ -156,13 +158,13 @@ module.exports = async (req, res) => {
     const actionPermissions = normalizeTextArray(body.action_permissions);
 
     if (!email || !email.includes('@')) {
-      return badRequest(res, 'Geçerli bir e-posta gerekli.');
+      return badRequest(req, res, 'Geçerli bir e-posta gerekli.');
     }
     if (!fullName || fullName.length < 2) {
-      return badRequest(res, 'Ad soyad gerekli.');
+      return badRequest(req, res, 'Ad soyad gerekli.');
     }
     if (!['admin', 'personel'].includes(role)) {
-      return badRequest(res, 'Geçersiz rol.');
+      return badRequest(req, res, 'Geçersiz rol.');
     }
 
     const existing = await query(
@@ -189,7 +191,7 @@ module.exports = async (req, res) => {
         if (password && password.length >= 6) {
           await setPasswordHash({ id: existingId, password });
         }
-        return ok(res, { ok: true, id: existingId, updated: true });
+        return ok(req, res, { ok: true, id: existingId, updated: true });
       }
 
       const password = String(body.password || '');
@@ -205,7 +207,7 @@ module.exports = async (req, res) => {
         try {
           await setPasswordHash({ id: rpcId, password });
         } catch (_) {}
-        return ok(res, { ok: true, id: rpcId, created: true });
+        return ok(req, res, { ok: true, id: rpcId, created: true });
       }
 
       const id = uuidV4();
@@ -234,11 +236,11 @@ module.exports = async (req, res) => {
       if (password && password.length >= 6) {
         await setPasswordHash({ id, password });
       }
-      return ok(res, { ok: true, id, created: true });
+      return ok(req, res, { ok: true, id, created: true });
     }
 
     const id = String(body.id || existingId || '').trim();
-    if (!id) return badRequest(res, 'id zorunludur.');
+    if (!id) return badRequest(req, res, 'id zorunludur.');
 
     await query(
       `
@@ -253,8 +255,8 @@ module.exports = async (req, res) => {
       `,
       [email, fullName, role, pagePermissions, actionPermissions, id],
     );
-    return ok(res, { ok: true, id });
+    return ok(req, res, { ok: true, id });
   } catch (error) {
-    return serverError(res, error);
+    return serverError(req, res, error);
   }
 };

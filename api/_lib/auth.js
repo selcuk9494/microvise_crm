@@ -44,6 +44,60 @@ async function getAccessToken(req) {
   return token || null;
 }
 
+async function resolveAuthUserId({ publicUserId, email }) {
+  const publicUserIdText = String(publicUserId || '').trim();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!publicUserIdText && !normalizedEmail) return null;
+
+  const result = await query(
+    `
+      select au.id
+      from auth.users au
+      where ($1 <> '' and au.id::text = $1)
+         or ($2 <> '' and lower(au.email) = $2)
+      order by
+        case
+          when $1 <> '' and au.id::text = $1 then 0
+          when $2 <> '' and lower(au.email) = $2 then 1
+          else 2
+        end
+      limit 1
+    `,
+    [publicUserIdText, normalizedEmail],
+  );
+
+  return result.rows[0]?.id || null;
+}
+
+async function resolvePublicUserAuthId(publicUserId) {
+  const publicUserIdText = String(publicUserId || '').trim();
+  if (!publicUserIdText) return null;
+
+  const result = await query(
+    `
+      select au.id
+      from public.users pu
+      left join auth.users au
+        on au.id::text = pu.id::text
+        or (
+          pu.email is not null
+          and btrim(pu.email) <> ''
+          and lower(au.email) = lower(pu.email)
+        )
+      where pu.id::text = $1
+      order by
+        case
+          when au.id::text = pu.id::text then 0
+          else 1
+        end
+      limit 1
+    `,
+    [publicUserIdText],
+  );
+
+  return result.rows[0]?.id || null;
+}
+
 async function getAuthenticatedUser(req) {
   const accessToken = await getAccessToken(req);
   if (!accessToken) {
@@ -78,7 +132,17 @@ async function getAuthenticatedUser(req) {
   );
 
   const profile = profileResult.rows[0];
-  return profile || null;
+  if (!profile) return null;
+
+  const authUserId = await resolveAuthUserId({
+    publicUserId: profile.id,
+    email: profile.email,
+  });
+
+  return {
+    ...profile,
+    auth_user_id: authUserId,
+  };
 }
 
 const defaultPersonnelPagePermissions = new Set([
@@ -107,4 +171,6 @@ function hasPageAccess(user, pageKey) {
 module.exports = {
   getAuthenticatedUser,
   hasPageAccess,
+  resolveAuthUserId,
+  resolvePublicUserAuthId,
 };

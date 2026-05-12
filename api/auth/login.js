@@ -1,7 +1,14 @@
 const crypto = require('crypto');
 const { query } = require('../_lib/db');
 const { ensureUsersAuthColumns } = require('../_lib/schema');
-const { ok, badRequest, unauthorized, methodNotAllowed, serverError } = require('../_lib/http');
+const {
+  handleCors,
+  ok,
+  badRequest,
+  unauthorized,
+  methodNotAllowed,
+  serverError,
+} = require('../_lib/http');
 
 async function readJson(req) {
   const chunks = [];
@@ -61,8 +68,9 @@ function normalizeTextArray(value) {
 }
 
 module.exports = async (req, res) => {
+  if (handleCors(req, res, 'POST,OPTIONS')) return;
   if (req.method !== 'POST') {
-    return methodNotAllowed(res, 'POST');
+    return methodNotAllowed(req, res, 'POST');
   }
 
   try {
@@ -71,14 +79,14 @@ module.exports = async (req, res) => {
     const password = String(body.password || '');
 
     if (!email || !email.includes('@') || password.length < 1) {
-      return badRequest(res, 'E-posta ve şifre gerekli.');
+      return badRequest(req, res, 'E-posta ve şifre gerekli.');
     }
 
     await ensureUsersAuthColumns();
 
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
-      return serverError(res, new Error('JWT_SECRET is not configured.'));
+      return serverError(req, res, new Error('JWT_SECRET is not configured.'));
     }
 
     const masterEmail = normalizeEmail(process.env.MASTER_ADMIN_EMAIL);
@@ -108,11 +116,11 @@ module.exports = async (req, res) => {
     let user = userResult.rows[0] || null;
 
     if (user && user.is_active === false) {
-      return unauthorized(res, 'Kullanıcı pasif.');
+      return unauthorized(req, res, 'Kullanıcı pasif.');
     }
 
     if (!user) {
-      if (!isMaster) return unauthorized(res, 'Giriş başarısız.');
+      if (!isMaster) return unauthorized(req, res, 'Giriş başarısız.');
       const id = uuidV4();
       const pagePermissions = [
         'panel',
@@ -184,11 +192,11 @@ module.exports = async (req, res) => {
       user = created.rows[0] || null;
     }
 
-    if (!user) return unauthorized(res, 'Giriş başarısız.');
+    if (!user) return unauthorized(req, res, 'Giriş başarısız.');
 
     if (!isMaster) {
       const pwHash = user.password_hash ? String(user.password_hash) : '';
-      if (!pwHash) return unauthorized(res, 'Şifre tanımlı değil.');
+      if (!pwHash) return unauthorized(req, res, 'Şifre tanımlı değil.');
       let okPw;
       if (pwHash.startsWith('md5:')) {
         okPw = await query(
@@ -214,10 +222,10 @@ module.exports = async (req, res) => {
             [user.id, password],
           );
         } catch (_) {
-          return unauthorized(res, 'Şifre doğrulama yapılamıyor.');
+          return unauthorized(req, res, 'Şifre doğrulama yapılamıyor.');
         }
       }
-      if (!okPw.rows[0]?.ok) return unauthorized(res, 'Giriş başarısız.');
+      if (!okPw.rows[0]?.ok) return unauthorized(req, res, 'Giriş başarısız.');
     }
 
     const now = Math.floor(Date.now() / 1000);
@@ -230,7 +238,7 @@ module.exports = async (req, res) => {
     };
     const accessToken = signJwt(payload, jwtSecret);
 
-    return ok(res, {
+    return ok(req, res, {
       accessToken,
       user: {
         id: user.id,
@@ -242,6 +250,6 @@ module.exports = async (req, res) => {
       },
     });
   } catch (error) {
-    return serverError(res, error);
+    return serverError(req, res, error);
   }
 };

@@ -1,6 +1,7 @@
 const { getAuthenticatedUser, hasPageAccess } = require('./_lib/auth');
 const { query } = require('./_lib/db');
 const {
+  handleCors,
   ok,
   badRequest,
   forbidden,
@@ -164,17 +165,18 @@ function resolveSort(sort) {
 }
 
 module.exports = async (req, res) => {
+  if (handleCors(req, res)) return;
   try {
     const user = await getAuthenticatedUser(req);
     if (!user) return unauthorized(res);
     if (!hasPageAccess(user, 'musteriler')) {
-      return forbidden(res, 'Müşteri listesine erişim yetkiniz yok.');
+      return forbidden(req, res, 'Müşteri listesine erişim yetkiniz yok.');
     }
 
     if (req.method === 'POST') {
       const body = await readJson(req);
       const name = String(body.name || '').trim();
-      if (!name) return badRequest(res, 'name zorunludur.');
+      if (!name) return badRequest(req, res, 'name zorunludur.');
 
       const payloadRaw = {
         name,
@@ -204,7 +206,7 @@ module.exports = async (req, res) => {
       }
 
       const keys = Object.keys(payload);
-      if (!keys.length) return badRequest(res, 'Kayıt verisi bulunamadı.');
+      if (!keys.length) return badRequest(req, res, 'Kayıt verisi bulunamadı.');
 
       if (payload.vkn) {
         const existing = await query(
@@ -240,7 +242,7 @@ module.exports = async (req, res) => {
         values,
       );
       const id = result.rows[0]?.id;
-      if (!id) return serverError(res, new Error('Customer insert failed.'));
+      if (!id) return serverError(req, res, new Error('Customer insert failed.'));
 
       await replaceCustomerLocations({
         customerId: id,
@@ -248,13 +250,13 @@ module.exports = async (req, res) => {
         userId: user.id,
       });
 
-      return ok(res, { ok: true, id });
+      return ok(req, res, { ok: true, id });
     }
 
     if (req.method === 'PATCH') {
       const body = await readJson(req);
       const id = String(body.id || '').trim();
-      if (!id) return badRequest(res, 'id zorunludur.');
+      if (!id) return badRequest(req, res, 'id zorunludur.');
 
       const payloadRaw = {
         name: body.name == null ? undefined : String(body.name || '').trim() || null,
@@ -290,7 +292,7 @@ module.exports = async (req, res) => {
       const payload = pickValues(payloadRaw, customerColumns);
       const keys = Object.keys(payload);
       if (keys.length === 0 && !Array.isArray(body.locations)) {
-        return badRequest(res, 'Güncellenecek alan bulunamadı.');
+        return badRequest(req, res, 'Güncellenecek alan bulunamadı.');
       }
 
       if (Object.prototype.hasOwnProperty.call(payload, 'vkn') && payload.vkn) {
@@ -342,11 +344,11 @@ module.exports = async (req, res) => {
         });
       }
 
-      return ok(res, { ok: true });
+      return ok(req, res, { ok: true });
     }
 
     if (req.method !== 'GET') {
-      return methodNotAllowed(res, 'GET, POST, PATCH');
+      return methodNotAllowed(req, res, 'GET, POST, PATCH');
     }
 
     const search = String(req.query.search || '').trim();
@@ -423,7 +425,7 @@ module.exports = async (req, res) => {
         values,
       );
 
-      return ok(res, {
+      return ok(req, res, {
         items: rowsResult.rows,
       });
     }
@@ -477,7 +479,7 @@ module.exports = async (req, res) => {
       dataValues,
     );
 
-    return ok(res, {
+    return ok(req, res, {
       page,
       pageSize,
       totalCount,
@@ -485,6 +487,6 @@ module.exports = async (req, res) => {
       items: rowsResult.rows,
     });
   } catch (error) {
-    return serverError(res, error);
+    return serverError(req, res, error);
   }
 };
