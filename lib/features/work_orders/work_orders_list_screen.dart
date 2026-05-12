@@ -896,6 +896,20 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                           onPressed: _assigningSelected
                                               ? null
                                               : () => setState(
+                                                  () => _selectedWorkOrderIds.addAll(
+                                                    openFilteredIds,
+                                                  ),
+                                                ),
+                                          icon: const Icon(
+                                            Icons.done_all_rounded,
+                                            size: 18,
+                                          ),
+                                          label: const Text('Tumunu Sec'),
+                                        ),
+                                        OutlinedButton.icon(
+                                          onPressed: _assigningSelected
+                                              ? null
+                                              : () => setState(
                                                   () => _selectedWorkOrderIds.clear(),
                                                 ),
                                           icon: const Icon(
