@@ -388,6 +388,114 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     }
   }
 
+  Future<void> updateAssignedPersonnel({
+    required String workOrderId,
+    required String assignedTo,
+    String? assignedPersonnelName,
+  }) async {
+    final current = state.asData?.value;
+    if (current == null) return;
+
+    final next = [
+      for (final w in current)
+        if (w.id == workOrderId)
+          w.copyWith(
+            assignedTo: assignedTo,
+            assignedPersonnelName: assignedPersonnelName,
+          )
+        else
+          w,
+    ];
+    state = AsyncData(next);
+    unawaited(_persistCache(next));
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient != null) {
+      try {
+        await apiClient.patchJson(
+          '/work-orders',
+          body: {'id': workOrderId, 'assigned_to': assignedTo},
+        );
+        await refresh();
+        return;
+      } catch (_) {
+        state = AsyncData(current);
+        unawaited(_persistCache(current));
+        return;
+      }
+    }
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      await client
+          .from('work_orders')
+          .update({'assigned_to': assignedTo})
+          .eq('id', workOrderId);
+      await refresh();
+    } catch (_) {
+      state = AsyncData(current);
+      unawaited(_persistCache(current));
+    }
+  }
+
+  Future<void> bulkAssignPersonnel({
+    required List<String> workOrderIds,
+    required String assignedTo,
+    String? assignedPersonnelName,
+  }) async {
+    if (workOrderIds.isEmpty) return;
+    final current = state.asData?.value;
+    if (current == null) return;
+    final idSet = workOrderIds.toSet();
+
+    final next = [
+      for (final w in current)
+        if (idSet.contains(w.id))
+          w.copyWith(
+            assignedTo: assignedTo,
+            assignedPersonnelName: assignedPersonnelName,
+          )
+        else
+          w,
+    ];
+    state = AsyncData(next);
+    unawaited(_persistCache(next));
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient != null) {
+      try {
+        for (final workOrderId in workOrderIds) {
+          await apiClient.patchJson(
+            '/work-orders',
+            body: {'id': workOrderId, 'assigned_to': assignedTo},
+          );
+        }
+        await refresh();
+        return;
+      } catch (_) {
+        state = AsyncData(current);
+        unawaited(_persistCache(current));
+        return;
+      }
+    }
+
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) return;
+
+    try {
+      await client
+          .from('work_orders')
+          .update({'assigned_to': assignedTo})
+          .inFilter('id', workOrderIds);
+      await refresh();
+    } catch (_) {
+      state = AsyncData(current);
+      unawaited(_persistCache(current));
+    }
+  }
+
   Future<void> reorderOpenOrders(List<WorkOrder> reorderedOpenOrders) async {
     final current = state.asData?.value;
     if (current == null) return;

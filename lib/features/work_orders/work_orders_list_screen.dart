@@ -13,6 +13,7 @@ import '../../core/format/search_normalize.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../personnel/personnel_screen.dart';
 import 'work_order_create_dialog.dart';
 import 'work_order_detail_sheet.dart';
 import 'work_order_model.dart';
@@ -97,8 +98,12 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
   String _statusFilter = 'open';
   bool _showPassive = false;
   bool _reorderMode = false;
+  bool _selectionMode = false;
+  bool _assigningSelected = false;
+  String? _bulkAssignedTo;
   DateTime? _fromDate;
   DateTime? _toDate;
+  final Set<String> _selectedWorkOrderIds = <String>{};
 
   @override
   void dispose() {
@@ -106,13 +111,81 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
     super.dispose();
   }
 
+  void _toggleOrderSelection(String workOrderId, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedWorkOrderIds.add(workOrderId);
+      } else {
+        _selectedWorkOrderIds.remove(workOrderId);
+      }
+    });
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectionMode = false;
+      _bulkAssignedTo = null;
+      _selectedWorkOrderIds.clear();
+    });
+  }
+
+  Future<void> _assignSelectedOrders(
+    List<PersonnelUser> personnel,
+    Set<String> selectedIds,
+  ) async {
+    final assignedTo = (_bulkAssignedTo ?? '').trim();
+    if (assignedTo.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Personel secin.')));
+      return;
+    }
+    if (selectedIds.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('En az bir acik is emri secin.')));
+      return;
+    }
+
+    PersonnelUser? selectedUser;
+    for (final item in personnel) {
+      if (item.id == assignedTo) {
+        selectedUser = item;
+        break;
+      }
+    }
+    setState(() => _assigningSelected = true);
+    try {
+      await ref.read(workOrdersBoardProvider.notifier).bulkAssignPersonnel(
+        workOrderIds: selectedIds.toList(growable: false),
+        assignedTo: assignedTo,
+        assignedPersonnelName: selectedUser?.fullName,
+      );
+      if (!mounted) return;
+      _clearSelection();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${selectedIds.length} is emri ${selectedUser?.fullName ?? 'personel'} kullanicisina atandi.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _assigningSelected = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final boardAsync = ref.watch(workOrdersBoardProvider);
     final profileAsync = ref.watch(currentUserProfileProvider);
+    final isAdmin = profileAsync.value?.role == 'admin';
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
     final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
     final canDelete = ref.watch(hasActionAccessProvider(kActionDeleteRecords));
+    final personnelAsync = isAdmin
+        ? ref.watch(personnelUsersProvider)
+        : const AsyncValue.data(<PersonnelUser>[]);
     const allowedStatuses = {
       'all',
       'open',
@@ -125,7 +198,10 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
       _statusFilter = 'all';
     }
     if (_statusFilter != 'open') _reorderMode = false;
+    if (_statusFilter != 'open') _selectionMode = false;
     if (!canEdit) _reorderMode = false;
+    if (!isAdmin) _selectionMode = false;
+    if (_selectionMode) _reorderMode = false;
 
     return AppPageLayout(
       title: 'İş Emirleri',
@@ -238,6 +314,13 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
             final hay = normalizeSearchText(haystack);
             return hay.contains(search);
           }).toList(growable: false);
+          final openFilteredIds = filtered
+              .where((item) => item.status == 'open')
+              .map((item) => item.id)
+              .toSet();
+          final selectedOpenIds = _selectedWorkOrderIds
+              .where(openFilteredIds.contains)
+              .toSet();
 
           final isMobile = MediaQuery.sizeOf(context).width < 720;
           final headerCard = AppCard(
@@ -706,13 +789,147 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                         ),
                       ],
                     );
+                    final bulkAssignBar =
+                        isAdmin && _statusFilter == 'open'
+                        ? personnelAsync.when(
+                            data: (personnel) {
+                              final selectableUsers = personnel
+                                  .where((item) => item.role != 'admin')
+                                  .toList(growable: false);
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Gap(10),
+                                  Row(
+                                    children: [
+                                      FilledButton.tonalIcon(
+                                        onPressed: () {
+                                          setState(() {
+                                            _selectionMode = !_selectionMode;
+                                            if (!_selectionMode) {
+                                              _bulkAssignedTo = null;
+                                              _selectedWorkOrderIds.clear();
+                                            }
+                                          });
+                                        },
+                                        icon: Icon(
+                                          _selectionMode
+                                              ? Icons.checklist_rtl_rounded
+                                              : Icons.select_all_rounded,
+                                          size: 18,
+                                        ),
+                                        label: Text(
+                                          _selectionMode
+                                              ? 'Secim Modu Acik'
+                                              : 'Toplu Secim',
+                                        ),
+                                      ),
+                                      if (_selectionMode) ...[
+                                        const Gap(10),
+                                        AppBadge(
+                                          label: 'Secili: ${selectedOpenIds.length}',
+                                          tone: AppBadgeTone.primary,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  if (_selectionMode) ...[
+                                    const Gap(10),
+                                    Wrap(
+                                      spacing: 10,
+                                      runSpacing: 10,
+                                      crossAxisAlignment: WrapCrossAlignment.center,
+                                      children: [
+                                        SizedBox(
+                                          width: compact ? constraints.maxWidth : 280,
+                                          child: DropdownButtonFormField<String?>(
+                                            initialValue: _bulkAssignedTo,
+                                            items: [
+                                              const DropdownMenuItem<String?>(
+                                                value: null,
+                                                child: Text('Personel sec'),
+                                              ),
+                                              ...selectableUsers.map(
+                                                (user) => DropdownMenuItem<String?>(
+                                                  value: user.id,
+                                                  child: Text(
+                                                    user.fullName?.trim().isNotEmpty == true
+                                                        ? user.fullName!.trim()
+                                                        : (user.email ?? 'Personel'),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                            onChanged: _assigningSelected
+                                                ? null
+                                                : (value) => setState(
+                                                    () => _bulkAssignedTo = value,
+                                                  ),
+                                            decoration: const InputDecoration(
+                                              labelText: 'Atanacak Personel',
+                                            ),
+                                          ),
+                                        ),
+                                        FilledButton.icon(
+                                          onPressed: _assigningSelected
+                                              ? null
+                                              : () => _assignSelectedOrders(
+                                                  selectableUsers,
+                                                  selectedOpenIds,
+                                                ),
+                                          icon: _assigningSelected
+                                              ? const SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    color: Colors.white,
+                                                  ),
+                                                )
+                                              : const Icon(
+                                                  Icons.assignment_ind_rounded,
+                                                  size: 18,
+                                                ),
+                                          label: const Text('Secilenleri Ata'),
+                                        ),
+                                        OutlinedButton.icon(
+                                          onPressed: _assigningSelected
+                                              ? null
+                                              : () => setState(
+                                                  () => _selectedWorkOrderIds.clear(),
+                                                ),
+                                          icon: const Icon(
+                                            Icons.remove_done_rounded,
+                                            size: 18,
+                                          ),
+                                          label: const Text('Secimi Temizle'),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              );
+                            },
+                            loading: () => const Padding(
+                              padding: EdgeInsets.only(top: 10),
+                              child: LinearProgressIndicator(minHeight: 2),
+                            ),
+                            error: (error, stackTrace) => const SizedBox.shrink(),
+                          )
+                        : const SizedBox.shrink();
 
                     if (wide) {
-                      return Row(
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(child: controls),
-                          const Gap(12),
-                          stats,
+                          Row(
+                            children: [
+                              Expanded(child: controls),
+                              const Gap(12),
+                              stats,
+                            ],
+                          ),
+                          bulkAssignBar,
                         ],
                       );
                     }
@@ -723,6 +940,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                         controls,
                         const Gap(10),
                         stats,
+                        bulkAssignBar,
                       ],
                     );
                   },
@@ -754,6 +972,8 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
             return _WorkOrdersList(
               header: header,
               items: filtered,
+              selectionMode: _selectionMode,
+              selectedWorkOrderIds: _selectedWorkOrderIds,
               canReorder:
                   _reorderMode && _statusFilter == 'open' && search.trim().isEmpty,
               preferGrid: (kIsWeb && !isMobile) || isMobile,
@@ -830,6 +1050,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                       .deleteWorkOrder(order.id);
                 }
               },
+              onSelectionChanged: _toggleOrderSelection,
             );
           }
 
@@ -1018,6 +1239,8 @@ class _WorkOrdersList extends StatelessWidget {
   const _WorkOrdersList({
     required this.header,
     required this.items,
+    required this.selectionMode,
+    required this.selectedWorkOrderIds,
     required this.canReorder,
     required this.preferGrid,
     required this.canEdit,
@@ -1031,10 +1254,13 @@ class _WorkOrdersList extends StatelessWidget {
     required this.onCancel,
     required this.onToggleActive,
     required this.onDelete,
+    required this.onSelectionChanged,
   });
 
   final Widget? header;
   final List<WorkOrder> items;
+  final bool selectionMode;
+  final Set<String> selectedWorkOrderIds;
   final bool canReorder;
   final bool preferGrid;
   final bool canEdit;
@@ -1048,6 +1274,7 @@ class _WorkOrdersList extends StatelessWidget {
   final ValueChanged<WorkOrder> onCancel;
   final ValueChanged<WorkOrder> onToggleActive;
   final ValueChanged<WorkOrder> onDelete;
+  final void Function(String workOrderId, bool selected) onSelectionChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -1134,6 +1361,8 @@ class _WorkOrdersList extends StatelessWidget {
             indexNumber: effectiveIndex + 1,
             reorderIndex: effectiveIndex,
             reorderable: true,
+            selectionMode: false,
+            selected: false,
             onOpen: () => onOpen(order),
             onEdit: canEdit ? () => onEdit(order) : null,
             onApprovalPending: () => onApprovalPending(order),
@@ -1145,6 +1374,7 @@ class _WorkOrdersList extends StatelessWidget {
             showCancel: canEdit,
             showToggleActive: canArchive,
             showDelete: canDelete,
+            onSelectionChanged: (_) {},
           );
         },
       );
@@ -1199,6 +1429,8 @@ class _WorkOrdersList extends StatelessWidget {
                         order: order,
                         indexNumber: indexNumber,
                         colorIndex: index,
+                        selectionMode: selectionMode,
+                        selected: selectedWorkOrderIds.contains(order.id),
                         onOpen: () => onOpen(order),
                         onEdit: canEdit ? () => onEdit(order) : null,
                         onApprovalPending: () => onApprovalPending(order),
@@ -1210,6 +1442,8 @@ class _WorkOrdersList extends StatelessWidget {
                         showCancel: canEdit,
                         showToggleActive: canArchive,
                         showDelete: canDelete,
+                        onSelectionChanged: (selected) =>
+                            onSelectionChanged(order.id, selected),
                       );
                     },
                     childCount: sorted.length,
@@ -1240,6 +1474,8 @@ class _WorkOrdersList extends StatelessWidget {
           indexNumber: indexNumber,
           reorderIndex: effectiveIndex,
           reorderable: false,
+          selectionMode: selectionMode,
+          selected: selectedWorkOrderIds.contains(order.id),
           onOpen: () => onOpen(order),
           onEdit: canEdit ? () => onEdit(order) : null,
           onApprovalPending: () => onApprovalPending(order),
@@ -1251,6 +1487,8 @@ class _WorkOrdersList extends StatelessWidget {
           showCancel: canEdit,
           showToggleActive: canArchive,
           showDelete: canDelete,
+          onSelectionChanged: (selected) =>
+              onSelectionChanged(order.id, selected),
         );
       },
     );
@@ -1262,6 +1500,8 @@ class _WorkOrderGridCard extends ConsumerWidget {
     required this.order,
     required this.indexNumber,
     required this.colorIndex,
+    required this.selectionMode,
+    required this.selected,
     required this.onOpen,
     required this.onEdit,
     required this.onApprovalPending,
@@ -1273,11 +1513,14 @@ class _WorkOrderGridCard extends ConsumerWidget {
     required this.showCancel,
     required this.showToggleActive,
     required this.showDelete,
+    required this.onSelectionChanged,
   });
 
   final WorkOrder order;
   final int? indexNumber;
   final int colorIndex;
+  final bool selectionMode;
+  final bool selected;
   final VoidCallback onOpen;
   final VoidCallback? onEdit;
   final VoidCallback onApprovalPending;
@@ -1289,6 +1532,7 @@ class _WorkOrderGridCard extends ConsumerWidget {
   final bool showCancel;
   final bool showToggleActive;
   final bool showDelete;
+  final ValueChanged<bool> onSelectionChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1431,6 +1675,11 @@ class _WorkOrderGridCard extends ConsumerWidget {
                           : _statusBadge(order.status),
                     ),
                   ),
+                  if (selectionMode && order.status == 'open')
+                    Checkbox(
+                      value: selected,
+                      onChanged: (value) => onSelectionChanged(value ?? false),
+                    ),
                   PopupMenuButton<String>(
                     padding: EdgeInsets.zero,
                     tooltip: 'İşlemler',
@@ -1511,14 +1760,28 @@ class _WorkOrderGridCard extends ConsumerWidget {
               ),
               if (assignedName.isNotEmpty) ...[
                 Gap(compact ? 2 : 4),
-                Text(
-                  assignedName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: (muted ?? const TextStyle()).copyWith(
-                    fontSize: compact ? 11 : null,
-                    fontWeight: FontWeight.w700,
-                    color: mutedTextColor,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isDarkCard
+                        ? Colors.white.withValues(alpha: 0.14)
+                        : const Color(0xFFDBEAFE),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: isDarkCard
+                          ? Colors.white.withValues(alpha: 0.28)
+                          : const Color(0xFF93C5FD),
+                    ),
+                  ),
+                  child: Text(
+                    'Atanan: $assignedName',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: (muted ?? const TextStyle()).copyWith(
+                      fontSize: compact ? 11 : null,
+                      fontWeight: FontWeight.w900,
+                      color: isDarkCard ? Colors.white : const Color(0xFF1D4ED8),
+                    ),
                   ),
                 ),
               ],
@@ -1725,6 +1988,8 @@ class _ReorderableWorkOrdersGridState extends State<_ReorderableWorkOrdersGrid> 
                   order: order,
                   indexNumber: indexNumber,
                   colorIndex: index,
+                  selectionMode: false,
+                  selected: false,
                   onOpen: () => widget.onOpen(order),
                   onEdit: widget.showEdit ? () => widget.onEdit(order) : null,
                   onApprovalPending: () => widget.onApprovalPending(order),
@@ -1736,6 +2001,7 @@ class _ReorderableWorkOrdersGridState extends State<_ReorderableWorkOrdersGrid> 
                   showCancel: widget.showCancel,
                   showToggleActive: widget.showToggleActive,
                   showDelete: widget.showDelete,
+                  onSelectionChanged: (_) {},
                 );
 
                 final draggableChild = AnimatedScale(
@@ -1766,6 +2032,8 @@ class _ReorderableWorkOrdersGridState extends State<_ReorderableWorkOrdersGrid> 
                         order: order,
                         indexNumber: indexNumber,
                         colorIndex: index,
+                        selectionMode: false,
+                        selected: false,
                         onOpen: () {},
                         onEdit: null,
                         onApprovalPending: () {},
@@ -1777,6 +2045,7 @@ class _ReorderableWorkOrdersGridState extends State<_ReorderableWorkOrdersGrid> 
                         showCancel: false,
                         showToggleActive: false,
                         showDelete: false,
+                        onSelectionChanged: (_) {},
                       ),
                     ),
                   ),
@@ -1821,6 +2090,8 @@ class _WorkOrderCard extends ConsumerWidget {
     required this.indexNumber,
     required this.reorderIndex,
     required this.reorderable,
+    required this.selectionMode,
+    required this.selected,
     required this.onOpen,
     required this.onEdit,
     required this.onApprovalPending,
@@ -1832,12 +2103,15 @@ class _WorkOrderCard extends ConsumerWidget {
     required this.showCancel,
     required this.showToggleActive,
     required this.showDelete,
+    required this.onSelectionChanged,
   });
 
   final WorkOrder order;
   final int? indexNumber;
   final int reorderIndex;
   final bool reorderable;
+  final bool selectionMode;
+  final bool selected;
   final VoidCallback onOpen;
   final VoidCallback? onEdit;
   final VoidCallback onApprovalPending;
@@ -1849,6 +2123,7 @@ class _WorkOrderCard extends ConsumerWidget {
   final bool showCancel;
   final bool showToggleActive;
   final bool showDelete;
+  final ValueChanged<bool> onSelectionChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1969,6 +2244,11 @@ class _WorkOrderCard extends ConsumerWidget {
                       ),
                     ),
                     const Gap(10),
+                    if (selectionMode && order.status == 'open')
+                      Checkbox(
+                        value: selected,
+                        onChanged: (value) => onSelectionChanged(value ?? false),
+                      ),
                     _statusBadge(order.status),
                   ],
                 ),
@@ -1995,7 +2275,12 @@ class _WorkOrderCard extends ConsumerWidget {
                       _InfoChip(
                         text:
                             'Atanan: ${(order.assignedPersonnelName ?? '').trim()}',
-                        style: muted,
+                        style: muted?.copyWith(
+                          color: const Color(0xFF1D4ED8),
+                          fontWeight: FontWeight.w900,
+                        ),
+                        backgroundColor: const Color(0xFFDBEAFE),
+                        borderColor: const Color(0xFF93C5FD),
                       ),
                     if (meta.trim().isNotEmpty) _InfoChip(text: meta, style: muted),
                     if (scheduled != null)
@@ -2103,19 +2388,26 @@ Color _statusColor(String status) {
 }
 
 class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.text, required this.style});
+  const _InfoChip({
+    required this.text,
+    required this.style,
+    this.backgroundColor,
+    this.borderColor,
+  });
 
   final String text;
   final TextStyle? style;
+  final Color? backgroundColor;
+  final Color? borderColor;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: AppTheme.surfaceMuted,
+        color: backgroundColor ?? AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: borderColor ?? AppTheme.border),
       ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520),
