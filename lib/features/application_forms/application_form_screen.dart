@@ -4672,12 +4672,21 @@ class _BusinessActivityPickerDialog extends ConsumerStatefulWidget {
 class _BusinessActivityPickerDialogState
     extends ConsumerState<_BusinessActivityPickerDialog> {
   late final Set<String> _selectedIds;
+  late final TextEditingController _searchController;
+  String _query = '';
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
     _selectedIds = widget.selectedIds.toSet();
+    _searchController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   bool get _isAdmin {
@@ -4807,6 +4816,12 @@ class _BusinessActivityPickerDialogState
       data: (v) => v.where((e) => e.isActive).toList(growable: false),
       orElse: () => const <BusinessActivityTypeDefinition>[],
     );
+    final q = _query.trim().toLowerCase();
+    final filteredItems = q.isEmpty
+        ? items
+        : items
+            .where((e) => e.name.toLowerCase().contains(q))
+            .toList(growable: false);
 
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
@@ -4843,6 +4858,17 @@ class _BusinessActivityPickerDialogState
                 ],
               ),
               const Gap(8),
+              TextField(
+                controller: _searchController,
+                decoration: const InputDecoration(
+                  hintText: 'Ara...',
+                  prefixIcon: Icon(Icons.search_rounded),
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+              const Gap(8),
               Flexible(
                 child: itemsAsync.when(
                   loading: () => const Center(
@@ -4857,51 +4883,63 @@ class _BusinessActivityPickerDialogState
                       child: Text('Yüklenemedi.'),
                     ),
                   ),
-                  data: (_) => ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: items.length,
-                    separatorBuilder: (context, index) =>
-                        const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final item = items[index];
-                      return CheckboxListTile(
-                        value: _selectedIds.contains(item.id),
-                        controlAffinity: ListTileControlAffinity.leading,
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(item.name),
-                        secondary: _isAdmin
-                            ? Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    onPressed: _saving
-                                        ? null
-                                        : () => _upsertActivity(initial: item),
-                                    icon: const Icon(Icons.edit_rounded),
-                                  ),
-                                  IconButton(
-                                    onPressed: _saving
-                                        ? null
-                                        : () => _deleteActivity(item),
-                                    icon:
-                                        const Icon(Icons.delete_outline_rounded),
-                                  ),
-                                ],
-                              )
-                            : null,
-                        onChanged: (value) {
-                          setState(() {
-                            if (value ?? false) {
-                              _selectedIds.add(item.id);
-                            } else {
-                              _selectedIds.remove(item.id);
-                            }
-                          });
-                        },
+                  data: (_) {
+                    if (filteredItems.isEmpty) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(20),
+                          child: Text('Sonuç yok.'),
+                        ),
                       );
-                    },
-                  ),
+                    }
+                    return ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: filteredItems.length,
+                      separatorBuilder: (context, index) =>
+                          const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final item = filteredItems[index];
+                        return CheckboxListTile(
+                          value: _selectedIds.contains(item.id),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(item.name),
+                          secondary: _isAdmin
+                              ? Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      onPressed: _saving
+                                          ? null
+                                          : () =>
+                                              _upsertActivity(initial: item),
+                                      icon: const Icon(Icons.edit_rounded),
+                                    ),
+                                    IconButton(
+                                      onPressed: _saving
+                                          ? null
+                                          : () => _deleteActivity(item),
+                                      icon: const Icon(
+                                        Icons.delete_outline_rounded,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : null,
+                          onChanged: (value) {
+                            setState(() {
+                              if (value ?? false) {
+                                _selectedIds.add(item.id);
+                              } else {
+                                _selectedIds.remove(item.id);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    );
+                  },
                 ),
               ),
               const Gap(12),
