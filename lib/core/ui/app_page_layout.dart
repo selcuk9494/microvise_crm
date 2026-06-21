@@ -46,7 +46,7 @@ class _AppPageLayoutState extends State<AppPageLayout> {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    final isMobile = width < 720;
+    final isMobile = width < 560;
     final normalizedActions = widget.actions
         ?.map(
           (widget) => widget is Gap
@@ -59,32 +59,28 @@ class _AppPageLayoutState extends State<AppPageLayout> {
         .toList(growable: false);
     final horizontalPadding = width >= 1200
         ? AppTheme.pagePaddingDesktop.horizontal / 2
-        : width >= 720
+        : width >= 560
         ? AppTheme.pagePaddingTablet.horizontal / 2
         : AppTheme.pagePaddingMobile.horizontal / 2;
-    final topPadding =
-        width >= 720 ? (widget.compactHeader ? 4.0 : 14.0) : 10.0;
+    final topPadding = width >= 560
+        ? (widget.compactHeader ? 2.0 : 10.0)
+        : 10.0;
 
     if (isMobile) {
-      final hasExtras = (widget.subtitle?.trim().isNotEmpty ?? false) ||
-          (normalizedActions != null && normalizedActions.isNotEmpty);
-      final expandedHeight =
-          hasExtras ? (widget.compactHeader ? 160.0 : 190.0) : kToolbarHeight;
+      final hasSubtitle = widget.subtitle?.trim().isNotEmpty ?? false;
+      final hasActions =
+          normalizedActions != null && normalizedActions.isNotEmpty;
+      final hasExtras = hasSubtitle || hasActions;
+      final expandedHeight = !hasExtras
+          ? kToolbarHeight
+          : hasActions
+          ? (widget.compactHeader ? 128.0 : 150.0)
+          : (widget.compactHeader ? 88.0 : 96.0);
 
       return Scaffold(
         backgroundColor: AppTheme.background,
         body: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                AppTheme.backgroundAlt.withValues(alpha: 0.82),
-                AppTheme.background,
-                AppTheme.background,
-              ],
-            ),
-          ),
+          decoration: const BoxDecoration(color: AppTheme.background),
           child: NestedScrollView(
             headerSliverBuilder: (context, innerBoxIsScrolled) => [
               SliverAppBar(
@@ -100,10 +96,9 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                   widget.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w800),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 flexibleSpace: hasExtras
                     ? LayoutBuilder(
@@ -111,9 +106,10 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                           if (constraints.maxHeight <= kToolbarHeight + 1) {
                             return const SizedBox.shrink();
                           }
-                          final t = ((constraints.maxHeight - kToolbarHeight) /
-                                  (expandedHeight - kToolbarHeight))
-                              .clamp(0.0, 1.0);
+                          final t =
+                              ((constraints.maxHeight - kToolbarHeight) /
+                                      (expandedHeight - kToolbarHeight))
+                                  .clamp(0.0, 1.0);
                           final opacity = Curves.easeOut.transform(t);
 
                           return ClipRect(
@@ -138,8 +134,9 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                                         if (widget.subtitle != null)
                                           Text(
                                             widget.subtitle!,
-                                            maxLines:
-                                                widget.compactHeader ? 1 : 2,
+                                            maxLines: widget.compactHeader
+                                                ? 1
+                                                : 2,
                                             overflow: TextOverflow.ellipsis,
                                             style: Theme.of(context)
                                                 .textTheme
@@ -154,8 +151,9 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                                         if (normalizedActions != null &&
                                             normalizedActions.isNotEmpty) ...[
                                           SizedBox(
-                                            height:
-                                                widget.compactHeader ? 8 : 10,
+                                            height: widget.compactHeader
+                                                ? 8
+                                                : 10,
                                           ),
                                           SingleChildScrollView(
                                             scrollDirection: Axis.horizontal,
@@ -207,22 +205,13 @@ class _AppPageLayoutState extends State<AppPageLayout> {
         child: PrimaryScrollController(
           controller: _primaryScrollController,
           child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  AppTheme.backgroundAlt.withValues(alpha: 0.82),
-                  AppTheme.background,
-                  AppTheme.background,
-                ],
-              ),
-            ),
+            decoration: const BoxDecoration(color: AppTheme.background),
             child: Column(
               children: [
                 GestureDetector(
                   behavior: HitTestBehavior.translucent,
-                  onVerticalDragUpdate: (details) => _scrollBy(details.delta.dy),
+                  onVerticalDragUpdate: (details) =>
+                      _scrollBy(details.delta.dy),
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
                       horizontalPadding,
@@ -232,16 +221,16 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                     ),
                     child: Container(
                       padding: EdgeInsets.symmetric(
-                        horizontal: width >= 720
+                        horizontal: width >= 560
                             ? (widget.compactHeader ? 14 : 18)
                             : 14,
-                        vertical: width >= 720
-                            ? (widget.compactHeader ? 8 : 12)
+                        vertical: width >= 560
+                            ? (widget.compactHeader ? 8 : 10)
                             : 10,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                        color: AppTheme.surface.withValues(alpha: 0.96),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                         border: Border.all(color: AppTheme.border),
                         boxShadow: AppTheme.cardShadow,
                       ),
@@ -300,8 +289,9 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                                       if (!widget.compactHeader &&
                                           widget.subtitle != null)
                                         Padding(
-                                          padding:
-                                              const EdgeInsets.only(top: 4),
+                                          padding: const EdgeInsets.only(
+                                            top: 4,
+                                          ),
                                           child: Text(
                                             widget.subtitle!,
                                             style: Theme.of(context)
@@ -309,8 +299,9 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                                                 .bodyMedium
                                                 ?.copyWith(
                                                   color: AppTheme.textMuted,
-                                                  fontSize:
-                                                      widget.compactHeader ? 12 : 13,
+                                                  fontSize: widget.compactHeader
+                                                      ? 12
+                                                      : 13,
                                                 ),
                                           ),
                                         ),

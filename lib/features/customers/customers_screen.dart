@@ -17,7 +17,8 @@ import '../../core/supabase/supabase_providers.dart';
 import 'customer_form_dialog.dart';
 import 'customer_model.dart';
 import 'customers_providers.dart';
-import 'web_download_helper.dart' if (dart.library.io) 'io_download_helper.dart';
+import 'web_download_helper.dart'
+    if (dart.library.io) 'io_download_helper.dart';
 
 class CustomerCompactViewNotifier extends Notifier<bool> {
   @override
@@ -28,8 +29,8 @@ class CustomerCompactViewNotifier extends Notifier<bool> {
 
 final customerCompactViewProvider =
     NotifierProvider<CustomerCompactViewNotifier, bool>(
-  CustomerCompactViewNotifier.new,
-);
+      CustomerCompactViewNotifier.new,
+    );
 
 class CustomersScreen extends ConsumerStatefulWidget {
   const CustomersScreen({super.key});
@@ -140,7 +141,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     if (!kIsWeb) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Dışarı aktarma web üzerinde desteklenir.')),
+        const SnackBar(
+          content: Text('Dışarı aktarma web üzerinde desteklenir.'),
+        ),
       );
       return;
     }
@@ -214,7 +217,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     if (!kIsWeb) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Şablon indirme web üzerinde desteklenir.')),
+        const SnackBar(
+          content: Text('Şablon indirme web üzerinde desteklenir.'),
+        ),
       );
       return;
     }
@@ -304,9 +309,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           .select('id,name,vkn,is_active')
           .order('name', ascending: true)
           .limit(5000);
-      lookupItems = (rows as List)
-          .cast<Map<String, dynamic>>()
-          .toList(growable: false);
+      lookupItems = (rows as List).cast<Map<String, dynamic>>().toList(
+        growable: false,
+      );
     }
 
     final customerIdByVkn = <String, String>{};
@@ -333,13 +338,14 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           .select('id,name,is_active')
           .order('name', ascending: true)
           .limit(5000);
-      companyRows = (rows as List)
-          .cast<Map<String, dynamic>>()
-          .toList(growable: false);
+      companyRows = (rows as List).cast<Map<String, dynamic>>().toList(
+        growable: false,
+      );
     }
     String normalizeCompanyName(String value) {
       return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
     }
+
     final companyIdByName = <String, String>{};
     for (final row in companyRows) {
       final name = normalizeCompanyName((row['name'] ?? '').toString());
@@ -385,11 +391,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       return -1;
     }
 
-    String cellString(
-      List<excel.Data?> row,
-      List<String> header,
-      String key,
-    ) {
+    String cellString(List<excel.Data?> row, List<String> header, String key) {
       final idx = indexOf(header, key);
       if (idx < 0 || idx >= row.length) return '';
       return _coerceNumberLike((row[idx]?.value ?? '').toString()).trim();
@@ -563,9 +565,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 .select('id,customer_id,number,sim_number,operator')
                 .inFilter('customer_id', uniqueCustomerIds)
                 .limit(5000);
-            rows = (result as List)
-                .cast<Map<String, dynamic>>()
-                .toList(growable: false);
+            rows = (result as List).cast<Map<String, dynamic>>().toList(
+              growable: false,
+            );
           }
 
           final existingByKey = <String, Map<String, dynamic>>{};
@@ -596,10 +598,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
               final rn = row['_rowIndex'];
               final sim = (row['sim_number'] ?? '').toString().trim();
               final operator = (row['operator'] ?? '').toString().trim();
-              final existingSim =
-                  (existingRow['sim_number'] ?? '').toString().trim();
-              final existingOperator =
-                  (existingRow['operator'] ?? '').toString().trim();
+              final existingSim = (existingRow['sim_number'] ?? '')
+                  .toString()
+                  .trim();
+              final existingOperator = (existingRow['operator'] ?? '')
+                  .toString()
+                  .trim();
 
               final updateValues = <String, dynamic>{};
               if (sim.isNotEmpty && sim != existingSim) {
@@ -678,9 +682,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           'sicil_no',
         ]);
         final companyKey = normalizeCompanyName(companyText);
-        final companyId = companyKey.isEmpty ? null : companyIdByName[companyKey];
+        final companyId = companyKey.isEmpty
+            ? null
+            : companyIdByName[companyKey];
         if (companyKey.isNotEmpty && (companyId ?? '').isEmpty) {
-          errors.add('GMP3 satır $excelRowNo: Yazılım firması bulunamadı: $companyText');
+          errors.add(
+            'GMP3 satır $excelRowNo: Yazılım firması bulunamadı: $companyText',
+          );
           continue;
         }
         licenseRows.add({
@@ -689,7 +697,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           'name': name.isEmpty ? 'GMP3 Lisansı' : name,
           'license_type': 'gmp3',
           'software_company_id': companyId,
-          'registry_number': registryNumber.trim().isEmpty ? null : registryNumber.trim(),
+          'registry_number': registryNumber.trim().isEmpty
+              ? null
+              : registryNumber.trim(),
           'starts_at': startsAt,
           'ends_at': endIso,
           'expires_at': expIso,
@@ -725,10 +735,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
               const Gap(8),
               Text(
                 'Uyarı: ${errors.length} satır atlandı.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: AppTheme.textMuted),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
               ),
               const Gap(8),
               SizedBox(
@@ -737,10 +746,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   itemCount: errors.length > 30 ? 30 : errors.length,
                   itemBuilder: (context, index) => Text(
                     '• ${errors[index]}',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: AppTheme.textMuted),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ),
               ),
@@ -749,10 +757,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     '… ${errors.length - 30} satır daha',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: AppTheme.textMuted),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ),
             ],
@@ -825,7 +832,11 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 if (apiClient != null) {
                   await apiClient.postJson(
                     '/mutate',
-                    body: {'op': 'insertMany', 'table': table, 'rows': [one]},
+                    body: {
+                      'op': 'insertMany',
+                      'table': table,
+                      'rows': [one],
+                    },
                   );
                 } else {
                   await client!.from(table).insert(one);
@@ -848,7 +859,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
 
       for (final row in lineUpdates) {
         final id = (row['id'] ?? '').toString().trim();
-        final values = (row['values'] as Map?)?.cast<String, dynamic>() ?? const {};
+        final values =
+            (row['values'] as Map?)?.cast<String, dynamic>() ?? const {};
         if (id.isEmpty || values.isEmpty) continue;
         try {
           if (apiClient != null) {
@@ -940,51 +952,58 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       final values = <String, dynamic>{
         if (id.isNotEmpty) 'id': id,
         'name': name,
-        'city': cellString(row, 'city').isEmpty ? null : cellString(row, 'city'),
-        'address':
-            cellString(row, 'address').isEmpty ? null : cellString(row, 'address'),
+        'city': cellString(row, 'city').isEmpty
+            ? null
+            : cellString(row, 'city'),
+        'address': cellString(row, 'address').isEmpty
+            ? null
+            : cellString(row, 'address'),
         'director_name': cellString(row, 'director_name').isEmpty
             ? null
             : cellString(row, 'director_name'),
-        'email': cellString(row, 'email').isEmpty ? null : cellString(row, 'email'),
+        'email': cellString(row, 'email').isEmpty
+            ? null
+            : cellString(row, 'email'),
         'vkn': cellString(row, 'vkn').isEmpty ? null : cellString(row, 'vkn'),
-        'tckn_ms':
-            cellString(row, 'tckn_ms').isEmpty ? null : cellString(row, 'tckn_ms'),
+        'tckn_ms': cellString(row, 'tckn_ms').isEmpty
+            ? null
+            : cellString(row, 'tckn_ms'),
         'phone_1_title': cellString(row, 'phone_1_title').isEmpty
             ? null
             : cellString(row, 'phone_1_title'),
-        'phone_1':
-            cellString(row, 'phone_1').isEmpty ? null : cellString(row, 'phone_1'),
+        'phone_1': cellString(row, 'phone_1').isEmpty
+            ? null
+            : cellString(row, 'phone_1'),
         'phone_2_title': cellString(row, 'phone_2_title').isEmpty
             ? null
             : cellString(row, 'phone_2_title'),
-        'phone_2':
-            cellString(row, 'phone_2').isEmpty ? null : cellString(row, 'phone_2'),
+        'phone_2': cellString(row, 'phone_2').isEmpty
+            ? null
+            : cellString(row, 'phone_2'),
         'phone_3_title': cellString(row, 'phone_3_title').isEmpty
             ? null
             : cellString(row, 'phone_3_title'),
-        'phone_3':
-            cellString(row, 'phone_3').isEmpty ? null : cellString(row, 'phone_3'),
-        'notes': cellString(row, 'notes').isEmpty ? null : cellString(row, 'notes'),
+        'phone_3': cellString(row, 'phone_3').isEmpty
+            ? null
+            : cellString(row, 'phone_3'),
+        'notes': cellString(row, 'notes').isEmpty
+            ? null
+            : cellString(row, 'notes'),
         'is_active': cellBool(row, 'is_active'),
       };
 
       await apiClient.postJson(
         '/mutate',
-        body: {
-          'op': 'upsert',
-          'table': 'customers',
-          'values': values,
-        },
+        body: {'op': 'upsert', 'table': 'customers', 'values': values},
       );
       imported += 1;
     }
 
     ref.invalidate(customersProvider);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('İçe aktarıldı: $imported')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('İçe aktarıldı: $imported')));
   }
 
   @override
@@ -992,10 +1011,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final isAdmin = ref.watch(isAdminProvider);
     final isMobile = MediaQuery.sizeOf(context).width < 900;
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
-    final canArchive =
-        ref.watch(hasActionAccessProvider(kActionArchiveRecords));
-    final canDelete =
-        ref.watch(hasActionAccessProvider(kActionDeleteRecords));
+    final canArchive = ref.watch(
+      hasActionAccessProvider(kActionArchiveRecords),
+    );
+    final canDelete = ref.watch(hasActionAccessProvider(kActionDeleteRecords));
 
     final filters = ref.watch(customerFiltersProvider);
     final pageDataAsync = ref.watch(customersProvider);
@@ -1008,8 +1027,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final nextSearch = filters.search;
     if (_searchController.text != nextSearch) {
       _searchController.text = nextSearch;
-      _searchController.selection =
-          TextSelection.collapsed(offset: nextSearch.length);
+      _searchController.selection = TextSelection.collapsed(
+        offset: nextSearch.length,
+      );
     }
 
     return AppPageLayout(
@@ -1119,9 +1139,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                         children: [
                                           Text(
                                             'Filtreler',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .titleMedium,
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.titleMedium,
                                           ),
                                           const Gap(12),
                                           DropdownButtonFormField<String?>(
@@ -1139,12 +1159,16 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                             ],
                                             onChanged: (value) {
                                               ref
-                                                  .read(customerFiltersProvider
-                                                      .notifier)
+                                                  .read(
+                                                    customerFiltersProvider
+                                                        .notifier,
+                                                  )
                                                   .setCity(value);
                                               ref
-                                                  .read(customerPageProvider
-                                                      .notifier)
+                                                  .read(
+                                                    customerPageProvider
+                                                        .notifier,
+                                                  )
                                                   .reset();
                                             },
                                             decoration: const InputDecoration(
@@ -1162,8 +1186,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                                   )
                                                   .set(v);
                                               ref
-                                                  .read(customerPageProvider
-                                                      .notifier)
+                                                  .read(
+                                                    customerPageProvider
+                                                        .notifier,
+                                                  )
                                                   .reset();
                                             },
                                             title: const Text(
@@ -1173,7 +1199,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                           ),
                                           const Gap(10),
                                           DropdownButtonFormField<
-                                              CustomerSortOption>(
+                                            CustomerSortOption
+                                          >(
                                             initialValue: sort,
                                             items: const [
                                               DropdownMenuItem(
@@ -1194,8 +1221,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                             onChanged: (value) {
                                               if (value == null) return;
                                               ref
-                                                  .read(customerSortProvider
-                                                      .notifier)
+                                                  .read(
+                                                    customerSortProvider
+                                                        .notifier,
+                                                  )
                                                   .set(value);
                                             },
                                             decoration: const InputDecoration(
@@ -1246,20 +1275,24 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                                     Navigator.of(context).pop();
                                                   },
                                                   icon: const Icon(
-                                                    Icons.delete_outline_rounded,
+                                                    Icons
+                                                        .delete_outline_rounded,
                                                     size: 18,
                                                   ),
                                                   label: const Text('Temizle'),
                                                   style: FilledButton.styleFrom(
                                                     backgroundColor:
-                                                        const Color(0xFFEF4444)
-                                                            .withValues(
-                                                      alpha: 0.12,
-                                                    ),
+                                                        const Color(
+                                                          0xFFEF4444,
+                                                        ).withValues(
+                                                          alpha: 0.12,
+                                                        ),
                                                     foregroundColor:
                                                         const Color(0xFF7F1D1D),
-                                                    minimumSize:
-                                                        const Size(0, 44),
+                                                    minimumSize: const Size(
+                                                      0,
+                                                      44,
+                                                    ),
                                                   ),
                                                 ),
                                               ),
@@ -1281,7 +1314,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                           runSpacing: 10,
                           children: [
                             AppBadge(
-                              label: showPassive ? 'Durum: Tümü' : 'Durum: Aktif',
+                              label: showPassive
+                                  ? 'Durum: Tümü'
+                                  : 'Durum: Aktif',
                               tone: showPassive
                                   ? AppBadgeTone.neutral
                                   : AppBadgeTone.success,
@@ -1313,11 +1348,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                               : Icons.view_compact_alt_rounded,
                           size: 18,
                         ),
-                        label:
-                            Text(compactView ? 'Geniş Görünüm' : 'Sık Görünüm'),
+                        label: Text(
+                          compactView ? 'Geniş Görünüm' : 'Sık Görünüm',
+                        ),
                         style: FilledButton.styleFrom(
-                          backgroundColor:
-                              AppTheme.primary.withValues(alpha: 0.12),
+                          backgroundColor: AppTheme.primary.withValues(
+                            alpha: 0.12,
+                          ),
                           foregroundColor: AppTheme.primaryDark,
                           minimumSize: const Size(0, 40),
                           padding: const EdgeInsets.symmetric(
@@ -1359,8 +1396,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 .setCity(value);
                             ref.read(customerPageProvider.notifier).reset();
                           },
-                          backgroundColor:
-                              const Color(0xFF16A34A).withValues(alpha: 0.12),
+                          backgroundColor: const Color(
+                            0xFF16A34A,
+                          ).withValues(alpha: 0.12),
                           foregroundColor: const Color(0xFF14532D),
                           icon: Icons.location_city_rounded,
                           labelBuilder: (value) => Text(
@@ -1378,10 +1416,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                           ref.read(customerPageProvider.notifier).reset();
                         },
                         icon: const Icon(Icons.circle_rounded, size: 12),
-                        label: Text(showPassive ? 'Durum: Tümü' : 'Durum: Aktif'),
+                        label: Text(
+                          showPassive ? 'Durum: Tümü' : 'Durum: Aktif',
+                        ),
                         style: FilledButton.styleFrom(
-                          backgroundColor:
-                              const Color(0xFF7C3AED).withValues(alpha: 0.12),
+                          backgroundColor: const Color(
+                            0xFF7C3AED,
+                          ).withValues(alpha: 0.12),
                           foregroundColor: const Color(0xFF4C1D95),
                           minimumSize: const Size(0, 40),
                           padding: const EdgeInsets.symmetric(
@@ -1410,34 +1451,44 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                           if (value == null) return;
                           ref.read(customerSortProvider.notifier).set(value);
                         },
-                        backgroundColor:
-                            const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                        backgroundColor: const Color(
+                          0xFFF59E0B,
+                        ).withValues(alpha: 0.12),
                         foregroundColor: const Color(0xFF7C2D12),
                         icon: Icons.sort_rounded,
-                        labelBuilder: (value) => Text(
-                          switch (value ?? CustomerSortOption.id) {
-                            CustomerSortOption.id => 'Sıralama: En eski',
-                            CustomerSortOption.nameAsc => 'Sıralama: A-Z',
-                            CustomerSortOption.nameDesc => 'Sıralama: Z-A',
-                          },
-                        ),
+                        labelBuilder: (value) =>
+                            Text(switch (value ?? CustomerSortOption.id) {
+                              CustomerSortOption.id => 'Sıralama: En eski',
+                              CustomerSortOption.nameAsc => 'Sıralama: A-Z',
+                              CustomerSortOption.nameDesc => 'Sıralama: Z-A',
+                            }),
                       ),
                       FilledButton.tonalIcon(
                         onPressed: () {
-                          ref.read(customerFiltersProvider.notifier).setSearch('');
-                          ref.read(customerFiltersProvider.notifier).setCity(null);
-                          ref.read(customerShowPassiveProvider.notifier).set(false);
+                          ref
+                              .read(customerFiltersProvider.notifier)
+                              .setSearch('');
+                          ref
+                              .read(customerFiltersProvider.notifier)
+                              .setCity(null);
+                          ref
+                              .read(customerShowPassiveProvider.notifier)
+                              .set(false);
                           ref
                               .read(customerSortProvider.notifier)
                               .set(CustomerSortOption.id);
                           ref.read(customerPageProvider.notifier).reset();
                           ref.invalidate(customersProvider);
                         },
-                        icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 18,
+                        ),
                         label: const Text('Temizle'),
                         style: FilledButton.styleFrom(
-                          backgroundColor:
-                              const Color(0xFFEF4444).withValues(alpha: 0.12),
+                          backgroundColor: const Color(
+                            0xFFEF4444,
+                          ).withValues(alpha: 0.12),
                           foregroundColor: const Color(0xFF7F1D1D),
                           minimumSize: const Size(0, 40),
                           padding: const EdgeInsets.symmetric(
@@ -1480,11 +1531,11 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         onPrevious: page <= 1
                             ? null
                             : () => ref
-                                .read(customerPageProvider.notifier)
-                                .previous(),
+                                  .read(customerPageProvider.notifier)
+                                  .previous(),
                         onNext: pageData.hasNextPage
                             ? () =>
-                                ref.read(customerPageProvider.notifier).next()
+                                  ref.read(customerPageProvider.notifier).next()
                             : null,
                         onChanged: () => ref.invalidate(customersProvider),
                       );
@@ -1495,9 +1546,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         padding: const EdgeInsets.all(16),
                         child: Text(
                           'Müşteri listesi yüklenemedi: $error',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
+                          style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(color: AppTheme.textMuted),
                         ),
                       ),
@@ -1546,8 +1595,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                               onPressed: page <= 1
                                   ? null
                                   : () => ref
-                                      .read(customerPageProvider.notifier)
-                                      .previous(),
+                                        .read(customerPageProvider.notifier)
+                                        .previous(),
                               child: const Text('Önceki'),
                             ),
                           ),
@@ -1556,8 +1605,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                             child: OutlinedButton(
                               onPressed: pageData.hasNextPage
                                   ? () => ref
-                                      .read(customerPageProvider.notifier)
-                                      .next()
+                                        .read(customerPageProvider.notifier)
+                                        .next()
                                   : null,
                               child: const Text('Sonraki'),
                             ),
@@ -1586,10 +1635,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       padding: const EdgeInsets.all(16),
                       child: Text(
                         'Müşteri listesi yüklenemedi: $error',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(color: AppTheme.textMuted),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.textMuted,
+                        ),
                       ),
                     ),
                   ),
@@ -1655,9 +1703,9 @@ class _CustomersListMobile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: AppTheme.text,
-                          ),
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.text,
+                      ),
                     ),
                     const Gap(6),
                     Wrap(
@@ -1669,7 +1717,9 @@ class _CustomersListMobile extends StatelessWidget {
                         if (city != null && city.isNotEmpty)
                           _MobilePill(text: city.toUpperCase()),
                         _MobilePill(text: 'Hat: ${customer.activeLineCount}'),
-                        _MobilePill(text: 'Lisans: ${customer.activeGmp3Count}'),
+                        _MobilePill(
+                          text: 'Lisans: ${customer.activeGmp3Count}',
+                        ),
                       ],
                     ),
                   ],
@@ -1715,10 +1765,9 @@ class _MobilePill extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: Theme.of(context)
-            .textTheme
-            .bodySmall
-            ?.copyWith(color: AppTheme.textMuted),
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
       ),
     );
   }
@@ -1760,10 +1809,9 @@ class _PillDropdown<T> extends StatelessWidget {
           onChanged: onChanged,
           icon: const Icon(Icons.expand_more_rounded, size: 18),
           isDense: true,
-          style: Theme.of(context)
-              .textTheme
-              .bodyMedium
-              ?.copyWith(color: foregroundColor),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: foregroundColor),
           dropdownColor: AppTheme.surface,
           selectedItemBuilder: (context) {
             return items
@@ -1774,10 +1822,10 @@ class _PillDropdown<T> extends StatelessWidget {
                       Icon(icon, size: 18, color: foregroundColor),
                       const Gap(8),
                       DefaultTextStyle(
-                        style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(color: foregroundColor) ??
+                        style:
+                            Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: foregroundColor,
+                            ) ??
                             const TextStyle(),
                         child: labelBuilder(item.value),
                       ),
@@ -1825,7 +1873,7 @@ class _CustomersTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rowHeight = compact ? 54.0 : 62.0;
+    final rowHeight = compact ? 48.0 : 68.0;
 
     return Column(
       children: [
@@ -1835,26 +1883,36 @@ class _CustomersTable extends StatelessWidget {
             child: Column(
               children: [
                 Container(
-                  height: 42,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceMuted,
-                    borderRadius: const BorderRadius.vertical(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.vertical(
                       top: Radius.circular(AppTheme.radiusMd),
                     ),
                     border: Border(bottom: BorderSide(color: AppTheme.border)),
                   ),
                   child: Row(
                     children: [
-                      const SizedBox(width: 36, child: _TableHeaderCheckbox()),
-                      const SizedBox(width: 360, child: _TableHeaderCell('Ad')),
-                      const SizedBox(width: 140, child: _TableHeaderCell('VKN')),
-                      const SizedBox(width: 140, child: _TableHeaderCell('Şehir')),
-                      const SizedBox(width: 90, child: _TableHeaderCell('Hat')),
-                      const SizedBox(width: 90, child: _TableHeaderCell('Lisans')),
-                      const SizedBox(width: 120, child: _TableHeaderCell('Durum')),
-                      const Spacer(),
-                      const SizedBox(width: 44),
+                      const Expanded(
+                        flex: 5,
+                        child: _TableHeaderCell('Müşteri'),
+                      ),
+                      const Expanded(
+                        flex: 3,
+                        child: _TableHeaderCell('İletişim'),
+                      ),
+                      const Expanded(flex: 2, child: _TableHeaderCell('Şehir')),
+                      const SizedBox(width: 72, child: _TableHeaderCell('Hat')),
+                      const SizedBox(
+                        width: 78,
+                        child: _TableHeaderCell('Lisans'),
+                      ),
+                      const SizedBox(
+                        width: 104,
+                        child: _TableHeaderCell('Durum'),
+                      ),
+                      const SizedBox(width: 42),
                     ],
                   ),
                 ),
@@ -1879,17 +1937,16 @@ class _CustomersTable extends StatelessWidget {
             ),
           ),
         ),
-        const Gap(10),
+        const Gap(8),
         AppCard(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             children: [
               Text(
                 'Toplam $totalCount kayıt',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: AppTheme.textMuted),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
               ),
               const Spacer(),
               OutlinedButton.icon(
@@ -1899,8 +1956,10 @@ class _CustomersTable extends StatelessWidget {
               ),
               const Gap(10),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: AppTheme.surfaceMuted,
                   borderRadius: BorderRadius.circular(14),
@@ -1935,23 +1994,9 @@ class _TableHeaderCell extends StatelessWidget {
     return Text(
       label,
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF475569),
-          ),
-    );
-  }
-}
-
-class _TableHeaderCheckbox extends StatelessWidget {
-  const _TableHeaderCheckbox();
-
-  @override
-  Widget build(BuildContext context) {
-    return Checkbox(
-      value: false,
-      onChanged: null,
-      visualDensity: VisualDensity.compact,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        fontWeight: FontWeight.w800,
+        color: AppTheme.textSoft,
+      ),
     );
   }
 }
@@ -1987,43 +2032,40 @@ class _CustomerTableRow extends StatelessWidget {
 
     final vkn = customer.vkn?.trim();
     final city = customer.city?.trim();
+    final phone = customer.phone1?.trim();
+    final email = customer.email?.trim();
 
     return InkWell(
       onTap: () => context.go('/musteriler/${customer.id}'),
       child: Container(
         height: height,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: AppTheme.border)),
         ),
         child: Row(
           children: [
-            SizedBox(
-              width: 36,
-              child: Checkbox(
-                value: false,
-                onChanged: null,
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-            ),
-            SizedBox(
-              width: 360,
+            Expanded(
+              flex: 5,
               child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: AppTheme.primary.withValues(alpha: 0.10),
-                    foregroundColor: AppTheme.primaryDark,
+                  Container(
+                    width: height <= 50 ? 32 : 40,
+                    height: height <= 50 ? 32 : 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                    ),
                     child: Text(
                       initials.isEmpty ? 'M' : initials,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            color: AppTheme.primary,
-                          ),
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: AppTheme.primary,
+                      ),
                     ),
                   ),
-                  const Gap(12),
+                  const Gap(10),
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -2033,7 +2075,8 @@ class _CustomerTableRow extends StatelessWidget {
                           customer.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
                                 fontWeight: FontWeight.w800,
                                 color: AppTheme.text,
                               ),
@@ -2043,9 +2086,7 @@ class _CustomerTableRow extends StatelessWidget {
                             'VKN: $vkn',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
+                            style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: AppTheme.textMuted),
                           ),
                       ],
@@ -2054,54 +2095,70 @@ class _CustomerTableRow extends StatelessWidget {
                 ],
               ),
             ),
-            SizedBox(
-              width: 140,
-              child: Text(
-                vkn == null || vkn.isEmpty ? '-' : vkn,
-                style: Theme.of(context).textTheme.bodySmall,
+            Expanded(
+              flex: 3,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    phone == null || phone.isEmpty ? '-' : phone,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.textSoft,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (email != null && email.isNotEmpty)
+                    Text(
+                      email,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                ],
               ),
             ),
-            SizedBox(
-              width: 140,
+            Expanded(
+              flex: 2,
               child: Text(
                 city == null || city.isEmpty ? '-' : city.toUpperCase(),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
               ),
             ),
             SizedBox(
-              width: 90,
-              child: Text(
-                customer.activeLineCount.toString(),
-                style: Theme.of(context).textTheme.bodySmall,
+              width: 72,
+              child: _CustomerCountChip(
+                value: customer.activeLineCount,
+                icon: Icons.sim_card_rounded,
               ),
             ),
             SizedBox(
-              width: 90,
-              child: Text(
-                customer.activeGmp3Count.toString(),
-                style: Theme.of(context).textTheme.bodySmall,
+              width: 78,
+              child: _CustomerCountChip(
+                value: customer.activeGmp3Count,
+                icon: Icons.verified_rounded,
               ),
             ),
             SizedBox(
-              width: 120,
+              width: 104,
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: customer.isActive
-                    ? const AppBadge(
-                        label: 'Aktif',
-                        tone: AppBadgeTone.success,
-                      )
+                    ? const AppBadge(label: 'Aktif', tone: AppBadgeTone.success)
                     : const AppBadge(
                         label: 'Pasif',
                         tone: AppBadgeTone.neutral,
                       ),
               ),
             ),
-            const Spacer(),
             SizedBox(
-              width: 44,
+              width: 42,
               child: _CustomerRowActions(
                 customer: customer,
                 isAdmin: isAdmin,
@@ -2109,6 +2166,44 @@ class _CustomerTableRow extends StatelessWidget {
                 canArchive: canArchive,
                 canDelete: canDelete,
                 onChanged: onChanged,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CustomerCountChip extends StatelessWidget {
+  const _CustomerCountChip({required this.value, required this.icon});
+
+  final int value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = value > 0;
+    final color = active ? AppTheme.primary : AppTheme.textMuted;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: active ? 0.10 : 0.06),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: 0.14)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: color),
+            const Gap(4),
+            Text(
+              value.toString(),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ],

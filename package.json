@@ -2,6 +2,7 @@
   "name": "microvise_crm_web",
   "private": true,
   "dependencies": {
+    "mssql": "^12.5.5",
     "pg": "^8.16.3",
     "xlsx": "^0.18.5"
   },
@@ -10,6 +11,7 @@
     "local-web": "bash ./scripts/local_web.sh",
     "local-web-dev": "bash ./scripts/local_web_run.sh",
     "local-web-dev-local-api": "bash ./scripts/local_web_dev_local_api.sh",
-    "import-sicil": "node ./scripts/import_device_registries_from_xls.js ./dokuman/sicil.xls"
+    "import-sicil": "node ./scripts/import_device_registries_from_xls.js ./dokuman/sicil.xls",
+    "akinsoft:probe": "node ./scripts/akinsoft_mssql_probe.js"
   }
 }

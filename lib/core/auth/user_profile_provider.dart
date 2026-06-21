@@ -11,6 +11,8 @@ const kPageService = 'servis';
 const kPageReports = 'raporlar';
 const kPageProducts = 'urunler';
 const kPageBilling = 'faturalama';
+const kPageEInvoice = 'e_fatura';
+const kPageFinance = 'finans';
 const kPageVatAnalysis = 'kdv_analizi';
 const kPageDefinitions = 'tanimlamalar';
 const kPagePersonnel = 'personel';
@@ -37,6 +39,8 @@ const allPagePermissions = <String>{
   kPageReports,
   kPageProducts,
   kPageBilling,
+  kPageEInvoice,
+  kPageFinance,
   kPageVatAnalysis,
   kPageDefinitions,
   kPagePersonnel,
@@ -51,6 +55,8 @@ const defaultPersonnelPagePermissions = <String>{
   kPageReports,
   kPageProducts,
   kPageBilling,
+  kPageEInvoice,
+  kPageFinance,
   kPageVatAnalysis,
 };
 
@@ -63,6 +69,8 @@ const pagePermissionLabels = <String, String>{
   kPageReports: 'Raporlar',
   kPageProducts: 'Hat & Lisans',
   kPageBilling: 'Faturalama',
+  kPageEInvoice: 'E-Fatura',
+  kPageFinance: 'Finans',
   kPageVatAnalysis: 'KDV Analizi',
   kPageDefinitions: 'Tanımlamalar',
   kPagePersonnel: 'Personel',
@@ -123,10 +131,7 @@ final currentUserProfileProvider = FutureProvider<UserProfile?>((ref) async {
         .eq('id', user.id)
         .maybeSingle();
     if (fallback != null) {
-      row = {
-        ...fallback,
-        'action_permissions': const <String>[],
-      };
+      row = {...fallback, 'action_permissions': const <String>[]};
     }
   }
 

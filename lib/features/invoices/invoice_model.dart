@@ -1,5 +1,17 @@
 import '../../core/format/app_date_time.dart';
 
+double _jsonDouble(dynamic value, {double fallback = 0}) {
+  return _jsonNullableDouble(value) ?? fallback;
+}
+
+double? _jsonNullableDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  final text = value.toString().trim();
+  if (text.isEmpty) return null;
+  return double.tryParse(text.replaceAll(',', '.'));
+}
+
 // Fatura Modelleri
 class Invoice {
   final String id;
@@ -60,28 +72,45 @@ class Invoice {
       invoiceNumber: json['invoice_number']?.toString() ?? '',
       invoiceType: json['invoice_type']?.toString() ?? 'sales',
       customerId: json['customer_id'].toString(),
-      customerName: json['customers']?['name']?.toString() ?? json['customer_name']?.toString(),
+      customerName:
+          json['customers']?['name']?.toString() ??
+          json['customer_name']?.toString(),
       invoiceDate:
           parseAppDateTime(json['invoice_date']?.toString()) ?? appNow(),
       dueDate: json['due_date'] != null
           ? parseAppDateTime(json['due_date'].toString())
           : null,
       currency: json['currency']?.toString() ?? 'TRY',
-      exchangeRate: (json['exchange_rate'] as num?)?.toDouble() ?? 1.0,
-      subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0,
-      taxTotal: (json['tax_total'] as num?)?.toDouble() ?? 0,
-      discountTotal: (json['discount_total'] as num?)?.toDouble() ?? 0,
-      grandTotal: (json['grand_total'] as num?)?.toDouble() ?? 0,
-      paidAmount: (json['paid_amount'] as num?)?.toDouble() ?? 0,
-      status: json['status']?.toString() ?? 'open',
+      exchangeRate: _jsonDouble(json['exchange_rate'], fallback: 1.0),
+      subtotal: _jsonDouble(
+        json['effective_subtotal'],
+        fallback: _jsonDouble(json['subtotal']),
+      ),
+      taxTotal: _jsonDouble(
+        json['effective_tax_total'],
+        fallback: _jsonDouble(json['tax_total']),
+      ),
+      discountTotal: _jsonDouble(
+        json['effective_discount_total'],
+        fallback: _jsonDouble(json['discount_total']),
+      ),
+      grandTotal: _jsonDouble(
+        json['effective_grand_total'],
+        fallback: _jsonDouble(json['grand_total']),
+      ),
+      paidAmount: _jsonDouble(json['paid_amount']),
+      status:
+          json['effective_status']?.toString() ??
+          json['status']?.toString() ??
+          'open',
       notes: json['notes']?.toString(),
       serviceRecordId: json['service_record_id']?.toString(),
       workOrderId: json['work_order_id']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
       createdBy: json['created_by']?.toString(),
-      createdAt:
-          parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
-      items: (json['invoice_items'] as List?)
+      createdAt: parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
+      items:
+          (json['invoice_items'] as List?)
               ?.map((e) => InvoiceItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
@@ -93,7 +122,8 @@ class Invoice {
       'invoice_type': invoiceType,
       'customer_id': customerId,
       'invoice_date': invoiceDate.toIso8601String().substring(0, 10),
-      if (dueDate != null) 'due_date': dueDate!.toIso8601String().substring(0, 10),
+      if (dueDate != null)
+        'due_date': dueDate!.toIso8601String().substring(0, 10),
       'currency': currency,
       'exchange_rate': exchangeRate,
       'status': status,
@@ -141,14 +171,14 @@ class InvoiceItem {
       invoiceId: json['invoice_id'].toString(),
       productId: json['product_id']?.toString(),
       description: json['description']?.toString() ?? '',
-      quantity: (json['quantity'] as num?)?.toDouble() ?? 1,
+      quantity: _jsonDouble(json['quantity'], fallback: 1.0),
       unit: json['unit']?.toString() ?? 'Adet',
-      unitPrice: (json['unit_price'] as num?)?.toDouble() ?? 0,
-      taxRate: (json['tax_rate'] as num?)?.toDouble() ?? 20,
-      taxAmount: (json['tax_amount'] as num?)?.toDouble() ?? 0,
-      discountRate: (json['discount_rate'] as num?)?.toDouble() ?? 0,
-      discountAmount: (json['discount_amount'] as num?)?.toDouble() ?? 0,
-      lineTotal: (json['line_total'] as num?)?.toDouble() ?? 0,
+      unitPrice: _jsonDouble(json['unit_price']),
+      taxRate: _jsonDouble(json['tax_rate'], fallback: 20),
+      taxAmount: _jsonDouble(json['tax_amount']),
+      discountRate: _jsonDouble(json['discount_rate']),
+      discountAmount: _jsonDouble(json['discount_amount']),
+      lineTotal: _jsonDouble(json['line_total']),
       sortOrder: (json['sort_order'] as int?) ?? 0,
     );
   }
@@ -258,9 +288,9 @@ class Transaction {
       customerId: json['customer_id'].toString(),
       customerName: json['customers']?['name']?.toString(),
       transactionType: json['transaction_type']?.toString() ?? 'collection',
-      amount: (json['amount'] as num?)?.toDouble() ?? 0,
+      amount: _jsonDouble(json['amount']),
       currency: json['currency']?.toString() ?? 'TRY',
-      exchangeRate: (json['exchange_rate'] as num?)?.toDouble() ?? 1.0,
+      exchangeRate: _jsonDouble(json['exchange_rate'], fallback: 1.0),
       paymentMethod: json['payment_method']?.toString() ?? 'cash',
       transactionDate:
           parseAppDateTime(json['transaction_date']?.toString()) ?? appNow(),
@@ -269,8 +299,7 @@ class Transaction {
       description: json['description']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
       createdBy: json['created_by']?.toString(),
-      createdAt:
-          parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
+      createdAt: parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
     );
   }
 }
@@ -282,6 +311,8 @@ class Product {
   final String name;
   final String? description;
   final String? category;
+  final String? akinsoftGroup;
+  final String? akinsoftSubGroup;
   final String productType; // 'product', 'service', 'part'
   final String unit;
   final double purchasePrice;
@@ -299,6 +330,8 @@ class Product {
     required this.name,
     this.description,
     this.category,
+    this.akinsoftGroup,
+    this.akinsoftSubGroup,
     this.productType = 'product',
     this.unit = 'Adet',
     this.purchasePrice = 0,
@@ -318,15 +351,17 @@ class Product {
       name: json['name']?.toString() ?? '',
       description: json['description']?.toString(),
       category: json['category']?.toString(),
+      akinsoftGroup: json['akinsoft_group']?.toString(),
+      akinsoftSubGroup: json['akinsoft_sub_group']?.toString(),
       productType: json['product_type']?.toString() ?? 'product',
       unit: json['unit']?.toString() ?? 'Adet',
-      purchasePrice: (json['purchase_price'] as num?)?.toDouble() ?? 0,
-      salePrice: (json['sale_price'] as num?)?.toDouble() ?? 0,
-      taxRate: (json['tax_rate'] as num?)?.toDouble() ?? 20,
+      purchasePrice: _jsonDouble(json['purchase_price']),
+      salePrice: _jsonDouble(json['sale_price']),
+      taxRate: _jsonDouble(json['tax_rate'], fallback: 20),
       currency: json['currency']?.toString() ?? 'TRY',
       trackStock: json['track_stock'] as bool? ?? false,
-      minStock: (json['min_stock'] as num?)?.toDouble() ?? 0,
-      currentStock: (json['current_stock'] as num?)?.toDouble(),
+      minStock: _jsonDouble(json['min_stock']),
+      currentStock: _jsonNullableDouble(json['current_stock']),
       isActive: json['is_active'] as bool? ?? true,
     );
   }
@@ -364,12 +399,12 @@ class AccountBalance {
       name: json['name']?.toString() ?? '',
       accountType: json['account_type']?.toString() ?? 'customer',
       currency: json['currency']?.toString() ?? 'TRY',
-      openingBalance: (json['opening_balance'] as num?)?.toDouble() ?? 0,
-      salesTotal: (json['sales_total'] as num?)?.toDouble() ?? 0,
-      purchaseTotal: (json['purchase_total'] as num?)?.toDouble() ?? 0,
-      collectionsTotal: (json['collections_total'] as num?)?.toDouble() ?? 0,
-      paymentsTotal: (json['payments_total'] as num?)?.toDouble() ?? 0,
-      balance: (json['balance'] as num?)?.toDouble() ?? 0,
+      openingBalance: _jsonDouble(json['opening_balance']),
+      salesTotal: _jsonDouble(json['sales_total']),
+      purchaseTotal: _jsonDouble(json['purchase_total']),
+      collectionsTotal: _jsonDouble(json['collections_total']),
+      paymentsTotal: _jsonDouble(json['payments_total']),
+      balance: _jsonDouble(json['balance']),
     );
   }
 }
@@ -394,13 +429,12 @@ class ExchangeRate {
   factory ExchangeRate.fromJson(Map<String, dynamic> json) {
     return ExchangeRate(
       currency: json['currency']?.toString() ?? 'TRY',
-      rateToTry: (json['rate_to_try'] as num?)?.toDouble() ?? 1.0,
+      rateToTry: _jsonDouble(json['rate_to_try'], fallback: 1.0),
       effectiveDate:
           parseAppDateTime(json['effective_date']?.toString()) ?? appNow(),
       source: json['source']?.toString() ?? 'manual',
       isManual: json['is_manual'] as bool? ?? false,
-      createdAt:
-          parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
+      createdAt: parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
     );
   }
 }

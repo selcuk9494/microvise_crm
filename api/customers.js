@@ -168,7 +168,7 @@ module.exports = async (req, res) => {
   if (handleCors(req, res)) return;
   try {
     const user = await getAuthenticatedUser(req);
-    if (!user) return unauthorized(res);
+    if (!user) return unauthorized(req, res);
     if (!hasPageAccess(user, 'musteriler')) {
       return forbidden(req, res, 'Müşteri listesine erişim yetkiniz yok.');
     }

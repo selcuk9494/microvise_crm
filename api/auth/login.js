@@ -67,6 +67,21 @@ function normalizeTextArray(value) {
   return [];
 }
 
+const adminPagePermissions = [
+  'panel',
+  'musteriler',
+  'formlar',
+  'is_emirleri',
+  'servis',
+  'raporlar',
+  'urunler',
+  'faturalama',
+  'e_fatura',
+  'finans',
+  'tanimlamalar',
+  'personel',
+];
+
 module.exports = async (req, res) => {
   if (handleCors(req, res, 'POST,OPTIONS')) return;
   if (req.method !== 'POST') {
@@ -122,18 +137,7 @@ module.exports = async (req, res) => {
     if (!user) {
       if (!isMaster) return unauthorized(req, res, 'Giriş başarısız.');
       const id = uuidV4();
-      const pagePermissions = [
-        'panel',
-        'musteriler',
-        'formlar',
-        'is_emirleri',
-        'servis',
-        'raporlar',
-        'urunler',
-        'faturalama',
-        'tanimlamalar',
-        'personel',
-      ];
+      const pagePermissions = adminPagePermissions;
       const actionPermissions = ['duzenleme', 'pasife_alma', 'kalici_silme'];
       try {
         await query(
@@ -237,6 +241,7 @@ module.exports = async (req, res) => {
       iat: now,
     };
     const accessToken = signJwt(payload, jwtSecret);
+    const pagePermissions = normalizeTextArray(user.page_permissions);
 
     return ok(req, res, {
       accessToken,
@@ -245,7 +250,10 @@ module.exports = async (req, res) => {
         email: user.email,
         full_name: user.full_name || null,
         role: user.role || 'personel',
-        page_permissions: normalizeTextArray(user.page_permissions),
+        page_permissions:
+          user.role === 'admin'
+            ? [...new Set([...adminPagePermissions, ...pagePermissions])]
+            : pagePermissions,
         action_permissions: normalizeTextArray(user.action_permissions),
       },
     });

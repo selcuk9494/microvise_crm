@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  static const Color primary = Color(0xFF1D4ED8);
-  static const Color primaryDark = Color(0xFF1E3A8A);
-  static const Color primaryDeep = Color(0xFF163FA6);
-  static const Color primarySoft = Color(0xFFE8F0FF);
-  static const Color accent = Color(0xFF0F766E);
-  static const Color background = Color(0xFFF3F7FC);
-  static const Color backgroundAlt = Color(0xFFE9F0FA);
+  static const Color primary = Color(0xFF2463C7);
+  static const Color primaryDark = Color(0xFF173A76);
+  static const Color primaryDeep = Color(0xFF102A55);
+  static const Color primarySoft = Color(0xFFEAF1FF);
+  static const Color accent = Color(0xFF0F8B7A);
+  static const Color background = Color(0xFFF6F8FB);
+  static const Color backgroundAlt = Color(0xFFEEF3F8);
   static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceMuted = Color(0xFFF8FAFD);
-  static const Color surfaceSoft = Color(0xFFF6F9FD);
-  static const Color border = Color(0xFFD9E2EE);
-  static const Color borderStrong = Color(0xFFC6D3E3);
+  static const Color surfaceMuted = Color(0xFFF8FAFC);
+  static const Color surfaceSoft = Color(0xFFF1F5F9);
+  static const Color border = Color(0xFFE2E8F0);
+  static const Color borderStrong = Color(0xFFCBD5E1);
   static const Color text = Color(0xFF0F172A);
   static const Color textSoft = Color(0xFF475569);
   static const Color textMuted = Color(0xFF64748B);
@@ -22,10 +23,10 @@ class AppTheme {
   static const Color warning = Color(0xFFF59E0B);
   static const Color error = Color(0xFFE11D48);
 
-  static const double radiusXs = 8;
-  static const double radiusSm = 12;
-  static const double radiusMd = 16;
-  static const double radiusLg = 20;
+  static const double radiusXs = 6;
+  static const double radiusSm = 8;
+  static const double radiusMd = 8;
+  static const double radiusLg = 12;
 
   static const EdgeInsets pagePaddingDesktop = EdgeInsets.symmetric(
     horizontal: 24,
@@ -42,9 +43,9 @@ class AppTheme {
 
   static List<BoxShadow> get cardShadow => [
     BoxShadow(
-      color: const Color(0xFF0F172A).withValues(alpha: 0.035),
-      blurRadius: 22,
-      offset: const Offset(0, 8),
+      color: const Color(0xFF0F172A).withValues(alpha: 0.045),
+      blurRadius: 18,
+      offset: const Offset(0, 6),
     ),
   ];
 
@@ -78,13 +79,13 @@ class AppTheme {
         fontWeight: FontWeight.w800,
         fontSize: 22,
         color: text,
-        letterSpacing: -0.5,
+        letterSpacing: 0,
       ),
       titleLarge: GoogleFonts.manrope(
         fontWeight: FontWeight.w800,
         fontSize: 20,
         color: text,
-        letterSpacing: -0.4,
+        letterSpacing: 0,
       ),
       titleMedium: GoogleFonts.manrope(
         fontWeight: FontWeight.w700,

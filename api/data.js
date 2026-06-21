@@ -23,6 +23,7 @@ const {
   ensureWorkOrderSignaturesTable,
   ensureWorkOrdersPaymentRequiredColumn,
   ensureWorkOrdersStatusCheckConstraint,
+  ensureFinanceTables,
 } = require('./_lib/schema');
 const {
   handleCors,
@@ -88,7 +89,7 @@ function parseHalkbankRow(html, slug, code) {
   return { code, buying, selling, time };
 }
 
-function requirePage(user, pageKey, res) {
+function requirePage(req, user, pageKey, res) {
   if (!hasPageAccess(user, pageKey)) {
     forbidden(req, res, 'Erişim yetkiniz yok.');
     return false;
@@ -96,7 +97,7 @@ function requirePage(user, pageKey, res) {
   return true;
 }
 
-function requireAnyPage(user, pageKeys, res) {
+function requireAnyPage(req, user, pageKeys, res) {
   const keys = Array.isArray(pageKeys)
     ? pageKeys
     : [String(pageKeys || '').trim()].filter((k) => k.length > 0);
@@ -137,7 +138,7 @@ module.exports = async (req, res) => {
 
   try {
     const user = await getAuthenticatedUser(req);
-    if (!user) return unauthorized(res);
+    if (!user) return unauthorized(req, res);
 
     const resource = String(req.query.resource || '').trim();
     if (!resource) return badRequest(req, res, 'resource zorunludur.');
@@ -150,62 +151,67 @@ module.exports = async (req, res) => {
       resource === 'customer_licenses' ||
       resource === 'customer_work_orders'
     ) {
-      if (!requirePage(user, 'musteriler', res)) return;
+      if (!requirePage(req, user, 'musteriler', res)) return;
     }
     if (resource.startsWith('service')) {
-      if (!requirePage(user, 'servis', res)) return;
+      if (!requirePage(req, user, 'servis', res)) return;
     }
     if (resource.startsWith('definition_')) {
       if (resource === 'definition_work_order_types') {
-        if (!requireAnyPage(user, ['tanimlamalar', 'is_emirleri', 'formlar'], res))
+        if (!requireAnyPage(req, user, ['tanimlamalar', 'is_emirleri', 'formlar'], res))
           return;
       } else if (resource === 'definition_work_order_close_notes') {
-        if (!requireAnyPage(user, ['tanimlamalar', 'is_emirleri'], res)) return;
+        if (!requireAnyPage(req, user, ['tanimlamalar', 'is_emirleri'], res)) return;
       } else if (
         resource === 'definition_service_fault_types' ||
         resource === 'definition_service_accessory_types'
       ) {
-        if (!requireAnyPage(user, ['tanimlamalar', 'servis'], res)) return;
+        if (!requireAnyPage(req, user, ['tanimlamalar', 'servis'], res)) return;
       } else if (resource === 'definition_cities') {
-        if (!requireAnyPage(user, ['tanimlamalar', 'musteriler', 'is_emirleri'], res))
+        if (!requireAnyPage(req, user, ['tanimlamalar', 'musteriler', 'is_emirleri'], res))
           return;
+      } else if (resource === 'definition_tax_rates') {
+        if (!requireAnyPage(req, user, ['tanimlamalar', 'e_fatura', 'faturalama'], res)) return;
       } else {
-        if (!requirePage(user, 'tanimlamalar', res)) return;
+        if (!requirePage(req, user, 'tanimlamalar', res)) return;
       }
     }
     if (resource.startsWith('personnel_')) {
-      if (!requirePage(user, 'personel', res)) return;
+      if (!requirePage(req, user, 'personel', res)) return;
     }
     if (resource === 'personnel_users') {
-      if (!requireAnyPage(user, ['personel', 'is_emirleri', 'formlar'], res)) return;
+      if (!requireAnyPage(req, user, ['personel', 'is_emirleri', 'formlar'], res)) return;
     }
     if (resource.startsWith('products_') || resource === 'customers_lookup') {
-      if (!requirePage(user, 'urunler', res)) return;
+      if (!requirePage(req, user, 'urunler', res)) return;
     }
     if (
       resource === 'application_form_print_settings' ||
       resource === 'scrap_form_print_settings' ||
       resource === 'transfer_form_print_settings'
     ) {
-      if (!requirePage(user, 'formlar', res)) return;
+      if (!requirePage(req, user, 'formlar', res)) return;
     }
     if (resource === 'serial_tracking') {
-      if (!requirePage(user, 'formlar', res)) return;
+      if (!requirePage(req, user, 'formlar', res)) return;
     }
     if (resource === 'serial_tracking_lookup') {
-      if (!requirePage(user, 'formlar', res)) return;
+      if (!requirePage(req, user, 'formlar', res)) return;
     }
     if (resource === 'work_order_payments') {
-      if (!requirePage(user, 'is_emirleri', res)) return;
+      if (!requirePage(req, user, 'is_emirleri', res)) return;
+    }
+    if (resource.startsWith('finance_')) {
+      if (!requirePage(req, user, 'finans', res)) return;
     }
     if (resource === 'halkbank_exchange_rates') {
-      if (!requirePage(user, 'panel', res)) return;
+      if (!requirePage(req, user, 'panel', res)) return;
     }
     if (resource === 'definition_region_colors') {
-      if (!requirePage(user, 'tanimlamalar', res)) return;
+      if (!requirePage(req, user, 'tanimlamalar', res)) return;
     }
     if (resource.startsWith('form_')) {
-      if (!requirePage(user, 'formlar', res)) return;
+      if (!requirePage(req, user, 'formlar', res)) return;
     }
 
     switch (resource) {
@@ -222,7 +228,7 @@ module.exports = async (req, res) => {
       }
 
       case 'customers_lookup_vkn': {
-        if (!requirePage(user, 'musteriler', res)) return;
+        if (!requirePage(req, user, 'musteriler', res)) return;
         const result = await query(
           `
             select id,name,vkn,is_active
@@ -501,7 +507,7 @@ module.exports = async (req, res) => {
       }
 
       case 'work_order_detail': {
-        if (!requirePage(user, 'is_emirleri', res)) return;
+        if (!requirePage(req, user, 'is_emirleri', res)) return;
         await ensureWorkOrderSignaturesTable();
         await ensureWorkOrdersPaymentRequiredColumn();
         await ensureWorkOrdersStatusCheckConstraint();
@@ -789,7 +795,7 @@ module.exports = async (req, res) => {
       }
 
       case 'customer_device_by_serial': {
-        if (!requireAnyPage(user, ['servis'], res)) return;
+        if (!requireAnyPage(req, user, ['servis'], res)) return;
         const serial = String(req.query.serial || '').trim();
         if (!serial) return ok(req, res, {});
         const result = await query(
@@ -865,9 +871,67 @@ module.exports = async (req, res) => {
       }
 
       case 'definition_tax_rates': {
-        const result = await query(
-          `select * from public.tax_rates where is_active = true order by sort_order asc`,
-        );
+        await query(`
+          insert into public.tax_rates (name, rate, is_default, sort_order)
+          select 'KDV %0', 0, false, 0
+          where not exists (select 1 from public.tax_rates where rate = 0)
+        `).catch(() => {});
+        await query(`
+          insert into public.tax_rates (name, rate, is_default, sort_order)
+          select 'KDV %1', 1, false, 1
+          where not exists (select 1 from public.tax_rates where rate = 1)
+        `).catch(() => {});
+        await query(`
+          insert into public.tax_rates (name, rate, is_default, sort_order)
+          select 'KDV %5', 5, false, 5
+          where not exists (select 1 from public.tax_rates where rate = 5)
+        `).catch(() => {});
+        await query(`
+          insert into public.tax_rates (name, rate, is_default, sort_order)
+          select 'KDV %10', 10, false, 10
+          where not exists (select 1 from public.tax_rates where rate = 10)
+        `).catch(() => {});
+        await query(`
+          insert into public.tax_rates (name, rate, is_default, sort_order)
+          select 'KDV %16', 16, false, 16
+          where not exists (select 1 from public.tax_rates where rate = 16)
+        `).catch(() => {});
+        await query(`
+          insert into public.tax_rates (name, rate, is_default, sort_order)
+          select 'KDV %18', 18, false, 18
+          where not exists (select 1 from public.tax_rates where rate = 18)
+        `).catch(() => {});
+        await query(`
+          insert into public.tax_rates (name, rate, is_default, sort_order)
+          select 'KDV %20', 20, true, 20
+          where not exists (select 1 from public.tax_rates where rate = 20)
+        `).catch(() => {});
+        const result = await query(`
+          with ranked as (
+            select
+              id,
+              case
+                when rate in (0, 1, 5, 10, 16, 18, 20)
+                  then 'KDV %' || trim(to_char(rate, 'FM999999990.##'))
+                else coalesce(nullif(btrim(name), ''), 'KDV %' || trim(to_char(rate, 'FM999999990.##')))
+              end as name,
+              rate::double precision as rate,
+              is_default,
+              is_active,
+              sort_order,
+              created_at,
+              row_number() over (
+                partition by rate
+                order by is_default desc, is_active desc, sort_order asc, created_at asc, id asc
+              ) as rn
+            from public.tax_rates
+            where is_active = true
+          )
+          select id, name, rate, is_default, is_active, sort_order, created_at
+          from ranked
+          where rn = 1
+          order by rate asc, sort_order asc
+        `);
         return ok(req, res, { items: result.rows });
       }
 
@@ -1197,7 +1261,7 @@ module.exports = async (req, res) => {
       }
 
       case 'form_fault_list': {
-        if (!requirePage(user, 'formlar', res)) return;
+        if (!requirePage(req, user, 'formlar', res)) return;
         await ensureFaultFormsTable();
         const showPassive = parseBoolean(req.query.showPassive, false);
         const values = [];
@@ -1326,7 +1390,7 @@ module.exports = async (req, res) => {
       }
 
       case 'invoice_items_queue': {
-        if (!requireAnyPage(user, ['faturalama'], res)) return;
+        if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) return;
         const okTable = await ensureInvoiceItemsTable();
         if (!okTable) return ok(req, res, { items: [] });
         const cols = await getTableColumns('invoice_items');
@@ -1492,7 +1556,7 @@ module.exports = async (req, res) => {
       }
 
       case 'invoices_list': {
-        if (!requireAnyPage(user, ['faturalama'], res)) return;
+        if (!requireAnyPage(req, user, ['faturalama'], res)) return;
         const invoiceType = String(req.query.invoiceType || '').trim();
         const status = String(req.query.status || '').trim();
         const customerId = String(req.query.customerId || '').trim();
@@ -1511,8 +1575,17 @@ module.exports = async (req, res) => {
           whereSql += ` and i.invoice_type = $${values.length}`;
         }
         if (status) {
-          values.push(status);
-          whereSql += ` and i.status = $${values.length}`;
+          const statuses = status
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean);
+          if (statuses.length > 1) {
+            values.push(statuses);
+            whereSql += ` and i.status = any($${values.length}::text[])`;
+          } else {
+            values.push(status);
+            whereSql += ` and i.status = $${values.length}`;
+          }
         }
         if (customerId) {
           values.push(customerId);
@@ -1529,14 +1602,90 @@ module.exports = async (req, res) => {
 
         const result = await query(
           `
+            with filtered_invoices as (
+              select i.*
+              from public.invoices i
+              ${whereSql}
+              order by i.invoice_date desc
+              limit 800
+            ),
+            item_totals as (
+              select
+                ii.invoice_id,
+                coalesce(sum(ii.unit_price * ii.quantity), 0) as subtotal,
+                coalesce(sum(
+                  case
+                    when ii.discount_amount >= (ii.unit_price * ii.quantity) - 0.01 then 0
+                    else ii.discount_amount
+                  end
+                ), 0) as discount_total,
+                coalesce(sum(
+                  case
+                    when ii.tax_amount <> 0 then ii.tax_amount
+                    else greatest(
+                      0,
+                      ((ii.unit_price * ii.quantity) -
+                        case
+                          when ii.discount_amount >= (ii.unit_price * ii.quantity) - 0.01 then 0
+                          else ii.discount_amount
+                        end
+                      ) * (ii.tax_rate / 100)
+                    )
+                  end
+                ), 0) as tax_total,
+                coalesce(sum(
+                  case
+                    when ii.line_total <> 0 then ii.line_total
+                    else greatest(
+                      0,
+                      ((ii.unit_price * ii.quantity) -
+                        case
+                          when ii.discount_amount >= (ii.unit_price * ii.quantity) - 0.01 then 0
+                          else ii.discount_amount
+                        end
+                      ) * (1 + (ii.tax_rate / 100))
+                    )
+                  end
+                ), 0) as grand_total
+              from public.invoice_items ii
+              join filtered_invoices fi on fi.id = ii.invoice_id
+              group by ii.invoice_id
+            )
             select
-              i.*,
+              fi.*,
+              case
+                when coalesce(fi.subtotal, 0) = 0 and coalesce(item_totals.subtotal, 0) <> 0
+                  then item_totals.subtotal
+                else fi.subtotal
+              end as effective_subtotal,
+              case
+                when coalesce(fi.tax_total, 0) = 0 and coalesce(item_totals.tax_total, 0) <> 0
+                  then item_totals.tax_total
+                else fi.tax_total
+              end as effective_tax_total,
+              case
+                when coalesce(fi.discount_total, 0) = 0 and coalesce(item_totals.discount_total, 0) <> 0
+                  then item_totals.discount_total
+                else fi.discount_total
+              end as effective_discount_total,
+              case
+                when coalesce(fi.grand_total, 0) = 0 and coalesce(item_totals.grand_total, 0) <> 0
+                  then item_totals.grand_total
+                when coalesce(fi.grand_total, 0) = 0 and coalesce(fi.paid_amount, 0) <> 0
+                  then fi.paid_amount
+                else fi.grand_total
+              end as effective_grand_total,
+              case
+                when coalesce(fi.grand_total, 0) = 0
+                  and fi.status = 'partial'
+                  then 'open'
+                else fi.status
+              end as effective_status,
               json_build_object('name', c.name) as customers
-            from public.invoices i
-            left join public.customers c on c.id = i.customer_id
-            ${whereSql}
-            order by i.invoice_date desc
-            limit 800
+            from filtered_invoices fi
+            left join public.customers c on c.id = fi.customer_id
+            left join item_totals on item_totals.invoice_id = fi.id
+            order by fi.invoice_date desc
           `,
           values,
         );
@@ -1544,16 +1693,47 @@ module.exports = async (req, res) => {
       }
 
       case 'customer_open_invoices': {
-        if (!requireAnyPage(user, ['faturalama', 'musteriler'], res)) return;
+        if (!requireAnyPage(req, user, ['faturalama', 'e_fatura', 'musteriler'], res)) return;
         const customerId = String(req.query.customerId || '').trim();
         if (!customerId) return badRequest(req, res, 'customerId zorunludur.');
         const result = await query(
           `
             select
               i.*,
+              case
+                when coalesce(i.grand_total, 0) = 0 and coalesce(item_totals.grand_total, 0) <> 0
+                  then item_totals.grand_total
+                when coalesce(i.grand_total, 0) = 0 and coalesce(i.paid_amount, 0) <> 0
+                  then i.paid_amount
+                else i.grand_total
+              end as effective_grand_total,
+              case
+                when coalesce(i.grand_total, 0) = 0
+                  and i.status = 'partial'
+                  then 'open'
+                else i.status
+              end as effective_status,
               json_build_object('name', c.name) as customers
             from public.invoices i
             left join public.customers c on c.id = i.customer_id
+            left join lateral (
+              select coalesce(sum(
+                case
+                  when ii.line_total <> 0 then ii.line_total
+                  else greatest(
+                    0,
+                    ((ii.unit_price * ii.quantity) -
+                      case
+                        when ii.discount_amount >= (ii.unit_price * ii.quantity) - 0.01 then 0
+                        else ii.discount_amount
+                      end
+                    ) * (1 + (ii.tax_rate / 100))
+                  )
+                end
+              ), 0) as grand_total
+              from public.invoice_items ii
+              where ii.invoice_id = i.id
+            ) item_totals on true
             where i.customer_id = $1
               and i.is_active = true
               and i.status in ('open','partial')
@@ -1565,7 +1745,7 @@ module.exports = async (req, res) => {
       }
 
       case 'invoice_detail': {
-        if (!requireAnyPage(user, ['faturalama'], res)) return;
+        if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) return;
         const id = String(req.query.invoiceId || '').trim();
         if (!id) return badRequest(req, res, 'invoiceId zorunludur.');
         const result = await query(
@@ -1592,7 +1772,7 @@ module.exports = async (req, res) => {
       }
 
       case 'account_balances': {
-        if (!requireAnyPage(user, ['faturalama'], res)) return;
+        if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) return;
         const result = await query(
           `select * from public.account_balances order by name asc`,
         );
@@ -1600,7 +1780,7 @@ module.exports = async (req, res) => {
       }
 
       case 'transactions_list': {
-        if (!requireAnyPage(user, ['faturalama'], res)) return;
+        if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) return;
         const customerId = String(req.query.customerId || '').trim();
         const invoiceId = String(req.query.invoiceId || '').trim();
         const transactionType = String(req.query.transactionType || '').trim();
@@ -1653,8 +1833,100 @@ module.exports = async (req, res) => {
         return ok(req, res, { items: result.rows });
       }
 
+      case 'finance_accounts': {
+        await ensureFinanceTables();
+        const includePassive = parseBoolean(req.query.includePassive, false);
+        const values = [];
+        let whereSql = 'where true';
+        if (!includePassive) {
+          values.push(true);
+          whereSql += ` and a.is_active = $${values.length}`;
+        }
+        const result = await query(
+          `
+            select
+              a.*,
+              coalesce(tx.in_count, 0)::int as in_count,
+              coalesce(tx.out_count, 0)::int as out_count
+            from public.finance_accounts a
+            left join lateral (
+              select
+                count(*) filter (where direction = 'in' and is_active = true) as in_count,
+                count(*) filter (where direction = 'out' and is_active = true) as out_count
+              from public.finance_transactions t
+              where t.account_id = a.id
+            ) tx on true
+            ${whereSql}
+            order by a.is_active desc, a.account_type asc, a.name asc
+          `,
+          values,
+        );
+        return ok(req, res, { items: result.rows });
+      }
+
+      case 'finance_transactions': {
+        await ensureFinanceTables();
+        const accountId = String(req.query.accountId || '').trim();
+        const customerId = String(req.query.customerId || '').trim();
+        const direction = String(req.query.direction || '').trim();
+        const transactionType = String(req.query.transactionType || '').trim();
+        const startDate = String(req.query.startDate || '').trim();
+        const endDate = String(req.query.endDate || '').trim();
+        const includePassive = parseBoolean(req.query.includePassive, false);
+
+        const values = [];
+        let whereSql = 'where true';
+        if (!includePassive) {
+          values.push(true);
+          whereSql += ` and t.is_active = $${values.length}`;
+        }
+        if (accountId) {
+          values.push(accountId);
+          whereSql += ` and t.account_id = $${values.length}`;
+        }
+        if (customerId) {
+          values.push(customerId);
+          whereSql += ` and t.customer_id = $${values.length}`;
+        }
+        if (direction) {
+          values.push(direction);
+          whereSql += ` and t.direction = $${values.length}`;
+        }
+        if (transactionType) {
+          values.push(transactionType);
+          whereSql += ` and t.transaction_type = $${values.length}`;
+        }
+        if (startDate) {
+          values.push(startDate);
+          whereSql += ` and t.transaction_date >= $${values.length}::date`;
+        }
+        if (endDate) {
+          values.push(endDate);
+          whereSql += ` and t.transaction_date <= $${values.length}::date`;
+        }
+
+        const result = await query(
+          `
+            select
+              t.*,
+              json_build_object('name', a.name, 'account_type', a.account_type, 'currency', a.currency) as finance_accounts,
+              json_build_object('name', c.name, 'vkn', c.vkn) as customers,
+              json_build_object('invoice_number', i.invoice_number) as invoices
+            from public.finance_transactions t
+            left join public.finance_accounts a on a.id = t.account_id
+            left join public.customers c on c.id = t.customer_id
+            left join public.invoices i on i.id = t.invoice_id
+            ${whereSql}
+            order by t.transaction_date desc, t.created_at desc
+            limit 2000
+          `,
+          values,
+        );
+        return ok(req, res, { items: result.rows });
+      }
+
       case 'reports_users': {
-        if (!requireAnyPage(user, ['raporlar'], res)) return;
+        if (!requireAnyPage(req, user, ['raporlar'], res)) return;
         const result = await query(
           `select id,full_name,role from public.users order by full_name asc`,
         );
@@ -1662,7 +1934,7 @@ module.exports = async (req, res) => {
       }
 
       case 'reports_payments': {
-        if (!requireAnyPage(user, ['raporlar'], res)) return;
+        if (!requireAnyPage(req, user, ['raporlar'], res)) return;
         const from = String(req.query.from || '').trim();
         const userId = String(req.query.userId || '').trim();
         const values = [];
@@ -1695,7 +1967,7 @@ module.exports = async (req, res) => {
       }
 
       case 'reports_work_orders': {
-        if (!requireAnyPage(user, ['raporlar'], res)) return;
+        if (!requireAnyPage(req, user, ['raporlar'], res)) return;
         const from = String(req.query.from || '').trim();
         const userId = String(req.query.userId || '').trim();
         const values = [];
@@ -1722,7 +1994,7 @@ module.exports = async (req, res) => {
       }
 
       case 'invoice_number': {
-        if (!requireAnyPage(user, ['faturalama'], res)) return;
+        if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) return;
         const invoiceType = String(req.query.invoiceType || '').trim();
         if (!invoiceType) return badRequest(req, res, 'invoiceType zorunludur.');
         const result = await query(
@@ -1733,7 +2005,7 @@ module.exports = async (req, res) => {
       }
 
       case 'products_list': {
-        if (!requireAnyPage(user, ['urunler', 'faturalama', 'formlar'], res)) return;
+        if (!requireAnyPage(req, user, ['urunler', 'faturalama', 'e_fatura', 'formlar'], res)) return;
         const category = String(req.query.category || '').trim();
         const values = [];
         let whereSql = 'where p.is_active = true';
@@ -1755,13 +2027,13 @@ module.exports = async (req, res) => {
       }
 
       case 'stock_levels': {
-        if (!requireAnyPage(user, ['urunler', 'faturalama'], res)) return;
+        if (!requireAnyPage(req, user, ['urunler', 'faturalama', 'e_fatura'], res)) return;
         const result = await query(`select * from public.stock_levels`);
         return ok(req, res, { items: result.rows });
       }
 
       case 'product_serial_inventory': {
-        if (!requireAnyPage(user, ['urunler', 'formlar'], res)) return;
+        if (!requireAnyPage(req, user, ['urunler', 'formlar'], res)) return;
         const productId = String(req.query.productId || '').trim();
         const includeConsumed = parseBoolean(req.query.includeConsumed, false);
         const values = [];
@@ -1790,7 +2062,7 @@ module.exports = async (req, res) => {
       }
 
       case 'product_serial_inventory_summary': {
-        if (!requireAnyPage(user, ['urunler', 'formlar'], res)) return;
+        if (!requireAnyPage(req, user, ['urunler', 'formlar'], res)) return;
         const result = await query(
           `select product_id,total_count,available_count,consumed_count from public.product_serial_inventory_summary`,
         );
@@ -1825,7 +2097,7 @@ module.exports = async (req, res) => {
       }
 
       case 'customer_branches': {
-        if (!requireAnyPage(user, ['musteriler', 'is_emirleri'], res)) return;
+        if (!requireAnyPage(req, user, ['musteriler', 'is_emirleri'], res)) return;
         const customerId = String(req.query.customerId || '').trim();
         if (!customerId) return ok(req, res, { items: [] });
         const result = await query(
@@ -1920,7 +2192,7 @@ module.exports = async (req, res) => {
       }
 
       case 'line_stock': {
-        if (!requireAnyPage(user, ['urunler', 'is_emirleri'], res)) return;
+        if (!requireAnyPage(req, user, ['urunler', 'is_emirleri'], res)) return;
         await ensureLineStockTable();
 
         const search = String(req.query.search || '').trim();

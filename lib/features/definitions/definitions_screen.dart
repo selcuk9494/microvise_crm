@@ -58,14 +58,13 @@ final deviceModelsProvider = FutureProvider<List<DeviceModel>>((ref) async {
       .from('device_models')
       .select('id,name,is_active,brand_id,device_brands(name)')
       .order('name');
-  return (rows as List).map((e) {
-    final map = e as Map<String, dynamic>;
-    final brand = map['device_brands'] as Map<String, dynamic>?;
-    return DeviceModel.fromJson({
-      ...map,
-      'brand_name': brand?['name'],
-    });
-  }).toList(growable: false);
+  return (rows as List)
+      .map((e) {
+        final map = e as Map<String, dynamic>;
+        final brand = map['device_brands'] as Map<String, dynamic>?;
+        return DeviceModel.fromJson({...map, 'brand_name': brand?['name']});
+      })
+      .toList(growable: false);
 });
 
 // İş Emri Tipleri Provider
@@ -96,29 +95,33 @@ final workOrderTypesProvider = FutureProvider<List<WorkOrderType>>((ref) async {
 
 final workOrderCloseNotesProvider =
     FutureProvider<List<WorkOrderCloseNoteDefinition>>((ref) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient != null) {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: {'resource': 'definition_work_order_close_notes'},
-    );
-    return ((response['items'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(WorkOrderCloseNoteDefinition.fromJson)
-        .toList(growable: false);
-  }
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'definition_work_order_close_notes'},
+        );
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(WorkOrderCloseNoteDefinition.fromJson)
+            .toList(growable: false);
+      }
 
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
-  final rows = await client
-      .from('work_order_close_notes')
-      .select('id,name,is_active,sort_order,created_at')
-      .eq('is_active', true)
-      .order('sort_order');
-  return (rows as List)
-      .map((e) => WorkOrderCloseNoteDefinition.fromJson(e as Map<String, dynamic>))
-      .toList(growable: false);
-});
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
+      final rows = await client
+          .from('work_order_close_notes')
+          .select('id,name,is_active,sort_order,created_at')
+          .eq('is_active', true)
+          .order('sort_order');
+      return (rows as List)
+          .map(
+            (e) => WorkOrderCloseNoteDefinition.fromJson(
+              e as Map<String, dynamic>,
+            ),
+          )
+          .toList(growable: false);
+    });
 
 class RegionColorDefinition {
   const RegionColorDefinition({
@@ -154,33 +157,39 @@ class RegionColorDefinition {
 
 final regionColorDefinitionsProvider =
     FutureProvider<List<RegionColorDefinition>>((ref) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient != null) {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: {'resource': 'definition_region_colors'},
-    );
-    return ((response['items'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(RegionColorDefinition.fromJson)
-        .toList(growable: false);
-  }
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'definition_region_colors'},
+        );
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(RegionColorDefinition.fromJson)
+            .toList(growable: false);
+      }
 
-  return const [];
-});
+      return const [];
+    });
 
 // KDV Oranları Provider
 final taxRatesProvider = FutureProvider<List<TaxRate>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
   if (apiClient != null) {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: {'resource': 'definition_tax_rates'},
-    );
-    return ((response['items'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(TaxRate.fromJson)
-        .toList(growable: false);
+    try {
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'definition_tax_rates'},
+      );
+      final items = ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(TaxRate.fromJson)
+          .toList(growable: false);
+      if (items.isNotEmpty) return items;
+    } catch (_) {
+      return _standardTaxRates;
+    }
+    return _standardTaxRates;
   }
 
   final client = ref.watch(supabaseClientProvider);
@@ -195,7 +204,19 @@ final taxRatesProvider = FutureProvider<List<TaxRate>>((ref) async {
       .toList(growable: false);
 });
 
-final cityDefinitionsProvider = FutureProvider<List<CityDefinition>>((ref) async {
+const _standardTaxRates = [
+  TaxRate(id: 'standard-0', name: 'KDV %0', rate: 0),
+  TaxRate(id: 'standard-1', name: 'KDV %1', rate: 1),
+  TaxRate(id: 'standard-5', name: 'KDV %5', rate: 5),
+  TaxRate(id: 'standard-10', name: 'KDV %10', rate: 10),
+  TaxRate(id: 'standard-16', name: 'KDV %16', rate: 16),
+  TaxRate(id: 'standard-18', name: 'KDV %18', rate: 18),
+  TaxRate(id: 'standard-20', name: 'KDV %20', rate: 20, isDefault: true),
+];
+
+final cityDefinitionsProvider = FutureProvider<List<CityDefinition>>((
+  ref,
+) async {
   final apiClient = ref.watch(apiClientProvider);
   if (apiClient != null) {
     final response = await apiClient.getJson(
@@ -249,80 +270,86 @@ final fiscalSymbolsProvider = FutureProvider<List<FiscalSymbolDefinition>>((
 
 final businessActivityTypesProvider =
     FutureProvider<List<BusinessActivityTypeDefinition>>((ref) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient != null) {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: {'resource': 'definition_business_activity_types'},
-    );
-    return ((response['items'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(BusinessActivityTypeDefinition.fromJson)
-        .toList(growable: false);
-  }
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'definition_business_activity_types'},
+        );
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(BusinessActivityTypeDefinition.fromJson)
+            .toList(growable: false);
+      }
 
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
-  final rows = await client
-      .from('business_activity_types')
-      .select('id,name,is_active,created_at')
-      .order('name');
-  return (rows as List)
-      .map(
-        (e) => BusinessActivityTypeDefinition.fromJson(e as Map<String, dynamic>),
-      )
-      .toList(growable: false);
-});
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
+      final rows = await client
+          .from('business_activity_types')
+          .select('id,name,is_active,created_at')
+          .order('name');
+      return (rows as List)
+          .map(
+            (e) => BusinessActivityTypeDefinition.fromJson(
+              e as Map<String, dynamic>,
+            ),
+          )
+          .toList(growable: false);
+    });
 
 final softwareCompaniesProvider =
     FutureProvider<List<SoftwareCompanyDefinition>>((ref) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient != null) {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: {'resource': 'definition_software_companies'},
-    );
-    return ((response['items'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(SoftwareCompanyDefinition.fromJson)
-        .toList(growable: false);
-  }
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'definition_software_companies'},
+        );
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(SoftwareCompanyDefinition.fromJson)
+            .toList(growable: false);
+      }
 
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
-  final rows = await client
-      .from('software_companies')
-      .select('id,name,is_active,created_at')
-      .order('name');
-  return (rows as List)
-      .map((e) => SoftwareCompanyDefinition.fromJson(e as Map<String, dynamic>))
-      .toList(growable: false);
-});
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
+      final rows = await client
+          .from('software_companies')
+          .select('id,name,is_active,created_at')
+          .order('name');
+      return (rows as List)
+          .map(
+            (e) =>
+                SoftwareCompanyDefinition.fromJson(e as Map<String, dynamic>),
+          )
+          .toList(growable: false);
+    });
 
 final applicationFormPrintSettingsProvider =
     FutureProvider<ApplicationFormPrintSettings>((ref) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient != null) {
-    final row = await apiClient.getJson(
-      '/data',
-      queryParameters: {'resource': 'application_form_print_settings'},
-    );
-    return ApplicationFormPrintSettings.fromJson(row);
-  }
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient != null) {
+        final row = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'application_form_print_settings'},
+        );
+        return ApplicationFormPrintSettings.fromJson(row);
+      }
 
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return ApplicationFormPrintSettings.defaults;
-  final row = await client
-      .from('application_form_settings')
-      .select()
-      .eq('id', 'default')
-      .maybeSingle();
-  if (row == null) return ApplicationFormPrintSettings.defaults;
-  return ApplicationFormPrintSettings.fromJson(row);
-});
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return ApplicationFormPrintSettings.defaults;
+      final row = await client
+          .from('application_form_settings')
+          .select()
+          .eq('id', 'default')
+          .maybeSingle();
+      if (row == null) return ApplicationFormPrintSettings.defaults;
+      return ApplicationFormPrintSettings.fromJson(row);
+    });
 
-final scrapFormPrintSettingsProvider =
-    FutureProvider<ScrapFormPrintSettings>((ref) async {
+final scrapFormPrintSettingsProvider = FutureProvider<ScrapFormPrintSettings>((
+  ref,
+) async {
   final apiClient = ref.watch(apiClientProvider);
   if (apiClient != null) {
     final row = await apiClient.getJson(
@@ -345,25 +372,25 @@ final scrapFormPrintSettingsProvider =
 
 final transferFormPrintSettingsProvider =
     FutureProvider<TransferFormPrintSettings>((ref) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient != null) {
-    final row = await apiClient.getJson(
-      '/data',
-      queryParameters: {'resource': 'transfer_form_print_settings'},
-    );
-    return TransferFormPrintSettings.fromJson(row);
-  }
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient != null) {
+        final row = await apiClient.getJson(
+          '/data',
+          queryParameters: {'resource': 'transfer_form_print_settings'},
+        );
+        return TransferFormPrintSettings.fromJson(row);
+      }
 
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return TransferFormPrintSettings.defaults;
-  final row = await client
-      .from('transfer_form_settings')
-      .select()
-      .eq('id', 'default')
-      .maybeSingle();
-  if (row == null) return TransferFormPrintSettings.defaults;
-  return TransferFormPrintSettings.fromJson(row);
-});
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return TransferFormPrintSettings.defaults;
+      final row = await client
+          .from('transfer_form_settings')
+          .select()
+          .eq('id', 'default')
+          .maybeSingle();
+      if (row == null) return TransferFormPrintSettings.defaults;
+      return TransferFormPrintSettings.fromJson(row);
+    });
 
 class WorkOrderType {
   final String id;
@@ -372,15 +399,21 @@ class WorkOrderType {
   final String color;
   final bool isActive;
 
-  WorkOrderType({required this.id, required this.name, this.description, this.color = '#6366F1', this.isActive = true});
+  WorkOrderType({
+    required this.id,
+    required this.name,
+    this.description,
+    this.color = '#6366F1',
+    this.isActive = true,
+  });
 
   factory WorkOrderType.fromJson(Map<String, dynamic> json) => WorkOrderType(
-        id: json['id'].toString(),
-        name: json['name']?.toString() ?? '',
-        description: json['description']?.toString(),
-        color: json['color']?.toString() ?? '#6366F1',
-        isActive: json['is_active'] as bool? ?? true,
-      );
+    id: json['id'].toString(),
+    name: json['name']?.toString() ?? '',
+    description: json['description']?.toString(),
+    color: json['color']?.toString() ?? '#6366F1',
+    isActive: json['is_active'] as bool? ?? true,
+  );
 }
 
 class WorkOrderCloseNoteDefinition {
@@ -413,15 +446,24 @@ class TaxRate {
   final bool isDefault;
   final bool isActive;
 
-  TaxRate({required this.id, required this.name, required this.rate, this.isDefault = false, this.isActive = true});
+  const TaxRate({
+    required this.id,
+    required this.name,
+    required this.rate,
+    this.isDefault = false,
+    this.isActive = true,
+  });
 
   factory TaxRate.fromJson(Map<String, dynamic> json) => TaxRate(
-        id: json['id'].toString(),
-        name: json['name']?.toString() ?? '',
-        rate: (json['rate'] as num?)?.toDouble() ?? 0,
-        isDefault: json['is_default'] as bool? ?? false,
-        isActive: json['is_active'] as bool? ?? true,
-      );
+    id: json['id'].toString(),
+    name: json['name']?.toString() ?? '',
+    rate:
+        (json['rate'] as num?)?.toDouble() ??
+        double.tryParse(json['rate']?.toString().replaceAll(',', '.') ?? '') ??
+        0,
+    isDefault: json['is_default'] as bool? ?? false,
+    isActive: json['is_active'] as bool? ?? true,
+  );
 }
 
 class CityDefinition {
@@ -532,7 +574,10 @@ class DefinitionsScreen extends ConsumerWidget {
                   const TabBar(
                     isScrollable: true,
                     tabAlignment: TabAlignment.start,
-                    labelPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    labelPadding: EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     tabs: [
                       Tab(text: 'Markalar'),
                       Tab(text: 'Modeller'),
@@ -587,7 +632,10 @@ class _BrandsTab extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text('Cihaz Markaları', style: Theme.of(context).textTheme.titleMedium),
+                child: Text(
+                  'Cihaz Markaları',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
               FilledButton.icon(
                 onPressed: isAdmin
@@ -609,14 +657,12 @@ class _BrandsTab extends ConsumerWidget {
                 return ListView.separated(
                   itemCount: items.length,
                   separatorBuilder: (_, _) => const Gap(10),
-                  itemBuilder: (context, index) => _BrandRow(
-                    brand: items[index],
-                    isAdmin: isAdmin,
-                  ),
+                  itemBuilder: (context, index) =>
+                      _BrandRow(brand: items[index], isAdmin: isAdmin),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, _) => const _Empty(text: 'Yüklenemedi.'),
+              error: (error, _) => _Empty(text: 'Yüklenemedi: $error'),
             ),
           ),
         ],
@@ -642,13 +688,21 @@ class _ModelsTab extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text('Cihaz Modelleri', style: Theme.of(context).textTheme.titleMedium),
+                child: Text(
+                  'Cihaz Modelleri',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
               FilledButton.icon(
                 onPressed: isAdmin
                     ? () async {
-                        final brands = brandsAsync.value ?? const <DeviceBrand>[];
-                        await _showCreateModelDialog(context, ref, brands: brands);
+                        final brands =
+                            brandsAsync.value ?? const <DeviceBrand>[];
+                        await _showCreateModelDialog(
+                          context,
+                          ref,
+                          brands: brands,
+                        );
                         ref.invalidate(deviceModelsProvider);
                       }
                     : null,
@@ -665,14 +719,12 @@ class _ModelsTab extends ConsumerWidget {
                 return ListView.separated(
                   itemCount: items.length,
                   separatorBuilder: (_, _) => const Gap(10),
-                  itemBuilder: (context, index) => _ModelRow(
-                    model: items[index],
-                    isAdmin: isAdmin,
-                  ),
+                  itemBuilder: (context, index) =>
+                      _ModelRow(model: items[index], isAdmin: isAdmin),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, _) => const _Empty(text: 'Yüklenemedi.'),
+              error: (error, _) => _Empty(text: 'Yüklenemedi: $error'),
             ),
           ),
         ],
@@ -795,9 +847,9 @@ class _BrandRowState extends ConsumerState<_BrandRow> {
             child: Text(
               b.name,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    decoration: b.isActive ? null : TextDecoration.lineThrough,
-                  ),
+                fontWeight: FontWeight.w700,
+                decoration: b.isActive ? null : TextDecoration.lineThrough,
+              ),
             ),
           ),
           AppBadge(
@@ -879,8 +931,14 @@ class _ModelRowState extends ConsumerState<_ModelRow> {
   }
 
   Future<void> _edit() async {
-    final brands = ref.read(deviceBrandsProvider).value ?? const <DeviceBrand>[];
-    await _showCreateModelDialog(context, ref, brands: brands, initial: widget.model);
+    final brands =
+        ref.read(deviceBrandsProvider).value ?? const <DeviceBrand>[];
+    await _showCreateModelDialog(
+      context,
+      ref,
+      brands: brands,
+      initial: widget.model,
+    );
     ref.invalidate(deviceModelsProvider);
   }
 
@@ -950,17 +1008,16 @@ class _ModelRowState extends ConsumerState<_ModelRow> {
                 Text(
                   m.name,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: m.isActive ? null : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    decoration: m.isActive ? null : TextDecoration.lineThrough,
+                  ),
                 ),
                 const Gap(4),
                 Text(
                   m.brandName ?? '—',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ],
             ),
@@ -1033,7 +1090,9 @@ Future<void> _showCreateBrandDialog(
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -1052,7 +1111,9 @@ Future<void> _showCreateBrandDialog(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -1100,10 +1161,12 @@ Future<void> _showCreateBrandDialog(
                                     }
                                   } else {
                                     if (initial == null) {
-                                      await client!.from('device_brands').insert({
-                                        'name': name,
-                                        'is_active': true,
-                                      });
+                                      await client!
+                                          .from('device_brands')
+                                          .insert({
+                                            'name': name,
+                                            'is_active': true,
+                                          });
                                     } else {
                                       await client!
                                           .from('device_brands')
@@ -1149,7 +1212,8 @@ Future<void> _showCreateModelDialog(
   DeviceModel? initial,
 }) async {
   final controller = TextEditingController(text: initial?.name ?? '');
-  String? brandId = initial?.brandId ?? (brands.isEmpty ? null : brands.first.id);
+  String? brandId =
+      initial?.brandId ?? (brands.isEmpty ? null : brands.first.id);
   bool saving = false;
 
   await showDialog<void>(
@@ -1177,7 +1241,9 @@ Future<void> _showCreateModelDialog(
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -1209,7 +1275,9 @@ Future<void> _showCreateModelDialog(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -1266,11 +1334,13 @@ Future<void> _showCreateModelDialog(
                                     }
                                   } else {
                                     if (initial == null) {
-                                      await client!.from('device_models').insert({
-                                        'brand_id': selected,
-                                        'name': name,
-                                        'is_active': true,
-                                      });
+                                      await client!
+                                          .from('device_models')
+                                          .insert({
+                                            'brand_id': selected,
+                                            'name': name,
+                                            'is_active': true,
+                                          });
                                     } else {
                                       await client!
                                           .from('device_models')
@@ -1327,7 +1397,10 @@ class _WorkOrderTypesTab extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text('İş Emri Tipleri', style: Theme.of(context).textTheme.titleMedium),
+                child: Text(
+                  'İş Emri Tipleri',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
               FilledButton.icon(
                 onPressed: isAdmin
@@ -1349,10 +1422,8 @@ class _WorkOrderTypesTab extends ConsumerWidget {
                 return ListView.separated(
                   itemCount: items.length,
                   separatorBuilder: (_, _) => const Gap(10),
-                  itemBuilder: (context, index) => _WorkOrderTypeRow(
-                    type: items[index],
-                    isAdmin: isAdmin,
-                  ),
+                  itemBuilder: (context, index) =>
+                      _WorkOrderTypeRow(type: items[index], isAdmin: isAdmin),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -1377,7 +1448,11 @@ class _RegionColorsTab extends ConsumerWidget {
     return '#$v';
   }
 
-  Future<void> _edit(BuildContext context, WidgetRef ref, RegionColorDefinition item) async {
+  Future<void> _edit(
+    BuildContext context,
+    WidgetRef ref,
+    RegionColorDefinition item,
+  ) async {
     if (!isAdmin) return;
     final bgController = TextEditingController(text: item.bgColor);
     final borderController = TextEditingController(text: item.borderColor);
@@ -1471,10 +1546,9 @@ class _RegionColorsTab extends ConsumerWidget {
                     const Gap(12),
                     Text(
                       'Arka plan hazır renkler',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: const Color(0xFF64748B)),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
                     ),
                     const Gap(8),
                     Wrap(
@@ -1503,10 +1577,9 @@ class _RegionColorsTab extends ConsumerWidget {
                     const Gap(12),
                     Text(
                       'Çerçeve hazır renkler',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: const Color(0xFF64748B)),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
                     ),
                     const Gap(8),
                     Wrap(
@@ -1546,10 +1619,14 @@ class _RegionColorsTab extends ConsumerWidget {
                           child: FilledButton(
                             onPressed: () async {
                               final bgHex = _normalizeHex(bgController.text);
-                              final borderHex = _normalizeHex(borderController.text);
+                              final borderHex = _normalizeHex(
+                                borderController.text,
+                              );
                               if (bgHex == null || borderHex == null) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('HEX formatı geçersiz.')),
+                                  const SnackBar(
+                                    content: Text('HEX formatı geçersiz.'),
+                                  ),
                                 );
                                 return;
                               }
@@ -1576,11 +1653,15 @@ class _RegionColorsTab extends ConsumerWidget {
                                 );
                                 ref.invalidate(regionColorDefinitionsProvider);
                                 ref.invalidate(workOrderRegionThemeProvider);
-                                if (context.mounted) Navigator.of(context).pop();
+                                if (context.mounted) {
+                                  Navigator.of(context).pop();
+                                }
                               } catch (_) {
                                 if (!context.mounted) return;
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Kaydedilemedi.')),
+                                  const SnackBar(
+                                    content: Text('Kaydedilemedi.'),
+                                  ),
                                 );
                               }
                             },
@@ -1609,7 +1690,10 @@ class _RegionColorsTab extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text('Bölge Renkleri', style: Theme.of(context).textTheme.titleMedium),
+                child: Text(
+                  'Bölge Renkleri',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
               IconButton(
                 tooltip: 'Yenile',
@@ -1650,24 +1734,25 @@ class _RegionColorsTab extends ConsumerWidget {
                               children: [
                                 Text(
                                   it.label,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
+                                  style: Theme.of(context).textTheme.bodyMedium
                                       ?.copyWith(fontWeight: FontWeight.w700),
                                 ),
                                 const Gap(2),
                                 Text(
                                   '${it.bgColor} • ${it.borderColor}',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(color: const Color(0xFF64748B)),
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: const Color(0xFF64748B),
+                                      ),
                                 ),
                               ],
                             ),
                           ),
                           if (isAdmin)
-                            const Icon(Icons.edit_rounded, color: Color(0xFF94A3B8)),
+                            const Icon(
+                              Icons.edit_rounded,
+                              color: Color(0xFF94A3B8),
+                            ),
                         ],
                       ),
                     );
@@ -1751,7 +1836,8 @@ class _WorkOrderCloseNoteRow extends ConsumerStatefulWidget {
       _WorkOrderCloseNoteRowState();
 }
 
-class _WorkOrderCloseNoteRowState extends ConsumerState<_WorkOrderCloseNoteRow> {
+class _WorkOrderCloseNoteRowState
+    extends ConsumerState<_WorkOrderCloseNoteRow> {
   bool _saving = false;
 
   Future<void> _toggleActive() async {
@@ -1858,9 +1944,9 @@ class _WorkOrderCloseNoteRowState extends ConsumerState<_WorkOrderCloseNoteRow> 
           Expanded(
             child: Text(
               item.name,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
           if (widget.isAdmin) ...[
@@ -1896,8 +1982,9 @@ Future<void> _showCreateWorkOrderCloseNoteDialog(
   WorkOrderCloseNoteDefinition? initial,
 }) async {
   final nameController = TextEditingController(text: initial?.name ?? '');
-  final sortController =
-      TextEditingController(text: initial == null ? '' : initial.sortOrder.toString());
+  final sortController = TextEditingController(
+    text: initial == null ? '' : initial.sortOrder.toString(),
+  );
   bool saving = false;
 
   final ok = await showDialog<bool>(
@@ -1925,8 +2012,9 @@ Future<void> _showCreateWorkOrderCloseNoteDialog(
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed:
-                          saving ? null : () => Navigator.of(context).pop(false),
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(false),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -1972,7 +2060,8 @@ Future<void> _showCreateWorkOrderCloseNoteDialog(
                                 final name = nameController.text.trim();
                                 if (name.isEmpty) return;
                                 final sortOrder =
-                                    int.tryParse(sortController.text.trim()) ?? 0;
+                                    int.tryParse(sortController.text.trim()) ??
+                                    0;
 
                                 setState(() => saving = true);
                                 try {
@@ -1999,7 +2088,11 @@ Future<void> _showCreateWorkOrderCloseNoteDialog(
                                           'op': 'updateWhere',
                                           'table': 'work_order_close_notes',
                                           'filters': [
-                                            {'col': 'id', 'op': 'eq', 'value': initial.id},
+                                            {
+                                              'col': 'id',
+                                              'op': 'eq',
+                                              'value': initial.id,
+                                            },
                                           ],
                                           'values': {
                                             'name': name,
@@ -2010,16 +2103,21 @@ Future<void> _showCreateWorkOrderCloseNoteDialog(
                                     }
                                   } else {
                                     if (initial == null) {
-                                      await client!.from('work_order_close_notes').insert({
-                                        'name': name,
-                                        'sort_order': sortOrder,
-                                        'is_active': true,
-                                      });
+                                      await client!
+                                          .from('work_order_close_notes')
+                                          .insert({
+                                            'name': name,
+                                            'sort_order': sortOrder,
+                                            'is_active': true,
+                                          });
                                     } else {
-                                      await client!.from('work_order_close_notes').update({
-                                        'name': name,
-                                        'sort_order': sortOrder,
-                                      }).eq('id', initial.id);
+                                      await client!
+                                          .from('work_order_close_notes')
+                                          .update({
+                                            'name': name,
+                                            'sort_order': sortOrder,
+                                          })
+                                          .eq('id', initial.id);
                                     }
                                   }
                                   if (!context.mounted) return;
@@ -2176,15 +2274,17 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
                 Text(
                   t.name,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: t.isActive ? null : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    decoration: t.isActive ? null : TextDecoration.lineThrough,
+                  ),
                 ),
                 if (t.description != null && t.description!.isNotEmpty) ...[
                   const Gap(2),
                   Text(
                     t.description!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
                   ),
                 ],
               ],
@@ -2199,7 +2299,11 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
             OutlinedButton(
               onPressed: _saving ? null : _toggleActive,
               child: _saving
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : Text(t.isActive ? 'Pasif Yap' : 'Aktif Yap'),
             ),
           if (widget.isAdmin) ...[
@@ -2236,7 +2340,10 @@ class _TaxRatesTab extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text('KDV Oranları', style: Theme.of(context).textTheme.titleMedium),
+                child: Text(
+                  'KDV Oranları',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
               FilledButton.icon(
                 onPressed: isAdmin
@@ -2258,10 +2365,8 @@ class _TaxRatesTab extends ConsumerWidget {
                 return ListView.separated(
                   itemCount: items.length,
                   separatorBuilder: (_, _) => const Gap(10),
-                  itemBuilder: (context, index) => _TaxRateRow(
-                    rate: items[index],
-                    isAdmin: isAdmin,
-                  ),
+                  itemBuilder: (context, index) =>
+                      _TaxRateRow(rate: items[index], isAdmin: isAdmin),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -2291,6 +2396,10 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
     if (apiClient == null && client == null) return;
+    final values = {'is_active': !widget.rate.isActive};
+    if (widget.rate.isActive) {
+      values['is_default'] = false;
+    }
     setState(() => _saving = true);
     try {
       if (apiClient != null) {
@@ -2300,16 +2409,16 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
             'op': 'updateWhere',
             'table': 'tax_rates',
             'filters': [
-              {'col': 'id', 'op': 'eq', 'value': widget.rate.id},
+              {'col': 'rate', 'op': 'eq', 'value': widget.rate.rate},
             ],
-            'values': {'is_active': !widget.rate.isActive},
+            'values': values,
           },
         );
       } else {
         await client!
             .from('tax_rates')
-            .update({'is_active': !widget.rate.isActive})
-            .eq('id', widget.rate.id);
+            .update(values)
+            .eq('rate', widget.rate.rate);
       }
       ref.invalidate(taxRatesProvider);
     } finally {
@@ -2350,16 +2459,16 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
             'op': 'updateWhere',
             'table': 'tax_rates',
             'filters': [
-              {'col': 'id', 'op': 'eq', 'value': widget.rate.id},
+              {'col': 'rate', 'op': 'eq', 'value': widget.rate.rate},
             ],
-            'values': {'is_default': true},
+            'values': {'is_default': true, 'is_active': true},
           },
         );
       } else {
         await client!
             .from('tax_rates')
-            .update({'is_default': true})
-            .eq('id', widget.rate.id);
+            .update({'is_default': true, 'is_active': true})
+            .eq('rate', widget.rate.rate);
       }
       ref.invalidate(taxRatesProvider);
     } finally {
@@ -2382,7 +2491,9 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('KDV Oranını Sil'),
-        content: const Text('Bu kaydı silmek istiyor musunuz?'),
+        content: Text(
+          '%${widget.rate.rate.toStringAsFixed(0)} KDV oranını listeden kaldırmak istiyor musunuz?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -2403,15 +2514,19 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
         await apiClient.postJson(
           '/mutate',
           body: {
-            'op': 'deleteWhere',
+            'op': 'updateWhere',
             'table': 'tax_rates',
             'filters': [
-              {'col': 'id', 'op': 'eq', 'value': widget.rate.id},
+              {'col': 'rate', 'op': 'eq', 'value': widget.rate.rate},
             ],
+            'values': {'is_active': false, 'is_default': false},
           },
         );
       } else {
-        await client!.from('tax_rates').delete().eq('id', widget.rate.id);
+        await client!
+            .from('tax_rates')
+            .update({'is_active': false, 'is_default': false})
+            .eq('rate', widget.rate.rate);
       }
       ref.invalidate(taxRatesProvider);
     } finally {
@@ -2427,7 +2542,9 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: r.isDefault ? AppTheme.primary : AppTheme.border),
+        border: Border.all(
+          color: r.isDefault ? AppTheme.primary : AppTheme.border,
+        ),
       ),
       child: Row(
         children: [
@@ -2442,9 +2559,9 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
               child: Text(
                 '%${r.rate.toStringAsFixed(0)}',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.primary,
-                    ),
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.primary,
+                ),
               ),
             ),
           ),
@@ -2453,9 +2570,9 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
             child: Text(
               r.name,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    decoration: r.isActive ? null : TextDecoration.lineThrough,
-                  ),
+                fontWeight: FontWeight.w700,
+                decoration: r.isActive ? null : TextDecoration.lineThrough,
+              ),
             ),
           ),
           if (r.isDefault) ...[
@@ -2472,14 +2589,22 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
               OutlinedButton(
                 onPressed: _saving ? null : _setDefault,
                 child: _saving
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Text('Varsayılan Yap'),
               ),
             const Gap(6),
             OutlinedButton(
               onPressed: _saving ? null : _toggleActive,
               child: _saving
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : Text(r.isActive ? 'Pasif Yap' : 'Aktif Yap'),
             ),
             const Gap(6),
@@ -2599,10 +2724,8 @@ class _SoftwareCompaniesTab extends ConsumerWidget {
                 return ListView.separated(
                   itemCount: items.length,
                   separatorBuilder: (_, _) => const Gap(10),
-                  itemBuilder: (context, index) => _SoftwareCompanyRow(
-                    item: items[index],
-                    isAdmin: isAdmin,
-                  ),
+                  itemBuilder: (context, index) =>
+                      _SoftwareCompanyRow(item: items[index], isAdmin: isAdmin),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -2622,7 +2745,8 @@ class _SoftwareCompanyRow extends ConsumerStatefulWidget {
   final bool isAdmin;
 
   @override
-  ConsumerState<_SoftwareCompanyRow> createState() => _SoftwareCompanyRowState();
+  ConsumerState<_SoftwareCompanyRow> createState() =>
+      _SoftwareCompanyRowState();
 }
 
 class _SoftwareCompanyRowState extends ConsumerState<_SoftwareCompanyRow> {
@@ -2659,11 +2783,7 @@ class _SoftwareCompanyRowState extends ConsumerState<_SoftwareCompanyRow> {
   }
 
   Future<void> _edit() async {
-    await _showCreateSoftwareCompanyDialog(
-      context,
-      ref,
-      initial: widget.item,
-    );
+    await _showCreateSoftwareCompanyDialog(context, ref, initial: widget.item);
     ref.invalidate(softwareCompaniesProvider);
   }
 
@@ -2731,10 +2851,9 @@ class _SoftwareCompanyRowState extends ConsumerState<_SoftwareCompanyRow> {
             child: Text(
               item.name,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    decoration:
-                        item.isActive ? null : TextDecoration.lineThrough,
-                  ),
+                fontWeight: FontWeight.w700,
+                decoration: item.isActive ? null : TextDecoration.lineThrough,
+              ),
             ),
           ),
           AppBadge(
@@ -2805,7 +2924,9 @@ Future<void> _showCreateSoftwareCompanyDialog(
                       ),
                     ),
                     IconButton(
-                      onPressed: saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -2824,8 +2945,9 @@ Future<void> _showCreateSoftwareCompanyDialog(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed:
-                            saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -2876,16 +2998,14 @@ Future<void> _showCreateSoftwareCompanyDialog(
                                       await client!
                                           .from('software_companies')
                                           .insert({
-                                        'name': name,
-                                        'is_active': true,
-                                      });
+                                            'name': name,
+                                            'is_active': true,
+                                          });
                                     } else {
                                       await client!
                                           .from('software_companies')
-                                          .update({'name': name}).eq(
-                                        'id',
-                                        initial.id,
-                                      );
+                                          .update({'name': name})
+                                          .eq('id', initial.id);
                                     }
                                   }
                                   if (!context.mounted) return;
@@ -3037,10 +3157,9 @@ class _BusinessActivityTypeRowState
             child: Text(
               item.name,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    decoration:
-                        item.isActive ? null : TextDecoration.lineThrough,
-                  ),
+                fontWeight: FontWeight.w700,
+                decoration: item.isActive ? null : TextDecoration.lineThrough,
+              ),
             ),
           ),
           AppBadge(
@@ -3113,8 +3232,9 @@ Future<void> _showCreateBusinessActivityTypeDialog(
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed:
-                          saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -3186,16 +3306,14 @@ Future<void> _showCreateBusinessActivityTypeDialog(
                                       await client!
                                           .from('business_activity_types')
                                           .insert({
-                                        'name': name,
-                                        'is_active': true,
-                                      });
+                                            'name': name,
+                                            'is_active': true,
+                                          });
                                     } else {
                                       await client!
                                           .from('business_activity_types')
-                                          .update({'name': name}).eq(
-                                        'id',
-                                        initial.id,
-                                      );
+                                          .update({'name': name})
+                                          .eq('id', initial.id);
                                     }
                                   }
                                   if (!context.mounted) return;
@@ -3235,12 +3353,22 @@ Future<void> _showCreateWorkOrderTypeDialog(
   WorkOrderType? initial,
 }) async {
   final nameController = TextEditingController(text: initial?.name ?? '');
-  final descController =
-      TextEditingController(text: initial?.description ?? '');
+  final descController = TextEditingController(
+    text: initial?.description ?? '',
+  );
   String selectedColor = initial?.color ?? '#6366F1';
   bool saving = false;
 
-  final colors = ['#6366F1', '#22C55E', '#F59E0B', '#EF4444', '#3B82F6', '#8B5CF6', '#EC4899', '#14B8A6'];
+  final colors = [
+    '#6366F1',
+    '#22C55E',
+    '#F59E0B',
+    '#EF4444',
+    '#3B82F6',
+    '#8B5CF6',
+    '#EC4899',
+    '#14B8A6',
+  ];
 
   await showDialog<void>(
     context: context,
@@ -3269,7 +3397,9 @@ Future<void> _showCreateWorkOrderTypeDialog(
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -3278,15 +3408,23 @@ Future<void> _showCreateWorkOrderTypeDialog(
                 TextField(
                   controller: nameController,
                   autofocus: true,
-                  decoration: const InputDecoration(labelText: 'Tip Adı', hintText: 'Örn: Bakım'),
+                  decoration: const InputDecoration(
+                    labelText: 'Tip Adı',
+                    hintText: 'Örn: Bakım',
+                  ),
                 ),
                 const Gap(12),
                 TextField(
                   controller: descController,
-                  decoration: const InputDecoration(labelText: 'Açıklama (opsiyonel)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Açıklama (opsiyonel)',
+                  ),
                 ),
                 const Gap(12),
-                Text('Renk Seçin', style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  'Renk Seçin',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
                 const Gap(8),
                 Wrap(
                   spacing: 8,
@@ -3302,9 +3440,17 @@ Future<void> _showCreateWorkOrderTypeDialog(
                         decoration: BoxDecoration(
                           color: _parseColor(c),
                           borderRadius: BorderRadius.circular(8),
-                          border: isSelected ? Border.all(color: Colors.black, width: 2) : null,
+                          border: isSelected
+                              ? Border.all(color: Colors.black, width: 2)
+                              : null,
                         ),
-                        child: isSelected ? const Icon(Icons.check, color: Colors.white, size: 18) : null,
+                        child: isSelected
+                            ? const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 18,
+                              )
+                            : null,
                       ),
                     );
                   }).toList(),
@@ -3314,7 +3460,9 @@ Future<void> _showCreateWorkOrderTypeDialog(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -3333,8 +3481,8 @@ Future<void> _showCreateWorkOrderTypeDialog(
                                 try {
                                   final description =
                                       descController.text.trim().isEmpty
-                                          ? null
-                                          : descController.text.trim();
+                                      ? null
+                                      : descController.text.trim();
                                   if (apiClient != null) {
                                     if (initial == null) {
                                       await apiClient.postJson(
@@ -3378,19 +3526,20 @@ Future<void> _showCreateWorkOrderTypeDialog(
                                       await client!
                                           .from('work_order_types')
                                           .insert({
-                                        'name': name,
-                                        'description': description,
-                                        'color': selectedColor,
-                                        'is_active': true,
-                                      });
+                                            'name': name,
+                                            'description': description,
+                                            'color': selectedColor,
+                                            'is_active': true,
+                                          });
                                     } else {
                                       await client!
                                           .from('work_order_types')
                                           .update({
-                                        'name': name,
-                                        'description': description,
-                                        'color': selectedColor,
-                                      }).eq('id', initial.id);
+                                            'name': name,
+                                            'description': description,
+                                            'color': selectedColor,
+                                          })
+                                          .eq('id', initial.id);
                                     }
                                   }
                                   if (!context.mounted) return;
@@ -3400,7 +3549,14 @@ Future<void> _showCreateWorkOrderTypeDialog(
                                 }
                               },
                         child: saving
-                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
                             : const Text('Ekle'),
                       ),
                     ),
@@ -3448,13 +3604,17 @@ Future<void> _showCreateTaxRateDialog(
                   children: [
                     Expanded(
                       child: Text(
-                        initial == null ? 'KDV Oranı Ekle' : 'KDV Oranı Düzenle',
+                        initial == null
+                            ? 'KDV Oranı Ekle'
+                            : 'KDV Oranı Düzenle',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -3463,20 +3623,28 @@ Future<void> _showCreateTaxRateDialog(
                 TextField(
                   controller: nameController,
                   autofocus: true,
-                  decoration: const InputDecoration(labelText: 'Oran Adı', hintText: 'Örn: Standart KDV'),
+                  decoration: const InputDecoration(
+                    labelText: 'Oran Adı',
+                    hintText: 'Örn: Standart KDV',
+                  ),
                 ),
                 const Gap(12),
                 TextField(
                   controller: rateController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Oran (%)', hintText: 'Örn: 20'),
+                  decoration: const InputDecoration(
+                    labelText: 'Oran (%)',
+                    hintText: 'Örn: 20',
+                  ),
                 ),
                 const Gap(18),
                 Row(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -3487,7 +3655,12 @@ Future<void> _showCreateTaxRateDialog(
                             ? null
                             : () async {
                                 final name = nameController.text.trim();
-                                final rate = double.tryParse(rateController.text.trim());
+                                final rate = double.tryParse(
+                                  rateController.text.trim().replaceAll(
+                                    ',',
+                                    '.',
+                                  ),
+                                );
                                 if (name.isEmpty || rate == null) return;
                                 final apiClient = ref.read(apiClientProvider);
                                 final client = ref.read(supabaseClientProvider);
@@ -3519,9 +3692,9 @@ Future<void> _showCreateTaxRateDialog(
                                           'table': 'tax_rates',
                                           'filters': [
                                             {
-                                              'col': 'id',
+                                              'col': 'rate',
                                               'op': 'eq',
-                                              'value': initial.id,
+                                              'value': initial.rate,
                                             },
                                           ],
                                           'values': {
@@ -3540,10 +3713,10 @@ Future<void> _showCreateTaxRateDialog(
                                         'is_default': false,
                                       });
                                     } else {
-                                      await client!.from('tax_rates').update({
-                                        'name': name,
-                                        'rate': rate,
-                                      }).eq('id', initial.id);
+                                      await client!
+                                          .from('tax_rates')
+                                          .update({'name': name, 'rate': rate})
+                                          .eq('rate', initial.rate);
                                     }
                                   }
                                   if (!context.mounted) return;
@@ -3553,7 +3726,14 @@ Future<void> _showCreateTaxRateDialog(
                                 }
                               },
                         child: saving
-                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
                             : const Text('Ekle'),
                       ),
                     ),
@@ -3592,23 +3772,29 @@ class _ServiceDefinitionsTab extends ConsumerWidget {
               itemsAsync: faultTypesAsync,
               labelOf: (e) => e.name,
               isActiveOf: (e) => e.isActive,
-              onAdd: isAdmin ? () => _showServiceTypeDialog(context, ref, table: 'service_fault_types') : null,
+              onAdd: isAdmin
+                  ? () => _showServiceTypeDialog(
+                      context,
+                      ref,
+                      table: 'service_fault_types',
+                    )
+                  : null,
               onEdit: isAdmin
                   ? (item) => _showServiceTypeDialog(
-                        context,
-                        ref,
-                        table: 'service_fault_types',
-                        initialId: item.id,
-                        initialName: item.name,
-                      )
+                      context,
+                      ref,
+                      table: 'service_fault_types',
+                      initialId: item.id,
+                      initialName: item.name,
+                    )
                   : null,
               onToggleActive: isAdmin
                   ? (item, active) => _setServiceTypeActive(
-                        ref,
-                        table: 'service_fault_types',
-                        id: item.id,
-                        active: active,
-                      )
+                      ref,
+                      table: 'service_fault_types',
+                      id: item.id,
+                      active: active,
+                    )
                   : null,
               invalidate: () => ref.invalidate(serviceFaultTypesProvider),
             ),
@@ -3620,24 +3806,28 @@ class _ServiceDefinitionsTab extends ConsumerWidget {
               labelOf: (e) => e.name,
               isActiveOf: (e) => e.isActive,
               onAdd: isAdmin
-                  ? () => _showServiceTypeDialog(context, ref, table: 'service_accessory_types')
+                  ? () => _showServiceTypeDialog(
+                      context,
+                      ref,
+                      table: 'service_accessory_types',
+                    )
                   : null,
               onEdit: isAdmin
                   ? (item) => _showServiceTypeDialog(
-                        context,
-                        ref,
-                        table: 'service_accessory_types',
-                        initialId: item.id,
-                        initialName: item.name,
-                      )
+                      context,
+                      ref,
+                      table: 'service_accessory_types',
+                      initialId: item.id,
+                      initialName: item.name,
+                    )
                   : null,
               onToggleActive: isAdmin
                   ? (item, active) => _setServiceTypeActive(
-                        ref,
-                        table: 'service_accessory_types',
-                        id: item.id,
-                        active: active,
-                      )
+                      ref,
+                      table: 'service_accessory_types',
+                      id: item.id,
+                      active: active,
+                    )
                   : null,
               invalidate: () => ref.invalidate(serviceAccessoryTypesProvider),
             ),
@@ -3713,15 +3903,16 @@ class _ServiceTypesCard<T> extends StatelessWidget {
                           Expanded(
                             child: Text(
                               labelOf(item),
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
                             ),
                           ),
                           const Gap(8),
                           AppBadge(
                             label: isActiveOf(item) ? 'Aktif' : 'Pasif',
-                            tone: isActiveOf(item) ? AppBadgeTone.success : AppBadgeTone.neutral,
+                            tone: isActiveOf(item)
+                                ? AppBadgeTone.success
+                                : AppBadgeTone.neutral,
                             dense: true,
                           ),
                           if (isAdmin) ...[
@@ -3729,16 +3920,31 @@ class _ServiceTypesCard<T> extends StatelessWidget {
                             PopupMenuButton<String>(
                               tooltip: 'İşlem',
                               onSelected: (v) {
-                                if (v == 'edit') onEdit?.call(item);
-                                if (v == 'passive') onToggleActive?.call(item, false);
-                                if (v == 'active') onToggleActive?.call(item, true);
+                                if (v == 'edit') {
+                                  onEdit?.call(item);
+                                }
+                                if (v == 'passive') {
+                                  onToggleActive?.call(item, false);
+                                }
+                                if (v == 'active') {
+                                  onToggleActive?.call(item, true);
+                                }
                               },
                               itemBuilder: (context) => [
-                                const PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+                                const PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text('Düzenle'),
+                                ),
                                 if (isActiveOf(item))
-                                  const PopupMenuItem(value: 'passive', child: Text('Pasife Al'))
+                                  const PopupMenuItem(
+                                    value: 'passive',
+                                    child: Text('Pasife Al'),
+                                  )
                                 else
-                                  const PopupMenuItem(value: 'active', child: Text('Aktif Yap')),
+                                  const PopupMenuItem(
+                                    value: 'active',
+                                    child: Text('Aktif Yap'),
+                                  ),
                               ],
                               child: const SizedBox(
                                 width: 36,
@@ -3824,7 +4030,9 @@ Future<void> _showServiceTypeDialog(
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: saving ? null : () => Navigator.of(context).pop(false),
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(false),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -3851,7 +4059,9 @@ Future<void> _showServiceTypeDialog(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: saving ? null : () => Navigator.of(context).pop(false),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(false),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -3868,7 +4078,8 @@ Future<void> _showServiceTypeDialog(
                                 final name = nameController.text.trim();
                                 if (name.isEmpty) return;
                                 final sortOrder =
-                                    int.tryParse(sortController.text.trim()) ?? 0;
+                                    int.tryParse(sortController.text.trim()) ??
+                                    0;
 
                                 setState(() => saving = true);
                                 try {
@@ -3895,7 +4106,11 @@ Future<void> _showServiceTypeDialog(
                                           'op': 'updateWhere',
                                           'table': table,
                                           'filters': [
-                                            {'col': 'id', 'op': 'eq', 'value': initialId},
+                                            {
+                                              'col': 'id',
+                                              'op': 'eq',
+                                              'value': initialId,
+                                            },
                                           ],
                                           'values': {
                                             'name': name,
@@ -3912,10 +4127,13 @@ Future<void> _showServiceTypeDialog(
                                         'is_active': true,
                                       });
                                     } else {
-                                      await client!.from(table).update({
-                                        'name': name,
-                                        'sort_order': sortOrder,
-                                      }).eq('id', initialId);
+                                      await client!
+                                          .from(table)
+                                          .update({
+                                            'name': name,
+                                            'sort_order': sortOrder,
+                                          })
+                                          .eq('id', initialId);
                                     }
                                   }
                                   if (!context.mounted) return;
@@ -3964,17 +4182,20 @@ class _Empty extends StatelessWidget {
     return Center(
       child: Text(
         text,
-        style: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.copyWith(color: const Color(0xFF64748B)),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
       ),
     );
   }
 }
 
 class DeviceBrand {
-  const DeviceBrand({required this.id, required this.name, required this.isActive});
+  const DeviceBrand({
+    required this.id,
+    required this.name,
+    required this.isActive,
+  });
 
   final String id;
   final String name;

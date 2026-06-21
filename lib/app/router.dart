@@ -11,6 +11,8 @@ import '../features/customers/customers_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
 import '../features/billing/billing_screen.dart';
 import '../features/billing/invoice_pdf_analysis_screen.dart';
+import '../features/e_invoice/e_invoice_screen.dart';
+import '../features/finance/finance_screen.dart';
 import '../features/products/products_screen.dart';
 import '../features/definitions/definitions_screen.dart';
 import '../features/forms/forms_screen.dart';
@@ -43,138 +45,143 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       path: '/kurulum',
       builder: (context, state) => const SetupRequiredScreen(),
     ),
-    GoRoute(
-      path: '/giris',
-      builder: (context, state) => const LoginScreen(),
-    ),
+    GoRoute(path: '/giris', builder: (context, state) => const LoginScreen()),
     ShellRoute(
       builder: (context, state, child) => AppShell(child: child),
       routes: [
-        GoRoute(
-          path: '/',
-          redirect: (_, _) => '/panel',
-        ),
+        GoRoute(path: '/', redirect: (_, _) => '/panel'),
         GoRoute(
           path: '/panel',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: DashboardScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: DashboardScreen()),
         ),
         GoRoute(
           path: '/musteriler',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: CustomersScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: CustomersScreen()),
           routes: [
             GoRoute(
               path: ':id',
-              builder: (context, state) => CustomerDetailScreen(
-                customerId: state.pathParameters['id']!,
-              ),
+              builder: (context, state) =>
+                  CustomerDetailScreen(customerId: state.pathParameters['id']!),
             ),
           ],
         ),
         GoRoute(
           path: '/formlar',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: FormsScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: FormsScreen()),
           routes: [
             GoRoute(
               path: 'basvuru',
-              pageBuilder: (context, state) => const NoTransitionPage(
-                child: ApplicationFormScreen(),
-              ),
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: ApplicationFormScreen()),
             ),
             GoRoute(
               path: 'hurda',
-              pageBuilder: (context, state) => const NoTransitionPage(
-                child: ScrapFormScreen(),
-              ),
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: ScrapFormScreen()),
             ),
             GoRoute(
               path: 'ariza',
-              pageBuilder: (context, state) => const NoTransitionPage(
-                child: FaultFormScreen(),
-              ),
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: FaultFormScreen()),
             ),
             GoRoute(
               path: 'devir',
-              pageBuilder: (context, state) => const NoTransitionPage(
-                child: TransferFormScreen(),
-              ),
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: TransferFormScreen()),
             ),
             GoRoute(
               path: 'seri-takip',
-              pageBuilder: (context, state) => const NoTransitionPage(
-                child: SerialTrackingScreen(),
-              ),
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: SerialTrackingScreen()),
             ),
           ],
         ),
         GoRoute(
           path: '/is-emirleri',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: WorkOrdersListScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: WorkOrdersListScreen()),
           routes: [
             GoRoute(
               path: 'tahsilatlar',
-              pageBuilder: (context, state) => const NoTransitionPage(
-                child: WorkOrderPaymentsScreen(),
-              ),
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: WorkOrderPaymentsScreen()),
             ),
           ],
         ),
         GoRoute(
           path: '/servis',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: ServiceScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: ServiceScreen()),
           routes: [
             GoRoute(
               path: ':id',
-              builder: (context, state) => ServiceDetailScreen(
-                serviceId: state.pathParameters['id']!,
-              ),
+              builder: (context, state) =>
+                  ServiceDetailScreen(serviceId: state.pathParameters['id']!),
             ),
           ],
         ),
         GoRoute(
           path: '/raporlar',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: ReportsScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: ReportsScreen()),
         ),
         GoRoute(
           path: '/personel',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: PersonnelScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: PersonnelScreen()),
         ),
         GoRoute(
           path: '/faturalama',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: BillingScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: BillingScreen()),
+        ),
+        GoRoute(
+          path: '/e-fatura',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: EInvoiceScreen()),
+          routes: [
+            GoRoute(
+              path: 'stok',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: EInvoiceScreen(section: 'stok'),
+              ),
+            ),
+            GoRoute(
+              path: 'cari',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: EInvoiceScreen(section: 'cari'),
+              ),
+            ),
+            GoRoute(
+              path: 'ayarlar',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: EInvoiceScreen(section: 'ayarlar'),
+              ),
+            ),
+          ],
+        ),
+        GoRoute(
+          path: '/finans',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: FinanceScreen()),
         ),
         GoRoute(
           path: '/kdv-analizi',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: InvoicePdfAnalysisScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: InvoicePdfAnalysisScreen()),
         ),
         GoRoute(
           path: '/urunler',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: ProductsScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: ProductsScreen()),
         ),
         GoRoute(
           path: '/tanimlamalar',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: DefinitionsScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: DefinitionsScreen()),
         ),
       ],
     ),
@@ -202,6 +209,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (location.startsWith('/raporlar')) requiredPage = 'raporlar';
       if (location.startsWith('/urunler')) requiredPage = 'urunler';
       if (location.startsWith('/faturalama')) requiredPage = 'faturalama';
+      if (location.startsWith('/e-fatura')) requiredPage = 'e_fatura';
+      if (location.startsWith('/finans')) requiredPage = 'finans';
       if (location.startsWith('/kdv-analizi')) requiredPage = 'kdv_analizi';
       if (location.startsWith('/tanimlamalar')) requiredPage = 'tanimlamalar';
       if (location.startsWith('/personel')) requiredPage = 'personel';

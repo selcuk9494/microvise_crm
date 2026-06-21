@@ -712,7 +712,7 @@ class _InvoiceSelectCard extends StatelessWidget {
     final (statusLabel, statusColor) = switch (invoice.status) {
       'open' => ('Açık', AppTheme.warning),
       'partial' => ('Kısmi', AppTheme.primary),
-      'paid' => ('Ödendi', AppTheme.success),
+      'paid' => ('Kapalı', AppTheme.success),
       'cancelled' => ('İptal', AppTheme.error),
       _ => ('?', const Color(0xFF64748B)),
     };

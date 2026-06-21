@@ -154,6 +154,8 @@ const defaultPersonnelPagePermissions = new Set([
   'raporlar',
   'urunler',
   'faturalama',
+  'e_fatura',
+  'finans',
 ]);
 
 function hasPageAccess(user, pageKey) {

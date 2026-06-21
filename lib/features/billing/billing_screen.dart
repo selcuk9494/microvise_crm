@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 
+import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
@@ -53,8 +54,8 @@ class InvoiceFilters {
 
 final invoiceFiltersProvider =
     NotifierProvider<InvoiceFiltersNotifier, InvoiceFilters>(
-  InvoiceFiltersNotifier.new,
-);
+      InvoiceFiltersNotifier.new,
+    );
 
 class InvoiceFiltersNotifier extends Notifier<InvoiceFilters> {
   @override
@@ -136,13 +137,19 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   Widget build(BuildContext context) {
     final canView = ref.watch(hasPageAccessProvider(kPageBilling));
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
-    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
-    final canDeletePermanently =
-        ref.watch(hasActionAccessProvider(kActionDeleteRecords));
+    final canArchive = ref.watch(
+      hasActionAccessProvider(kActionArchiveRecords),
+    );
+    final canDeletePermanently = ref.watch(
+      hasActionAccessProvider(kActionDeleteRecords),
+    );
     final itemsAsync = ref.watch(invoiceItemsProvider);
     final filters = ref.watch(invoiceFiltersProvider);
-    final money =
-        NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 2);
+    final money = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: '₺',
+      decimalDigits: 2,
+    );
 
     if (_queryController.text != filters.query) {
       _queryController.value = _queryController.value.copyWith(
@@ -167,10 +174,9 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   'Bu sayfaya erişiminiz yok.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ),
             )
@@ -192,6 +198,8 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                           ref.read(invoiceFiltersProvider.notifier).reset(),
                     ),
                     const Gap(12),
+                    _BillingQueueHeader(count: filtered.length),
+                    const Gap(8),
                     if (filtered.isEmpty)
                       const AppCard(
                         child: Padding(
@@ -222,10 +230,9 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                   padding: const EdgeInsets.all(16),
                   child: Text(
                     'Fatura listesi yüklenemedi: $e',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: const Color(0xFF64748B)),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
                   ),
                 ),
               ),
@@ -234,7 +241,10 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   }
 }
 
-List<InvoiceItem> _applyFilters(List<InvoiceItem> items, InvoiceFilters filters) {
+List<InvoiceItem> _applyFilters(
+  List<InvoiceItem> items,
+  InvoiceFilters filters,
+) {
   final now = DateTime.now();
   DateTime? start;
   switch (filters.date) {
@@ -260,33 +270,35 @@ List<InvoiceItem> _applyFilters(List<InvoiceItem> items, InvoiceFilters filters)
     return hay.contains(q);
   }
 
-  return items.where((item) {
-    if (filters.status != InvoiceStatusFilter.all) {
-      if (filters.status == InvoiceStatusFilter.pending &&
-          item.status != 'pending') {
-        return false;
-      }
-      if (filters.status == InvoiceStatusFilter.invoiced &&
-          item.status == 'pending') {
-        return false;
-      }
-    }
-    if (filters.active != InvoiceActiveFilter.all) {
-      if (filters.active == InvoiceActiveFilter.active && !item.isActive) {
-        return false;
-      }
-      if (filters.active == InvoiceActiveFilter.inactive && item.isActive) {
-        return false;
-      }
-    }
-    if (start != null && item.createdAt != null) {
-      if (item.createdAt!.isBefore(start)) {
-        return false;
-      }
-    }
-    if (!matchesQuery(item)) return false;
-    return true;
-  }).toList(growable: false);
+  return items
+      .where((item) {
+        if (filters.status != InvoiceStatusFilter.all) {
+          if (filters.status == InvoiceStatusFilter.pending &&
+              item.status != 'pending') {
+            return false;
+          }
+          if (filters.status == InvoiceStatusFilter.invoiced &&
+              item.status == 'pending') {
+            return false;
+          }
+        }
+        if (filters.active != InvoiceActiveFilter.all) {
+          if (filters.active == InvoiceActiveFilter.active && !item.isActive) {
+            return false;
+          }
+          if (filters.active == InvoiceActiveFilter.inactive && item.isActive) {
+            return false;
+          }
+        }
+        if (start != null && item.createdAt != null) {
+          if (item.createdAt!.isBefore(start)) {
+            return false;
+          }
+        }
+        if (!matchesQuery(item)) return false;
+        return true;
+      })
+      .toList(growable: false);
 }
 
 class _InvoiceCounts {
@@ -341,106 +353,143 @@ class _BillingFiltersSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.all(14),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Filtreler',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
+          SizedBox(
+            width: 320,
+            child: TextField(
+              controller: queryController,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search_rounded),
+                labelText: 'Ara',
+                hintText: 'Müşteri, açıklama, tip',
               ),
-              OutlinedButton.icon(
-                onPressed: onClear,
-                icon: const Icon(Icons.clear_rounded, size: 18),
-                label: const Text('Sıfırla'),
-              ),
-            ],
-          ),
-          const Gap(12),
-          TextField(
-            controller: queryController,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search_rounded),
-              labelText: 'Ara (müşteri, açıklama, tip)',
+              onChanged: (value) => onChanged(filters.copyWith(query: value)),
             ),
-            onChanged: (value) => onChanged(filters.copyWith(query: value)),
           ),
-          const Gap(12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _MiniStat(label: 'Toplam', value: counts.total.toString()),
-              _MiniStat(label: 'Bekleyen', value: counts.pending.toString()),
-              _MiniStat(label: 'Onaylanan', value: counts.invoiced.toString()),
-              _MiniStat(label: 'Pasif', value: counts.inactive.toString()),
-              _MiniStat(label: 'Bugün', value: counts.today.toString()),
-            ],
+          _CompactFilterDropdown<InvoiceDateFilter>(
+            value: filters.date,
+            icon: Icons.date_range_rounded,
+            items: InvoiceDateFilter.values,
+            label: (value) => switch (value) {
+              InvoiceDateFilter.today => 'Bugün',
+              InvoiceDateFilter.last7 => 'Son 7 gün',
+              InvoiceDateFilter.last30 => 'Son 30 gün',
+              InvoiceDateFilter.all => 'Tümü',
+            },
+            onChanged: (value) => onChanged(filters.copyWith(date: value)),
           ),
-          const Gap(12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ...InvoiceDateFilter.values.map(
-                (value) => ChoiceChip(
-                  label: Text(
-                    switch (value) {
-                      InvoiceDateFilter.today => 'Bugün',
-                      InvoiceDateFilter.last7 => 'Son 7 gün',
-                      InvoiceDateFilter.last30 => 'Son 30 gün',
-                      InvoiceDateFilter.all => 'Tümü',
-                    },
-                  ),
-                  selected: filters.date == value,
-                  onSelected: (_) => onChanged(filters.copyWith(date: value)),
-                ),
+          _CompactFilterDropdown<InvoiceStatusFilter>(
+            value: filters.status,
+            icon: Icons.fact_check_rounded,
+            items: InvoiceStatusFilter.values,
+            label: (value) => switch (value) {
+              InvoiceStatusFilter.pending => 'Bekleyen',
+              InvoiceStatusFilter.invoiced => 'Onaylanan',
+              InvoiceStatusFilter.all => 'Tümü',
+            },
+            onChanged: (value) => onChanged(filters.copyWith(status: value)),
+          ),
+          _CompactFilterDropdown<InvoiceActiveFilter>(
+            value: filters.active,
+            icon: Icons.toggle_on_rounded,
+            items: InvoiceActiveFilter.values,
+            label: (value) => switch (value) {
+              InvoiceActiveFilter.active => 'Aktif',
+              InvoiceActiveFilter.inactive => 'Pasif',
+              InvoiceActiveFilter.all => 'Tümü',
+            },
+            onChanged: (value) => onChanged(filters.copyWith(active: value)),
+          ),
+          _MiniStat(label: 'Toplam', value: counts.total.toString()),
+          _MiniStat(label: 'Bekleyen', value: counts.pending.toString()),
+          _MiniStat(label: 'Bugün', value: counts.today.toString()),
+          OutlinedButton.icon(
+            onPressed: onClear,
+            icon: const Icon(Icons.clear_rounded, size: 18),
+            label: const Text('Sıfırla'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactFilterDropdown<T> extends StatelessWidget {
+  const _CompactFilterDropdown({
+    required this.value,
+    required this.items,
+    required this.label,
+    required this.onChanged,
+    required this.icon,
+  });
+
+  final T value;
+  final List<T> items;
+  final String Function(T value) label;
+  final ValueChanged<T> onChanged;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceMuted,
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<T>(
+          value: value,
+          items: [
+            for (final item in items)
+              DropdownMenuItem(value: item, child: Text(label(item))),
+          ],
+          onChanged: (next) {
+            if (next != null) onChanged(next);
+          },
+          icon: const Icon(Icons.expand_more_rounded, size: 18),
+          selectedItemBuilder: (context) => [
+            for (final item in items)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 17, color: AppTheme.textSoft),
+                  const Gap(8),
+                  Text(label(item)),
+                ],
               ),
-            ],
-          ),
-          const Gap(10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ...InvoiceStatusFilter.values.map(
-                (value) => ChoiceChip(
-                  label: Text(
-                    switch (value) {
-                      InvoiceStatusFilter.pending => 'Bekleyen',
-                      InvoiceStatusFilter.invoiced => 'Onaylanan',
-                      InvoiceStatusFilter.all => 'Tümü',
-                    },
-                  ),
-                  selected: filters.status == value,
-                  onSelected: (_) => onChanged(filters.copyWith(status: value)),
-                ),
-              ),
-            ],
-          ),
-          const Gap(10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ...InvoiceActiveFilter.values.map(
-                (value) => ChoiceChip(
-                  label: Text(
-                    switch (value) {
-                      InvoiceActiveFilter.active => 'Aktif',
-                      InvoiceActiveFilter.inactive => 'Pasif',
-                      InvoiceActiveFilter.all => 'Tümü',
-                    },
-                  ),
-                  selected: filters.active == value,
-                  onSelected: (_) => onChanged(filters.copyWith(active: value)),
-                ),
-              ),
-            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BillingQueueHeader extends StatelessWidget {
+  const _BillingQueueHeader({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: [
+          Text('Fatura Kuyruğu', style: Theme.of(context).textTheme.titleSmall),
+          const Gap(8),
+          AppBadge(label: '$count kayıt', tone: AppBadgeTone.neutral),
+          const Spacer(),
+          Text(
+            'Onay / pasif / kalıcı sil işlemleri satır sonunda.',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
       ),
@@ -468,51 +517,16 @@ class _MiniStat extends StatelessWidget {
         children: [
           Text(
             label,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: const Color(0xFF64748B)),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
           ),
           const Gap(8),
           Text(
             value,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(fontWeight: FontWeight.w800),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FilterPill extends StatelessWidget {
-  const _FilterPill({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: const Color(0xFF64748B)),
-          const Gap(6),
-          Text(
-            text,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: const Color(0xFF334155)),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
         ],
       ),
@@ -550,7 +564,9 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
 
     setState(() => _saving = true);
     try {
-      final nextStatus = widget.item.status == 'pending' ? 'invoiced' : 'pending';
+      final nextStatus = widget.item.status == 'pending'
+          ? 'invoiced'
+          : 'pending';
       final profile = await ref.read(currentUserProfileProvider.future);
       final userId = profile?.id;
       final now = DateTime.now().toIso8601String();
@@ -578,18 +594,22 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
         } catch (_) {
           if (client != null) {
             try {
-              await client.from('invoice_items').update({
-                'status': nextStatus,
-                'invoiced_at': nextStatus == 'invoiced' ? now : null,
-                'approved_by': nextStatus == 'invoiced' ? userId : null,
-                'approved_at': nextStatus == 'invoiced' ? now : null,
-                'updated_by': userId,
-                'updated_at': now,
-              }).eq('id', widget.item.id);
+              await client
+                  .from('invoice_items')
+                  .update({
+                    'status': nextStatus,
+                    'invoiced_at': nextStatus == 'invoiced' ? now : null,
+                    'approved_by': nextStatus == 'invoiced' ? userId : null,
+                    'approved_at': nextStatus == 'invoiced' ? now : null,
+                    'updated_by': userId,
+                    'updated_at': now,
+                  })
+                  .eq('id', widget.item.id);
             } catch (_) {
-              await client.from('invoice_items').update({
-                'status': nextStatus,
-              }).eq('id', widget.item.id);
+              await client
+                  .from('invoice_items')
+                  .update({'status': nextStatus})
+                  .eq('id', widget.item.id);
             }
           } else {
             rethrow;
@@ -597,26 +617,30 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
         }
       } else {
         try {
-          await client!.from('invoice_items').update({
-            'status': nextStatus,
-            'invoiced_at': nextStatus == 'invoiced' ? now : null,
-            'approved_by': nextStatus == 'invoiced' ? userId : null,
-            'approved_at': nextStatus == 'invoiced' ? now : null,
-            'updated_by': userId,
-            'updated_at': now,
-          }).eq('id', widget.item.id);
+          await client!
+              .from('invoice_items')
+              .update({
+                'status': nextStatus,
+                'invoiced_at': nextStatus == 'invoiced' ? now : null,
+                'approved_by': nextStatus == 'invoiced' ? userId : null,
+                'approved_at': nextStatus == 'invoiced' ? now : null,
+                'updated_by': userId,
+                'updated_at': now,
+              })
+              .eq('id', widget.item.id);
         } catch (_) {
-          await client!.from('invoice_items').update({
-            'status': nextStatus,
-          }).eq('id', widget.item.id);
+          await client!
+              .from('invoice_items')
+              .update({'status': nextStatus})
+              .eq('id', widget.item.id);
         }
       }
       ref.invalidate(invoiceItemsProvider);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Güncellenemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Güncellenemedi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -657,17 +681,21 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
         } catch (_) {
           if (client != null) {
             try {
-              await client.from('invoice_items').update({
-                'is_active': nextActive,
-                'deactivated_by': nextActive ? null : userId,
-                'deactivated_at': nextActive ? null : now,
-                'updated_by': userId,
-                'updated_at': now,
-              }).eq('id', widget.item.id);
+              await client
+                  .from('invoice_items')
+                  .update({
+                    'is_active': nextActive,
+                    'deactivated_by': nextActive ? null : userId,
+                    'deactivated_at': nextActive ? null : now,
+                    'updated_by': userId,
+                    'updated_at': now,
+                  })
+                  .eq('id', widget.item.id);
             } catch (_) {
-              await client.from('invoice_items').update({
-                'is_active': nextActive,
-              }).eq('id', widget.item.id);
+              await client
+                  .from('invoice_items')
+                  .update({'is_active': nextActive})
+                  .eq('id', widget.item.id);
             }
           } else {
             rethrow;
@@ -675,25 +703,29 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
         }
       } else {
         try {
-          await client!.from('invoice_items').update({
-            'is_active': nextActive,
-            'deactivated_by': nextActive ? null : userId,
-            'deactivated_at': nextActive ? null : now,
-            'updated_by': userId,
-            'updated_at': now,
-          }).eq('id', widget.item.id);
+          await client!
+              .from('invoice_items')
+              .update({
+                'is_active': nextActive,
+                'deactivated_by': nextActive ? null : userId,
+                'deactivated_at': nextActive ? null : now,
+                'updated_by': userId,
+                'updated_at': now,
+              })
+              .eq('id', widget.item.id);
         } catch (_) {
-          await client!.from('invoice_items').update({
-            'is_active': nextActive,
-          }).eq('id', widget.item.id);
+          await client!
+              .from('invoice_items')
+              .update({'is_active': nextActive})
+              .eq('id', widget.item.id);
         }
       }
       ref.invalidate(invoiceItemsProvider);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kayıt güncellenemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Kayıt güncellenemedi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -703,9 +735,9 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
     if (!widget.canDeletePermanently) return;
     if (widget.item.isActive) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Önce kaydı pasife alın.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Önce kaydı pasife alın.')));
       return;
     }
 
@@ -739,7 +771,11 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
       if (apiClient != null) {
         await apiClient.postJson(
           '/mutate',
-          body: {'op': 'delete', 'table': 'invoice_items', 'id': widget.item.id},
+          body: {
+            'op': 'delete',
+            'table': 'invoice_items',
+            'id': widget.item.id,
+          },
         );
       } else {
         await client!.from('invoice_items').delete().eq('id', widget.item.id);
@@ -747,9 +783,9 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
       ref.invalidate(invoiceItemsProvider);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Silinemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Silinemedi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -788,8 +824,8 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
     final amountText = item.amount == null
         ? '—'
         : item.currency == 'TRY'
-            ? widget.money.format(item.amount)
-            : '${widget.money.format(item.amount)} ${item.currency}';
+        ? widget.money.format(item.amount)
+        : '${widget.money.format(item.amount)} ${item.currency}';
 
     final createdAtText = item.createdAt == null
         ? null
@@ -798,126 +834,205 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
     final isNarrow = MediaQuery.sizeOf(context).width < 900;
 
     return AppCard(
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.zero,
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            width: 10,
-            height: 48,
+            width: 4,
+            height: 82,
             decoration: BoxDecoration(
               color: item.status == 'pending'
-                  ? const Color(0xFFFFEDD5)
-                  : const Color(0xFFDCFCE7),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: item.status == 'pending'
-                    ? const Color(0xFFFED7AA)
-                    : const Color(0xFFBBF7D0),
+                  ? AppTheme.warning.withValues(alpha: 0.70)
+                  : AppTheme.success.withValues(alpha: 0.70),
+              borderRadius: const BorderRadius.horizontal(
+                left: Radius.circular(AppTheme.radiusMd),
               ),
             ),
           ),
-          const Gap(12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.description,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        decoration: item.isActive
-                            ? TextDecoration.none
-                            : TextDecoration.lineThrough,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                    ),
+                    child: Icon(
+                      Icons.receipt_long_rounded,
+                      size: 20,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                  const Gap(12),
+                  Expanded(
+                    flex: 5,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.description,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                decoration: item.isActive
+                                    ? TextDecoration.none
+                                    : TextDecoration.lineThrough,
+                              ),
+                        ),
+                        const Gap(5),
+                        Text(
+                          item.customerLabel?.trim().isNotEmpty ?? false
+                              ? item.customerLabel!.trim()
+                              : 'Cari bilgisi yok',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Gap(12),
+                  SizedBox(
+                    width: 170,
+                    child: _InvoiceMetaText(
+                      icon: Icons.payments_rounded,
+                      text: amountText,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 150,
+                    child: _InvoiceMetaText(
+                      icon: Icons.calendar_today_rounded,
+                      text: createdAtText ?? '-',
+                    ),
+                  ),
+                  SizedBox(
+                    width: 170,
+                    child: _InvoiceMetaText(
+                      icon: Icons.category_rounded,
+                      text: item.itemType,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 92,
+                    child: AppBadge(label: statusLabel, tone: tone),
+                  ),
+                  const Gap(8),
+                  if (isNarrow)
+                    PopupMenuButton<String>(
+                      enabled: !_saving,
+                      itemBuilder: (_) => _buildMenuItems(),
+                      onSelected: (value) async {
+                        if (value == 'toggleStatus') await _toggleInvoiced();
+                        if (value == 'toggleActive') await _toggleActive();
+                        if (value == 'delete') await _deletePermanently();
+                      },
+                      child: const SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: Icon(Icons.more_horiz_rounded),
                       ),
-                ),
-                const Gap(6),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    if (item.customerLabel?.trim().isNotEmpty ?? false)
-                      _FilterPill(
-                        icon: Icons.person_rounded,
-                        text: item.customerLabel!.trim(),
-                      ),
-                    _FilterPill(icon: Icons.payments_rounded, text: amountText),
-                    if (createdAtText != null)
-                      _FilterPill(
-                        icon: Icons.calendar_today_rounded,
-                        text: createdAtText,
-                      ),
-                    _FilterPill(icon: Icons.category_rounded, text: item.itemType),
-                  ],
-                ),
-              ],
+                    )
+                  else
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _TinyActionButton(
+                          tooltip: item.status == 'pending'
+                              ? 'Onayla'
+                              : 'Geri Al',
+                          onPressed: _saving ? null : _toggleInvoiced,
+                          icon: _saving
+                              ? Icons.hourglass_empty_rounded
+                              : item.status == 'pending'
+                              ? Icons.check_rounded
+                              : Icons.undo_rounded,
+                        ),
+                        const Gap(6),
+                        _TinyActionButton(
+                          tooltip: item.isActive ? 'Pasife Al' : 'Aktifleştir',
+                          onPressed: _saving ? null : _toggleActive,
+                          icon: item.isActive
+                              ? Icons.archive_outlined
+                              : Icons.restore_rounded,
+                        ),
+                        if (widget.canDeletePermanently) ...[
+                          const Gap(6),
+                          _TinyActionButton(
+                            tooltip: 'Kalıcı Sil',
+                            onPressed: _saving ? null : _deletePermanently,
+                            icon: Icons.delete_forever_rounded,
+                          ),
+                        ],
+                      ],
+                    ),
+                ],
+              ),
             ),
           ),
-          const Gap(10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              AppBadge(label: statusLabel, tone: tone),
-              const Gap(10),
-              if (isNarrow)
-                PopupMenuButton<String>(
-                  enabled: !_saving,
-                  itemBuilder: (_) => _buildMenuItems(),
-                  onSelected: (value) async {
-                    if (value == 'toggleStatus') await _toggleInvoiced();
-                    if (value == 'toggleActive') await _toggleActive();
-                    if (value == 'delete') await _deletePermanently();
-                  },
-                  child: IconButton.filledTonal(
-                    tooltip: 'İşlemler',
-                    onPressed: null,
-                    icon: const Icon(Icons.more_horiz_rounded, size: 18),
-                  ),
-                )
-              else
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    IconButton.filledTonal(
-                      tooltip: item.status == 'pending' ? 'Onayla' : 'Geri Al',
-                      onPressed: _saving ? null : _toggleInvoiced,
-                      icon: _saving
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Icon(
-                              item.status == 'pending'
-                                  ? Icons.check_rounded
-                                  : Icons.undo_rounded,
-                              size: 18,
-                            ),
-                    ),
-                    IconButton.filledTonal(
-                      tooltip: item.isActive ? 'Pasife Al' : 'Aktifleştir',
-                      onPressed: _saving ? null : _toggleActive,
-                      icon: Icon(
-                        item.isActive
-                            ? Icons.delete_outline_rounded
-                            : Icons.restore_rounded,
-                        size: 18,
-                      ),
-                    ),
-                    if (widget.canDeletePermanently)
-                      IconButton.filledTonal(
-                        tooltip: 'Kalıcı Sil',
-                        onPressed: _saving ? null : _deletePermanently,
-                        icon: const Icon(Icons.delete_forever_rounded, size: 18),
-                      ),
-                  ],
-                ),
-            ],
-          ),
         ],
+      ),
+    );
+  }
+}
+
+class _InvoiceMetaText extends StatelessWidget {
+  const _InvoiceMetaText({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: AppTheme.textMuted),
+        const Gap(7),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppTheme.textSoft,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TinyActionButton extends StatelessWidget {
+  const _TinyActionButton({
+    required this.tooltip,
+    required this.onPressed,
+    required this.icon,
+  });
+
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: IconButton.filledTonal(
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
       ),
     );
   }

@@ -23,6 +23,7 @@ const ensured = {
   work_order_signatures: false,
   work_orders_payment_required: false,
   work_orders_status_check: false,
+  finance_tables: false,
 };
 
 async function tableExists(tableName) {
@@ -271,6 +272,158 @@ async function ensureRegionColorsTable() {
   );
 
   ensured.region_colors = true;
+  return true;
+}
+
+async function ensureFinanceTables() {
+  if (ensured.finance_tables) return true;
+
+  await query(`create extension if not exists pgcrypto`);
+  await query(
+    `
+      create table if not exists public.finance_accounts (
+        id uuid primary key default gen_random_uuid(),
+        name text not null,
+        account_type text not null default 'bank',
+        bank_name text,
+        branch_name text,
+        iban text,
+        account_no text,
+        currency text not null default 'TRY',
+        opening_balance numeric not null default 0,
+        current_balance numeric not null default 0,
+        pos_enabled boolean not null default false,
+        is_active boolean not null default true,
+        notes text,
+        created_by uuid,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      )
+    `,
+  );
+  await query(
+    `
+      create table if not exists public.finance_transactions (
+        id uuid primary key default gen_random_uuid(),
+        account_id uuid not null references public.finance_accounts(id) on delete restrict,
+        customer_id uuid references public.customers(id) on delete set null,
+        invoice_id uuid references public.invoices(id) on delete set null,
+        transaction_date date not null default current_date,
+        direction text not null default 'in',
+        transaction_type text not null default 'collection',
+        payment_method text not null default 'bank',
+        amount numeric not null default 0,
+        currency text not null default 'TRY',
+        description text,
+        reference_no text,
+        source text,
+        is_reconciled boolean not null default false,
+        is_active boolean not null default true,
+        created_by uuid,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      )
+    `,
+  );
+  await query(
+    `
+      create index if not exists idx_finance_transactions_account_date
+      on public.finance_transactions(account_id, transaction_date desc)
+    `,
+  );
+  await query(
+    `
+      create or replace function public.finance_accounts_set_updated_at()
+      returns trigger
+      language plpgsql
+      as $$
+      begin
+        new.updated_at = now();
+        return new;
+      end;
+      $$;
+    `,
+  );
+  await query(
+    `
+      create or replace function public.finance_transactions_set_updated_at()
+      returns trigger
+      language plpgsql
+      as $$
+      begin
+        new.updated_at = now();
+        return new;
+      end;
+      $$;
+    `,
+  );
+  await query(
+    `
+      create or replace function public.finance_recalculate_account_balance(p_account_id uuid)
+      returns void
+      language plpgsql
+      as $$
+      begin
+        update public.finance_accounts a
+        set current_balance = coalesce(a.opening_balance, 0) + coalesce((
+          select sum(
+            case
+              when t.direction = 'out' then -abs(coalesce(t.amount, 0))
+              else abs(coalesce(t.amount, 0))
+            end
+          )
+          from public.finance_transactions t
+          where t.account_id = p_account_id
+            and coalesce(t.is_active, true) = true
+        ), 0)
+        where a.id = p_account_id;
+      end;
+      $$;
+    `,
+  );
+  await query(
+    `
+      create or replace function public.finance_transactions_update_balance()
+      returns trigger
+      language plpgsql
+      as $$
+      begin
+        if tg_op = 'DELETE' then
+          perform public.finance_recalculate_account_balance(old.account_id);
+          return old;
+        end if;
+        perform public.finance_recalculate_account_balance(new.account_id);
+        if tg_op = 'UPDATE' and old.account_id <> new.account_id then
+          perform public.finance_recalculate_account_balance(old.account_id);
+        end if;
+        return new;
+      end;
+      $$;
+    `,
+  );
+  await query(
+    `
+      drop trigger if exists set_finance_accounts_updated_at on public.finance_accounts;
+      create trigger set_finance_accounts_updated_at
+      before update on public.finance_accounts
+      for each row
+      execute function public.finance_accounts_set_updated_at();
+
+      drop trigger if exists set_finance_transactions_updated_at on public.finance_transactions;
+      create trigger set_finance_transactions_updated_at
+      before update on public.finance_transactions
+      for each row
+      execute function public.finance_transactions_set_updated_at();
+
+      drop trigger if exists recalc_finance_account_balance on public.finance_transactions;
+      create trigger recalc_finance_account_balance
+      after insert or update or delete on public.finance_transactions
+      for each row
+      execute function public.finance_transactions_update_balance();
+    `,
+  );
+
+  ensured.finance_tables = true;
   return true;
 }
 
@@ -1354,4 +1507,5 @@ module.exports = {
   ensureWorkOrderSignaturesTable,
   ensureWorkOrdersPaymentRequiredColumn,
   ensureWorkOrdersStatusCheckConstraint,
+  ensureFinanceTables,
 };

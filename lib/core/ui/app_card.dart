@@ -30,18 +30,18 @@ class _AppCardState extends State<AppCard> {
     final child = Padding(padding: widget.padding, child: widget.child);
     final clickable = widget.onTap != null;
 
-    final content = clickable
-        ? Material(
-            type: MaterialType.transparency,
-            child: InkWell(
+    final content = Material(
+      type: MaterialType.transparency,
+      child: clickable
+          ? InkWell(
               borderRadius: const BorderRadius.all(
                 Radius.circular(AppTheme.radiusMd),
               ),
               onTap: widget.onTap,
               child: child,
-            ),
-          )
-        : child;
+            )
+          : child,
+    );
 
     return MouseRegion(
       cursor: clickable ? SystemMouseCursors.click : MouseCursor.defer,
@@ -56,13 +56,18 @@ class _AppCardState extends State<AppCard> {
           0,
         ),
         decoration: BoxDecoration(
-          color: widget.color ?? Theme.of(context).cardTheme.color ?? AppTheme.surface,
+          color:
+              widget.color ??
+              Theme.of(context).cardTheme.color ??
+              AppTheme.surface,
           borderRadius: const BorderRadius.all(
             Radius.circular(AppTheme.radiusMd),
           ),
           border: Border.all(
             color: clickable && _hovered
-                ? (widget.borderColor ?? AppTheme.primary).withValues(alpha: 0.55)
+                ? (widget.borderColor ?? AppTheme.primary).withValues(
+                    alpha: 0.55,
+                  )
                 : (widget.borderColor ?? AppTheme.border),
           ),
           boxShadow: clickable && _hovered

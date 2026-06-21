@@ -26,6 +26,7 @@ const {
   ensureServiceRecordsExtendedColumns,
   ensureServiceRecordsStatusCheckConstraint,
   ensureServiceActivityLogsTable,
+  ensureFinanceTables,
 } = require('./_lib/schema');
 const {
   handleCors,
@@ -85,6 +86,8 @@ const allowedTables = new Set([
   'stock_movements',
   'tax_rates',
   'transactions',
+  'finance_accounts',
+  'finance_transactions',
   'transfer_forms',
   'fault_forms',
   'device_registries',
@@ -102,8 +105,8 @@ const tablePermissions = {
   line_stock: ['urunler', 'is_emirleri'],
   licenses: ['urunler', 'is_emirleri', 'musteriler'],
   line_transfers: ['urunler', 'is_emirleri', 'musteriler'],
-  products: 'urunler',
-  stock_movements: ['urunler', 'formlar'],
+  products: ['urunler', 'e_fatura'],
+  stock_movements: ['urunler', 'formlar', 'e_fatura'],
   product_serial_inventory: ['urunler', 'formlar'],
   serial_tracking: 'formlar',
   work_orders: 'is_emirleri',
@@ -117,7 +120,7 @@ const tablePermissions = {
   device_models: 'tanimlamalar',
   work_order_types: 'tanimlamalar',
   work_order_close_notes: ['tanimlamalar', 'is_emirleri'],
-  tax_rates: 'tanimlamalar',
+  tax_rates: ['tanimlamalar', 'e_fatura', 'faturalama'],
   cities: 'tanimlamalar',
   fiscal_symbols: 'tanimlamalar',
   business_activity_types: 'tanimlamalar',
@@ -129,16 +132,18 @@ const tablePermissions = {
   transfer_forms: 'formlar',
   fault_forms: 'formlar',
   device_registries: ['musteriler', 'formlar'],
-  invoices: 'faturalama',
-  invoice_items: ['faturalama', 'urunler', 'formlar', 'is_emirleri'],
-  transactions: 'faturalama',
+  invoices: ['faturalama', 'e_fatura'],
+  invoice_items: ['faturalama', 'e_fatura', 'urunler', 'formlar', 'is_emirleri'],
+  transactions: ['faturalama', 'e_fatura'],
+  finance_accounts: 'finans',
+  finance_transactions: 'finans',
   users: 'personel',
 };
 
 const columnsCache = new Map();
 const columnsMetaCache = new Map();
 
-function requireAnyPage(user, pageKeys, res) {
+function requireAnyPage(req, user, pageKeys, res) {
   const keys = Array.isArray(pageKeys)
     ? pageKeys
     : [String(pageKeys || '').trim()].filter((k) => k.length > 0);
@@ -524,7 +529,7 @@ module.exports = async (req, res) => {
 
   try {
     const user = await getAuthenticatedUser(req);
-    if (!user) return unauthorized(res);
+    if (!user) return unauthorized(req, res);
 
     const body = await readJson(req);
     const op = String(body.op || '').trim();
@@ -590,9 +595,12 @@ module.exports = async (req, res) => {
     if (table === 'work_order_signatures') {
       await ensureWorkOrderSignaturesTable();
     }
+    if (table === 'finance_accounts' || table === 'finance_transactions') {
+      await ensureFinanceTables();
+    }
 
     const requiredPage = tablePermissions[table] || null;
-    if (requiredPage && !requireAnyPage(user, requiredPage, res)) return;
+    if (requiredPage && !requireAnyPage(req, user, requiredPage, res)) return;
 
     if (op === 'upsert') {
       const values = body.values;

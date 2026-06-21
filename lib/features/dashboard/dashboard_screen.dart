@@ -26,36 +26,52 @@ class DashboardScreen extends ConsumerWidget {
     final canSeeProducts = ref.watch(hasPageAccessProvider(kPageProducts));
     final canSeeBilling = ref.watch(hasPageAccessProvider(kPageBilling));
     final canSeeReports = ref.watch(hasPageAccessProvider(kPageReports));
-    final canSeeTileTotalCustomers =
-        ref.watch(hasActionAccessProvider(kActionDashboardTotalCustomers));
-    final canSeeTileOpenWorkOrders =
-        ref.watch(hasActionAccessProvider(kActionDashboardOpenWorkOrders));
-    final canSeeTileInProgressWorkOrders =
-        ref.watch(hasActionAccessProvider(kActionDashboardInProgressWorkOrders));
-    final canSeeTileTodayWorkOrders =
-        ref.watch(hasActionAccessProvider(kActionDashboardTodayWorkOrders));
-    final canSeeTileExpiringSoon =
-        ref.watch(hasActionAccessProvider(kActionDashboardExpiringSoon));
-    final canSeeTileRevenue =
-        ref.watch(hasActionAccessProvider(kActionDashboardRevenue));
-    final canSeeTileOpenInvoices =
-        ref.watch(hasActionAccessProvider(kActionDashboardOpenInvoices));
-    final canSeeTileInvoiceQueue =
-        ref.watch(hasActionAccessProvider(kActionDashboardInvoiceQueue));
-    final canSeeTileLowStock =
-        ref.watch(hasActionAccessProvider(kActionDashboardLowStock));
+    final canSeeTileTotalCustomers = ref.watch(
+      hasActionAccessProvider(kActionDashboardTotalCustomers),
+    );
+    final canSeeTileOpenWorkOrders = ref.watch(
+      hasActionAccessProvider(kActionDashboardOpenWorkOrders),
+    );
+    final canSeeTileInProgressWorkOrders = ref.watch(
+      hasActionAccessProvider(kActionDashboardInProgressWorkOrders),
+    );
+    final canSeeTileTodayWorkOrders = ref.watch(
+      hasActionAccessProvider(kActionDashboardTodayWorkOrders),
+    );
+    final canSeeTileExpiringSoon = ref.watch(
+      hasActionAccessProvider(kActionDashboardExpiringSoon),
+    );
+    final canSeeTileRevenue = ref.watch(
+      hasActionAccessProvider(kActionDashboardRevenue),
+    );
+    final canSeeTileOpenInvoices = ref.watch(
+      hasActionAccessProvider(kActionDashboardOpenInvoices),
+    );
+    final canSeeTileInvoiceQueue = ref.watch(
+      hasActionAccessProvider(kActionDashboardInvoiceQueue),
+    );
+    final canSeeTileLowStock = ref.watch(
+      hasActionAccessProvider(kActionDashboardLowStock),
+    );
 
     final seriesAsync = canSeeReports
         ? ref.watch(dashboardRevenueSeriesProvider)
         : const AsyncValue<List<DashboardDailyPoint>>.data([]);
-    final money = NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0);
+    final money = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: '₺',
+      decimalDigits: 0,
+    );
 
     return AppPageLayout(
       title: 'Panel',
       subtitle: 'Genel görünüm, bugün ve yaklaşan işler.',
+      compactHeader: true,
       body: Stack(
         children: [
-          const Positioned.fill(child: IgnorePointer(child: _DashboardBackground())),
+          const Positioned.fill(
+            child: IgnorePointer(child: _DashboardBackground()),
+          ),
           RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(dashboardMetricsProvider);
@@ -66,309 +82,360 @@ class DashboardScreen extends ConsumerWidget {
             child: ListView(
               padding: const EdgeInsets.only(bottom: 120),
               children: [
-            Skeletonizer(
-              enabled: metricsAsync.isLoading,
-              child: _MetricsGrid(
-                money: money,
-                metrics: metricsAsync.value ?? DashboardMetrics.zero(),
-                canSeeCustomers: canSeeCustomers,
-                canSeeWorkOrders: canSeeWorkOrders,
-                canSeeProducts: canSeeProducts,
-                canSeeBilling: canSeeBilling,
-                canSeeReports: canSeeReports,
-                canSeeTileTotalCustomers: canSeeTileTotalCustomers,
-                canSeeTileOpenWorkOrders: canSeeTileOpenWorkOrders,
-                canSeeTileInProgressWorkOrders: canSeeTileInProgressWorkOrders,
-                canSeeTileTodayWorkOrders: canSeeTileTodayWorkOrders,
-                canSeeTileExpiringSoon: canSeeTileExpiringSoon,
-                canSeeTileRevenue: canSeeTileRevenue,
-                canSeeTileOpenInvoices: canSeeTileOpenInvoices,
-                canSeeTileInvoiceQueue: canSeeTileInvoiceQueue,
-                canSeeTileLowStock: canSeeTileLowStock,
-              ),
-            ),
-            const Gap(12),
-            const _BankPasswordsCard(),
-            const Gap(12),
-            const _ExchangeRatesCard(),
-            const Gap(16),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final twoCols = constraints.maxWidth >= 980;
-
-              final surface = Theme.of(context).cardTheme.color ?? AppTheme.surface;
-              final revenueBgTop =
-                  Color.alphaBlend(AppTheme.success.withValues(alpha: 0.14), surface);
-              final revenueBgBottom =
-                  Color.alphaBlend(AppTheme.success.withValues(alpha: 0.06), surface);
-
-              final revenueCard = AppCard(
-                padding: EdgeInsets.zero,
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.all(
-                    Radius.circular(AppTheme.radiusMd),
+                Skeletonizer(
+                  enabled: metricsAsync.isLoading,
+                  child: _MetricsGrid(
+                    money: money,
+                    metrics: metricsAsync.value ?? DashboardMetrics.zero(),
+                    canSeeCustomers: canSeeCustomers,
+                    canSeeWorkOrders: canSeeWorkOrders,
+                    canSeeProducts: canSeeProducts,
+                    canSeeBilling: canSeeBilling,
+                    canSeeReports: canSeeReports,
+                    canSeeTileTotalCustomers: canSeeTileTotalCustomers,
+                    canSeeTileOpenWorkOrders: canSeeTileOpenWorkOrders,
+                    canSeeTileInProgressWorkOrders:
+                        canSeeTileInProgressWorkOrders,
+                    canSeeTileTodayWorkOrders: canSeeTileTodayWorkOrders,
+                    canSeeTileExpiringSoon: canSeeTileExpiringSoon,
+                    canSeeTileRevenue: canSeeTileRevenue,
+                    canSeeTileOpenInvoices: canSeeTileOpenInvoices,
+                    canSeeTileInvoiceQueue: canSeeTileInvoiceQueue,
+                    canSeeTileLowStock: canSeeTileLowStock,
                   ),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [revenueBgTop, revenueBgBottom],
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.success.withValues(alpha: 0.16),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: AppTheme.success.withValues(alpha: 0.26),
-                                  ),
-                                ),
-                                child: const Icon(
-                                  Icons.show_chart_rounded,
-                                  size: 18,
-                                  color: AppTheme.success,
-                                ),
-                              ),
-                              const Gap(10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Gelir (Son 14 Gün)',
-                                      style: Theme.of(context).textTheme.titleMedium,
-                                    ),
-                                    const Gap(2),
-                                    Text(
-                                      'Ödemeler üzerinden günlük toplam.',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(color: const Color(0xFF64748B)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Gap(16),
-                          SizedBox(
-                            height: 240,
-                            child: seriesAsync.when(
-                              data: (points) => _RevenueChart(points: points),
-                              loading: () => const _ChartSkeleton(),
-                              error: (_, _) => const _ChartError(),
+                ),
+                const Gap(12),
+                const _BankPasswordsCard(),
+                const Gap(12),
+                const _ExchangeRatesCard(),
+                const Gap(16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final twoCols = constraints.maxWidth >= 980;
+
+                    final surface =
+                        Theme.of(context).cardTheme.color ?? AppTheme.surface;
+                    final revenueBgTop = Color.alphaBlend(
+                      AppTheme.success.withValues(alpha: 0.14),
+                      surface,
+                    );
+                    final revenueBgBottom = Color.alphaBlend(
+                      AppTheme.success.withValues(alpha: 0.06),
+                      surface,
+                    );
+
+                    final revenueCard = AppCard(
+                      padding: EdgeInsets.zero,
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.all(
+                          Radius.circular(AppTheme.radiusMd),
+                        ),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [revenueBgTop, revenueBgBottom],
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-
-              final statusBgTop =
-                  Color.alphaBlend(AppTheme.primary.withValues(alpha: 0.14), surface);
-              final statusBgBottom =
-                  Color.alphaBlend(AppTheme.primary.withValues(alpha: 0.06), surface);
-
-              final workOrderStatusCard = AppCard(
-                padding: EdgeInsets.zero,
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.all(
-                    Radius.circular(AppTheme.radiusMd),
-                  ),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [statusBgTop, statusBgBottom],
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primary.withValues(alpha: 0.16),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: AppTheme.primary.withValues(alpha: 0.26),
-                                  ),
-                                ),
-                                child: const Icon(
-                                  Icons.assignment_rounded,
-                                  size: 18,
-                                  color: AppTheme.primary,
-                                ),
-                              ),
-                              const Gap(10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
                                   children: [
-                                    Text(
-                                      'İş Emri Durumu',
-                                      style: Theme.of(context).textTheme.titleMedium,
+                                    Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.success.withValues(
+                                          alpha: 0.16,
+                                        ),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: AppTheme.success.withValues(
+                                            alpha: 0.26,
+                                          ),
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.show_chart_rounded,
+                                        size: 18,
+                                        color: AppTheme.success,
+                                      ),
                                     ),
-                                    const Gap(2),
-                                    Text(
-                                      'Açık, devam eden ve tamamlanan işler.',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(color: const Color(0xFF64748B)),
+                                    const Gap(10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Gelir (Son 14 Gün)',
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.titleMedium,
+                                          ),
+                                          const Gap(2),
+                                          Text(
+                                            'Ödemeler üzerinden günlük toplam.',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  color: const Color(
+                                                    0xFF64748B,
+                                                  ),
+                                                ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),
-                              ),
-                            ],
-                          ),
-                          const Gap(16),
-                          SizedBox(
-                            height: 160,
-                            child: metricsAsync.when(
-                              data: (m) => _WorkOrderPieChart(metrics: m),
-                              loading: () => const _ChartSkeleton(),
-                              error: (_, _) => const _ChartError(),
+                                const Gap(16),
+                                SizedBox(
+                                  height: 240,
+                                  child: seriesAsync.when(
+                                    data: (points) =>
+                                        _RevenueChart(points: points),
+                                    loading: () => const _ChartSkeleton(),
+                                    error: (_, _) => const _ChartError(),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                ),
-              );
+                    );
 
-              final activityBgTop =
-                  Color.alphaBlend(AppTheme.warning.withValues(alpha: 0.12), surface);
-              final activityBgBottom =
-                  Color.alphaBlend(AppTheme.warning.withValues(alpha: 0.05), surface);
+                    final statusBgTop = Color.alphaBlend(
+                      AppTheme.primary.withValues(alpha: 0.14),
+                      surface,
+                    );
+                    final statusBgBottom = Color.alphaBlend(
+                      AppTheme.primary.withValues(alpha: 0.06),
+                      surface,
+                    );
 
-              final activityCard = AppCard(
-                padding: EdgeInsets.zero,
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.all(
-                    Radius.circular(AppTheme.radiusMd),
-                  ),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [activityBgTop, activityBgBottom],
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.warning.withValues(alpha: 0.16),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: AppTheme.warning.withValues(alpha: 0.26),
-                                  ),
-                                ),
-                                child: const Icon(
-                                  Icons.bolt_rounded,
-                                  size: 18,
-                                  color: AppTheme.warning,
-                                ),
-                              ),
-                              const Gap(10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                    final workOrderStatusCard = AppCard(
+                      padding: EdgeInsets.zero,
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.all(
+                          Radius.circular(AppTheme.radiusMd),
+                        ),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [statusBgTop, statusBgBottom],
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
                                   children: [
-                                    Text(
-                                      'Son Aktiviteler',
-                                      style: Theme.of(context).textTheme.titleMedium,
+                                    Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primary.withValues(
+                                          alpha: 0.16,
+                                        ),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: AppTheme.primary.withValues(
+                                            alpha: 0.26,
+                                          ),
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.assignment_rounded,
+                                        size: 18,
+                                        color: AppTheme.primary,
+                                      ),
                                     ),
-                                    const Gap(2),
-                                    Text(
-                                      'İş emirleri ve servis kayıtları.',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(color: const Color(0xFF64748B)),
+                                    const Gap(10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'İş Emri Durumu',
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.titleMedium,
+                                          ),
+                                          const Gap(2),
+                                          Text(
+                                            'Açık, devam eden ve tamamlanan işler.',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  color: const Color(
+                                                    0xFF64748B,
+                                                  ),
+                                                ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),
-                              ),
-                            ],
+                                const Gap(16),
+                                SizedBox(
+                                  height: 160,
+                                  child: metricsAsync.when(
+                                    data: (m) => _WorkOrderPieChart(metrics: m),
+                                    loading: () => const _ChartSkeleton(),
+                                    error: (_, _) => const _ChartError(),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          const Gap(14),
-                          const _ActivityTimeline(),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                ),
-              );
+                    );
 
-                if (!twoCols) {
-                  return Column(
-                    children: [
-                      if (canSeeReports) revenueCard,
-                      if (canSeeReports && canSeeWorkOrders) const Gap(16),
-                      if (canSeeWorkOrders) workOrderStatusCard,
-                      if ((canSeeWorkOrders || canSeeService) &&
-                          (canSeeReports || canSeeWorkOrders)) const Gap(16),
-                      if (canSeeWorkOrders || canSeeService) activityCard,
-                    ],
-                  );
-                }
+                    final activityBgTop = Color.alphaBlend(
+                      AppTheme.warning.withValues(alpha: 0.12),
+                      surface,
+                    );
+                    final activityBgBottom = Color.alphaBlend(
+                      AppTheme.warning.withValues(alpha: 0.05),
+                      surface,
+                    );
 
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child:
-                          canSeeReports ? revenueCard : const SizedBox.shrink(),
-                    ),
-                    const Gap(16),
-                    Expanded(
-                      flex: 2,
-                      child: Column(
+                    final activityCard = AppCard(
+                      padding: EdgeInsets.zero,
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.all(
+                          Radius.circular(AppTheme.radiusMd),
+                        ),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [activityBgTop, activityBgBottom],
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.warning.withValues(
+                                          alpha: 0.16,
+                                        ),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: AppTheme.warning.withValues(
+                                            alpha: 0.26,
+                                          ),
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.bolt_rounded,
+                                        size: 18,
+                                        color: AppTheme.warning,
+                                      ),
+                                    ),
+                                    const Gap(10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Son Aktiviteler',
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.titleMedium,
+                                          ),
+                                          const Gap(2),
+                                          Text(
+                                            'İş emirleri ve servis kayıtları.',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  color: const Color(
+                                                    0xFF64748B,
+                                                  ),
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const Gap(14),
+                                const _ActivityTimeline(),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+
+                    if (!twoCols) {
+                      return Column(
                         children: [
+                          if (canSeeReports) revenueCard,
+                          if (canSeeReports && canSeeWorkOrders) const Gap(16),
                           if (canSeeWorkOrders) workOrderStatusCard,
-                          if (canSeeWorkOrders &&
-                              (canSeeWorkOrders || canSeeService))
+                          if ((canSeeWorkOrders || canSeeService) &&
+                              (canSeeReports || canSeeWorkOrders))
                             const Gap(16),
                           if (canSeeWorkOrders || canSeeService) activityCard,
                         ],
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
+                      );
+                    }
+
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: canSeeReports
+                              ? revenueCard
+                              : const SizedBox.shrink(),
+                        ),
+                        const Gap(16),
+                        Expanded(
+                          flex: 2,
+                          child: Column(
+                            children: [
+                              if (canSeeWorkOrders) workOrderStatusCard,
+                              if (canSeeWorkOrders &&
+                                  (canSeeWorkOrders || canSeeService))
+                                const Gap(16),
+                              if (canSeeWorkOrders || canSeeService)
+                                activityCard,
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
             ),
           ),
         ],
@@ -382,78 +449,7 @@ class _DashboardBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final isWide = width >= 980;
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppTheme.backgroundAlt.withValues(alpha: 0.92),
-                  AppTheme.background,
-                  AppTheme.background,
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          top: -180,
-          right: isWide ? -120 : -160,
-          child: Container(
-            width: isWide ? 520 : 420,
-            height: isWide ? 520 : 420,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  AppTheme.primary.withValues(alpha: 0.22),
-                  AppTheme.primary.withValues(alpha: 0.0),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          top: 120,
-          left: isWide ? -140 : -180,
-          child: Container(
-            width: isWide ? 520 : 440,
-            height: isWide ? 520 : 440,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  AppTheme.accent.withValues(alpha: 0.18),
-                  AppTheme.accent.withValues(alpha: 0.0),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: -220,
-          left: isWide ? 180 : 40,
-          child: Container(
-            width: isWide ? 620 : 520,
-            height: isWide ? 620 : 520,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  AppTheme.warning.withValues(alpha: 0.12),
-                  AppTheme.warning.withValues(alpha: 0.0),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
+    return const ColoredBox(color: AppTheme.background);
   }
 }
 
@@ -465,15 +461,23 @@ class _ExchangeRatesCard extends ConsumerWidget {
     final ratesAsync = ref.watch(dashboardHalkbankRatesProvider);
     final format = NumberFormat('#,##0.0000', 'tr_TR');
     final surface = Theme.of(context).cardTheme.color ?? AppTheme.surface;
-    final bgTop = Color.alphaBlend(AppTheme.warning.withValues(alpha: 0.14), surface);
-    final bgBottom = Color.alphaBlend(AppTheme.warning.withValues(alpha: 0.06), surface);
+    final bgTop = Color.alphaBlend(
+      AppTheme.warning.withValues(alpha: 0.14),
+      surface,
+    );
+    final bgBottom = Color.alphaBlend(
+      AppTheme.warning.withValues(alpha: 0.06),
+      surface,
+    );
 
     String subtitleFromRates(DashboardExchangeRates rates) {
       if (rates.items.isEmpty) return 'Halkbank • USD, EUR, GBP';
-      final parts = rates.items.map((r) {
-        final value = format.format(r.selling);
-        return '${r.code}: $value';
-      }).join(' • ');
+      final parts = rates.items
+          .map((r) {
+            final value = format.format(r.selling);
+            return '${r.code}: $value';
+          })
+          .join(' • ');
       return 'Halkbank • $parts';
     }
 
@@ -497,17 +501,17 @@ class _ExchangeRatesCard extends ConsumerWidget {
                         data: (rates) {
                           final updatedText = rates.fetchedAt == null
                               ? '—'
-                              : DateFormat('d MMM y HH:mm', 'tr_TR')
-                                  .format(AppTime.toTr(rates.fetchedAt!));
+                              : DateFormat(
+                                  'd MMM y HH:mm',
+                                  'tr_TR',
+                                ).format(AppTime.toTr(rates.fetchedAt!));
                           return Column(
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 'Güncelleme: $updatedText',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
+                                style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(color: const Color(0xFF64748B)),
                               ),
                               const Gap(12),
@@ -518,24 +522,26 @@ class _ExchangeRatesCard extends ConsumerWidget {
                                   children: [
                                     for (final r in rates.items)
                                       Padding(
-                                        padding: const EdgeInsets.only(bottom: 8),
+                                        padding: const EdgeInsets.only(
+                                          bottom: 8,
+                                        ),
                                         child: Row(
                                           children: [
                                             SizedBox(
                                               width: 56,
                                               child: Text(
                                                 r.code,
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .titleSmall,
+                                                style: Theme.of(
+                                                  context,
+                                                ).textTheme.titleSmall,
                                               ),
                                             ),
                                             Expanded(
                                               child: Text(
                                                 'Alış: ${format.format(r.buying)}',
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .bodyMedium,
+                                                style: Theme.of(
+                                                  context,
+                                                ).textTheme.bodyMedium,
                                               ),
                                             ),
                                             Expanded(
@@ -544,18 +550,27 @@ class _ExchangeRatesCard extends ConsumerWidget {
                                                 style: Theme.of(context)
                                                     .textTheme
                                                     .bodyMedium
-                                                    ?.copyWith(fontWeight: FontWeight.w700),
+                                                    ?.copyWith(
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
                                               ),
                                             ),
                                             SizedBox(
                                               width: 52,
                                               child: Text(
-                                                (r.time ?? '').trim().isEmpty ? '—' : r.time!,
+                                                (r.time ?? '').trim().isEmpty
+                                                    ? '—'
+                                                    : r.time!,
                                                 textAlign: TextAlign.end,
                                                 style: Theme.of(context)
                                                     .textTheme
                                                     .bodySmall
-                                                    ?.copyWith(color: const Color(0xFF64748B)),
+                                                    ?.copyWith(
+                                                      color: const Color(
+                                                        0xFF64748B,
+                                                      ),
+                                                    ),
                                               ),
                                             ),
                                           ],
@@ -570,7 +585,8 @@ class _ExchangeRatesCard extends ConsumerWidget {
                           height: 140,
                           child: Center(child: CircularProgressIndicator()),
                         ),
-                        error: (err, st) => const Text('Kur bilgisi alınamadı.'),
+                        error: (err, st) =>
+                            const Text('Kur bilgisi alınamadı.'),
                       );
                     },
                   ),
@@ -578,8 +594,13 @@ class _ExchangeRatesCard extends ConsumerWidget {
                 actions: [
                   TextButton(
                     onPressed: () async {
-                      final url = ratesAsync.value?.sourceUrl ?? 'https://kur.doviz.com/halkbank';
-                      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                      final url =
+                          ratesAsync.value?.sourceUrl ??
+                          'https://kur.doviz.com/halkbank';
+                      await launchUrl(
+                        Uri.parse(url),
+                        mode: LaunchMode.externalApplication,
+                      );
                     },
                     child: const Text('Kaynak'),
                   ),
@@ -593,7 +614,9 @@ class _ExchangeRatesCard extends ConsumerWidget {
           );
         },
         child: ClipRRect(
-          borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusMd)),
+          borderRadius: const BorderRadius.all(
+            Radius.circular(AppTheme.radiusMd),
+          ),
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -612,7 +635,9 @@ class _ExchangeRatesCard extends ConsumerWidget {
                     decoration: BoxDecoration(
                       color: AppTheme.warning.withValues(alpha: 0.16),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppTheme.warning.withValues(alpha: 0.26)),
+                      border: Border.all(
+                        color: AppTheme.warning.withValues(alpha: 0.26),
+                      ),
                     ),
                     child: const Icon(
                       Icons.currency_exchange_rounded,
@@ -636,15 +661,16 @@ class _ExchangeRatesCard extends ConsumerWidget {
                             loading: () => 'Halkbank • yükleniyor…',
                             error: (err, st) => 'Halkbank • USD, EUR, GBP',
                           ),
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
+                          style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: const Color(0xFF64748B)),
                         ),
                       ],
                     ),
                   ),
-                  const Icon(Icons.open_in_new_rounded, color: Color(0xFF94A3B8)),
+                  const Icon(
+                    Icons.open_in_new_rounded,
+                    color: Color(0xFF94A3B8),
+                  ),
                 ],
               ),
             ),
@@ -661,14 +687,25 @@ class _BankPasswordsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final surface = Theme.of(context).cardTheme.color ?? AppTheme.surface;
-    final bgTop = Color.alphaBlend(AppTheme.primary.withValues(alpha: 0.14), surface);
-    final bgMid = Color.alphaBlend(AppTheme.accent.withValues(alpha: 0.08), surface);
-    final bgBottom = Color.alphaBlend(AppTheme.primary.withValues(alpha: 0.06), surface);
+    final bgTop = Color.alphaBlend(
+      AppTheme.primary.withValues(alpha: 0.14),
+      surface,
+    );
+    final bgMid = Color.alphaBlend(
+      AppTheme.accent.withValues(alpha: 0.08),
+      surface,
+    );
+    final bgBottom = Color.alphaBlend(
+      AppTheme.primary.withValues(alpha: 0.06),
+      surface,
+    );
     return AppCard(
       padding: EdgeInsets.zero,
       onTap: () => _showBankPicker(context),
       child: ClipRRect(
-        borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusMd)),
+        borderRadius: const BorderRadius.all(
+          Radius.circular(AppTheme.radiusMd),
+        ),
         child: DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -687,7 +724,9 @@ class _BankPasswordsCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: AppTheme.primary.withValues(alpha: 0.16),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppTheme.primary.withValues(alpha: 0.26)),
+                    border: Border.all(
+                      color: AppTheme.primary.withValues(alpha: 0.26),
+                    ),
                   ),
                   child: const Icon(
                     Icons.lock_rounded,
@@ -707,15 +746,17 @@ class _BankPasswordsCard extends StatelessWidget {
                       const Gap(2),
                       Text(
                         'İş Bankası / Garanti Bankası',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: const Color(0xFF64748B)),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF64748B),
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFF94A3B8),
+                ),
               ],
             ),
           ),
@@ -760,7 +801,9 @@ class _BankPasswordsCard extends StatelessWidget {
 
   void _showPassword(BuildContext context, _BankPasswordType type) {
     final now = AppTime.toTr(DateTime.now());
-    final title = type == _BankPasswordType.isbank ? 'İş Bankası' : 'Garanti Bankası';
+    final title = type == _BankPasswordType.isbank
+        ? 'İş Bankası'
+        : 'Garanti Bankası';
     final password = type == _BankPasswordType.isbank
         ? _isbankPassword(now)
         : _garantiPassword(now);
@@ -786,9 +829,9 @@ class _BankPasswordsCard extends StatelessWidget {
               child: Text(
                 password,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.2,
-                    ),
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0,
+                ),
               ),
             ),
           ],
@@ -814,7 +857,9 @@ String _isbankPassword(DateTime nowTr) {
 
 String _garantiPassword(DateTime nowTr) {
   final sum = nowTr.day + nowTr.month;
-  final raw = '$sum' '00';
+  final raw =
+      '$sum'
+      '00';
   return raw.padLeft(4, '0');
 }
 
@@ -858,21 +903,24 @@ class _MetricsGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final revenueChange = metrics.revenueChangePercent;
-    final revenueChangeText = revenueChange >= 0 
-        ? '+${revenueChange.toStringAsFixed(0)}%' 
+    final revenueChangeText = revenueChange >= 0
+        ? '+${revenueChange.toStringAsFixed(0)}%'
         : '${revenueChange.toStringAsFixed(0)}%';
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final columns = width >= 1200
-            ? 6
-            : width >= 980
-                ? 4
-                : width >= 720
-                    ? 3
-                    : 2;
-        final spacing = 12.0;
+        final columns = width >= 1440
+            ? 5
+            : width >= 1080
+            ? 4
+            : width >= 720
+            ? 3
+            : width >= 560
+            ? 2
+            : 1;
+        final isPhone = width < 560;
+        final spacing = isPhone ? 8.0 : 12.0;
         final itemWidth = (width - (columns - 1) * spacing) / columns;
 
         final items = <_MetricTile>[
@@ -925,8 +973,9 @@ class _MetricsGrid extends StatelessWidget {
               icon: Icons.payments_rounded,
               tone: _MetricTone.success,
               subtitle: revenueChangeText,
-              subtitleColor:
-                  revenueChange >= 0 ? AppTheme.success : AppTheme.error,
+              subtitleColor: revenueChange >= 0
+                  ? AppTheme.success
+                  : AppTheme.error,
               onTap: () => context.go('/raporlar'),
             ),
           if (canSeeBilling && canSeeTileOpenInvoices)
@@ -966,10 +1015,20 @@ class _MetricsGrid extends StatelessWidget {
             for (final item in items)
               SizedBox(
                 width: itemWidth,
+                height: isPhone ? 76 : 96,
                 child: AppCard(
                   padding: EdgeInsets.zero,
                   onTap: item.onTap,
-                  child: item,
+                  child: _MetricTile(
+                    title: item.title,
+                    value: item.value,
+                    icon: item.icon,
+                    tone: item.tone,
+                    subtitle: item.subtitle,
+                    subtitleColor: item.subtitleColor,
+                    onTap: item.onTap,
+                    dense: isPhone,
+                  ),
                 ),
               ),
           ],
@@ -988,6 +1047,7 @@ class _MetricTile extends StatelessWidget {
     this.subtitle,
     this.subtitleColor,
     this.onTap,
+    this.dense = false,
   });
 
   final String title;
@@ -997,6 +1057,7 @@ class _MetricTile extends StatelessWidget {
   final String? subtitle;
   final Color? subtitleColor;
   final VoidCallback? onTap;
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
@@ -1004,98 +1065,109 @@ class _MetricTile extends StatelessWidget {
       _MetricTone.primary => AppTheme.primary,
       _MetricTone.warning => AppTheme.warning,
       _MetricTone.success => AppTheme.success,
-      _MetricTone.neutral => const Color(0xFF0F172A),
+      _MetricTone.neutral => const Color(0xFF334155),
     };
-
-    final surface = Theme.of(context).cardTheme.color ?? AppTheme.surface;
-    final bgTop = Color.alphaBlend(accent.withValues(alpha: 0.16), surface);
-    final bgBottom = Color.alphaBlend(accent.withValues(alpha: 0.08), surface);
 
     return ClipRRect(
       borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusMd)),
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [bgTop, bgBottom],
-          ),
-        ),
+        decoration: BoxDecoration(color: AppTheme.surface),
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: EdgeInsets.fromLTRB(
+            dense ? 12 : 16,
+            dense ? 10 : 14,
+            dense ? 10 : 12,
+            dense ? 10 : 14,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: accent.withValues(alpha: 0.26)),
-                    ),
-                    child: Icon(icon, size: 18, color: accent),
-                  ),
-                  const Gap(10),
-                  Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: const Color(0xFF64748B)),
-                    ),
-                  ),
-                  if (onTap != null)
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      size: 20,
-                      color: Color(0xFF94A3B8),
-                    ),
-                ],
+              Container(
+                width: dense ? 36 : 40,
+                height: dense ? 36 : 40,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.09),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                  border: Border.all(color: accent.withValues(alpha: 0.16)),
+                ),
+                child: Icon(icon, size: dense ? 17 : 19, color: accent),
               ),
-              const Gap(12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    value,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontSize: 24,
-                          letterSpacing: -0.4,
-                        ),
-                  ),
-                  if (subtitle != null) ...[
-                    const Gap(8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
+              Gap(dense ? 10 : 12),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                        fontWeight: FontWeight.w700,
+                        fontSize: dense ? 12 : null,
                       ),
-                      decoration: BoxDecoration(
-                        color: (subtitleColor ?? const Color(0xFF64748B))
-                            .withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: (subtitleColor ?? const Color(0xFF64748B))
-                              .withValues(alpha: 0.18),
+                    ),
+                    Gap(dense ? 4 : 7),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            value,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(
+                                  fontSize: dense ? 21 : 24,
+                                  height: 1.05,
+                                  letterSpacing: 0,
+                                ),
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        subtitle!,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: subtitleColor ?? const Color(0xFF64748B),
-                              fontWeight: FontWeight.w700,
+                        if (subtitle != null) ...[
+                          Gap(dense ? 6 : 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2,
                             ),
-                      ),
+                            decoration: BoxDecoration(
+                              color: (subtitleColor ?? const Color(0xFF64748B))
+                                  .withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color:
+                                    (subtitleColor ?? const Color(0xFF64748B))
+                                        .withValues(alpha: 0.15),
+                              ),
+                            ),
+                            child: Text(
+                              subtitle!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color:
+                                        subtitleColor ??
+                                        const Color(0xFF64748B),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: dense ? 11 : null,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
-                ],
+                ),
               ),
+              if (onTap != null)
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: dense ? 19 : 21,
+                  color: const Color(0xFFCBD5E1),
+                ),
             ],
           ),
         ),
@@ -1113,16 +1185,18 @@ class _WorkOrderPieChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = metrics.openWorkOrders + metrics.inProgressWorkOrders + metrics.completedWorkOrders;
-    
+    final total =
+        metrics.openWorkOrders +
+        metrics.inProgressWorkOrders +
+        metrics.completedWorkOrders;
+
     if (total == 0) {
       return Center(
         child: Text(
           'İş emri kaydı yok.',
-          style: Theme.of(context)
-              .textTheme
-              .bodyMedium
-              ?.copyWith(color: const Color(0xFF64748B)),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
         ),
       );
     }
@@ -1162,11 +1236,23 @@ class _WorkOrderPieChart extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _LegendItem(color: AppTheme.warning, label: 'Açık', value: metrics.openWorkOrders),
+            _LegendItem(
+              color: AppTheme.warning,
+              label: 'Açık',
+              value: metrics.openWorkOrders,
+            ),
             const Gap(8),
-            _LegendItem(color: AppTheme.primary, label: 'Devam', value: metrics.inProgressWorkOrders),
+            _LegendItem(
+              color: AppTheme.primary,
+              label: 'Devam',
+              value: metrics.inProgressWorkOrders,
+            ),
             const Gap(8),
-            _LegendItem(color: AppTheme.success, label: 'Tamamlanan', value: metrics.completedWorkOrders),
+            _LegendItem(
+              color: AppTheme.success,
+              label: 'Tamamlanan',
+              value: metrics.completedWorkOrders,
+            ),
           ],
         ),
       ],
@@ -1175,7 +1261,11 @@ class _WorkOrderPieChart extends StatelessWidget {
 }
 
 class _LegendItem extends StatelessWidget {
-  const _LegendItem({required this.color, required this.label, required this.value});
+  const _LegendItem({
+    required this.color,
+    required this.label,
+    required this.value,
+  });
 
   final Color color;
   final String label;
@@ -1197,9 +1287,9 @@ class _LegendItem extends StatelessWidget {
         const Gap(8),
         Text(
           '$label: $value',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w500,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
         ),
       ],
     );
@@ -1218,10 +1308,9 @@ class _RevenueChart extends StatelessWidget {
       return Center(
         child: Text(
           'Bu aralıkta gelir kaydı yok.',
-          style: Theme.of(context)
-              .textTheme
-              .bodyMedium
-              ?.copyWith(color: const Color(0xFF64748B)),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
         ),
       );
     }
@@ -1303,10 +1392,9 @@ class _ChartError extends StatelessWidget {
     return Center(
       child: Text(
         'Gelir grafiği yüklenemedi.',
-        style: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.copyWith(color: const Color(0xFF64748B)),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
       ),
     );
   }
@@ -1324,10 +1412,9 @@ class _ActivityTimeline extends ConsumerWidget {
         if (items.isEmpty) {
           return Text(
             'Henüz aktivite kaydı yok.',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: const Color(0xFF64748B)),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
           );
         }
 
@@ -1335,7 +1422,9 @@ class _ActivityTimeline extends ConsumerWidget {
           children: [
             for (int i = 0; i < items.length; i++)
               Padding(
-                padding: EdgeInsets.only(bottom: i == items.length - 1 ? 0 : 12),
+                padding: EdgeInsets.only(
+                  bottom: i == items.length - 1 ? 0 : 12,
+                ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1364,9 +1453,7 @@ class _ActivityTimeline extends ConsumerWidget {
                               items[i].type == DashboardActivityType.workOrder
                                   ? 'İş emri güncellendi'
                                   : 'Servis kaydı güncellendi',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
+                              style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(fontWeight: FontWeight.w600),
                             ),
                             const Gap(2),
@@ -1377,9 +1464,7 @@ class _ActivityTimeline extends ConsumerWidget {
                                     items[i].customerName ?? items[i].title,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
+                                    style: Theme.of(context).textTheme.bodySmall
                                         ?.copyWith(
                                           color: const Color(0xFF64748B),
                                         ),
@@ -1387,10 +1472,10 @@ class _ActivityTimeline extends ConsumerWidget {
                                 ),
                                 Text(
                                   _relativeTime(items[i].createdAt),
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(color: const Color(0xFF94A3B8)),
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: const Color(0xFF94A3B8),
+                                      ),
                                 ),
                               ],
                             ),
@@ -1437,9 +1522,8 @@ class _ActivityTimeline extends ConsumerWidget {
                           children: [
                             Text(
                               'İş emri güncellendi',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w600),
                             ),
                             const Gap(2),
                             const Row(
@@ -1460,10 +1544,9 @@ class _ActivityTimeline extends ConsumerWidget {
       ),
       error: (_, _) => Text(
         'Aktivite akışı yüklenemedi.',
-        style: Theme.of(context)
-            .textTheme
-            .bodySmall
-            ?.copyWith(color: const Color(0xFF64748B)),
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
       ),
     );
   }

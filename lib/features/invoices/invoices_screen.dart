@@ -260,8 +260,8 @@ class _FilterBar extends StatelessWidget {
     return switch (status) {
       'draft' => 'Taslak',
       'open' => 'Açık',
-      'partial' => 'Kısmi Ödendi',
-      'paid' => 'Ödendi',
+      'partial' => 'Kısmi',
+      'paid' => 'Kapalı',
       'cancelled' => 'İptal',
       _ => status,
     };
@@ -276,8 +276,8 @@ class _FilterBar extends StatelessWidget {
           children: [
             ListTile(title: const Text('Tümü'), onTap: () => Navigator.pop(context, '')),
             ListTile(title: const Text('Açık'), onTap: () => Navigator.pop(context, 'open')),
-            ListTile(title: const Text('Kısmi Ödendi'), onTap: () => Navigator.pop(context, 'partial')),
-            ListTile(title: const Text('Ödendi'), onTap: () => Navigator.pop(context, 'paid')),
+            ListTile(title: const Text('Kısmi'), onTap: () => Navigator.pop(context, 'partial')),
+            ListTile(title: const Text('Kapalı'), onTap: () => Navigator.pop(context, 'paid')),
             ListTile(title: const Text('İptal'), onTap: () => Navigator.pop(context, 'cancelled')),
           ],
         ),
@@ -345,7 +345,7 @@ class _InvoiceCard extends StatelessWidget {
       'draft' => ('Taslak', AppBadgeTone.neutral),
       'open' => ('Açık', AppBadgeTone.warning),
       'partial' => ('Kısmi', AppBadgeTone.primary),
-      'paid' => ('Ödendi', AppBadgeTone.success),
+      'paid' => ('Kapalı', AppBadgeTone.success),
       'cancelled' => ('İptal', AppBadgeTone.error),
       _ => ('?', AppBadgeTone.neutral),
     };
@@ -832,8 +832,8 @@ class _StatusBadgeLarge extends StatelessWidget {
     final (label, color) = switch (status) {
       'draft' => ('Taslak', const Color(0xFF64748B)),
       'open' => ('Açık', const Color(0xFFF59E0B)),
-      'partial' => ('Kısmi Ödendi', AppTheme.primary),
-      'paid' => ('Ödendi', AppTheme.success),
+      'partial' => ('Kısmi', AppTheme.primary),
+      'paid' => ('Kapalı', AppTheme.success),
       'cancelled' => ('İptal', AppTheme.error),
       _ => ('?', const Color(0xFF64748B)),
     };
