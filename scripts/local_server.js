@@ -1434,7 +1434,7 @@ async function handleAkinsoftPull(req, res) {
       const rawInvoiceCountResult = await pool.request().query(`
         select count_big(1) as total
         from dbo.FATURA
-        where coalesce(FATURA_NO, '') not like N'MSF%'
+        where ${invoiceWhere}
       `);
       rawInvoiceCount = Number(rawInvoiceCountResult.recordset[0]?.total || 0);
       const rawHeaders = (
@@ -1445,10 +1445,20 @@ async function handleAkinsoftPull(req, res) {
           order by TARIHI desc, BLKODU desc
         `)
       ).recordset;
-      const headers = rawHeaders.filter((row) => {
+      const filteredHeaders = rawHeaders.filter((row) => {
         const invoiceNumber = textOrNull(row.FATURA_NO) || '';
         return !invoiceNumber.toUpperCase().startsWith('MSF');
       });
+      const seenInvoiceNumbers = new Set();
+      const headers = [];
+      for (const row of filteredHeaders) {
+        const invoiceNumber = (textOrNull(row.FATURA_NO) || `AKN-${row.BLKODU}`)
+          .toLocaleUpperCase('tr-TR')
+          .trim();
+        if (seenInvoiceNumbers.has(invoiceNumber)) continue;
+        seenInvoiceNumbers.add(invoiceNumber);
+        headers.push(row);
+      }
 
       const ids = headers.map((row) => Number(row.BLKODU)).filter(Number.isFinite);
       const customerIds = [
