@@ -726,9 +726,11 @@ function resolveAkinsoftInvoicePayment(row, currency, grandTotal) {
   const closedFlag = parseAkinsoftBool(
     pick(row, [
       'KAPALI',
+      'KAPALI_FATURA',
       'KAPANDI',
       'ODENDI',
       'ODEME_DURUMU',
+      'FATURA_DURUMU',
       'DURUMU',
       'STATU',
       'STATUS',
@@ -793,6 +795,99 @@ function resolveAkinsoftDiscount(row, currency, lineNet) {
   if (raw <= 0) return 0;
   if (lineNet > 0 && raw >= lineNet - 0.01) return 0;
   return raw;
+}
+
+function resolveAkinsoftItemAmounts(row, currency) {
+  const normalizedCurrency = normalizeCurrency(currency);
+  const isTry = normalizedCurrency === 'TRY';
+  const quantity = numberOrZero(row.MIKTARI) || 1;
+  const unitPrice = numberOrZero(
+    pick(
+      row,
+      isTry
+        ? [
+            'KPB_KDV_HARICFY',
+            'KPB_FIYATI',
+            'KPB_BIRIM_FIYAT',
+            'KPB_BF',
+            'FIYATI',
+            'BIRIM_FIYAT',
+          ]
+        : [
+            'DVZ_KDV_HARICFY',
+            'DVZ_FIYATI',
+            'DVZ_BIRIM_FIYAT',
+            'DVZ_BF',
+            'DOVIZ_FIYATI',
+          ],
+    ),
+  );
+  const netTotal =
+    numberOrZero(
+      pick(
+        row,
+        isTry
+          ? [
+              'KPB_ARA_TUTAR',
+              'KPB_TOPLAM_TUTAR',
+              'KPB_TUTAR',
+              'KPB_KDV_HARIC_TUTAR',
+              'KPB_KDV_HARIC_TPL',
+              'ARA_TUTAR',
+              'TUTAR',
+              'TOPLAM_TUTAR',
+            ]
+          : [
+              'DVZ_ARA_TUTAR',
+              'DVZ_TOPLAM_TUTAR',
+              'DVZ_TUTAR',
+              'DOVIZ_TUTARI',
+              'DOVIZ_TOPLAM',
+            ],
+      ),
+    ) || quantity * unitPrice;
+  const taxRate = numberOrZero(row.KDV_ORANI);
+  const explicitTaxRaw = pick(
+    row,
+    isTry
+      ? ['KPB_KDV_TUTARI', 'KPB_KDV', 'KDV_TUTARI', 'KDV']
+      : ['DVZ_KDV_TUTARI', 'DVZ_KDV', 'DOVIZ_KDV_TUTARI'],
+  );
+  const explicitTaxAmount =
+    explicitTaxRaw == null ? null : numberOrZero(explicitTaxRaw);
+  const taxIncludedTotal = numberOrZero(
+    pick(
+      row,
+      isTry
+        ? ['KPB_KDVLI_TUTAR', 'KPB_KDV_DAHIL_TUTAR']
+        : ['DVZ_KDVLI_TUTAR', 'DVZ_KDV_DAHIL_TUTAR'],
+    ),
+  );
+  const taxAmount =
+    explicitTaxAmount != null
+      ? explicitTaxAmount
+      : taxRate > 0 && taxIncludedTotal > netTotal
+        ? taxIncludedTotal - netTotal
+        : 0;
+  return {
+    unitPrice,
+    discountAmount: resolveAkinsoftDiscount(row, normalizedCurrency, netTotal),
+    netTotal,
+    taxRate,
+    taxAmount,
+  };
+}
+
+function selectAkinsoftPayment(row, movements, currency, grandTotal) {
+  const invoicePayment = resolveAkinsoftInvoicePayment(row, currency, grandTotal);
+  const movementPayment = resolveAkinsoftCariPayment(
+    movements,
+    currency,
+    grandTotal,
+  );
+  if (invoicePayment?.status === 'paid') return invoicePayment;
+  if (movementPayment?.status === 'paid') return movementPayment;
+  return movementPayment || invoicePayment || { paidAmount: 0, status: 'open' };
 }
 
 async function ensureAkinsoftSyncMap(query) {
@@ -1457,101 +1552,12 @@ async function handleAkinsoftPull(req, res) {
         const list = itemsByInvoice.get(key) || [];
         const account = akinsoftAccountText(row);
         const currency = resolveAkinsoftItemCurrency(row);
-        const priceFields =
-          currency === 'TRY'
-            ? [
-                'KPB_KDV_HARICFY',
-                'KPB_FIYATI',
-                'KPB_BIRIM_FIYAT',
-                'KPB_BF',
-                'FIYATI',
-                'BIRIM_FIYAT',
-                'DVZ_KDV_HARICFY',
-                'DVZ_FIYATI',
-                'DVZ_BIRIM_FIYAT',
-              ]
-            : [
-                'DVZ_KDV_HARICFY',
-                'DVZ_FIYATI',
-                'DVZ_BIRIM_FIYAT',
-                'DVZ_BF',
-                'DOVIZ_FIYATI',
-                'KPB_KDV_HARICFY',
-                'KPB_FIYATI',
-                'KPB_BIRIM_FIYAT',
-              ];
-        const amountFields =
-          currency === 'TRY'
-            ? [
-                'KPB_ARA_TUTAR',
-                'KPB_TOPLAM_TUTAR',
-                'KPB_TUTAR',
-                'KPB_KDV_HARIC_TUTAR',
-                'KPB_KDV_HARIC_TPL',
-                'ARA_TUTAR',
-                'TUTAR',
-                'TOPLAM_TUTAR',
-                'DVZ_ARA_TUTAR',
-                'DVZ_TOPLAM_TUTAR',
-                'DVZ_TUTAR',
-              ]
-            : [
-                'DVZ_ARA_TUTAR',
-                'DVZ_TOPLAM_TUTAR',
-                'DVZ_TUTAR',
-                'DOVIZ_TUTARI',
-                'DOVIZ_TOPLAM',
-                'KPB_ARA_TUTAR',
-                'KPB_TOPLAM_TUTAR',
-                'KPB_TUTAR',
-              ];
-        const unitPrice = numberOrZero(pick(row, priceFields));
-        const lineNet =
-          numberOrZero(pick(row, amountFields)) ||
-          numberOrZero(row.MIKTARI) * unitPrice;
-        const discount = resolveAkinsoftDiscount(row, currency, lineNet);
-        const taxRate = numberOrZero(row.KDV_ORANI);
-        const explicitTaxAmount = numberOrZero(
-          pick(
-            row,
-            currency === 'TRY'
-              ? [
-                  'KPB_KDV_TUTARI',
-                  'KPB_KDV',
-                  'KDV_TUTARI',
-                  'KDV',
-                  'DVZ_KDV_TUTARI',
-                ]
-              : [
-                  'DVZ_KDV_TUTARI',
-                  'DVZ_KDV',
-                  'DOVIZ_KDV_TUTARI',
-                  'KPB_KDV_TUTARI',
-                  'KDV_TUTARI',
-                ],
-          ),
-        );
-        const taxIncludedTotal = numberOrZero(
-          pick(
-            row,
-            currency === 'TRY'
-              ? [
-                  'KPB_KDVLI_TUTAR',
-                  'KPB_KDV_DAHIL_TUTAR',
-                  'KPB_TOPLAM_TUTAR',
-                ]
-              : [
-                  'DVZ_KDVLI_TUTAR',
-                  'DVZ_KDV_DAHIL_TUTAR',
-                  'DVZ_TOPLAM_TUTAR',
-                ],
-          ),
-        );
-        const taxAmount =
-          explicitTaxAmount ||
-          (taxRate > 0 && taxIncludedTotal > lineNet
-            ? taxIncludedTotal - lineNet
-            : 0);
+        const amountsByCurrency = {
+          TRY: resolveAkinsoftItemAmounts(row, 'TRY'),
+          FOREIGN: resolveAkinsoftItemAmounts(row, currency === 'TRY' ? 'USD' : currency),
+        };
+        const selectedAmounts =
+          currency === 'TRY' ? amountsByCurrency.TRY : amountsByCurrency.FOREIGN;
         list.push({
           sourceId: String(row.BLKODU),
           productSourceId: row.BLSTKODU == null ? null : String(row.BLSTKODU),
@@ -1559,13 +1565,14 @@ async function handleAkinsoftPull(req, res) {
           description: textOrNull(row.STOK_ADI) || 'Fatura kalemi',
           quantity: numberOrZero(row.MIKTARI) || 1,
           unit: textOrNull(row.BIRIMI) || 'Adet',
-          unitPrice,
-          discountAmount: discount,
-          netTotal: lineNet,
-          taxRate,
-          taxAmount,
+          unitPrice: selectedAmounts.unitPrice,
+          discountAmount: selectedAmounts.discountAmount,
+          netTotal: selectedAmounts.netTotal,
+          taxRate: selectedAmounts.taxRate,
+          taxAmount: selectedAmounts.taxAmount,
           currency,
           account,
+          amountsByCurrency,
         });
         itemsByInvoice.set(key, list);
       }
@@ -1596,17 +1603,11 @@ async function handleAkinsoftPull(req, res) {
         const invoiceNumber = textOrNull(row.FATURA_NO) || `AKN-${key}`;
         const taxes = kdvByInvoice.get(key) || [];
         const primaryTaxRate =
-          numberOrZero(taxes[0]?.taxRate) || numberOrZero(row.KDV_ORANI) || 20;
-        const items = (itemsByInvoice.get(key) || []).map((item) => ({
-          ...item,
-          taxRate: numberOrZero(item.taxRate) || primaryTaxRate,
-          taxAmount: numberOrZero(item.taxAmount),
-        }));
+          numberOrZero(taxes[0]?.taxRate) || numberOrZero(row.KDV_ORANI) || 0;
+        const rawItems = itemsByInvoice.get(key) || [];
         const itemAccounts = [
-          ...new Set(items.map((item) => textOrNull(item.account)).filter(Boolean)),
+          ...new Set(rawItems.map((item) => textOrNull(item.account)).filter(Boolean)),
         ];
-        const subtotal = items.reduce((sum, item) => sum + item.netTotal, 0);
-        const discountTotal = items.reduce((sum, item) => sum + item.discountAmount, 0);
         const headerCurrencyValue = pick(row, [
               'DOVIZ_BIRIMI',
               'DOVIZ_KULLAN',
@@ -1615,13 +1616,37 @@ async function handleAkinsoftPull(req, res) {
               'PARA_BIRIMI',
               'DOVIZ',
             ]);
-        const itemCurrencies = items
+        const itemCurrencies = rawItems
           .map((item) => textOrNull(item.currency))
           .filter(Boolean);
         const foreignItemCurrency = itemCurrencies.find((item) => item !== 'TRY');
         const currency = foreignItemCurrency || (
           itemCurrencies.length ? 'TRY' : normalizeCurrency(headerCurrencyValue)
         );
+        const items = rawItems.map((item) => {
+          const amounts =
+            (currency === 'TRY'
+              ? item.amountsByCurrency?.TRY
+              : item.amountsByCurrency?.FOREIGN) ||
+            item;
+          const taxAmount = numberOrZero(amounts.taxAmount);
+          const taxRate =
+            taxAmount <= 0
+              ? 0
+              : numberOrZero(amounts.taxRate) || primaryTaxRate;
+          const { amountsByCurrency, ...rest } = item;
+          return {
+            ...rest,
+            unitPrice: numberOrZero(amounts.unitPrice),
+            discountAmount: numberOrZero(amounts.discountAmount),
+            netTotal: numberOrZero(amounts.netTotal),
+            taxRate,
+            taxAmount,
+            currency,
+          };
+        });
+        const subtotal = items.reduce((sum, item) => sum + item.netTotal, 0);
+        const discountTotal = items.reduce((sum, item) => sum + item.discountAmount, 0);
         const headerSubtotal = numberOrZero(
           pick(
             row,
@@ -1745,12 +1770,12 @@ async function handleAkinsoftPull(req, res) {
         const taxTotal = headerTaxTotal || tableTaxTotal || itemTaxTotal;
         const finalGrandTotal =
           headerGrandTotal || finalSubtotal - finalDiscountTotal + taxTotal;
-        const payment =
-          resolveAkinsoftCariPayment(
-            cariHrByInvoiceNo.get(invoiceNumber) || [],
-            currency,
-            finalGrandTotal,
-          ) || resolveAkinsoftInvoicePayment(row, currency, finalGrandTotal);
+        const payment = selectAkinsoftPayment(
+          row,
+          cariHrByInvoiceNo.get(invoiceNumber) || [],
+          currency,
+          finalGrandTotal,
+        );
         return {
           sourceId: key,
           invoiceNumber,
@@ -2259,7 +2284,7 @@ async function importAkinsoftDataset(data, onProgress) {
       const unitPrice = numberOrZero(item.unitPrice) || netTotal / quantity;
       const discountAmount = numberOrZero(item.discountAmount);
       const tax = (invoice.taxes || [])[0] || {};
-      const rawTaxRate = numberOrZero(item.taxRate) || numberOrZero(tax.taxRate) || 20;
+      const rawTaxRate = numberOrZero(item.taxRate) || numberOrZero(tax.taxRate) || 0;
       const explicitTaxAmount =
         item.taxAmount == null ? null : numberOrZero(item.taxAmount);
       const taxAmount = explicitTaxAmount != null
