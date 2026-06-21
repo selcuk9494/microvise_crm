@@ -4403,6 +4403,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
   int _importCurrent = 0;
   int _importTotal = 0;
   int _importPercent = 0;
+  String _importStageLabel = 'Faturalar yazılıyor';
   String _importElapsed = '00:00';
   String? _importInvoiceNumber;
   bool _savingMatches = false;
@@ -4496,7 +4497,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Faturalar içe aktarılıyor: $_importCurrent / $_importTotal (%$_importPercent)',
+                      '$_importStageLabel: $_importCurrent / $_importTotal (%$_importPercent)',
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
                     const Gap(8),
@@ -4749,6 +4750,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
       _importCurrent = 0;
       _importTotal = invoices.length;
       _importPercent = 0;
+      _importStageLabel = 'Aktarım hazırlanıyor';
       _importElapsed = '00:00';
       _importInvoiceNumber = null;
     });
@@ -4796,6 +4798,8 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
             _importCurrent = (job['current'] as num?)?.toInt() ?? 0;
             _importTotal = (job['total'] as num?)?.toInt() ?? invoices.length;
             _importPercent = (job['percent'] as num?)?.toInt() ?? 0;
+            _importStageLabel =
+                job['stageLabel']?.toString() ?? 'Faturalar yazılıyor';
             _importElapsed = _formatDuration(elapsed);
             _importInvoiceNumber = job['currentInvoiceNumber']?.toString();
           });

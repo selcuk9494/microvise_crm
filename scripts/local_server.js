@@ -234,7 +234,7 @@ function buildAkinsoftSqlConfig(body) {
         enableArithAbort: true,
       },
       connectionTimeout: 8000,
-      requestTimeout: 20000,
+      requestTimeout: 90000,
     },
   };
 }
@@ -1946,10 +1946,14 @@ async function importAkinsoftDataset(data, onProgress) {
   const invoices = Array.isArray(data.invoices) ? data.invoices : [];
   const reportProgress = (current, extra = {}) => {
     if (!onProgress) return;
+    const total = Number.isFinite(extra.total) ? Math.max(0, extra.total) : invoices.length;
+    const safeCurrent = Math.min(Math.max(0, current), total);
     onProgress({
-      stage: 'invoices',
-      current,
-      total: invoices.length,
+      stage: extra.stage || 'invoices',
+      stageLabel: extra.stageLabel || 'Faturalar yazılıyor',
+      current: safeCurrent,
+      total,
+      invoiceNumber: extra.invoiceNumber ?? null,
       ...extra,
     });
   };
@@ -2002,9 +2006,28 @@ async function importAkinsoftDataset(data, onProgress) {
   let invoicesSkippedMissingCustomerMatch = 0;
   const skippedInvoices = [];
 
-  for (const customer of customers) {
+  reportProgress(0, {
+    stage: 'customers',
+    stageLabel: 'Cari eşleşmeleri hazırlanıyor',
+    total: customers.length,
+  });
+  for (let customerIndex = 0; customerIndex < customers.length; customerIndex += 1) {
+    const customer = customers[customerIndex];
+    const reportCustomerProgress = () => {
+      const current = customerIndex + 1;
+      if (current === 1 || current === customers.length || current % 10 === 0) {
+        reportProgress(current, {
+          stage: 'customers',
+          stageLabel: 'Cari eşleşmeleri hazırlanıyor',
+          total: customers.length,
+        });
+      }
+    };
     const name = textOrNull(customer.name);
-    if (!name) continue;
+    if (!name) {
+      reportCustomerProgress();
+      continue;
+    }
     const customerTaxNumber = taxNumberOrNull(customer.taxNumber);
     let existing = { rows: [] };
     let matchMethod = null;
@@ -2076,9 +2099,13 @@ async function importAkinsoftDataset(data, onProgress) {
         ],
       );
     } else {
+      reportCustomerProgress();
       continue;
     }
-    if (!id) continue;
+    if (!id) {
+      reportCustomerProgress();
+      continue;
+    }
     if (!matchMethod) customersCreated += 1;
     if (matchMethod === 'source') customersMatchedBySource += 1;
     if (matchMethod === 'tax') customersMatchedByTax += 1;
@@ -2095,11 +2122,31 @@ async function importAkinsoftDataset(data, onProgress) {
       localTable: 'customers',
       localId: id,
     });
+    reportCustomerProgress();
   }
 
-  for (const product of products) {
+  reportProgress(0, {
+    stage: 'products',
+    stageLabel: 'Stok kartları hazırlanıyor',
+    total: products.length,
+  });
+  for (let productIndex = 0; productIndex < products.length; productIndex += 1) {
+    const product = products[productIndex];
+    const reportProductProgress = () => {
+      const current = productIndex + 1;
+      if (current === 1 || current === products.length || current % 10 === 0) {
+        reportProgress(current, {
+          stage: 'products',
+          stageLabel: 'Stok kartları hazırlanıyor',
+          total: products.length,
+        });
+      }
+    };
     const name = textOrNull(product.name);
-    if (!name) continue;
+    if (!name) {
+      reportProductProgress();
+      continue;
+    }
     const code = textOrNull(product.code);
     let id = null;
     if (code) {
@@ -2165,7 +2212,10 @@ async function importAkinsoftDataset(data, onProgress) {
       );
       id = result.rows[0]?.id;
     }
-    if (!id) continue;
+    if (!id) {
+      reportProductProgress();
+      continue;
+    }
     productsImported += 1;
     if (product.sourceId != null) productIdBySource.set(String(product.sourceId), id);
     if (code) productIdByCode.set(code, id);
@@ -2177,8 +2227,14 @@ async function importAkinsoftDataset(data, onProgress) {
       localTable: 'products',
       localId: id,
     });
+    reportProductProgress();
   }
 
+  reportProgress(0, {
+    stage: 'invoices',
+    stageLabel: 'Faturalar yazılıyor',
+    total: invoices.length,
+  });
   for (let invoiceIndex = 0; invoiceIndex < invoices.length; invoiceIndex += 1) {
     const invoice = invoices[invoiceIndex];
     const invoiceNumber = textOrNull(invoice.invoiceNumber);
@@ -2187,8 +2243,11 @@ async function importAkinsoftDataset(data, onProgress) {
       continue;
     }
     const invoiceTaxNumber = taxNumberOrNull(invoice.taxNumber);
-    let customerId = null;
-    if (invoiceTaxNumber) {
+    let customerId = textOrNull(invoice.customerMatch?.localId);
+    if (customerId && invoice.customerSourceId != null) {
+      customerIdBySource.set(String(invoice.customerSourceId), customerId);
+    }
+    if (!customerId && invoiceTaxNumber) {
       const found = await query(
         `select id from public.customers where vkn = $1 limit 1`,
         [invoiceTaxNumber],
@@ -2456,6 +2515,7 @@ async function handleAkinsoftImportJob(req, res) {
     type: 'import',
     status: 'running',
     stage: 'invoices',
+    stageLabel: 'Faturalar yazılıyor',
     total: invoices.length,
     current: 0,
     percent: 0,
@@ -2466,10 +2526,11 @@ async function handleAkinsoftImportJob(req, res) {
     updatedAt: new Date().toISOString(),
   };
   akinsoftJobs.set(id, job);
-  importAkinsoftDataset(body, ({ stage, current, total, invoiceNumber }) => {
+  importAkinsoftDataset(body, ({ stage, stageLabel, current, total, invoiceNumber }) => {
     job.stage = stage || job.stage;
-    job.current = current;
-    job.total = total || job.total;
+    job.stageLabel = stageLabel || job.stageLabel;
+    job.current = Number.isFinite(current) ? current : job.current;
+    job.total = Number.isFinite(total) ? total : job.total;
     job.currentInvoiceNumber = invoiceNumber || null;
     job.percent = job.total ? Math.floor((job.current / job.total) * 100) : 0;
     job.updatedAt = new Date().toISOString();

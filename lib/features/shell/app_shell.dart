@@ -241,25 +241,20 @@ class _MobileShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).matchedLocation;
     final allowedPages = ref.watch(currentUserPagePermissionsProvider);
+    final allowedItems = _navItems
+        .where((item) => allowedPages.contains(item.pageKey))
+        .toList(growable: false);
+    final pinnedItems = _mobilePinnedItems(allowedItems);
+    final overflowActive = allowedItems.any(
+      (item) =>
+          _isActive(location, item.path) &&
+          !pinnedItems.any((pinned) => pinned.path == item.path),
+    );
 
-    final items = <_NavItem>[
-      _navItems.firstWhere((e) => e.path == '/panel'),
-      if (allowedPages.contains('musteriler'))
-        _navItems.firstWhere((e) => e.path == '/musteriler'),
-      if (allowedPages.contains('formlar'))
-        _navItems.firstWhere((e) => e.path == '/formlar'),
-      if (allowedPages.contains('is_emirleri'))
-        _navItems.firstWhere((e) => e.path == '/is-emirleri'),
-    ];
-
-    int currentIndexForLocation() {
-      for (var i = 0; i < items.length; i++) {
-        if (_isActive(location, items[i].path)) return i;
-      }
-      return 0;
+    bool isPinnedActive(int index) {
+      if (index >= pinnedItems.length) return false;
+      return _isActive(location, pinnedItems[index].path);
     }
-
-    final currentIndex = currentIndexForLocation();
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -279,43 +274,274 @@ class _MobileShell extends ConsumerWidget {
         child: Row(
           children: [
             const Gap(8),
-            if (items.isNotEmpty)
+            if (pinnedItems.isNotEmpty)
               _BottomItem(
-                label: items[0].label,
-                icon: items[0].icon,
-                active: currentIndex == 0,
-                onTap: () => context.go(items[0].path),
+                label: pinnedItems[0].label,
+                icon: pinnedItems[0].icon,
+                active: isPinnedActive(0),
+                onTap: () => context.go(pinnedItems[0].path),
               ),
-            if (items.length > 1)
+            if (pinnedItems.length > 1)
               _BottomItem(
-                label: items[1].label,
-                icon: items[1].icon,
-                active: currentIndex == 1,
-                onTap: () => context.go(items[1].path),
+                label: pinnedItems[1].label,
+                icon: pinnedItems[1].icon,
+                active: isPinnedActive(1),
+                onTap: () => context.go(pinnedItems[1].path),
               ),
             const Spacer(),
-            if (items.length > 2)
+            if (pinnedItems.length > 2)
               _BottomItem(
-                label: items[2].label,
-                icon: items[2].icon,
-                active: currentIndex == 2,
-                onTap: () => context.go(items[2].path),
-              ),
-            if (items.length > 3)
-              _BottomItem(
-                label: items[3].label,
-                icon: items[3].icon,
-                active: currentIndex == 3,
-                onTap: () => context.go(items[3].path),
+                label: pinnedItems[2].label,
+                icon: pinnedItems[2].icon,
+                active: isPinnedActive(2),
+                onTap: () => context.go(pinnedItems[2].path),
               ),
             _BottomItem(
-              label: 'Hesap',
-              icon: Icons.person_rounded,
-              active: false,
-              onTap: () => _showMobileAccountSheet(context, ref),
+              label: 'Menü',
+              icon: Icons.apps_rounded,
+              active: overflowActive,
+              onTap: () =>
+                  _showMobileModulesSheet(context, ref, allowedItems, location),
             ),
             const Gap(8),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+List<_NavItem> _mobilePinnedItems(List<_NavItem> allowedItems) {
+  const preferred = ['panel', 'musteriler', 'is_emirleri'];
+  final byPage = {for (final item in allowedItems) item.pageKey: item};
+  final result = <_NavItem>[
+    for (final key in preferred)
+      if (byPage[key] != null) byPage[key]!,
+  ];
+  for (final item in allowedItems) {
+    if (result.length >= 3) break;
+    if (!result.any((pinned) => pinned.path == item.path)) result.add(item);
+  }
+  return result;
+}
+
+Future<void> _showMobileModulesSheet(
+  BuildContext context,
+  WidgetRef ref,
+  List<_NavItem> items,
+  String location,
+) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    isScrollControlled: true,
+    backgroundColor: AppTheme.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) => _MobileModulesSheet(
+      items: items,
+      matchedLocation: location,
+      onAccountTap: () {
+        Navigator.of(context).pop();
+        _showMobileAccountSheet(context, ref);
+      },
+    ),
+  );
+}
+
+class _MobileModulesSheet extends StatefulWidget {
+  const _MobileModulesSheet({
+    required this.items,
+    required this.matchedLocation,
+    required this.onAccountTap,
+  });
+
+  final List<_NavItem> items;
+  final String matchedLocation;
+  final VoidCallback onAccountTap;
+
+  @override
+  State<_MobileModulesSheet> createState() => _MobileModulesSheetState();
+}
+
+class _MobileModulesSheetState extends State<_MobileModulesSheet> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedQuery = _query.toLowerCase().trim();
+    final visibleItems = normalizedQuery.isEmpty
+        ? widget.items
+        : widget.items
+              .where(
+                (item) =>
+                    item.label.toLowerCase().contains(normalizedQuery) ||
+                    item.pageKey.toLowerCase().contains(normalizedQuery),
+              )
+              .toList(growable: false);
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.78,
+      minChildSize: 0.42,
+      maxChildSize: 0.92,
+      builder: (context, scrollController) => Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppTheme.border,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+                const Gap(16),
+                Row(
+                  children: [
+                    Text(
+                      'Modüller',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Hesap',
+                      onPressed: widget.onAccountTap,
+                      icon: const Icon(Icons.person_rounded),
+                    ),
+                  ],
+                ),
+                const Gap(10),
+                TextField(
+                  controller: _searchController,
+                  onChanged: (value) => setState(() => _query = value),
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: 'Modül ara',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Temizle',
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _query = '');
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                  ),
+                ),
+                const Gap(12),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+              itemCount: visibleItems.length,
+              separatorBuilder: (_, _) => const Gap(8),
+              itemBuilder: (context, index) {
+                final item = visibleItems[index];
+                final active = _isActive(widget.matchedLocation, item.path);
+                return _MobileModuleTile(
+                  item: item,
+                  active: active,
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    context.go(item.path);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileModuleTile extends StatelessWidget {
+  const _MobileModuleTile({
+    required this.item,
+    required this.active,
+    required this.onTap,
+  });
+
+  final _NavItem item;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accentColor = _navAccentColor(item.pageKey);
+    return Material(
+      color: active
+          ? accentColor.withValues(alpha: 0.09)
+          : AppTheme.surfaceMuted,
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 58),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            border: Border.all(
+              color: active
+                  ? accentColor.withValues(alpha: 0.24)
+                  : AppTheme.border,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(item.icon, size: 20, color: accentColor),
+              ),
+              const Gap(12),
+              Expanded(
+                child: Text(
+                  item.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: active ? FontWeight.w800 : FontWeight.w700,
+                    color: active ? accentColor : AppTheme.text,
+                  ),
+                ),
+              ),
+              Icon(
+                active
+                    ? Icons.check_circle_rounded
+                    : Icons.chevron_right_rounded,
+                size: active ? 20 : 22,
+                color: active ? accentColor : const Color(0xFF94A3B8),
+              ),
+            ],
+          ),
         ),
       ),
     );
