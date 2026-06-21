@@ -1918,8 +1918,8 @@ async function handleAkinsoftPull(req, res) {
             const sameCurrency =
               normalizeCurrency(row.currency) === normalizeCurrency(invoice.currency);
             const sameTotal =
-              Math.abs(numberOrZero(row.grand_total) - numberOrZero(invoice.grandTotal)) <
-              0.01;
+              Math.abs(numberOrZero(row.grand_total) - numberOrZero(invoice.grandTotal)) <=
+              PAYMENT_CLOSE_TOLERANCE;
             if (sameStatus && sameCurrency && sameTotal) return null;
             return { ...invoice, importAction: 'update' };
           })
