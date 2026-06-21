@@ -514,6 +514,8 @@ function numberOrZero(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+const PAYMENT_CLOSE_TOLERANCE = 0.02;
+
 function normalizeCurrency(value) {
   const text = textOrNull(value);
   if (!text) return 'TRY';
@@ -739,7 +741,7 @@ function resolveAkinsoftInvoicePayment(row, currency, grandTotal) {
     return { paidAmount: grandTotal, status: 'paid', reliable: true, source: 'invoice' };
   }
   if (remainingRaw != null) {
-    if (remainingAmount <= 0 && grandTotal > 0) {
+    if (remainingAmount <= PAYMENT_CLOSE_TOLERANCE && grandTotal > 0) {
       return { paidAmount: grandTotal, status: 'paid', reliable: true, source: 'invoice' };
     }
     if (remainingAmount > 0 && grandTotal > 0) {
@@ -750,7 +752,7 @@ function resolveAkinsoftInvoicePayment(row, currency, grandTotal) {
   if (paidRaw != null && paidAmount > 0 && paidAmount < grandTotal) {
     return { paidAmount, status: 'partial', reliable: true, source: 'invoice' };
   }
-  if (paidRaw != null && paidAmount >= grandTotal && grandTotal > 0) {
+  if (paidRaw != null && paidAmount >= grandTotal - PAYMENT_CLOSE_TOLERANCE && grandTotal > 0) {
     return { paidAmount: grandTotal, status: 'paid', reliable: true, source: 'invoice' };
   }
   return { paidAmount: 0, status: 'open', reliable: false, source: 'invoice' };
@@ -771,7 +773,7 @@ function resolveAkinsoftCariPayment(movements, currency, grandTotal) {
   if (debit <= 0 && credit <= 0) return null;
   const paidAmount = Math.min(Math.max(0, credit), grandTotal);
   const remaining = Math.max(0, debit - credit);
-  if (remaining <= 0.01 && credit > 0) {
+  if (remaining <= PAYMENT_CLOSE_TOLERANCE && credit > 0) {
     return { paidAmount: grandTotal, status: 'paid', reliable: true, source: 'movement' };
   }
   if (paidAmount > 0) {
@@ -2446,7 +2448,7 @@ async function importAkinsoftDataset(data, onProgress) {
           discount_total = totals.discount_total,
           grand_total = totals.grand_total,
           status = case
-            when $2::boolean and coalesce(i.paid_amount, 0) >= totals.grand_total and totals.grand_total > 0 then 'paid'
+            when $2::boolean and coalesce(i.paid_amount, 0) + 0.02 >= totals.grand_total and totals.grand_total > 0 then 'paid'
             when $2::boolean and coalesce(i.paid_amount, 0) > 0 then 'partial'
             else i.status
           end,
@@ -3095,6 +3097,55 @@ function getApiHandler(urlPath) {
   return require(handlerPath);
 }
 
+async function handleAkinsoftRequest(req, res) {
+  setCors(res);
+  if (req.method === 'OPTIONS') return send(res, 204, {}, null);
+  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  let pathname = url.pathname || '/';
+  if (!pathname.startsWith('/api/akinsoft/')) {
+    pathname = `/api/akinsoft/${pathname.replace(/^\/+/, '')}`;
+  }
+  const routes = {
+    '/api/akinsoft/test-connection': handleAkinsoftTestConnection,
+    '/api/akinsoft/save-local-settings': handleAkinsoftSaveLocalSettings,
+    '/api/akinsoft/analyze': handleAkinsoftAnalyze,
+    '/api/akinsoft/pull': handleAkinsoftPull,
+    '/api/akinsoft/import': handleAkinsoftImport,
+    '/api/akinsoft/import-job': handleAkinsoftImportJob,
+    '/api/akinsoft/local-customers': handleAkinsoftLocalCustomers,
+    '/api/akinsoft/map-customer': handleAkinsoftMapCustomer,
+    '/api/akinsoft/bulk-map-customers-job': handleAkinsoftBulkMapCustomersJob,
+    '/api/akinsoft/bulk-map-customers': handleAkinsoftBulkMapCustomers,
+    '/api/akinsoft/duplicate-customers': handleAkinsoftDuplicateCustomers,
+  };
+  const handler = routes[pathname];
+  if (!handler) {
+    return send(
+      res,
+      404,
+      { 'Content-Type': 'application/json; charset=utf-8' },
+      JSON.stringify({ ok: false, error: 'Akınsoft endpoint bulunamadı.' }),
+    );
+  }
+  try {
+    return await handler(req, res);
+  } catch (e) {
+    return send(
+      res,
+      e.statusCode || 500,
+      { 'Content-Type': 'application/json; charset=utf-8' },
+      JSON.stringify({
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    );
+  }
+}
+
+module.exports = {
+  handleAkinsoftRequest,
+};
+
 function safeJoin(root, requestPath) {
   const decoded = decodeURIComponent(requestPath);
   const normalized = decoded.replace(/^\/+/, '');
@@ -3103,6 +3154,7 @@ function safeJoin(root, requestPath) {
   return resolved;
 }
 
+if (require.main === module) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -3403,3 +3455,4 @@ server.listen(portToBind, '127.0.0.1', () => {
     address && typeof address === 'object' && address.port ? address.port : portToBind;
   console.log(`Local web: http://127.0.0.1:${port}`);
 });
+}
