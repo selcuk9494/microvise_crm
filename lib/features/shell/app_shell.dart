@@ -339,13 +339,16 @@ Future<void> _showMobileModulesSheet(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (context) => _MobileModulesSheet(
-      items: items,
-      matchedLocation: location,
-      onAccountTap: () {
-        Navigator.of(context).pop();
-        _showMobileAccountSheet(context, ref);
-      },
+    builder: (context) => SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.88,
+      child: _MobileModulesSheet(
+        items: items,
+        matchedLocation: location,
+        onAccountTap: () {
+          Navigator.of(context).pop();
+          _showMobileAccountSheet(context, ref);
+        },
+      ),
     ),
   );
 }
@@ -381,54 +384,55 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
     final visibleItems = normalizedQuery.isEmpty
         ? widget.items
         : widget.items
-              .where(
-                (item) =>
-                    item.label.toLowerCase().contains(normalizedQuery) ||
-                    item.pageKey.toLowerCase().contains(normalizedQuery),
-              )
+              .where((item) {
+                final subItems = _mobileNavSubItems(item);
+                return item.label.toLowerCase().contains(normalizedQuery) ||
+                    item.pageKey.toLowerCase().contains(normalizedQuery) ||
+                    subItems.any(
+                      (subItem) =>
+                          subItem.label.toLowerCase().contains(normalizedQuery),
+                    );
+              })
               .toList(growable: false);
 
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.78,
-      minChildSize: 0.42,
-      maxChildSize: 0.92,
-      builder: (context, scrollController) => Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 42,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppTheme.border,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppTheme.border,
+                    borderRadius: BorderRadius.circular(4),
                   ),
                 ),
-                const Gap(16),
-                Row(
-                  children: [
-                    Text(
-                      'Modüller',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+              ),
+              const Gap(14),
+              Row(
+                children: [
+                  Text(
+                    'Modüller',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
-                    const Spacer(),
-                    IconButton(
-                      tooltip: 'Hesap',
-                      onPressed: widget.onAccountTap,
-                      icon: const Icon(Icons.person_rounded),
-                    ),
-                  ],
-                ),
-                const Gap(10),
-                TextField(
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: 'Hesap',
+                    onPressed: widget.onAccountTap,
+                    icon: const Icon(Icons.person_rounded),
+                  ),
+                ],
+              ),
+              const Gap(8),
+              SizedBox(
+                height: 48,
+                child: TextField(
                   controller: _searchController,
                   onChanged: (value) => setState(() => _query = value),
                   textInputAction: TextInputAction.search,
@@ -447,44 +451,71 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
                           ),
                   ),
                 ),
-                const Gap(12),
-              ],
-            ),
+              ),
+              const Gap(10),
+            ],
           ),
-          Expanded(
-            child: ListView.separated(
-              controller: scrollController,
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-              itemCount: visibleItems.length,
-              separatorBuilder: (_, _) => const Gap(8),
-              itemBuilder: (context, index) {
-                final item = visibleItems[index];
-                final active = _isActive(widget.matchedLocation, item.path);
-                return _MobileModuleTile(
-                  item: item,
-                  active: active,
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    context.go(item.path);
-                  },
-                );
-              },
-            ),
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+            itemCount: visibleItems.length,
+            separatorBuilder: (_, _) => const Gap(8),
+            itemBuilder: (context, index) {
+              final item = visibleItems[index];
+              final subItems = _mobileNavSubItems(item);
+              final active = _isActive(widget.matchedLocation, item.path);
+              return _MobileModuleTile(
+                item: item,
+                subItems: subItems,
+                matchedLocation: widget.matchedLocation,
+                active: active,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.go(item.path);
+                },
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
+}
+
+List<_FormsNavSubItem> _mobileNavSubItems(_NavItem item) {
+  if (item.pageKey == 'formlar') {
+    return const [
+      _FormsNavSubItem(label: 'Başvuru', path: '/formlar/basvuru'),
+      _FormsNavSubItem(label: 'Hurda', path: '/formlar/hurda'),
+      _FormsNavSubItem(label: 'Arıza', path: '/formlar/ariza'),
+      _FormsNavSubItem(label: 'Devir', path: '/formlar/devir'),
+      _FormsNavSubItem(label: 'Seri Takip', path: '/formlar/seri-takip'),
+    ];
+  }
+  if (item.pageKey == 'e_fatura') {
+    return const [
+      _FormsNavSubItem(label: 'Faturalar', path: '/e-fatura'),
+      _FormsNavSubItem(label: 'Stok/Hizmet', path: '/e-fatura/stok'),
+      _FormsNavSubItem(label: 'Cari', path: '/e-fatura/cari'),
+      _FormsNavSubItem(label: 'Ayarlar', path: '/e-fatura/ayarlar'),
+    ];
+  }
+  return const [];
 }
 
 class _MobileModuleTile extends StatelessWidget {
   const _MobileModuleTile({
     required this.item,
+    required this.subItems,
+    required this.matchedLocation,
     required this.active,
     required this.onTap,
   });
 
   final _NavItem item;
+  final List<_FormsNavSubItem> subItems;
+  final String matchedLocation;
   final bool active;
   final VoidCallback onTap;
 
@@ -500,8 +531,8 @@ class _MobileModuleTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         onTap: onTap,
         child: Container(
-          constraints: const BoxConstraints(minHeight: 58),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          constraints: const BoxConstraints(minHeight: 56),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             border: Border.all(
@@ -510,40 +541,102 @@ class _MobileModuleTile extends StatelessWidget {
                   : AppTheme.border,
             ),
           ),
-          child: Row(
+          child: Column(
             children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(item.icon, size: 20, color: accentColor),
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: accentColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(item.icon, size: 20, color: accentColor),
+                  ),
+                  const Gap(12),
+                  Expanded(
+                    child: Text(
+                      item.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: active ? FontWeight.w800 : FontWeight.w700,
+                        color: active ? accentColor : AppTheme.text,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    active
+                        ? Icons.check_circle_rounded
+                        : Icons.chevron_right_rounded,
+                    size: active ? 20 : 22,
+                    color: active ? accentColor : const Color(0xFF94A3B8),
+                  ),
+                ],
               ),
-              const Gap(12),
-              Expanded(
-                child: Text(
-                  item.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: active ? FontWeight.w800 : FontWeight.w700,
-                    color: active ? accentColor : AppTheme.text,
+              if (subItems.isNotEmpty) ...[
+                const Gap(8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: [
+                      for (final subItem in subItems)
+                        _MobileSubModuleChip(
+                          label: subItem.label,
+                          active: _isActive(matchedLocation, subItem.path),
+                          color: accentColor,
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            context.go(subItem.path);
+                          },
+                        ),
+                    ],
                   ),
                 ),
-              ),
-              Icon(
-                active
-                    ? Icons.check_circle_rounded
-                    : Icons.chevron_right_rounded,
-                size: active ? 20 : 22,
-                color: active ? accentColor : const Color(0xFF94A3B8),
-              ),
+              ],
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _MobileSubModuleChip extends StatelessWidget {
+  const _MobileSubModuleChip({
+    required this.label,
+    required this.active,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      side: BorderSide(
+        color: active ? color.withValues(alpha: 0.35) : AppTheme.border,
+      ),
+      backgroundColor: active
+          ? color.withValues(alpha: 0.11)
+          : AppTheme.surface,
+      label: Text(
+        label,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: active ? color : AppTheme.textSoft,
+          fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+        ),
+      ),
+      onPressed: onTap,
     );
   }
 }

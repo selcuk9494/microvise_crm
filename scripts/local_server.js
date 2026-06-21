@@ -736,21 +736,24 @@ function resolveAkinsoftInvoicePayment(row, currency, grandTotal) {
     ]),
   );
   if (closedFlag === true) {
-    return { paidAmount: grandTotal, status: 'paid' };
+    return { paidAmount: grandTotal, status: 'paid', reliable: true, source: 'invoice' };
   }
   if (remainingRaw != null) {
     if (remainingAmount <= 0 && grandTotal > 0) {
-      return { paidAmount: grandTotal, status: 'paid' };
+      return { paidAmount: grandTotal, status: 'paid', reliable: true, source: 'invoice' };
     }
     if (remainingAmount > 0 && grandTotal > 0) {
       const paid = Math.max(0, grandTotal - remainingAmount);
-      return { paidAmount: paid, status: paid > 0 ? 'partial' : 'open' };
+      return { paidAmount: paid, status: paid > 0 ? 'partial' : 'open', reliable: true, source: 'invoice' };
     }
   }
   if (paidRaw != null && paidAmount > 0 && paidAmount < grandTotal) {
-    return { paidAmount, status: 'partial' };
+    return { paidAmount, status: 'partial', reliable: true, source: 'invoice' };
   }
-  return { paidAmount: 0, status: 'open' };
+  if (paidRaw != null && paidAmount >= grandTotal && grandTotal > 0) {
+    return { paidAmount: grandTotal, status: 'paid', reliable: true, source: 'invoice' };
+  }
+  return { paidAmount: 0, status: 'open', reliable: false, source: 'invoice' };
 }
 
 function resolveAkinsoftCariPayment(movements, currency, grandTotal) {
@@ -759,18 +762,22 @@ function resolveAkinsoftCariPayment(movements, currency, grandTotal) {
   }
   const debitKey = currency === 'TRY' ? 'KPB_BTUT' : 'DVZ_BTUT';
   const creditKey = currency === 'TRY' ? 'KPB_ATUT' : 'DVZ_ATUT';
-  const debit = movements.reduce((sum, row) => sum + numberOrZero(row[debitKey]), 0);
-  const credit = movements.reduce((sum, row) => sum + numberOrZero(row[creditKey]), 0);
+  let debit = movements.reduce((sum, row) => sum + numberOrZero(row[debitKey]), 0);
+  let credit = movements.reduce((sum, row) => sum + numberOrZero(row[creditKey]), 0);
+  if (currency !== 'TRY' && debit <= 0 && credit <= 0) {
+    debit = movements.reduce((sum, row) => sum + numberOrZero(row.KPB_BTUT), 0);
+    credit = movements.reduce((sum, row) => sum + numberOrZero(row.KPB_ATUT), 0);
+  }
   if (debit <= 0 && credit <= 0) return null;
   const paidAmount = Math.min(Math.max(0, credit), grandTotal);
   const remaining = Math.max(0, debit - credit);
   if (remaining <= 0.01 && credit > 0) {
-    return { paidAmount: grandTotal, status: 'paid' };
+    return { paidAmount: grandTotal, status: 'paid', reliable: true, source: 'movement' };
   }
   if (paidAmount > 0) {
-    return { paidAmount, status: 'partial' };
+    return { paidAmount, status: 'partial', reliable: true, source: 'movement' };
   }
-  return { paidAmount: 0, status: 'open' };
+  return { paidAmount: 0, status: 'open', reliable: true, source: 'movement' };
 }
 
 function resolveAkinsoftDiscount(row, currency, lineNet) {
@@ -886,7 +893,7 @@ function selectAkinsoftPayment(row, movements, currency, grandTotal) {
   );
   if (invoicePayment?.status === 'paid') return invoicePayment;
   if (movementPayment?.status === 'paid') return movementPayment;
-  return movementPayment || invoicePayment || { paidAmount: 0, status: 'open' };
+  return movementPayment || invoicePayment || { paidAmount: 0, status: 'open', reliable: false, source: null };
 }
 
 async function ensureAkinsoftSyncMap(query) {
@@ -1501,6 +1508,7 @@ async function handleAkinsoftPull(req, res) {
       const itemRows = [];
       const kdvRows = [];
       const cariHrRows = [];
+      let cariHrPaymentReliable = Boolean(hasCariHr);
       if (ids.length && hasFaturaHr) {
         const request = pool.request();
         ids.forEach((id, index) => request.input(`id${index}`, sql.Int, id));
@@ -1538,6 +1546,7 @@ async function handleAkinsoftPull(req, res) {
             ).recordset,
           );
         } catch (error) {
+          cariHrPaymentReliable = false;
           warnings.push(
             `Cari hareketleri okunamadı; ödeme/durum bilgisi eksik olabilir: ${
               error instanceof Error ? error.message : String(error)
@@ -1834,6 +1843,9 @@ async function handleAkinsoftPull(req, res) {
           grandTotal: finalGrandTotal,
           paidAmount: payment.paidAmount,
           status: payment.status,
+          paymentReliable:
+            payment.reliable === true &&
+            (payment.source !== 'movement' || cariHrPaymentReliable),
           accountMode: itemAccounts.join(', '),
           items,
           taxes,
@@ -1897,7 +1909,10 @@ async function handleAkinsoftPull(req, res) {
             if (!row) return { ...invoice, importAction: 'new' };
             const active = row.is_active !== false;
             if (!active) return { ...invoice, importAction: 'restore' };
-            const sameStatus = textOrNull(row.status) === textOrNull(invoice.status);
+            const statusComparable = invoice.paymentReliable !== false;
+            const sameStatus =
+              !statusComparable ||
+              textOrNull(row.status) === textOrNull(invoice.status);
             const sameCurrency =
               normalizeCurrency(row.currency) === normalizeCurrency(invoice.currency);
             const sameTotal =
@@ -2320,6 +2335,7 @@ async function importAkinsoftDataset(data, onProgress) {
     const invoiceDate = dateOrIso(invoice.invoiceDate)?.slice(0, 10) || new Date().toISOString().slice(0, 10);
     const dueDate = dateOrIso(invoice.dueDate)?.slice(0, 10);
     const currency = normalizeCurrency(invoice.currency);
+    const paymentReliable = invoice.paymentReliable !== false;
     const result = await query(
       `
         insert into public.invoices (
@@ -2337,8 +2353,14 @@ async function importAkinsoftDataset(data, onProgress) {
           tax_total = excluded.tax_total,
           discount_total = excluded.discount_total,
           grand_total = excluded.grand_total,
-          paid_amount = excluded.paid_amount,
-          status = excluded.status,
+          paid_amount = case
+            when $13::boolean then excluded.paid_amount
+            else public.invoices.paid_amount
+          end,
+          status = case
+            when $13::boolean then excluded.status
+            else public.invoices.status
+          end,
           notes = excluded.notes,
           is_active = true,
           updated_at = now()
@@ -2357,6 +2379,7 @@ async function importAkinsoftDataset(data, onProgress) {
         numberOrZero(invoice.paidAmount),
         textOrNull(invoice.status) || 'open',
         textOrNull(invoice.notes),
+        paymentReliable,
       ],
     );
     const invoiceId = result.rows[0]?.id;
@@ -2423,8 +2446,8 @@ async function importAkinsoftDataset(data, onProgress) {
           discount_total = totals.discount_total,
           grand_total = totals.grand_total,
           status = case
-            when coalesce(i.paid_amount, 0) >= totals.grand_total and totals.grand_total > 0 then 'paid'
-            when coalesce(i.paid_amount, 0) > 0 then 'partial'
+            when $2::boolean and coalesce(i.paid_amount, 0) >= totals.grand_total and totals.grand_total > 0 then 'paid'
+            when $2::boolean and coalesce(i.paid_amount, 0) > 0 then 'partial'
             else i.status
           end,
           updated_at = now()
@@ -2439,7 +2462,7 @@ async function importAkinsoftDataset(data, onProgress) {
         ) totals
         where i.id = $1
       `,
-      [invoiceId],
+      [invoiceId, paymentReliable],
     );
     invoicesImported += 1;
     reportProgress(invoiceIndex + 1, { invoiceNumber });

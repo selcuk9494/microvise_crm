@@ -407,6 +407,134 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                   padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
+                      if (constraints.maxWidth < 700) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Checkbox(
+                                  visualDensity: VisualDensity.compact,
+                                  value:
+                                      _selectedInvoiceIds.length ==
+                                          items.length &&
+                                      items.isNotEmpty,
+                                  tristate: true,
+                                  onChanged: _bulkDeleting
+                                      ? null
+                                      : (value) {
+                                          setState(() {
+                                            if (value == true) {
+                                              _selectedInvoiceIds
+                                                ..clear()
+                                                ..addAll(
+                                                  items.map((e) => e.id),
+                                                );
+                                            } else {
+                                              _selectedInvoiceIds.clear();
+                                            }
+                                          });
+                                        },
+                                ),
+                                const Gap(6),
+                                Expanded(
+                                  child: Text(
+                                    _selectedInvoiceIds.isEmpty
+                                        ? hasHiddenItems
+                                              ? '${visibleItems.length}/${items.length} fatura'
+                                              : '${items.length} fatura'
+                                        : '${_selectedInvoiceIds.length} seçili',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleSmall,
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: _bulkDeleting
+                                      ? null
+                                      : () =>
+                                            setState(_selectedInvoiceIds.clear),
+                                  child: const Text('Temizle'),
+                                ),
+                              ],
+                            ),
+                            const Gap(6),
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed:
+                                        _pullingAkinsoft ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing
+                                        ? null
+                                        : _pullAkinsoftData,
+                                    icon: _pullingAkinsoft
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.cloud_download_rounded,
+                                            size: 18,
+                                          ),
+                                    label: const Text('Akınsoft'),
+                                  ),
+                                  const Gap(8),
+                                  OutlinedButton.icon(
+                                    onPressed:
+                                        _selectedInvoiceIds.isEmpty ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing
+                                        ? null
+                                        : () => _collectSelected(items),
+                                    icon: const Icon(
+                                      Icons.payments_rounded,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Tahsilat'),
+                                  ),
+                                  const Gap(8),
+                                  OutlinedButton.icon(
+                                    onPressed:
+                                        _selectedInvoiceIds.isEmpty ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing
+                                        ? null
+                                        : () =>
+                                              _bulkPrepare(items, send: false),
+                                    icon: const Icon(
+                                      Icons.data_object_rounded,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Payload'),
+                                  ),
+                                  const Gap(8),
+                                  FilledButton.icon(
+                                    onPressed:
+                                        _selectedInvoiceIds.isEmpty ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing
+                                        ? null
+                                        : () => _bulkPrepare(items, send: true),
+                                    icon: const Icon(
+                                      Icons.cloud_upload_rounded,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Gönder'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        );
+                      }
                       final statusWidth = constraints.maxWidth < 900
                           ? 150.0
                           : 240.0;
@@ -1645,7 +1773,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     NumberFormat money,
   ) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: AppTheme.border)),
       ),
@@ -1655,15 +1783,16 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           Row(
             children: [
               Checkbox(
+                visualDensity: VisualDensity.compact,
                 value: widget.selected,
                 onChanged: widget.onSelectedChanged == null
                     ? null
                     : (value) => widget.onSelectedChanged!(value ?? false),
               ),
-              const Gap(8),
+              const Gap(6),
               Container(
-                width: 36,
-                height: 36,
+                width: 32,
+                height: 32,
                 decoration: BoxDecoration(
                   color:
                       (invoice.invoiceType == 'sales'
@@ -1684,7 +1813,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   size: 18,
                 ),
               ),
-              const Gap(10),
+              const Gap(8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1704,7 +1833,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   ],
                 ),
               ),
-              const Gap(8),
+            ],
+          ),
+          const Gap(8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
               AppBadge(
                 label: invoice.isActive
                     ? _statusLabel(invoice.status)
@@ -1713,14 +1849,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                     ? _statusTone(invoice.status)
                     : AppBadgeTone.neutral,
               ),
-            ],
-          ),
-          const Gap(10),
-          Wrap(
-            spacing: 14,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
               Text(
                 DateFormat('dd.MM.yyyy').format(invoice.invoiceDate),
                 style: Theme.of(context).textTheme.bodySmall,
@@ -1735,52 +1863,59 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               ),
             ],
           ),
-          const Gap(10),
-          Wrap(
-            spacing: 4,
-            runSpacing: 4,
-            children: [
-              _InvoiceIconAction(
-                tooltip: 'Düzenle',
-                icon: Icons.edit_rounded,
-                onPressed: _busy ? null : _edit,
-              ),
-              _InvoiceIconAction(
-                tooltip: invoice.isActive ? 'Pasife al' : 'Aktifleştir',
-                icon: invoice.isActive
-                    ? Icons.archive_outlined
-                    : Icons.restore_rounded,
-                onPressed: _busy ? null : _toggleActive,
-              ),
-              _InvoiceIconAction(
-                tooltip: 'Kalıcı sil',
-                icon: Icons.delete_forever_rounded,
-                onPressed: _busy ? null : _delete,
-              ),
-              _InvoiceIconAction(
-                tooltip: 'PDF / Yazdır',
-                icon: Icons.picture_as_pdf_rounded,
-                onPressed: _busy ? null : _print,
-              ),
-              _InvoiceIconAction(
-                tooltip: 'Payload hazırla',
-                icon: Icons.data_object_rounded,
-                onPressed: _busy ? null : () => _prepare(send: false),
-              ),
-              _InvoiceIconAction(
-                tooltip: 'Test API’ye gönder',
-                icon: _busy
-                    ? Icons.hourglass_empty_rounded
-                    : Icons.cloud_upload_rounded,
-                onPressed: _busy ? null : () => _prepare(send: true),
-                primary: true,
-              ),
-              _InvoiceIconAction(
-                tooltip: 'Özet kopyala',
-                icon: Icons.copy_rounded,
-                onPressed: _busy ? null : _copyPreview,
-              ),
-            ],
+          const Gap(8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _InvoiceIconAction(
+                  tooltip: 'Düzenle',
+                  icon: Icons.edit_rounded,
+                  onPressed: _busy ? null : _edit,
+                ),
+                const Gap(4),
+                _InvoiceIconAction(
+                  tooltip: invoice.isActive ? 'Pasife al' : 'Aktifleştir',
+                  icon: invoice.isActive
+                      ? Icons.archive_outlined
+                      : Icons.restore_rounded,
+                  onPressed: _busy ? null : _toggleActive,
+                ),
+                const Gap(4),
+                _InvoiceIconAction(
+                  tooltip: 'Kalıcı sil',
+                  icon: Icons.delete_forever_rounded,
+                  onPressed: _busy ? null : _delete,
+                ),
+                const Gap(4),
+                _InvoiceIconAction(
+                  tooltip: 'PDF / Yazdır',
+                  icon: Icons.picture_as_pdf_rounded,
+                  onPressed: _busy ? null : _print,
+                ),
+                const Gap(4),
+                _InvoiceIconAction(
+                  tooltip: 'Payload hazırla',
+                  icon: Icons.data_object_rounded,
+                  onPressed: _busy ? null : () => _prepare(send: false),
+                ),
+                const Gap(4),
+                _InvoiceIconAction(
+                  tooltip: 'Test API’ye gönder',
+                  icon: _busy
+                      ? Icons.hourglass_empty_rounded
+                      : Icons.cloud_upload_rounded,
+                  onPressed: _busy ? null : () => _prepare(send: true),
+                  primary: true,
+                ),
+                const Gap(4),
+                _InvoiceIconAction(
+                  tooltip: 'Özet kopyala',
+                  icon: Icons.copy_rounded,
+                  onPressed: _busy ? null : _copyPreview,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -4408,6 +4543,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
   String? _importInvoiceNumber;
   bool _savingMatches = false;
   bool _showOnlyMatchedInvoices = false;
+  String _invoiceCustomerQuery = '';
   final Set<String> _selectedInvoices = {};
 
   @override
@@ -4435,6 +4571,20 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
         .whereType<Map>()
         .map((item) => item.cast<String, dynamic>())
         .toList();
+    final customerQuery = _normalizeCustomerSearch(_invoiceCustomerQuery);
+    final customerFilteredInvoices = customerQuery.isEmpty
+        ? invoices
+        : invoices.where((item) {
+            final haystack = _normalizeCustomerSearch(
+              [
+                item['customerName'],
+                item['customerCode'],
+                item['taxNumber'],
+                item['invoiceNumber'],
+              ].whereType<Object>().join(' '),
+            );
+            return haystack.contains(customerQuery);
+          }).toList();
     final selectedMatchedCount = invoices
         .where(
           (item) => _selectedInvoices.contains(item['sourceId']?.toString()),
@@ -4445,12 +4595,12 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
         .where((item) => (item['customerMatch'] as Map?)?['matched'] != true)
         .length;
     final visibleInvoices = _showOnlyMatchedInvoices
-        ? invoices
+        ? customerFilteredInvoices
               .where(
                 (item) => (item['customerMatch'] as Map?)?['matched'] == true,
               )
               .toList()
-        : invoices;
+        : customerFilteredInvoices;
     return AlertDialog(
       title: const Text('Akınsoft Verisi Hazır'),
       content: SizedBox(
@@ -4553,12 +4703,16 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
             _InvoiceSelectionSection(
               invoices: visibleInvoices,
               selectedInvoices: _selectedInvoices,
+              customerQuery: _invoiceCustomerQuery,
               showOnlyMatched: _showOnlyMatchedInvoices,
+              onCustomerQueryChanged: (value) {
+                setState(() => _invoiceCustomerQuery = value);
+              },
               onShowOnlyMatchedChanged: (value) {
                 setState(() {
                   _showOnlyMatchedInvoices = value;
                   if (value) {
-                    final visibleIds = invoices
+                    final visibleIds = customerFilteredInvoices
                         .where(
                           (item) =>
                               (item['customerMatch'] as Map?)?['matched'] ==
@@ -5219,7 +5373,9 @@ class _InvoiceSelectionSection extends StatelessWidget {
   const _InvoiceSelectionSection({
     required this.invoices,
     required this.selectedInvoices,
+    required this.customerQuery,
     required this.showOnlyMatched,
+    required this.onCustomerQueryChanged,
     required this.onShowOnlyMatchedChanged,
     required this.onToggle,
     required this.onSelectAll,
@@ -5229,7 +5385,9 @@ class _InvoiceSelectionSection extends StatelessWidget {
 
   final List<Map<String, dynamic>> invoices;
   final Set<String> selectedInvoices;
+  final String customerQuery;
   final bool showOnlyMatched;
+  final ValueChanged<String> onCustomerQueryChanged;
   final ValueChanged<bool> onShowOnlyMatchedChanged;
   final void Function(String id, bool selected) onToggle;
   final VoidCallback onSelectAll;
@@ -5238,6 +5396,8 @@ class _InvoiceSelectionSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final searchController = TextEditingController(text: customerQuery)
+      ..selection = TextSelection.collapsed(offset: customerQuery.length);
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -5246,36 +5406,85 @@ class _InvoiceSelectionSection extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Aktarılacak Faturalar',
-                    style: Theme.of(context).textTheme.titleSmall,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final narrow = constraints.maxWidth < 720;
+              final title = Text(
+                'Aktarılacak Faturalar',
+                style: Theme.of(context).textTheme.titleSmall,
+              );
+              final search = SizedBox(
+                width: narrow ? double.infinity : 260,
+                child: TextField(
+                  controller: searchController,
+                  onChanged: onCustomerQueryChanged,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search_rounded),
+                    hintText: 'Cari veya fatura ara',
+                    isDense: true,
                   ),
                 ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Checkbox(
-                      value: showOnlyMatched,
-                      onChanged: (value) =>
-                          onShowOnlyMatchedChanged(value ?? false),
-                    ),
-                    const Text('Sadece eşleşmiş'),
-                  ],
-                ),
-                const Gap(8),
-                TextButton(
-                  onPressed: onSelectAll,
-                  child: const Text('Tümünü Seç'),
-                ),
-                TextButton(onPressed: onClear, child: const Text('Temizle')),
-              ],
-            ),
+              );
+              final actions = Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Checkbox(
+                        value: showOnlyMatched,
+                        onChanged: (value) =>
+                            onShowOnlyMatchedChanged(value ?? false),
+                      ),
+                      const Text('Sadece eşleşmiş'),
+                    ],
+                  ),
+                  const Gap(8),
+                  TextButton(
+                    onPressed: onSelectAll,
+                    child: const Text('Görünenleri Seç'),
+                  ),
+                  TextButton(onPressed: onClear, child: const Text('Temizle')),
+                ],
+              );
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                child: narrow
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          title,
+                          const Gap(8),
+                          search,
+                          const Gap(8),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: actions,
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          Expanded(child: title),
+                          search,
+                          const Gap(10),
+                          actions,
+                        ],
+                      ),
+              );
+            },
           ),
+          if (invoices.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Bu filtreye uygun fatura bulunamadı.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ),
           Container(
             height: 40,
             padding: const EdgeInsets.symmetric(horizontal: 12),
