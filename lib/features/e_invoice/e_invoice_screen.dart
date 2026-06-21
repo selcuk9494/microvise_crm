@@ -978,7 +978,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             headers: {'Content-Type': 'application/json; charset=utf-8'},
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(minutes: 2));
+          .timeout(const Duration(minutes: 5));
       final decoded = jsonDecode(response.body);
       if (decoded is! Map<String, dynamic>) {
         throw Exception('Beklenmeyen veri çekme yanıtı.');
@@ -3833,7 +3833,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
             headers: {'Content-Type': 'application/json; charset=utf-8'},
             body: jsonEncode({..._currentSettingsPayload(), 'limit': 2000}),
           )
-          .timeout(const Duration(minutes: 2));
+          .timeout(const Duration(minutes: 5));
       final decoded = jsonDecode(response.body);
       if (decoded is! Map<String, dynamic>) {
         throw Exception('Beklenmeyen veri çekme yanıtı.');
@@ -4425,6 +4425,10 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
   Widget build(BuildContext context) {
     final data = widget.data;
     final counts = (data['counts'] as Map?)?.cast<String, dynamic>() ?? {};
+    final warnings = ((data['warnings'] as List?) ?? const [])
+        .map((item) => item.toString())
+        .where((item) => item.trim().isNotEmpty)
+        .toList(growable: false);
     final customers = (data['customers'] as List?) ?? const [];
     final products = (data['products'] as List?) ?? const [];
     final invoices = ((data['invoices'] as List?) ?? const [])
@@ -4490,6 +4494,32 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                 ),
               ],
             ),
+            if (warnings.isNotEmpty) ...[
+              const Gap(12),
+              AppCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Akınsoft uyarısı',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const Gap(6),
+                    ...warnings
+                        .take(3)
+                        .map(
+                          (warning) => Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              warning,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                        ),
+                  ],
+                ),
+              ),
+            ],
             const Gap(16),
             if (_importing) ...[
               AppCard(

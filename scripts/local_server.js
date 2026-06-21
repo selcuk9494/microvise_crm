@@ -1368,6 +1368,7 @@ async function handleAkinsoftPull(req, res) {
   const pool = await connectAkinsoftPool(config);
 
   try {
+    const warnings = [];
     const [hasFatura, hasFaturaHr, hasFaturaKdv, hasCari, hasStok, hasCariHr] =
       await Promise.all([
         akinsoftTableExists(pool, 'FATURA'),
@@ -1519,19 +1520,30 @@ async function handleAkinsoftPull(req, res) {
         .map((row) => textOrNull(row.FATURA_NO))
         .filter(Boolean);
       if (invoiceNumbers.length && hasCariHr) {
-        const request = pool.request();
-        invoiceNumbers.forEach((no, index) => request.input(`no${index}`, sql.NVarChar, no));
-        const paramList = invoiceNumbers.map((_, index) => `@no${index}`).join(',');
-        cariHrRows.push(
-          ...(
-            await request.query(`
-              select *
-              from dbo.CARIHR
-              where EVRAK_NO in (${paramList})
-                and coalesce(SILINDI, 0) = 0
-            `)
-          ).recordset,
-        );
+        try {
+          const request = pool.request();
+          request.timeout = 25000;
+          invoiceNumbers.forEach((no, index) =>
+            request.input(`no${index}`, sql.NVarChar, no),
+          );
+          const paramList = invoiceNumbers.map((_, index) => `@no${index}`).join(',');
+          cariHrRows.push(
+            ...(
+              await request.query(`
+                select EVRAK_NO, KPB_BTUT, KPB_ATUT, DVZ_BTUT, DVZ_ATUT
+                from dbo.CARIHR
+                where EVRAK_NO in (${paramList})
+                  and coalesce(SILINDI, 0) = 0
+              `)
+            ).recordset,
+          );
+        } catch (error) {
+          warnings.push(
+            `Cari hareketleri okunamadı; ödeme/durum bilgisi eksik olabilir: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
       }
       if (ids.length && hasFaturaKdv) {
         const request = pool.request();
@@ -1930,6 +1942,7 @@ async function handleAkinsoftPull(req, res) {
             (item) => item.customerMatch?.matched !== true,
           ).length,
         },
+        warnings,
         customers,
         products,
         invoices,
