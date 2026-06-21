@@ -730,7 +730,6 @@ function resolveAkinsoftInvoicePayment(row, currency, grandTotal) {
       'KAPANDI',
       'ODENDI',
       'ODEME_DURUMU',
-      'FATURA_DURUMU',
       'DURUMU',
       'STATU',
       'STATUS',
@@ -1063,6 +1062,16 @@ function buildAkinsoftInvoiceWhere(columns, hasFaturaHr) {
     `);
   }
   return conditions.join('\n          and ');
+}
+
+function isAkinsoftInvoiceStatusIncluded(row) {
+  const raw = pick(row, ['FATURA_DURUMU']);
+  if (raw == null || String(raw).trim() === '') return true;
+  const text = String(raw).trim();
+  const numeric = Number.parseInt(text, 10);
+  if (Number.isFinite(numeric) && String(numeric) === text) return numeric === 1;
+  const upper = text.toLocaleUpperCase('tr-TR');
+  return !upper.includes('IPTAL') && !upper.includes('İPTAL');
 }
 
 async function ensureAkinsoftCustomerMatchTable(pool) {
@@ -1447,7 +1456,10 @@ async function handleAkinsoftPull(req, res) {
       ).recordset;
       const filteredHeaders = rawHeaders.filter((row) => {
         const invoiceNumber = textOrNull(row.FATURA_NO) || '';
-        return !invoiceNumber.toUpperCase().startsWith('MSF');
+        return (
+          !invoiceNumber.toUpperCase().startsWith('MSF') &&
+          isAkinsoftInvoiceStatusIncluded(row)
+        );
       });
       const seenInvoiceNumbers = new Set();
       const headers = [];
