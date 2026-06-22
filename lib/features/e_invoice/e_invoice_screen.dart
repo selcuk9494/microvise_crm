@@ -18,6 +18,7 @@ import '../customers/customer_model.dart';
 import '../customers/customers_providers.dart';
 import '../invoices/invoice_model.dart';
 import '../invoices/invoice_providers.dart';
+import '../invoices/invoice_statement_share.dart';
 import 'e_invoice_form_screen.dart';
 import 'e_invoice_print.dart';
 
@@ -380,7 +381,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                 children: [
                   const Expanded(
                     child: Text(
-                      'Henüz fatura yok. Yeni Fatura veya Akınsoft’tan Çek ile başlayın.',
+                      'Henüz fatura yok. Yeni Fatura veya ERP’den Veri Çek ile başlayın.',
                     ),
                   ),
                   OutlinedButton.icon(
@@ -392,7 +393,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.cloud_download_rounded, size: 18),
-                    label: const Text('Akınsoft’tan Çek'),
+                    label: const Text('ERP’den Veri Çek'),
                   ),
                 ],
               ),
@@ -484,7 +485,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                             Icons.cloud_download_rounded,
                                             size: 18,
                                           ),
-                                    label: const Text('Akınsoft'),
+                                    label: const Text('ERP'),
                                   ),
                                   const Gap(8),
                                   OutlinedButton.icon(
@@ -499,6 +500,20 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                       size: 18,
                                     ),
                                     label: const Text('Tahsilat'),
+                                  ),
+                                  const Gap(8),
+                                  OutlinedButton.icon(
+                                    onPressed:
+                                        _selectedInvoiceIds.isEmpty ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing
+                                        ? null
+                                        : () => _exportSelectedStatement(items),
+                                    icon: const Icon(
+                                      Icons.description_rounded,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Ekstre'),
                                   ),
                                   const Gap(8),
                                   OutlinedButton.icon(
@@ -620,6 +635,21 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                     const Gap(8),
                                     OutlinedButton.icon(
                                       onPressed:
+                                          _selectedInvoiceIds.isEmpty ||
+                                              _bulkDeleting ||
+                                              _bulkProcessing
+                                          ? null
+                                          : () =>
+                                                _exportSelectedStatement(items),
+                                      icon: const Icon(
+                                        Icons.description_rounded,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Ekstre PDF'),
+                                    ),
+                                    const Gap(8),
+                                    OutlinedButton.icon(
+                                      onPressed:
                                           _pullingAkinsoft ||
                                               _bulkDeleting ||
                                               _bulkProcessing
@@ -637,7 +667,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                               Icons.cloud_download_rounded,
                                               size: 18,
                                             ),
-                                      label: const Text('Akınsoft’tan Çek'),
+                                      label: const Text('ERP’den Veri Çek'),
                                     ),
                                     const Gap(8),
                                     OutlinedButton.icon(
@@ -871,6 +901,43 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       ).showSnackBar(SnackBar(content: Text('Toplu silme başarısız: $error')));
     } finally {
       if (mounted) setState(() => _bulkDeleting = false);
+    }
+  }
+
+  Future<void> _exportSelectedStatement(List<Invoice> visibleInvoices) async {
+    final selected = visibleInvoices
+        .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
+        .toList(growable: false);
+    if (selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ekstre için en az bir fatura seçin.')),
+      );
+      return;
+    }
+
+    final customerNames = selected
+        .map((invoice) => invoice.customerName?.trim())
+        .whereType<String>()
+        .where((name) => name.isNotEmpty)
+        .toSet();
+    setState(() => _bulkProcessing = true);
+    try {
+      await shareInvoiceStatementPdf(
+        title: 'Fatura Ekstresi',
+        customerName: customerNames.length == 1
+            ? customerNames.first
+            : 'Seçili Faturalar',
+        invoices: selected,
+        filename:
+            'fatura_ekstresi_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.pdf',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Ekstre oluşturulamadı: $error')));
+    } finally {
+      if (mounted) setState(() => _bulkProcessing = false);
     }
   }
 
@@ -1127,9 +1194,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       ref.invalidate(eInvoiceSettingsProvider);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Akınsoft verisi çekilemedi: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('ERP verisi çekilemedi: $error')));
     } finally {
       if (mounted) setState(() => _pullingAkinsoft = false);
     }
@@ -1560,6 +1627,11 @@ String _customerInitials(String value) {
   return parts.map((part) => part.characters.first.toUpperCase()).join();
 }
 
+String _safeFilePart(String value) {
+  final safe = value.trim().replaceAll(RegExp(r'[^a-zA-Z0-9._-]+'), '_');
+  return safe.isEmpty ? 'ekstre' : safe;
+}
+
 class _InvoiceHeaderText extends StatelessWidget {
   const _InvoiceHeaderText(this.label, {this.alignEnd = false});
 
@@ -1742,6 +1814,11 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   onPressed: _busy ? null : _print,
                 ),
                 _InvoiceIconAction(
+                  tooltip: 'Ekstre PDF',
+                  icon: Icons.description_rounded,
+                  onPressed: _busy ? null : _statement,
+                ),
+                _InvoiceIconAction(
                   tooltip: 'Payload hazırla',
                   icon: Icons.data_object_rounded,
                   onPressed: _busy ? null : () => _prepare(send: false),
@@ -1892,6 +1969,12 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   tooltip: 'PDF / Yazdır',
                   icon: Icons.picture_as_pdf_rounded,
                   onPressed: _busy ? null : _print,
+                ),
+                const Gap(4),
+                _InvoiceIconAction(
+                  tooltip: 'Ekstre PDF',
+                  icon: Icons.description_rounded,
+                  onPressed: _busy ? null : _statement,
                 ),
                 const Gap(4),
                 _InvoiceIconAction(
@@ -2070,6 +2153,29 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Bu platformda yazdırma desteklenmiyor.')),
     );
+  }
+
+  Future<void> _statement() async {
+    setState(() => _busy = true);
+    try {
+      final invoice = widget.invoice;
+      await shareInvoiceStatementPdf(
+        title: 'Fatura Ekstresi',
+        customerName: invoice.customerName?.trim().isNotEmpty == true
+            ? invoice.customerName!.trim()
+            : 'Cari',
+        invoices: [invoice],
+        filename:
+            'fatura_ekstresi_${_safeFilePart(invoice.invoiceNumber)}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.pdf',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Ekstre oluşturulamadı: $error')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _prepare({required bool send}) async {
@@ -2781,6 +2887,7 @@ class _AccountsTab extends ConsumerStatefulWidget {
 
 class _AccountsTabState extends ConsumerState<_AccountsTab> {
   String _query = '';
+  final Set<String> _exportingAccountIds = {};
 
   @override
   Widget build(BuildContext context) {
@@ -2878,6 +2985,11 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
                             _AccountMobileRow(
                               balance: balance,
                               money: widget.moneyTry,
+                              exporting: _exportingAccountIds.contains(
+                                balance.customerId,
+                              ),
+                              onStatement: () =>
+                                  _exportAccountStatement(balance),
                             ),
                         ],
                       );
@@ -2889,6 +3001,10 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
                           _AccountTableRow(
                             balance: balance,
                             money: widget.moneyTry,
+                            exporting: _exportingAccountIds.contains(
+                              balance.customerId,
+                            ),
+                            onStatement: () => _exportAccountStatement(balance),
                           ),
                       ],
                     );
@@ -2902,6 +3018,32 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
       error: (error, _) =>
           _ErrorCard(message: 'Cari hesap yüklenemedi: $error'),
     );
+  }
+
+  Future<void> _exportAccountStatement(AccountBalance balance) async {
+    setState(() => _exportingAccountIds.add(balance.customerId));
+    try {
+      final invoices = await ref.read(
+        invoicesProvider(InvoiceFilter(customerId: balance.customerId)).future,
+      );
+      if (!mounted) return;
+      await shareInvoiceStatementPdf(
+        title: 'Cari Hesap Ekstresi',
+        customerName: balance.name,
+        invoices: invoices,
+        filename:
+            'cari_ekstresi_${_safeFilePart(balance.name)}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.pdf',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cari ekstresi alınamadı: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _exportingAccountIds.remove(balance.customerId));
+      }
+    }
   }
 
   Future<void> _showPaymentDialog(BuildContext context, WidgetRef ref) async {
@@ -3191,8 +3333,12 @@ class _AccountsTableHeader extends StatelessWidget {
           Expanded(flex: 2, child: _AccountHeaderText('Tahsilat')),
           Expanded(flex: 2, child: _AccountHeaderText('Ödeme')),
           SizedBox(
-            width: 150,
+            width: 130,
             child: _AccountHeaderText('Bakiye', alignEnd: true),
+          ),
+          SizedBox(
+            width: 64,
+            child: _AccountHeaderText('İşlem', alignEnd: true),
           ),
         ],
       ),
@@ -3219,10 +3365,17 @@ class _AccountHeaderText extends StatelessWidget {
 }
 
 class _AccountTableRow extends StatelessWidget {
-  const _AccountTableRow({required this.balance, required this.money});
+  const _AccountTableRow({
+    required this.balance,
+    required this.money,
+    required this.exporting,
+    required this.onStatement,
+  });
 
   final AccountBalance balance;
   final NumberFormat money;
+  final bool exporting;
+  final VoidCallback onStatement;
 
   @override
   Widget build(BuildContext context) {
@@ -3277,13 +3430,30 @@ class _AccountTableRow extends StatelessWidget {
             child: _AmountText(money.format(balance.paymentsTotal)),
           ),
           SizedBox(
-            width: 150,
+            width: 130,
             child: Text(
               money.format(balance.balance),
               textAlign: TextAlign.end,
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
                 color: positive ? AppTheme.success : AppTheme.error,
                 fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 64,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                tooltip: 'Cari hesap ekstresi',
+                onPressed: exporting ? null : onStatement,
+                icon: exporting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.description_rounded),
               ),
             ),
           ),
@@ -3294,10 +3464,17 @@ class _AccountTableRow extends StatelessWidget {
 }
 
 class _AccountMobileRow extends StatelessWidget {
-  const _AccountMobileRow({required this.balance, required this.money});
+  const _AccountMobileRow({
+    required this.balance,
+    required this.money,
+    required this.exporting,
+    required this.onStatement,
+  });
 
   final AccountBalance balance;
   final NumberFormat money;
+  final bool exporting;
+  final VoidCallback onStatement;
 
   @override
   Widget build(BuildContext context) {
@@ -3323,11 +3500,28 @@ class _AccountMobileRow extends StatelessWidget {
               ],
             ),
           ),
-          Text(
-            money.format(balance.balance),
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: positive ? AppTheme.success : AppTheme.error,
-            ),
+          const Gap(8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                money.format(balance.balance),
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: positive ? AppTheme.success : AppTheme.error,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Cari hesap ekstresi',
+                onPressed: exporting ? null : onStatement,
+                icon: exporting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.description_rounded),
+              ),
+            ],
           ),
         ],
       ),
@@ -3711,7 +3905,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                                 ),
                               )
                             : const Icon(Icons.sync_rounded, size: 18),
-                        label: const Text('Akınsoft’tan Çek'),
+                        label: const Text('ERP’den Veri Çek'),
                       ),
                       const Gap(10),
                       OutlinedButton.icon(
@@ -3986,9 +4180,9 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Akınsoft verisi çekilemedi: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('ERP verisi çekilemedi: $error')));
     } finally {
       if (mounted) setState(() => _pullingAkinsoft = false);
     }
@@ -4602,7 +4796,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
               .toList()
         : customerFilteredInvoices;
     return AlertDialog(
-      title: const Text('Akınsoft Verisi Hazır'),
+      title: const Text('ERP Verisi Hazır'),
       content: SizedBox(
         width: 1040,
         height: MediaQuery.sizeOf(context).height * 0.76,
@@ -4651,7 +4845,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Akınsoft uyarısı',
+                      'ERP uyarısı',
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
                     const Gap(6),

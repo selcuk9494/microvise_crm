@@ -19,12 +19,24 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
+  static const _rememberMeKey = 'auth:remember_me';
+  static const _rememberedEmailKey = 'auth:remembered_email';
+
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _emailFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
   bool _loading = false;
-  bool _rememberMe = AppCache.readBool('auth:remember_me', defaultValue: true);
+  bool _rememberMe = AppCache.readBool(_rememberMeKey, defaultValue: true);
+
+  @override
+  void initState() {
+    super.initState();
+    final rememberedEmail = AppCache.readString(_rememberedEmailKey);
+    if (_rememberMe && rememberedEmail != null) {
+      _emailController.text = rememberedEmail;
+    }
+  }
 
   @override
   void dispose() {
@@ -70,6 +82,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ref
           .read(apiAccessTokenProvider.notifier)
           .set(token, persist: _rememberMe);
+      if (_rememberMe) {
+        await AppCache.writeString(_rememberedEmailKey, email);
+      } else {
+        await AppCache.remove(_rememberedEmailKey);
+      }
       TextInput.finishAutofillContext(shouldSave: _rememberMe);
       ref.invalidate(currentUserProfileProvider);
       if (!mounted) return;
@@ -219,9 +236,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               : (value) {
                                   setState(() => _rememberMe = value ?? true);
                                   AppCache.writeBool(
-                                    'auth:remember_me',
+                                    _rememberMeKey,
                                     _rememberMe,
                                   );
+                                  if (!_rememberMe) {
+                                    AppCache.remove(_rememberedEmailKey);
+                                  }
                                 },
                           title: const Text('Beni hatırla'),
                           controlAffinity: ListTileControlAffinity.leading,
