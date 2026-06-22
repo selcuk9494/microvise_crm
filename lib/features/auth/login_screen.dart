@@ -112,9 +112,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Container(
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final compact = constraints.maxWidth < 380;
+                            final logo = Container(
                               width: 152,
                               height: 44,
                               decoration: BoxDecoration(
@@ -135,26 +136,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   fit: BoxFit.cover,
                                 ),
                               ),
-                            ),
-                            const Gap(12),
-                            Column(
+                            );
+                            final titleBlock = Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   'Microvise CRM',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: Theme.of(context).textTheme.titleLarge
                                       ?.copyWith(fontWeight: FontWeight.w800),
                                 ),
                                 Text(
                                   'Güvenli çalışma alanı',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(
                                         color: const Color(0xFF64748B),
                                       ),
                                 ),
                               ],
-                            ),
-                          ],
+                            );
+                            if (compact) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [logo, const Gap(10), titleBlock],
+                              );
+                            }
+                            return Row(
+                              children: [
+                                logo,
+                                const Gap(12),
+                                Expanded(child: titleBlock),
+                              ],
+                            );
+                          },
                         ),
                         const Gap(24),
                         TextField(
@@ -162,10 +179,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           focusNode: _emailFocusNode,
                           keyboardType: TextInputType.emailAddress,
                           textInputAction: TextInputAction.next,
-                          autofillHints: const [
-                            AutofillHints.username,
-                            AutofillHints.email,
-                          ],
+                          autofillHints: const [AutofillHints.username],
                           autocorrect: false,
                           enableSuggestions: true,
                           textCapitalization: TextCapitalization.none,
