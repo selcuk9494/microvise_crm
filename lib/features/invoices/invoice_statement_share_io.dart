@@ -5,7 +5,20 @@ import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-Future<void> downloadExcelFile(List<int> bytes, String filename) async {
+import 'invoice_model.dart';
+import 'invoice_statement_pdf.dart';
+
+Future<void> shareInvoiceStatementPdf({
+  required String title,
+  required String customerName,
+  required List<Invoice> invoices,
+  required String filename,
+}) async {
+  final bytes = await buildInvoiceStatementPdfBytes(
+    title: title,
+    customerName: customerName,
+    invoices: invoices,
+  );
   final dir = await getTemporaryDirectory();
   final safeName = _safeFilename(filename);
   final file = File('${dir.path}/$safeName');
@@ -26,16 +39,11 @@ Future<void> downloadExcelFile(List<int> bytes, String filename) async {
   );
 
   await Share.shareXFiles([
-    XFile(
-      file.path,
-      mimeType:
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      name: safeName,
-    ),
+    XFile(file.path, mimeType: 'application/pdf', name: safeName),
   ], sharePositionOrigin: origin);
 }
 
 String _safeFilename(String input) {
-  final trimmed = input.trim().isEmpty ? 'export.xlsx' : input.trim();
+  final trimmed = input.trim().isEmpty ? 'ekstre.pdf' : input.trim();
   return trimmed.replaceAll(RegExp(r'[^a-zA-Z0-9._-]+'), '_');
 }

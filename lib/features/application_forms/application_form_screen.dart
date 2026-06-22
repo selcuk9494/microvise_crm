@@ -794,16 +794,23 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     final bytes = file.encode();
     if (bytes == null || !mounted) return;
 
-    downloadExcelFile(
-      bytes,
-      'vergi_dairesine_gonder_${DateTime.now().millisecondsSinceEpoch}.xlsx',
-    );
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${records.length} kayit icin Excel disa aktarildi.'),
-      ),
-    );
+    try {
+      await downloadExcelFile(
+        bytes,
+        'vergi_dairesine_gonder_${DateTime.now().millisecondsSinceEpoch}.xlsx',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${records.length} kayit icin Excel disa aktarildi.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Excel dışa aktarılamadı: $e')));
+    }
   }
 
   Future<void> _exportForTsm(List<ApplicationFormRecord> records) async {
@@ -932,16 +939,25 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
 
     final bytes = file.encode();
     if (bytes == null || !mounted) return;
-    downloadExcelFile(
-      bytes,
-      'tsm_gonder_${DateTime.now().millisecondsSinceEpoch}.xlsx',
-    );
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${records.length} kayit icin TSM Excel disa aktarildi.'),
-      ),
-    );
+    try {
+      await downloadExcelFile(
+        bytes,
+        'tsm_gonder_${DateTime.now().millisecondsSinceEpoch}.xlsx',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${records.length} kayit icin TSM Excel disa aktarildi.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('TSM Excel dışa aktarılamadı: $e')),
+      );
+    }
   }
 
   String _formatTaxRegistry(String raw) {

@@ -103,6 +103,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
     final customersAsync = ref.watch(customersLookupProvider);
     final productsAsync = ref.watch(productsProvider(null));
     final taxRatesAsync = ref.watch(taxRatesProvider);
+    final compactAppBar = MediaQuery.sizeOf(context).width < 430;
     final title =
         '${_isEditing ? 'Düzenle - ' : ''}${_isSales ? 'Satış E-Faturası' : 'Alış Faturası'}';
 
@@ -111,23 +112,43 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
       appBar: AppBar(
         title: Text(title),
         actions: [
-          TextButton(
-            onPressed: _saving ? null : () => _save(status: 'draft'),
-            child: const Text('Taslak'),
-          ),
-          const Gap(8),
-          FilledButton.icon(
-            onPressed: _saving ? null : () => _save(status: 'open'),
-            icon: _saving
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.save_rounded, size: 18),
-            label: const Text('Kaydet'),
-          ),
-          const Gap(12),
+          if (compactAppBar) ...[
+            IconButton(
+              tooltip: 'Taslak kaydet',
+              onPressed: _saving ? null : () => _save(status: 'draft'),
+              icon: const Icon(Icons.drafts_rounded),
+            ),
+            IconButton.filled(
+              tooltip: 'Kaydet',
+              onPressed: _saving ? null : () => _save(status: 'open'),
+              icon: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_rounded),
+            ),
+            const Gap(8),
+          ] else ...[
+            TextButton(
+              onPressed: _saving ? null : () => _save(status: 'draft'),
+              child: const Text('Taslak'),
+            ),
+            const Gap(8),
+            FilledButton.icon(
+              onPressed: _saving ? null : () => _save(status: 'open'),
+              icon: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_rounded, size: 18),
+              label: const Text('Kaydet'),
+            ),
+            const Gap(12),
+          ],
         ],
       ),
       body: Form(
@@ -1789,184 +1810,209 @@ class _ItemEditor extends StatelessWidget {
       decimalDigits: 2,
     );
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceMuted,
-        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Autocomplete<Product>(
-                    optionsBuilder: (value) {
-                      final query = value.text.trim().toLowerCase();
-                      if (query.isEmpty) return products.take(12);
-                      return products
-                          .where(
-                            (product) =>
-                                product.name.toLowerCase().contains(query) ||
-                                (product.code ?? '').toLowerCase().contains(
-                                  query,
-                                ),
-                          )
-                          .take(12);
-                    },
-                    displayStringForOption: (product) => product.name,
-                    onSelected: (product) {
-                      item.productId = product.id;
-                      item.descriptionController.text = product.name;
-                      item.unit = product.unit;
-                      item.taxRate = product.taxRate;
-                      item.priceController.text =
-                          (isSales ? product.salePrice : product.purchasePrice)
-                              .toStringAsFixed(2);
-                      onChanged();
-                    },
-                    fieldViewBuilder: (context, controller, focusNode, _) {
-                      if (controller.text.isEmpty &&
-                          item.descriptionController.text.isNotEmpty) {
-                        controller.text = item.descriptionController.text;
-                      }
-                      return TextFormField(
-                        controller: controller,
-                        focusNode: focusNode,
-                        decoration: const InputDecoration(
-                          labelText: 'Stok/Hizmet',
-                          hintText: 'Ürün, hizmet veya açıklama',
-                        ),
-                        validator: (value) => (value ?? '').trim().isEmpty
-                            ? 'Kalem adı gerekli'
-                            : null,
-                        onChanged: (value) {
-                          item.productId = null;
-                          item.descriptionController.text = value;
-                          onChanged();
-                        },
-                      );
-                    },
-                  ),
-                ),
-                const Gap(10),
-                SizedBox(
-                  width: 90,
-                  child: TextFormField(
-                    controller: item.quantityController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(labelText: 'Miktar'),
-                    onChanged: (_) => onChanged(),
-                    validator: (value) =>
-                        _parseDecimal(value ?? '') <= 0 ? 'Gerekli' : null,
-                  ),
-                ),
-                const Gap(10),
-                SizedBox(
-                  width: 105,
-                  child: TextFormField(
-                    controller: item.priceController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(labelText: 'Fiyat'),
-                    onChanged: (_) => onChanged(),
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Kalemi sil',
-                  onPressed: onRemove,
-                  icon: const Icon(Icons.delete_outline_rounded),
-                ),
-              ],
-            ),
-            const Gap(10),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                SizedBox(
-                  width: 120,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: item.unit,
-                    items: const [
-                      DropdownMenuItem(value: 'Adet', child: Text('Adet')),
-                      DropdownMenuItem(value: 'Kg', child: Text('Kg')),
-                      DropdownMenuItem(value: 'Lt', child: Text('Lt')),
-                      DropdownMenuItem(value: 'Mt', child: Text('Mt')),
-                      DropdownMenuItem(value: 'Saat', child: Text('Saat')),
-                    ],
-                    onChanged: (value) {
-                      item.unit = value ?? 'Adet';
-                      onChanged();
-                    },
-                    decoration: const InputDecoration(labelText: 'Birim'),
-                  ),
-                ),
-                SizedBox(
-                  width: 120,
-                  child: DropdownButtonFormField<double>(
-                    initialValue: _taxInitialValue(item.taxRate, taxRates),
-                    items: [
-                      for (final rate in taxRates)
-                        DropdownMenuItem(
-                          value: rate,
-                          child: Text(_taxLabel(rate)),
-                        ),
-                    ],
-                    onChanged: (value) {
-                      item.taxRate = value ?? 20;
-                      onChanged();
-                    },
-                    decoration: const InputDecoration(labelText: 'KDV'),
-                  ),
-                ),
-                SizedBox(
-                  width: 120,
-                  child: TextFormField(
-                    initialValue: item.discountRate.toStringAsFixed(0),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(labelText: 'İndirim %'),
-                    onChanged: (value) {
-                      item.discountRate = _parseDecimal(value);
-                      onChanged();
-                    },
-                  ),
-                ),
-                SizedBox(
-                  width: 170,
-                  child: _LineTotal(
-                    label: 'Kalem Toplamı',
-                    value: money.format(item.lineTotal),
-                  ),
-                ),
-              ],
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 560;
+        final fieldGap = compact ? 8.0 : 10.0;
+        final inputDecoration = const InputDecoration(
+          isDense: true,
+          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        );
+        final productField = Autocomplete<Product>(
+          optionsBuilder: (value) {
+            final query = value.text.trim().toLowerCase();
+            if (query.isEmpty) return products.take(12);
+            return products
+                .where(
+                  (product) =>
+                      product.name.toLowerCase().contains(query) ||
+                      (product.code ?? '').toLowerCase().contains(query),
+                )
+                .take(12);
+          },
+          displayStringForOption: (product) => product.name,
+          onSelected: (product) {
+            item.productId = product.id;
+            item.descriptionController.text = product.name;
+            item.unit = product.unit;
+            item.taxRate = product.taxRate;
+            item.priceController.text =
+                (isSales ? product.salePrice : product.purchasePrice)
+                    .toStringAsFixed(2);
+            onChanged();
+          },
+          fieldViewBuilder: (context, controller, focusNode, _) {
+            if (controller.text.isEmpty &&
+                item.descriptionController.text.isNotEmpty) {
+              controller.text = item.descriptionController.text;
+            }
+            return TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              decoration: inputDecoration.copyWith(
+                labelText: 'Stok/Hizmet',
+                hintText: 'Ürün, hizmet veya açıklama',
+              ),
+              validator: (value) =>
+                  (value ?? '').trim().isEmpty ? 'Kalem adı gerekli' : null,
+              onChanged: (value) {
+                item.productId = null;
+                item.descriptionController.text = value;
+                onChanged();
+              },
+            );
+          },
+        );
+        final quantityField = TextFormField(
+          controller: item.quantityController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: inputDecoration.copyWith(labelText: 'Miktar'),
+          onChanged: (_) => onChanged(),
+          validator: (value) =>
+              _parseDecimal(value ?? '') <= 0 ? 'Gerekli' : null,
+        );
+        final priceField = TextFormField(
+          controller: item.priceController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: inputDecoration.copyWith(labelText: 'Fiyat'),
+          onChanged: (_) => onChanged(),
+        );
+        final unitField = DropdownButtonFormField<String>(
+          initialValue: item.unit,
+          isExpanded: true,
+          items: const [
+            DropdownMenuItem(value: 'Adet', child: Text('Adet')),
+            DropdownMenuItem(value: 'Kg', child: Text('Kg')),
+            DropdownMenuItem(value: 'Lt', child: Text('Lt')),
+            DropdownMenuItem(value: 'Mt', child: Text('Mt')),
+            DropdownMenuItem(value: 'Saat', child: Text('Saat')),
           ],
-        ),
-      ),
+          onChanged: (value) {
+            item.unit = value ?? 'Adet';
+            onChanged();
+          },
+          decoration: inputDecoration.copyWith(labelText: 'Birim'),
+        );
+        final taxField = DropdownButtonFormField<double>(
+          initialValue: _taxInitialValue(item.taxRate, taxRates),
+          isExpanded: true,
+          items: [
+            for (final rate in taxRates)
+              DropdownMenuItem(value: rate, child: Text(_taxLabel(rate))),
+          ],
+          onChanged: (value) {
+            item.taxRate = value ?? 20;
+            onChanged();
+          },
+          decoration: inputDecoration.copyWith(labelText: 'KDV'),
+        );
+        final discountField = TextFormField(
+          initialValue: item.discountRate.toStringAsFixed(0),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: inputDecoration.copyWith(labelText: 'İndirim %'),
+          onChanged: (value) {
+            item.discountRate = _parseDecimal(value);
+            onChanged();
+          },
+        );
+        final totalField = _LineTotal(
+          label: 'Kalem Toplamı',
+          value: money.format(item.lineTotal),
+          dense: compact,
+        );
+
+        Widget twoUp(Widget first, Widget second) {
+          return Row(
+            children: [
+              Expanded(child: first),
+              Gap(fieldGap),
+              Expanded(child: second),
+            ],
+          );
+        }
+
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceMuted,
+            borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: Padding(
+            padding: EdgeInsets.all(compact ? 10 : 12),
+            child: compact
+                ? Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: productField),
+                          const Gap(6),
+                          IconButton(
+                            tooltip: 'Kalemi sil',
+                            onPressed: onRemove,
+                            icon: const Icon(Icons.delete_outline_rounded),
+                          ),
+                        ],
+                      ),
+                      Gap(fieldGap),
+                      twoUp(quantityField, priceField),
+                      Gap(fieldGap),
+                      twoUp(unitField, taxField),
+                      Gap(fieldGap),
+                      twoUp(discountField, totalField),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(flex: 3, child: productField),
+                          Gap(fieldGap),
+                          SizedBox(width: 90, child: quantityField),
+                          Gap(fieldGap),
+                          SizedBox(width: 105, child: priceField),
+                          IconButton(
+                            tooltip: 'Kalemi sil',
+                            onPressed: onRemove,
+                            icon: const Icon(Icons.delete_outline_rounded),
+                          ),
+                        ],
+                      ),
+                      Gap(fieldGap),
+                      Row(
+                        children: [
+                          SizedBox(width: 120, child: unitField),
+                          Gap(fieldGap),
+                          SizedBox(width: 120, child: taxField),
+                          Gap(fieldGap),
+                          SizedBox(width: 120, child: discountField),
+                          Gap(fieldGap),
+                          SizedBox(width: 170, child: totalField),
+                        ],
+                      ),
+                    ],
+                  ),
+          ),
+        );
+      },
     );
   }
 }
 
 class _LineTotal extends StatelessWidget {
-  const _LineTotal({required this.label, required this.value});
+  const _LineTotal({
+    required this.label,
+    required this.value,
+    this.dense = false,
+  });
 
   final String label;
   final String value;
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: dense ? 7 : 9),
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
@@ -1975,8 +2021,18 @@ class _LineTotal extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: Theme.of(context).textTheme.bodySmall),
-          Text(value, style: Theme.of(context).textTheme.labelLarge),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
         ],
       ),
     );

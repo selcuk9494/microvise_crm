@@ -11,6 +11,7 @@ import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import 'invoice_model.dart';
 import 'invoice_providers.dart';
+import 'invoice_statement_share.dart';
 
 class AccountsScreen extends ConsumerStatefulWidget {
   const AccountsScreen({super.key});
@@ -20,7 +21,11 @@ class AccountsScreen extends ConsumerStatefulWidget {
 }
 
 class _AccountsScreenState extends ConsumerState<AccountsScreen> {
-  final _money = NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 2);
+  final _money = NumberFormat.currency(
+    locale: 'tr_TR',
+    symbol: '₺',
+    decimalDigits: 2,
+  );
   String _filter = 'all'; // all, receivable, payable
 
   @override
@@ -42,8 +47,12 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
           // Summary Cards
           balancesAsync.when(
             data: (balances) {
-              final totalReceivable = balances.where((b) => b.balance > 0).fold<double>(0, (sum, b) => sum + b.balance);
-              final totalPayable = balances.where((b) => b.balance < 0).fold<double>(0, (sum, b) => sum + b.balance.abs());
+              final totalReceivable = balances
+                  .where((b) => b.balance > 0)
+                  .fold<double>(0, (sum, b) => sum + b.balance);
+              final totalPayable = balances
+                  .where((b) => b.balance < 0)
+                  .fold<double>(0, (sum, b) => sum + b.balance.abs());
               final netBalance = totalReceivable - totalPayable;
 
               return Padding(
@@ -56,7 +65,11 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                         value: _money.format(totalReceivable),
                         color: AppTheme.success,
                         icon: Icons.arrow_upward_rounded,
-                        onTap: () => setState(() => _filter = _filter == 'receivable' ? 'all' : 'receivable'),
+                        onTap: () => setState(
+                          () => _filter = _filter == 'receivable'
+                              ? 'all'
+                              : 'receivable',
+                        ),
                         selected: _filter == 'receivable',
                       ),
                     ),
@@ -67,7 +80,11 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                         value: _money.format(totalPayable),
                         color: AppTheme.error,
                         icon: Icons.arrow_downward_rounded,
-                        onTap: () => setState(() => _filter = _filter == 'payable' ? 'all' : 'payable'),
+                        onTap: () => setState(
+                          () => _filter = _filter == 'payable'
+                              ? 'all'
+                              : 'payable',
+                        ),
                         selected: _filter == 'payable',
                       ),
                     ),
@@ -76,7 +93,9 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                       child: _SummaryCard(
                         title: 'Net Bakiye',
                         value: _money.format(netBalance),
-                        color: netBalance >= 0 ? AppTheme.success : AppTheme.error,
+                        color: netBalance >= 0
+                            ? AppTheme.success
+                            : AppTheme.error,
                         icon: Icons.account_balance_wallet_rounded,
                         onTap: () => setState(() => _filter = 'all'),
                         selected: _filter == 'all',
@@ -102,7 +121,9 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                 }
 
                 // Sort by absolute balance descending
-                filtered.sort((a, b) => b.balance.abs().compareTo(a.balance.abs()));
+                filtered.sort(
+                  (a, b) => b.balance.abs().compareTo(a.balance.abs()),
+                );
 
                 if (filtered.isEmpty) {
                   return Center(
@@ -112,11 +133,16 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.account_balance_rounded, size: 48, color: const Color(0xFF94A3B8)),
+                            Icon(
+                              Icons.account_balance_rounded,
+                              size: 48,
+                              color: const Color(0xFF94A3B8),
+                            ),
                             const Gap(12),
                             Text(
                               'Cari hesap bulunmuyor',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: const Color(0xFF64748B)),
                             ),
                           ],
                         ),
@@ -143,7 +169,9 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
               error: (_, _) => Center(
                 child: Text(
                   'Cari hesaplar yüklenemedi',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ),
             ),
@@ -156,7 +184,10 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
   void _openAccountDetail(AccountBalance account) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => AccountDetailScreen(customerId: account.customerId, customerName: account.name),
+        builder: (context) => AccountDetailScreen(
+          customerId: account.customerId,
+          customerName: account.name,
+        ),
       ),
     );
   }
@@ -210,7 +241,9 @@ class _SummaryCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       title,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
                     ),
                   ),
                 ],
@@ -218,7 +251,9 @@ class _SummaryCard extends StatelessWidget {
               const Gap(10),
               Text(
                 value,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -229,7 +264,11 @@ class _SummaryCard extends StatelessWidget {
 }
 
 class _AccountCard extends StatelessWidget {
-  const _AccountCard({required this.account, required this.money, required this.onTap});
+  const _AccountCard({
+    required this.account,
+    required this.money,
+    required this.onTap,
+  });
 
   final AccountBalance account;
   final NumberFormat money;
@@ -261,8 +300,8 @@ class _AccountCard extends StatelessWidget {
                 color: isReceivable
                     ? AppTheme.success.withValues(alpha: 0.1)
                     : isPayable
-                        ? AppTheme.error.withValues(alpha: 0.1)
-                        : const Color(0xFFF1F5F9),
+                    ? AppTheme.error.withValues(alpha: 0.1)
+                    : const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -270,8 +309,8 @@ class _AccountCard extends StatelessWidget {
                 color: isReceivable
                     ? AppTheme.success
                     : isPayable
-                        ? AppTheme.error
-                        : const Color(0xFF64748B),
+                    ? AppTheme.error
+                    : const Color(0xFF64748B),
                 size: 22,
               ),
             ),
@@ -282,7 +321,9 @@ class _AccountCard extends StatelessWidget {
                 children: [
                   Text(
                     account.name,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const Gap(4),
                   AppBadge(label: typeLabel, tone: typeTone),
@@ -296,18 +337,24 @@ class _AccountCard extends StatelessWidget {
                 Text(
                   money.format(account.balance.abs()),
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: isReceivable
-                            ? AppTheme.success
-                            : isPayable
-                                ? AppTheme.error
-                                : null,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    color: isReceivable
+                        ? AppTheme.success
+                        : isPayable
+                        ? AppTheme.error
+                        : null,
+                  ),
                 ),
                 const Gap(2),
                 Text(
-                  isReceivable ? 'Alacak' : isPayable ? 'Borç' : 'Dengede',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                  isReceivable
+                      ? 'Alacak'
+                      : isPayable
+                      ? 'Borç'
+                      : 'Dengede',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ],
             ),
@@ -322,18 +369,28 @@ class _AccountCard extends StatelessWidget {
 
 // Cari Hesap Detay Ekranı - Ekstre
 class AccountDetailScreen extends ConsumerStatefulWidget {
-  const AccountDetailScreen({super.key, required this.customerId, required this.customerName});
+  const AccountDetailScreen({
+    super.key,
+    required this.customerId,
+    required this.customerName,
+  });
 
   final String customerId;
   final String customerName;
 
   @override
-  ConsumerState<AccountDetailScreen> createState() => _AccountDetailScreenState();
+  ConsumerState<AccountDetailScreen> createState() =>
+      _AccountDetailScreenState();
 }
 
-class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with SingleTickerProviderStateMixin {
+class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final _money = NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 2);
+  final _money = NumberFormat.currency(
+    locale: 'tr_TR',
+    symbol: '₺',
+    decimalDigits: 2,
+  );
   final Set<String> _selectedInvoices = {};
 
   @override
@@ -350,8 +407,12 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
 
   @override
   Widget build(BuildContext context) {
-    final invoicesAsync = ref.watch(invoicesProvider(InvoiceFilter(customerId: widget.customerId)));
-    final transactionsAsync = ref.watch(transactionsProvider(TransactionFilter(customerId: widget.customerId)));
+    final invoicesAsync = ref.watch(
+      invoicesProvider(InvoiceFilter(customerId: widget.customerId)),
+    );
+    final transactionsAsync = ref.watch(
+      transactionsProvider(TransactionFilter(customerId: widget.customerId)),
+    );
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -411,21 +472,33 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
   Widget _buildOpenInvoices(AsyncValue<List<Invoice>> invoicesAsync) {
     return invoicesAsync.when(
       data: (invoices) {
-        final openInvoices = invoices.where((i) => i.status == 'open' || i.status == 'partial').toList();
+        final openInvoices = invoices
+            .where((i) => i.status == 'open' || i.status == 'partial')
+            .toList();
         if (openInvoices.isEmpty) {
           return Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.check_circle_outline_rounded, size: 64, color: AppTheme.success),
+                Icon(
+                  Icons.check_circle_outline_rounded,
+                  size: 64,
+                  color: AppTheme.success,
+                ),
                 const Gap(12),
-                Text('Açık fatura bulunmuyor', style: Theme.of(context).textTheme.bodyLarge),
+                Text(
+                  'Açık fatura bulunmuyor',
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
               ],
             ),
           );
         }
 
-        final totalOpen = openInvoices.fold<double>(0, (sum, i) => sum + i.remainingAmount);
+        final totalOpen = openInvoices.fold<double>(
+          0,
+          (sum, i) => sum + i.remainingAmount,
+        );
 
         return Column(
           children: [
@@ -439,7 +512,9 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
                   Expanded(
                     child: Text(
                       'Toplam Açık Tutar: ${_money.format(totalOpen)}',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -531,11 +606,14 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: (isCollection ? AppTheme.success : AppTheme.error).withValues(alpha: 0.1),
+                      color: (isCollection ? AppTheme.success : AppTheme.error)
+                          .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
-                      isCollection ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                      isCollection
+                          ? Icons.arrow_downward_rounded
+                          : Icons.arrow_upward_rounded,
                       color: isCollection ? AppTheme.success : AppTheme.error,
                       size: 18,
                     ),
@@ -547,16 +625,22 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
                       children: [
                         Text(
                           isCollection ? 'Tahsilat' : 'Ödeme',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         if (tx.invoiceNumber != null)
                           Text(
                             'Fatura: ${tx.invoiceNumber}',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: const Color(0xFF64748B)),
                           ),
                         Text(
-                          DateFormat('d MMM y', 'tr_TR').format(tx.transactionDate),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF94A3B8)),
+                          DateFormat(
+                            'd MMM y',
+                            'tr_TR',
+                          ).format(tx.transactionDate),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: const Color(0xFF94A3B8)),
                         ),
                       ],
                     ),
@@ -564,9 +648,9 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
                   Text(
                     '${isCollection ? '+' : '-'}${_money.format(tx.amount)}',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: isCollection ? AppTheme.success : AppTheme.error,
-                        ),
+                      fontWeight: FontWeight.w700,
+                      color: isCollection ? AppTheme.success : AppTheme.error,
+                    ),
                   ),
                 ],
               ),
@@ -604,7 +688,9 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
               const Gap(16),
               TextField(
                 controller: amountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(labelText: 'Tutar'),
               ),
               const Gap(12),
@@ -613,7 +699,10 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
                 items: const [
                   DropdownMenuItem(value: 'cash', child: Text('Nakit')),
                   DropdownMenuItem(value: 'bank', child: Text('Havale/EFT')),
-                  DropdownMenuItem(value: 'credit_card', child: Text('Kredi Kartı')),
+                  DropdownMenuItem(
+                    value: 'credit_card',
+                    child: Text('Kredi Kartı'),
+                  ),
                   DropdownMenuItem(value: 'check', child: Text('Çek')),
                 ],
                 onChanged: (v) => setState(() => method = v ?? 'cash'),
@@ -622,8 +711,14 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('İptal')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Kaydet')),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('İptal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Kaydet'),
+            ),
           ],
         ),
       ),
@@ -631,7 +726,8 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
 
     if (result != true || !mounted) return;
 
-    final amount = double.tryParse(amountController.text.replaceAll(',', '.')) ?? 0;
+    final amount =
+        double.tryParse(amountController.text.replaceAll(',', '.')) ?? 0;
     if (amount <= 0) return;
 
     final apiClient = ref.read(apiClientProvider);
@@ -651,8 +747,10 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
               'amount': amount,
               'currency': 'TRY',
               'payment_method': method,
-              'transaction_date':
-                  DateTime.now().toIso8601String().substring(0, 10),
+              'transaction_date': DateTime.now().toIso8601String().substring(
+                0,
+                10,
+              ),
               'created_by': profile?.id,
               'is_active': true,
             },
@@ -665,7 +763,11 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
         messenger.showSnackBar(
           const SnackBar(content: Text('İşlem kaydedildi')),
         );
-        ref.invalidate(transactionsProvider(TransactionFilter(customerId: widget.customerId)));
+        ref.invalidate(
+          transactionsProvider(
+            TransactionFilter(customerId: widget.customerId),
+          ),
+        );
         ref.invalidate(accountBalancesProvider);
       }
     } catch (e) {
@@ -675,23 +777,93 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with 
     }
   }
 
-  void _exportStatement(String format) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${format.toUpperCase()} ekstre özelliği yakında eklenecek')),
-    );
+  Future<void> _exportStatement(String format) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final invoices =
+        ref
+            .read(
+              invoicesProvider(InvoiceFilter(customerId: widget.customerId)),
+            )
+            .value ??
+        const <Invoice>[];
+    if (invoices.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Ekstre için fatura bulunmuyor')),
+      );
+      return;
+    }
+    if (format != 'pdf') {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Excel ekstre yakında eklenecek')),
+      );
+      return;
+    }
+    try {
+      await shareInvoiceStatementPdf(
+        title: 'Cari Hesap Ekstresi',
+        customerName: widget.customerName,
+        invoices: invoices,
+        filename:
+            'cari_ekstre_${_safeFilePart(widget.customerName)}_${DateTime.now().toIso8601String().substring(0, 10)}.pdf',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Ekstre oluşturulamadı: $e')),
+      );
+    }
   }
 
   void _sendStatement() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('E-posta ekstre özelliği yakında eklenecek')),
+      const SnackBar(
+        content: Text('E-posta ekstre özelliği yakında eklenecek'),
+      ),
     );
   }
 
-  void _exportSelectedStatement() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${_selectedInvoices.length} fatura için ekstre oluşturulacak')),
-    );
+  Future<void> _exportSelectedStatement() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final invoices =
+        ref
+            .read(
+              invoicesProvider(InvoiceFilter(customerId: widget.customerId)),
+            )
+            .value ??
+        const <Invoice>[];
+    final selected = invoices
+        .where((invoice) => _selectedInvoices.contains(invoice.id))
+        .toList(growable: false);
+    if (selected.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Ekstre için fatura seçin')),
+      );
+      return;
+    }
+    try {
+      await shareInvoiceStatementPdf(
+        title: 'Seçili Fatura Ekstresi',
+        customerName: widget.customerName,
+        invoices: selected,
+        filename:
+            'secili_fatura_ekstresi_${_safeFilePart(widget.customerName)}_${DateTime.now().toIso8601String().substring(0, 10)}.pdf',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Ekstre oluşturulamadı: $e')),
+      );
+    }
   }
+}
+
+String _safeFilePart(String value) {
+  final cleaned = value
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'_+'), '_');
+  return cleaned.isEmpty ? 'cari' : cleaned;
 }
 
 class _InvoiceSelectCard extends StatelessWidget {
@@ -725,10 +897,7 @@ class _InvoiceSelectCard extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
-            Checkbox(
-              value: selected,
-              onChanged: (_) => onTap(),
-            ),
+            Checkbox(value: selected, onChanged: (_) => onTap()),
             const Gap(8),
             Expanded(
               child: Column(
@@ -738,18 +907,24 @@ class _InvoiceSelectCard extends StatelessWidget {
                     children: [
                       Text(
                         invoice.invoiceNumber,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       const Gap(8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: statusColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
                           statusLabel,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
                                 color: statusColor,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -760,7 +935,9 @@ class _InvoiceSelectCard extends StatelessWidget {
                   const Gap(4),
                   Text(
                     DateFormat('d MMM y', 'tr_TR').format(invoice.invoiceDate),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
                   ),
                 ],
               ),
@@ -770,12 +947,16 @@ class _InvoiceSelectCard extends StatelessWidget {
               children: [
                 Text(
                   money.format(invoice.grandTotal),
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 if (invoice.remainingAmount > 0 && invoice.status != 'paid')
                   Text(
                     'Kalan: ${money.format(invoice.remainingAmount)}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTheme.error),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.error),
                   ),
               ],
             ),
