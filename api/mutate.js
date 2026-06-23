@@ -57,6 +57,104 @@ async function readJson(req) {
   }
 }
 
+const serviceImageBucket = 'service-images';
+const serviceImageMaxBytes = 5 * 1024 * 1024;
+const allowedServiceImageContentTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
+
+function safeStorageSegment(value, fallback) {
+  const cleaned = String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return cleaned || fallback;
+}
+
+function serviceImageExtension(contentType, filename) {
+  const ext = String(filename || '').toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) return ext === 'jpeg' ? 'jpg' : ext;
+  if (contentType === 'image/png') return 'png';
+  if (contentType === 'image/webp') return 'webp';
+  return 'jpg';
+}
+
+async function uploadServiceImage(body) {
+  const supabaseUrl = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+  const serviceRoleKey = String(
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '',
+  ).trim();
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.');
+  }
+
+  const serviceId = safeStorageSegment(body.serviceId, 'service');
+  const filename = safeStorageSegment(body.filename, 'image');
+  const contentType = String(body.contentType || '').trim().toLowerCase();
+  if (!allowedServiceImageContentTypes.has(contentType)) {
+    const error = new Error('Sadece JPG, PNG veya WEBP görsel yüklenebilir.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const base64 = String(body.data || '').replace(/^data:[^;]+;base64,/i, '').trim();
+  if (!base64) {
+    const error = new Error('Görsel verisi eksik.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const bytes = Buffer.from(base64, 'base64');
+  if (!bytes.length) {
+    const error = new Error('Görsel verisi okunamadı.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (bytes.length > serviceImageMaxBytes) {
+    const error = new Error('Görsel 5 MB sınırını aşıyor.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const ext = serviceImageExtension(contentType, filename);
+  const random =
+    typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : crypto.randomBytes(16).toString('hex');
+  const objectPath = `${serviceId}/${Date.now()}-${random}.${ext}`;
+  const uploadUrl = `${supabaseUrl}/storage/v1/object/${serviceImageBucket}/${encodeURIComponent(
+    objectPath,
+  ).replace(/%2F/g, '/')}`;
+
+  const response = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      apikey: serviceRoleKey,
+      authorization: `Bearer ${serviceRoleKey}`,
+      'cache-control': '3600',
+      'content-type': contentType,
+      'x-upsert': 'false',
+    },
+    body: bytes,
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Supabase Storage upload failed: ${response.status} ${text}`);
+  }
+
+  return {
+    bucket: serviceImageBucket,
+    path: objectPath,
+    url: `${supabaseUrl}/storage/v1/object/public/${serviceImageBucket}/${objectPath}`,
+    contentType,
+    size: bytes.length,
+  };
+}
+
 const allowedTables = new Set([
   'application_forms',
   'branches',
@@ -755,6 +853,15 @@ module.exports = async (req, res) => {
     const table = String(body.table || '').trim();
 
     if (!op) return badRequest(req, res, 'op zorunludur.');
+    if (op === 'uploadServiceImage') {
+      if (!hasPageAccess(user, 'servis')) return forbidden(req, res);
+      try {
+        return ok(req, res, await uploadServiceImage(body));
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
     if (!table) return badRequest(req, res, 'table zorunludur.');
     if (!allowedTables.has(table)) return badRequest(req, res, 'table desteklenmiyor.');
 

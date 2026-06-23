@@ -441,8 +441,9 @@ class _BodyState extends ConsumerState<_Body> {
     setState(() => _saving = true);
     try {
       final uploaded = await apiClient.postJson(
-        '/service-image',
+        '/mutate',
         body: {
+          'op': 'uploadServiceImage',
           'serviceId': widget.detail.id,
           'filename': picked.name,
           'contentType': mime,
