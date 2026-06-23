@@ -31,6 +31,85 @@
 
   <title>microvise_crm</title>
   <link rel="manifest" href="manifest.json">
+  <script>
+    window.microviseSubmitCredentialForm = function (email, password) {
+      try {
+        const iframeName = 'microvise_credential_sink';
+        let iframe = document.querySelector('iframe[name="' + iframeName + '"]');
+        if (!iframe) {
+          iframe = document.createElement('iframe');
+          iframe.name = iframeName;
+          iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;top:-9999px;border:0;';
+          iframe.setAttribute('aria-hidden', 'true');
+          document.body.appendChild(iframe);
+        }
+
+        const form = document.createElement('form');
+        form.method = 'post';
+        form.action = '/';
+        form.target = iframeName;
+        form.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;top:-9999px;opacity:0;';
+
+        const userInput = document.createElement('input');
+        userInput.type = 'text';
+        userInput.name = 'username';
+        userInput.autocomplete = 'username';
+        userInput.value = String(email);
+
+        const passwordInput = document.createElement('input');
+        passwordInput.type = 'password';
+        passwordInput.name = 'password';
+        passwordInput.autocomplete = 'current-password';
+        passwordInput.value = String(password);
+
+        form.appendChild(userInput);
+        form.appendChild(passwordInput);
+        document.body.appendChild(form);
+        form.submit();
+        window.setTimeout(function () {
+          form.remove();
+        }, 1000);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    };
+
+    window.microviseStorePasswordCredential = async function (email, password) {
+      if (!email || !password || !navigator.credentials || !window.PasswordCredential) {
+        return window.microviseSubmitCredentialForm(email, password);
+      }
+      try {
+        const credential = new PasswordCredential({
+          id: String(email),
+          name: String(email),
+          password: String(password)
+        });
+        await navigator.credentials.store(credential);
+        window.microviseSubmitCredentialForm(email, password);
+        return true;
+      } catch (_) {
+        return window.microviseSubmitCredentialForm(email, password);
+      }
+    };
+
+    window.microviseRequestPasswordCredential = async function () {
+      if (!navigator.credentials) return null;
+      try {
+        const credential = await navigator.credentials.get({
+          password: true,
+          mediation: 'required'
+        });
+        if (!credential) return null;
+        return {
+          id: credential.id || '',
+          password: credential.password || ''
+        };
+      } catch (_) {
+        return null;
+      }
+    };
+  </script>
 </head>
 <body>
   <!--
