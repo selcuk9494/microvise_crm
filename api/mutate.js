@@ -221,6 +221,37 @@ async function uploadTaxpayerRegistrationDocument(body) {
   });
 }
 
+async function materializeTaxpayerRegistrationDocument(values, formIdHint) {
+  if (!values || typeof values !== 'object') return values;
+  const data = String(values.taxpayer_registration_document_data || '').trim();
+  const existingUrl = String(values.taxpayer_registration_document_url || '').trim();
+  if (!data || existingUrl) return values;
+
+  const next = { ...values };
+  const formId =
+    String(formIdHint || next.id || '').trim() ||
+    (typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : crypto.randomBytes(16).toString('hex'));
+  if (!next.id) next.id = formId;
+
+  const uploaded = await uploadTaxpayerRegistrationDocument({
+    applicationFormId: formId,
+    filename: next.taxpayer_registration_document_name || 'yukumlu-kayit-belgesi',
+    contentType:
+      next.taxpayer_registration_document_mime_type || 'application/octet-stream',
+    data,
+  });
+
+  next.taxpayer_registration_document_data = null;
+  next.taxpayer_registration_document_storage_bucket = uploaded.bucket;
+  next.taxpayer_registration_document_storage_path = uploaded.path;
+  next.taxpayer_registration_document_url = uploaded.url;
+  next.taxpayer_registration_document_uploaded_at =
+    next.taxpayer_registration_document_uploaded_at || new Date().toISOString();
+  return next;
+}
+
 const allowedTables = new Set([
   'application_forms',
   'branches',
@@ -1060,7 +1091,10 @@ module.exports = async (req, res) => {
     }
 
     if (op === 'upsert') {
-      const values = body.values;
+      let values = body.values;
+      if (table === 'application_forms') {
+        values = await materializeTaxpayerRegistrationDocument(values);
+      }
       const returningRow = body.returning === 'row';
       const before =
         table === 'application_forms' && values?.id
@@ -1113,10 +1147,13 @@ module.exports = async (req, res) => {
     }
 
     if (op === 'updateWhere') {
-      const values = body.values;
+      let values = body.values;
       const filters = body.filters;
       const formId =
         table === 'application_forms' ? applicationFormIdFilter(filters) : '';
+      if (table === 'application_forms') {
+        values = await materializeTaxpayerRegistrationDocument(values, formId);
+      }
       const before = formId ? await selectApplicationFormAuditRow(formId) : null;
       if (table === 'application_forms') {
         await assertApplicationFormsMutable({ op, values, filters });
