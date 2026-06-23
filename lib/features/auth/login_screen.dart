@@ -87,7 +87,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       } else {
         await AppCache.remove(_rememberedEmailKey);
       }
-      TextInput.finishAutofillContext(shouldSave: _rememberMe);
+      TextInput.finishAutofillContext(shouldSave: true);
       ref.invalidate(currentUserProfileProvider);
       if (!mounted) return;
       context.go('/panel');
@@ -196,7 +196,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           focusNode: _emailFocusNode,
                           keyboardType: TextInputType.emailAddress,
                           textInputAction: TextInputAction.next,
-                          autofillHints: const [AutofillHints.username],
+                          autofillHints: const [
+                            AutofillHints.email,
+                            AutofillHints.username,
+                          ],
                           autocorrect: false,
                           enableSuggestions: true,
                           textCapitalization: TextCapitalization.none,

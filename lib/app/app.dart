@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/auth/auth_providers.dart';
@@ -33,13 +32,6 @@ class _AppState extends ConsumerState<App> {
 
     final router = ref.watch(appRouterProvider);
 
-    final enableSelection = !kIsWeb &&
-        const {
-          TargetPlatform.macOS,
-          TargetPlatform.windows,
-          TargetPlatform.linux,
-        }.contains(defaultTargetPlatform);
-
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
       title: 'Microvise CRM',
@@ -47,7 +39,6 @@ class _AppState extends ConsumerState<App> {
       routerConfig: router,
       builder: (context, child) {
         final content = child ?? const SizedBox.shrink();
-        if (!enableSelection) return content;
         return SelectionArea(child: content);
       },
     );
