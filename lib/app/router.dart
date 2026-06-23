@@ -16,6 +16,8 @@ import '../features/finance/finance_screen.dart';
 import '../features/products/products_screen.dart';
 import '../features/definitions/definitions_screen.dart';
 import '../features/forms/forms_screen.dart';
+import '../features/application_forms/bank_application_dashboard_screen.dart';
+import '../features/application_forms/bank_application_report_screen.dart';
 import '../features/application_forms/application_form_screen.dart';
 import '../features/forms/fault_form_screen.dart';
 import '../features/forms/scrap_form_screen.dart';
@@ -37,6 +39,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   ref.listen<String?>(apiAccessTokenProvider, (previous, next) {
     if (previous != next) apiAuthRefresh.value++;
   });
+  ref.listen<AsyncValue<UserProfile?>>(currentUserProfileProvider, (
+    previous,
+    next,
+  ) {
+    if (previous?.value?.id != next.value?.id ||
+        previous?.value?.role != next.value?.role ||
+        previous?.value?.pagePermissions.join(',') !=
+            next.value?.pagePermissions.join(',')) {
+      apiAuthRefresh.value++;
+    }
+  });
 
   ref.onDispose(apiAuthRefresh.dispose);
 
@@ -54,6 +67,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           path: '/panel',
           pageBuilder: (context, state) =>
               const NoTransitionPage(child: DashboardScreen()),
+        ),
+        GoRoute(
+          path: '/banka-panel',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: BankApplicationDashboardScreen()),
         ),
         GoRoute(
           path: '/musteriler',
@@ -76,6 +94,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               path: 'basvuru',
               pageBuilder: (context, state) =>
                   const NoTransitionPage(child: ApplicationFormScreen()),
+            ),
+            GoRoute(
+              path: 'banka-rapor',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: BankApplicationReportScreen()),
             ),
             GoRoute(
               path: 'hurda',
@@ -199,11 +222,46 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isLoggedIn = accessToken != null;
 
       if (!isLoggedIn) return isLoggingIn ? null : '/giris';
-      if (isLoggingIn || isSetup) return '/panel';
+      final profile = ref.read(currentUserProfileProvider).value;
+      if (isLoggingIn || isSetup) {
+        return (profile?.isBankLike ?? false) ? '/banka-panel' : '/panel';
+      }
 
       final location = state.matchedLocation;
+      final pages = ref.read(currentUserPagePermissionsProvider);
+      if ((profile?.isBankLike ?? false) &&
+          location != '/banka-panel' &&
+          location.startsWith('/formlar') &&
+          location != '/formlar/basvuru' &&
+          location != '/formlar/banka-rapor') {
+        return '/banka-panel';
+      }
+      if ((profile?.isBankLike ?? false) && location == '/panel') {
+        return '/banka-panel';
+      }
+      if (!(profile?.isBankLike ?? false) && location == '/banka-panel') {
+        return '/panel';
+      }
+      if (!(profile?.isBankLike ?? false) &&
+          location == '/formlar/banka-rapor') {
+        return '/formlar/basvuru';
+      }
+      if ((profile?.isBankLike ?? false) &&
+          (location == '/formlar/basvuru' ||
+              location == '/formlar/banka-rapor')) {
+        return null;
+      }
+      if (location == '/panel' && !pages.contains('panel')) {
+        if (pages.contains('formlar')) return '/formlar/basvuru';
+        if (pages.contains('musteriler')) return '/musteriler';
+        if (pages.contains('is_emirleri')) return '/is-emirleri';
+        if (pages.contains('servis')) return '/servis';
+        return null;
+      }
+
       String? requiredPage;
       if (location.startsWith('/musteriler')) requiredPage = 'musteriler';
+      if (location.startsWith('/formlar')) requiredPage = 'formlar';
       if (location.startsWith('/is-emirleri')) requiredPage = 'is_emirleri';
       if (location.startsWith('/servis')) requiredPage = 'servis';
       if (location.startsWith('/raporlar')) requiredPage = 'raporlar';
@@ -217,7 +275,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (location.startsWith('/panel')) requiredPage = 'panel';
 
       if (requiredPage != null) {
-        final pages = ref.read(currentUserPagePermissionsProvider);
         if (!pages.contains(requiredPage)) return '/panel';
       }
 

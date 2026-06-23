@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 class AppConfig {
   static const _defaultSupabaseUrl = 'https://xvbczyhvmmcvqezjjpbn.supabase.co';
   static const _defaultSupabasePublishableKey =
@@ -31,12 +29,11 @@ class AppConfig {
     return _defaultSupabasePublishableKey;
   }
 
-  static bool get isSupabaseConfigured => false;
+  static bool get isSupabaseConfigured =>
+      supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
 
   static String? get apiBaseUrl {
     if (_envApiBaseUrl.isNotEmpty) return _envApiBaseUrl;
-    if (kIsWeb) return '/api';
-    if (kDebugMode) return 'https://microvisecrmflutter.vercel.app/api';
     return 'https://microvisecrmflutter.vercel.app/api';
   }
 }

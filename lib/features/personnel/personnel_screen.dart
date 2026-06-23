@@ -93,10 +93,9 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   'Bu sayfa sadece admin için erişilebilir.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ),
             )
@@ -104,19 +103,31 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
             usersAsync.when(
               data: (users) {
                 final query = _searchController.text.trim().toLowerCase();
-                final filtered = users.where((u) {
-                  if (_roleFilter != 'all' && u.role != _roleFilter) {
-                    return false;
-                  }
-                  if (query.isEmpty) return true;
-                  final haystack = [
-                    u.fullName ?? '',
-                    u.email ?? '',
-                    u.role,
-                    u.id,
-                  ].join(' ').toLowerCase();
-                  return haystack.contains(query);
-                }).toList(growable: false);
+                final filtered = users
+                    .where((u) {
+                      if (_roleFilter == 'bank' &&
+                          (!u.isBankLike || u.isBankAdminLike)) {
+                        return false;
+                      }
+                      if (_roleFilter == 'bank_admin' && !u.isBankAdminLike) {
+                        return false;
+                      }
+                      if (_roleFilter != 'all' &&
+                          _roleFilter != 'bank' &&
+                          _roleFilter != 'bank_admin' &&
+                          u.role != _roleFilter) {
+                        return false;
+                      }
+                      if (query.isEmpty) return true;
+                      final haystack = [
+                        u.fullName ?? '',
+                        u.email ?? '',
+                        u.role,
+                        u.id,
+                      ].join(' ').toLowerCase();
+                      return haystack.contains(query);
+                    })
+                    .toList(growable: false);
 
                 return Expanded(
                   child: Column(
@@ -145,35 +156,44 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                                 ),
                                 _RolePill(
                                   label: 'Rol: ${_roleLabel(_roleFilter)}',
-                                  backgroundColor:
-                                      AppTheme.primary.withValues(alpha: 0.12),
+                                  backgroundColor: AppTheme.primary.withValues(
+                                    alpha: 0.12,
+                                  ),
                                   foregroundColor: AppTheme.primaryDark,
                                   icon: Icons.badge_rounded,
                                   onTap: () async {
                                     final next =
                                         await showModalBottomSheet<String>(
-                                      context: context,
-                                      showDragHandle: true,
-                                      builder: (context) => SafeArea(
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: const [
-                                            _RoleSheetItem(
-                                              value: 'all',
-                                              label: 'Tümü',
+                                          context: context,
+                                          showDragHandle: true,
+                                          builder: (context) => SafeArea(
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: const [
+                                                _RoleSheetItem(
+                                                  value: 'all',
+                                                  label: 'Tümü',
+                                                ),
+                                                _RoleSheetItem(
+                                                  value: 'admin',
+                                                  label: 'Admin',
+                                                ),
+                                                _RoleSheetItem(
+                                                  value: 'personel',
+                                                  label: 'Personel',
+                                                ),
+                                                _RoleSheetItem(
+                                                  value: 'bank',
+                                                  label: 'Banka',
+                                                ),
+                                                _RoleSheetItem(
+                                                  value: 'bank_admin',
+                                                  label: 'Banka Admin',
+                                                ),
+                                              ],
                                             ),
-                                            _RoleSheetItem(
-                                              value: 'admin',
-                                              label: 'Admin',
-                                            ),
-                                            _RoleSheetItem(
-                                              value: 'personel',
-                                              label: 'Personel',
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
+                                          ),
+                                        );
                                     if (next == null || next.trim().isEmpty) {
                                       return;
                                     }
@@ -191,8 +211,9 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                                   ),
                                   label: const Text('Temizle'),
                                   style: FilledButton.styleFrom(
-                                    backgroundColor: const Color(0xFFEF4444)
-                                        .withValues(alpha: 0.12),
+                                    backgroundColor: const Color(
+                                      0xFFEF4444,
+                                    ).withValues(alpha: 0.12),
                                     foregroundColor: const Color(0xFF7F1D1D),
                                     minimumSize: const Size(0, 40),
                                     padding: const EdgeInsets.symmetric(
@@ -221,11 +242,7 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
 
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                controls,
-                                const Gap(10),
-                                stats,
-                              ],
+                              children: [controls, const Gap(10), stats],
                             );
                           },
                         ),
@@ -266,10 +283,9 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                   padding: const EdgeInsets.all(16),
                   child: Text(
                     'Personel listesi yüklenemedi.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: const Color(0xFF64748B)),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
                   ),
                 ),
               ),
@@ -303,9 +319,9 @@ class _Header extends StatelessWidget {
             child: Text(
               'Kullanıcı',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF475569),
-                  ),
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF475569),
+              ),
             ),
           ),
           const SizedBox(width: 140),
@@ -316,9 +332,9 @@ class _Header extends StatelessWidget {
               child: Text(
                 'Rol',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF475569),
-                    ),
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF475569),
+                ),
               ),
             ),
           ),
@@ -363,10 +379,10 @@ class _RolePill extends StatelessWidget {
             const Gap(8),
             Text(
               label,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: foregroundColor, fontWeight: FontWeight.w700),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: foregroundColor,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const Gap(6),
             Icon(Icons.expand_more_rounded, size: 18, color: foregroundColor),
@@ -398,6 +414,10 @@ String _roleLabel(String value) {
       return 'Admin';
     case 'personel':
       return 'Personel';
+    case 'bank':
+      return 'Banka';
+    case 'bank_admin':
+      return 'Banka Admin';
     default:
       return 'Tümü';
   }
@@ -420,6 +440,8 @@ class _UserRowState extends ConsumerState<_UserRow> {
     var selectedPages = <String>{
       if (user.role == 'admin')
         ...allPagePermissions
+      else if (user.isBankLike && user.pagePermissions.isEmpty)
+        ...defaultBankPagePermissions
       else if (user.pagePermissions.isEmpty)
         ...defaultPersonnelPagePermissions
       else
@@ -428,6 +450,8 @@ class _UserRowState extends ConsumerState<_UserRow> {
     var selectedActions = <String>{
       if (user.role == 'admin')
         ...allActionPermissions
+      else if (user.isBankLike && user.actionPermissions.isEmpty)
+        ...<String>{}
       else if (user.actionPermissions.isEmpty)
         ...allActionPermissions
       else
@@ -474,10 +498,10 @@ class _UserRowState extends ConsumerState<_UserRow> {
 
                   setDialogState(() => saving = true);
                   try {
-                    final pageList =
-                        selectedPages.toList(growable: false)..sort();
-                    final actionList =
-                        selectedActions.toList(growable: false)..sort();
+                    final pageList = selectedPages.toList(growable: false)
+                      ..sort();
+                    final actionList = selectedActions.toList(growable: false)
+                      ..sort();
 
                     if (apiClient != null) {
                       await apiClient.patchJson(
@@ -492,10 +516,13 @@ class _UserRowState extends ConsumerState<_UserRow> {
                         },
                       );
                     } else {
-                      await client!.from('users').update({
-                        'page_permissions': pageList,
-                        'action_permissions': actionList,
-                      }).eq('id', user.id);
+                      await client!
+                          .from('users')
+                          .update({
+                            'page_permissions': pageList,
+                            'action_permissions': actionList,
+                          })
+                          .eq('id', user.id);
                     }
 
                     if (!context.mounted) return;
@@ -509,11 +536,17 @@ class _UserRowState extends ConsumerState<_UserRow> {
                 }
 
                 final pages = allPagePermissions.toList(growable: false)
-                  ..sort((a, b) => (pagePermissionLabels[a] ?? a)
-                      .compareTo(pagePermissionLabels[b] ?? b));
+                  ..sort(
+                    (a, b) => (pagePermissionLabels[a] ?? a).compareTo(
+                      pagePermissionLabels[b] ?? b,
+                    ),
+                  );
                 final actions = allActionPermissions.toList(growable: false)
-                  ..sort((a, b) => (actionPermissionLabels[a] ?? a)
-                      .compareTo(actionPermissionLabels[b] ?? b));
+                  ..sort(
+                    (a, b) => (actionPermissionLabels[a] ?? a).compareTo(
+                      actionPermissionLabels[b] ?? b,
+                    ),
+                  );
 
                 return Column(
                   mainAxisSize: MainAxisSize.min,
@@ -541,10 +574,9 @@ class _UserRowState extends ConsumerState<_UserRow> {
                       (user.fullName ?? '').trim().isEmpty
                           ? user.id
                           : user.fullName!.trim(),
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: const Color(0xFF64748B)),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
                     ),
                     const Gap(16),
                     Expanded(
@@ -626,21 +658,24 @@ class _UserRowState extends ConsumerState<_UserRow> {
       ref.invalidate(personnelUsersProvider);
       ref.invalidate(currentUserProfileProvider);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Yetkiler güncellendi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Yetkiler güncellendi.')));
     } else if (saved == false) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Yetkiler güncellenemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Yetkiler güncellenemedi.')));
     }
   }
 
   Future<void> _editUser() async {
-    final nameController =
-        TextEditingController(text: widget.user.fullName ?? '');
-    final emailController = TextEditingController(text: widget.user.email ?? '');
+    final nameController = TextEditingController(
+      text: widget.user.fullName ?? '',
+    );
+    final emailController = TextEditingController(
+      text: widget.user.email ?? '',
+    );
     bool saving = false;
 
     final saved = await showDialog<bool>(
@@ -668,8 +703,9 @@ class _UserRowState extends ConsumerState<_UserRow> {
                       ),
                       IconButton(
                         tooltip: 'Kapat',
-                        onPressed:
-                            saving ? null : () => Navigator.of(context).pop(false),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(false),
                         icon: const Icon(Icons.close_rounded),
                       ),
                     ],
@@ -677,17 +713,13 @@ class _UserRowState extends ConsumerState<_UserRow> {
                   const Gap(12),
                   TextField(
                     controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Ad Soyad',
-                    ),
+                    decoration: const InputDecoration(labelText: 'Ad Soyad'),
                   ),
                   const Gap(12),
                   TextField(
                     controller: emailController,
                     keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'E-posta',
-                    ),
+                    decoration: const InputDecoration(labelText: 'E-posta'),
                   ),
                   const Gap(18),
                   Row(
@@ -711,8 +743,9 @@ class _UserRowState extends ConsumerState<_UserRow> {
                                   if (fullName.length < 2) return;
                                   if (!email.contains('@')) return;
                                   final apiClient = ref.read(apiClientProvider);
-                                  final client =
-                                      ref.read(supabaseClientProvider);
+                                  final client = ref.read(
+                                    supabaseClientProvider,
+                                  );
                                   if (apiClient == null && client == null) {
                                     return;
                                   }
@@ -775,9 +808,9 @@ class _UserRowState extends ConsumerState<_UserRow> {
       ref.invalidate(personnelUsersProvider);
       ref.invalidate(currentUserProfileProvider);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Personel güncellendi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Personel güncellendi.')));
     }
   }
 
@@ -810,8 +843,9 @@ class _UserRowState extends ConsumerState<_UserRow> {
                       ),
                       IconButton(
                         tooltip: 'Kapat',
-                        onPressed:
-                            saving ? null : () => Navigator.of(context).pop(false),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(false),
                         icon: const Icon(Icons.close_rounded),
                       ),
                     ],
@@ -821,10 +855,9 @@ class _UserRowState extends ConsumerState<_UserRow> {
                     widget.user.email?.trim().isNotEmpty ?? false
                         ? widget.user.email!
                         : widget.user.id,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: const Color(0xFF64748B)),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
                   ),
                   const Gap(12),
                   TextField(
@@ -899,9 +932,9 @@ class _UserRowState extends ConsumerState<_UserRow> {
 
     controller.dispose();
     if (saved == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Şifre güncellendi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Şifre güncellendi.')));
     }
   }
 
@@ -944,9 +977,9 @@ class _UserRowState extends ConsumerState<_UserRow> {
       ref.invalidate(currentUserProfileProvider);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Personel silinemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Personel silinemedi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -972,15 +1005,18 @@ class _UserRowState extends ConsumerState<_UserRow> {
           },
         );
       } else {
-        await client!.from('users').update({'role': role}).eq('id', widget.user.id);
+        await client!
+            .from('users')
+            .update({'role': role})
+            .eq('id', widget.user.id);
       }
       ref.invalidate(personnelUsersProvider);
       ref.invalidate(currentUserProfileProvider);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Rol güncellenemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Rol güncellenemedi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -989,9 +1025,17 @@ class _UserRowState extends ConsumerState<_UserRow> {
   @override
   Widget build(BuildContext context) {
     final user = widget.user;
-    final tone =
-        user.role == 'admin' ? AppBadgeTone.primary : AppBadgeTone.neutral;
-    final label = user.role == 'admin' ? 'Admin' : 'Personel';
+    final isBankLike = user.isBankLike;
+    final tone = user.role == 'admin'
+        ? AppBadgeTone.primary
+        : isBankLike
+        ? AppBadgeTone.success
+        : AppBadgeTone.neutral;
+    final label = user.isBankAdminLike
+        ? 'Banka Admin'
+        : isBankLike
+        ? 'Banka'
+        : _roleLabel(user.role);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -1003,9 +1047,9 @@ class _UserRowState extends ConsumerState<_UserRow> {
               children: [
                 Text(
                   user.fullName?.trim().isEmpty ?? true ? '—' : user.fullName!,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const Gap(2),
                 Text(
@@ -1014,10 +1058,9 @@ class _UserRowState extends ConsumerState<_UserRow> {
                       : user.id,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ],
             ),
@@ -1031,8 +1074,8 @@ class _UserRowState extends ConsumerState<_UserRow> {
                   onPressed: _saving
                       ? null
                       : () => controller.isOpen
-                          ? controller.close()
-                          : controller.open(),
+                            ? controller.close()
+                            : controller.open(),
                   child: _saving
                       ? const SizedBox(
                           width: 16,
@@ -1045,6 +1088,10 @@ class _UserRowState extends ConsumerState<_UserRow> {
                   MenuItemButton(
                     onPressed: () => _setRole('personel'),
                     child: const Text('Personel'),
+                  ),
+                  MenuItemButton(
+                    onPressed: () => _setRole('bank'),
+                    child: const Text('Banka'),
                   ),
                   MenuItemButton(
                     onPressed: () => _setRole('admin'),
@@ -1100,11 +1147,13 @@ class _CreatePersonnelDialog extends ConsumerStatefulWidget {
       _CreatePersonnelDialogState();
 }
 
-class _CreatePersonnelDialogState extends ConsumerState<_CreatePersonnelDialog> {
+class _CreatePersonnelDialogState
+    extends ConsumerState<_CreatePersonnelDialog> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _fullNameController = TextEditingController();
+  String _role = 'personel';
   bool _saving = false;
 
   @override
@@ -1128,16 +1177,12 @@ class _CreatePersonnelDialogState extends ConsumerState<_CreatePersonnelDialog> 
       final email = _emailController.text.trim();
       final password = _passwordController.text;
       final fullName = _fullNameController.text.trim();
-
-      if (apiClient != null) {
-        await apiClient.postJson(
-          '/personnel/users',
-          body: {
-            'email': email,
-            'password': password,
-            'full_name': fullName,
-            'role': 'personel',
-            'page_permissions': const [
+      final backendRole = _role == 'bank' || _role == 'bank_admin'
+          ? 'personel'
+          : _role;
+      final pagePermissions = _role == 'bank' || _role == 'bank_admin'
+          ? const ['formlar']
+          : const [
               'panel',
               'musteriler',
               'formlar',
@@ -1147,35 +1192,47 @@ class _CreatePersonnelDialogState extends ConsumerState<_CreatePersonnelDialog> 
               'urunler',
               'faturalama',
               'kdv_analizi',
-            ],
-            'action_permissions': const [
-              'duzenleme',
-              'pasife_alma',
-            ],
+            ];
+      final actionPermissions = _role == 'bank'
+          ? const <String>[]
+          : _role == 'bank_admin'
+          ? const [kActionBankAdmin]
+          : const ['duzenleme', 'pasife_alma'];
+
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/personnel/users',
+          body: {
+            'email': email,
+            'password': password,
+            'full_name': fullName,
+            'role': backendRole,
+            'page_permissions': pagePermissions,
+            'action_permissions': actionPermissions,
           },
         );
       } else {
         await client!.from('users').insert({
           'email': email,
           'full_name': fullName,
-          'role': 'personel',
+          'role': backendRole,
+          'page_permissions': pagePermissions,
+          'action_permissions': actionPermissions,
         });
       }
 
       if (!mounted) return;
       Navigator.of(context).pop();
       ref.invalidate(personnelUsersProvider);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Personel oluşturuldu.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Personel oluşturuldu.')));
     } catch (e) {
       if (!mounted) return;
       final msg = e is Exception
           ? e.toString().replaceFirst('Exception: ', '')
           : 'Personel oluşturulamadı.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg)),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1206,7 +1263,9 @@ class _CreatePersonnelDialogState extends ConsumerState<_CreatePersonnelDialog> 
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -1218,8 +1277,9 @@ class _CreatePersonnelDialogState extends ConsumerState<_CreatePersonnelDialog> 
                     labelText: 'Ad Soyad',
                     hintText: 'Örn: Ahmet Yılmaz',
                   ),
-                  validator: (v) =>
-                      v == null || v.trim().length < 2 ? 'Ad soyad gerekli.' : null,
+                  validator: (v) => v == null || v.trim().length < 2
+                      ? 'Ad soyad gerekli.'
+                      : null,
                 ),
                 const Gap(12),
                 TextFormField(
@@ -1240,8 +1300,29 @@ class _CreatePersonnelDialogState extends ConsumerState<_CreatePersonnelDialog> 
                     labelText: 'Şifre',
                     hintText: 'Minimum 6 karakter',
                   ),
-                  validator: (v) =>
-                      v == null || v.length < 6 ? 'Şifre en az 6 karakter.' : null,
+                  validator: (v) => v == null || v.length < 6
+                      ? 'Şifre en az 6 karakter.'
+                      : null,
+                ),
+                const Gap(12),
+                DropdownButtonFormField<String>(
+                  initialValue: _role,
+                  decoration: const InputDecoration(labelText: 'Rol'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'personel',
+                      child: Text('Personel'),
+                    ),
+                    DropdownMenuItem(value: 'bank', child: Text('Banka')),
+                    DropdownMenuItem(
+                      value: 'bank_admin',
+                      child: Text('Banka Admin'),
+                    ),
+                    DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                  ],
+                  onChanged: _saving
+                      ? null
+                      : (value) => setState(() => _role = value ?? 'personel'),
                 ),
                 const Gap(18),
                 Container(
@@ -1252,11 +1333,10 @@ class _CreatePersonnelDialogState extends ConsumerState<_CreatePersonnelDialog> 
                     border: Border.all(color: AppTheme.border),
                   ),
                   child: Text(
-                    'Not: Personel bu bilgiler ile sisteme giriş yapar.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: const Color(0xFF64748B)),
+                    'Not: Kullanıcı bu bilgiler ile sisteme giriş yapar.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
                   ),
                 ),
                 const Gap(18),
@@ -1264,8 +1344,9 @@ class _CreatePersonnelDialogState extends ConsumerState<_CreatePersonnelDialog> 
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed:
-                            _saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -1312,6 +1393,21 @@ class PersonnelUser {
   final String? email;
   final List<String> pagePermissions;
   final List<String> actionPermissions;
+
+  bool get isBankLike {
+    if (role == 'bank') return true;
+    if (role != 'personel') return false;
+    final pages = pagePermissions.toSet();
+    return pages.length == 1 &&
+        pages.contains(kPageForms) &&
+        (actionPermissions.isEmpty ||
+            actionPermissions.toSet().contains(kActionBankAdmin));
+  }
+
+  bool get isBankAdminLike {
+    if (!isBankLike) return false;
+    return actionPermissions.toSet().contains(kActionBankAdmin);
+  }
 
   factory PersonnelUser.fromJson(Map<String, dynamic> json) {
     return PersonnelUser(

@@ -20,6 +20,7 @@ const kPagePersonnel = 'personel';
 const kActionEditRecords = 'duzenleme';
 const kActionArchiveRecords = 'pasife_alma';
 const kActionDeleteRecords = 'kalici_silme';
+const kActionBankAdmin = 'banka_admin';
 const kActionDashboardTotalCustomers = 'dashboard_toplam_musteri';
 const kActionDashboardOpenWorkOrders = 'dashboard_acik_is_emirleri';
 const kActionDashboardInProgressWorkOrders = 'dashboard_devam_eden';
@@ -60,6 +61,8 @@ const defaultPersonnelPagePermissions = <String>{
   kPageVatAnalysis,
 };
 
+const defaultBankPagePermissions = <String>{kPageForms};
+
 const pagePermissionLabels = <String, String>{
   kPagePanel: 'Panel',
   kPageCustomers: 'Müşteriler',
@@ -80,6 +83,7 @@ const allActionPermissions = <String>{
   kActionEditRecords,
   kActionArchiveRecords,
   kActionDeleteRecords,
+  kActionBankAdmin,
   kActionDashboardTotalCustomers,
   kActionDashboardOpenWorkOrders,
   kActionDashboardInProgressWorkOrders,
@@ -95,6 +99,7 @@ const actionPermissionLabels = <String, String>{
   kActionEditRecords: 'Düzenleme',
   kActionArchiveRecords: 'Pasife Alma',
   kActionDeleteRecords: 'Kalıcı Silme',
+  kActionBankAdmin: 'Banka Admin',
   kActionDashboardTotalCustomers: 'Panel - Toplam Müşteri',
   kActionDashboardOpenWorkOrders: 'Panel - Açık İş Emirleri',
   kActionDashboardInProgressWorkOrders: 'Panel - Devam Eden',
@@ -169,6 +174,11 @@ final hasActionAccessProvider = Provider.family<bool, String>((ref, actionKey) {
 Set<String> resolveAllowedPages(UserProfile? profile) {
   if (profile == null) return allPagePermissions;
   if (profile.role == 'admin') return allPagePermissions;
+  if (profile.isBankLike) {
+    return profile.pagePermissions.isEmpty
+        ? defaultBankPagePermissions
+        : profile.pagePermissions.toSet();
+  }
   if (profile.pagePermissions.isEmpty) {
     return defaultPersonnelPagePermissions;
   }
@@ -178,6 +188,7 @@ Set<String> resolveAllowedPages(UserProfile? profile) {
 Set<String> resolveAllowedActions(UserProfile? profile) {
   if (profile == null) return allActionPermissions;
   if (profile.role == 'admin') return allActionPermissions;
+  if (profile.isBankLike) return profile.actionPermissions.toSet();
   if (profile.actionPermissions.isEmpty) return allActionPermissions;
   return profile.actionPermissions.toSet();
 }
@@ -198,6 +209,21 @@ class UserProfile {
   final String? email;
   final List<String> pagePermissions;
   final List<String> actionPermissions;
+
+  bool get isBankLike {
+    if (role == 'bank') return true;
+    if (role != 'personel') return false;
+    final pages = pagePermissions.toSet();
+    return pages.length == 1 &&
+        pages.contains(kPageForms) &&
+        (actionPermissions.isEmpty ||
+            actionPermissions.toSet().contains(kActionBankAdmin));
+  }
+
+  bool get isBankAdminLike {
+    if (!isBankLike) return false;
+    return actionPermissions.toSet().contains(kActionBankAdmin);
+  }
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     return UserProfile(

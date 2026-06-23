@@ -22,6 +22,15 @@ class ApplicationFormRecord {
     required this.okcStartDate,
     required this.businessActivityName,
     required this.invoiceNumber,
+    required this.customerPhone,
+    required this.customerEmail,
+    required this.taxpayerRegistrationDocumentName,
+    required this.taxpayerRegistrationDocumentMimeType,
+    required this.taxpayerRegistrationDocumentData,
+    required this.approvalStatus,
+    required this.approvedAt,
+    required this.approvedBy,
+    required this.createdBy,
     required this.isActive,
     required this.createdAt,
   });
@@ -46,8 +55,22 @@ class ApplicationFormRecord {
   final DateTime? okcStartDate;
   final String? businessActivityName;
   final String? invoiceNumber;
+  final String? customerPhone;
+  final String? customerEmail;
+  final String? taxpayerRegistrationDocumentName;
+  final String? taxpayerRegistrationDocumentMimeType;
+  final String? taxpayerRegistrationDocumentData;
+  final String approvalStatus;
+  final DateTime? approvedAt;
+  final String? approvedBy;
+  final String? createdBy;
   final bool isActive;
   final DateTime? createdAt;
+
+  bool get isApproved => approvalStatus == 'approved';
+  bool get isPendingApproval => approvalStatus == 'pending';
+  bool get hasTaxpayerRegistrationDocument =>
+      taxpayerRegistrationDocumentData?.trim().isNotEmpty ?? false;
 
   String get brandModel {
     final parts = [
@@ -88,6 +111,21 @@ class ApplicationFormRecord {
       ),
       businessActivityName: json['business_activity_name']?.toString(),
       invoiceNumber: json['invoice_number']?.toString(),
+      customerPhone: json['customer_phone']?.toString(),
+      customerEmail: json['customer_email']?.toString(),
+      taxpayerRegistrationDocumentName:
+          json['taxpayer_registration_document_name']?.toString(),
+      taxpayerRegistrationDocumentMimeType:
+          json['taxpayer_registration_document_mime_type']?.toString(),
+      taxpayerRegistrationDocumentData:
+          json['taxpayer_registration_document_data']?.toString(),
+      approvalStatus: json['approval_status']?.toString() ?? 'pending',
+      approvedAt: parseAppDateTime(
+        json['approved_at']?.toString(),
+        fixedOffsetHours: offsetHours,
+      ),
+      approvedBy: json['approved_by']?.toString(),
+      createdBy: json['created_by']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
       createdAt: parseAppDateTime(
         json['created_at']?.toString(),

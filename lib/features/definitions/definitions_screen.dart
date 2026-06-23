@@ -272,14 +272,16 @@ final businessActivityTypesProvider =
     FutureProvider<List<BusinessActivityTypeDefinition>>((ref) async {
       final apiClient = ref.watch(apiClientProvider);
       if (apiClient != null) {
-        final response = await apiClient.getJson(
-          '/data',
-          queryParameters: {'resource': 'definition_business_activity_types'},
-        );
-        return ((response['items'] as List?) ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map(BusinessActivityTypeDefinition.fromJson)
-            .toList(growable: false);
+        try {
+          final response = await apiClient.getJson(
+            '/data',
+            queryParameters: {'resource': 'definition_business_activity_types'},
+          );
+          return ((response['items'] as List?) ?? const [])
+              .whereType<Map<String, dynamic>>()
+              .map(BusinessActivityTypeDefinition.fromJson)
+              .toList(growable: false);
+        } catch (_) {}
       }
 
       final client = ref.watch(supabaseClientProvider);

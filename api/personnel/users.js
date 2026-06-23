@@ -163,7 +163,7 @@ module.exports = async (req, res) => {
     if (!fullName || fullName.length < 2) {
       return badRequest(req, res, 'Ad soyad gerekli.');
     }
-    if (!['admin', 'personel'].includes(role)) {
+    if (!['admin', 'personel', 'bank'].includes(role)) {
       return badRequest(req, res, 'Geçersiz rol.');
     }
 

@@ -158,12 +158,45 @@ const defaultPersonnelPagePermissions = new Set([
   'finans',
 ]);
 
+const defaultBankPagePermissions = new Set(['formlar']);
+
+function isBankLikeUser(user) {
+  if (!user) return false;
+  if (user.role === 'bank') return true;
+  if (user.role !== 'personel') return false;
+  const permissions = Array.isArray(user.page_permissions)
+    ? user.page_permissions
+    : [];
+  const actions = Array.isArray(user.action_permissions)
+    ? user.action_permissions
+    : [];
+  return (
+    permissions.length === 1 &&
+    permissions[0] === 'formlar' &&
+    (actions.length === 0 || actions.includes('banka_admin'))
+  );
+}
+
+function isBankAdminLikeUser(user) {
+  if (!isBankLikeUser(user)) return false;
+  const actions = Array.isArray(user.action_permissions)
+    ? user.action_permissions
+    : [];
+  return actions.includes('banka_admin');
+}
+
 function hasPageAccess(user, pageKey) {
   if (!user) return false;
   if (user.role === 'admin') return true;
   const permissions = Array.isArray(user.page_permissions)
     ? user.page_permissions
     : [];
+  if (isBankLikeUser(user)) {
+    if (permissions.length === 0) {
+      return defaultBankPagePermissions.has(pageKey);
+    }
+    return permissions.includes(pageKey);
+  }
   if (permissions.length === 0) {
     return defaultPersonnelPagePermissions.has(pageKey);
   }
@@ -173,6 +206,8 @@ function hasPageAccess(user, pageKey) {
 module.exports = {
   getAuthenticatedUser,
   hasPageAccess,
+  isBankAdminLikeUser,
+  isBankLikeUser,
   resolveAuthUserId,
   resolvePublicUserAuthId,
 };

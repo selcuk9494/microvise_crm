@@ -6,6 +6,19 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 Future<void> downloadExcelFile(List<int> bytes, String filename) async {
+  await downloadBinaryFile(
+    bytes,
+    filename,
+    mimeType:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  );
+}
+
+Future<void> downloadBinaryFile(
+  List<int> bytes,
+  String filename, {
+  required String mimeType,
+}) async {
   final dir = await getTemporaryDirectory();
   final safeName = _safeFilename(filename);
   final file = File('${dir.path}/$safeName');
@@ -26,14 +39,11 @@ Future<void> downloadExcelFile(List<int> bytes, String filename) async {
   );
 
   await Share.shareXFiles([
-    XFile(
-      file.path,
-      mimeType:
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      name: safeName,
-    ),
+    XFile(file.path, mimeType: mimeType, name: safeName),
   ], sharePositionOrigin: origin);
 }
+
+Future<void> reloadCurrentPage() async {}
 
 String _safeFilename(String input) {
   final trimmed = input.trim().isEmpty ? 'export.xlsx' : input.trim();
