@@ -936,6 +936,13 @@ async function assertApplicationFormsMutable({ op, values, filters, id }) {
     Object.keys(values || {}).length > 0 &&
     Object.keys(values || {}).every((key) =>
       [
+        'taxpayer_registration_document_name',
+        'taxpayer_registration_document_mime_type',
+        'taxpayer_registration_document_data',
+        'taxpayer_registration_document_storage_bucket',
+        'taxpayer_registration_document_storage_path',
+        'taxpayer_registration_document_url',
+        'taxpayer_registration_document_uploaded_at',
         'approval_document_name',
         'approval_document_mime_type',
         'approval_document_storage_bucket',
