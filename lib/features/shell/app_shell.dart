@@ -43,6 +43,14 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final profileAsync = ref.watch(currentUserProfileProvider);
+    if (profileAsync.isLoading || profileAsync.value == null) {
+      return const Scaffold(
+        backgroundColor: AppTheme.background,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final width = MediaQuery.sizeOf(context).width;
     final isDesktop = width >= 640;
 
@@ -67,9 +75,12 @@ class _DesktopShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).matchedLocation;
     final allowedPages = ref.watch(currentUserPagePermissionsProvider);
-    final items = _navItems
-        .where((item) => allowedPages.contains(item.pageKey))
-        .toList();
+    final isBankUser =
+        ref.watch(currentUserProfileProvider).value?.isBankLike ?? false;
+    final items = _visibleNavItems(
+      allowedPages: allowedPages,
+      isBankUser: isBankUser,
+    );
     final isFormsExpanded = ref.watch(formsNavExpandedProvider);
     final isEInvoiceExpanded = ref.watch(eInvoiceNavExpandedProvider);
 
@@ -96,9 +107,16 @@ class _DesktopShell extends ConsumerWidget {
                 child: Column(
                   children: [
                     if (compact)
-                      _CompactBrandButton(onTap: () => context.go('/panel'))
+                      _CompactBrandButton(
+                        onTap: () =>
+                            context.go(isBankUser ? '/banka-panel' : '/panel'),
+                      )
                     else
-                      _BrandHeader(onTap: () => context.go('/panel')),
+                      _BrandHeader(
+                        subtitle: isBankUser ? 'WebCR' : 'CRM & Servis',
+                        onTap: () =>
+                            context.go(isBankUser ? '/banka-panel' : '/panel'),
+                      ),
                     const Gap(18),
                     Expanded(
                       child: ListView(
@@ -112,7 +130,7 @@ class _DesktopShell extends ConsumerWidget {
                                 accentColor: _navAccentColor(item.pageKey),
                                 onTap: () => context.go(item.path),
                               )
-                            else if (item.pageKey == 'formlar')
+                            else if (item.pageKey == 'formlar' && !isBankUser)
                               _FormsNavGroup(
                                 label: item.label,
                                 icon: item.icon,
@@ -127,28 +145,7 @@ class _DesktopShell extends ConsumerWidget {
                                     context.go(item.path);
                                   }
                                 },
-                                subItems: [
-                                  _FormsNavSubItem(
-                                    label: 'Başvuru',
-                                    path: '/formlar/basvuru',
-                                  ),
-                                  _FormsNavSubItem(
-                                    label: 'Hurda',
-                                    path: '/formlar/hurda',
-                                  ),
-                                  _FormsNavSubItem(
-                                    label: 'Arıza',
-                                    path: '/formlar/ariza',
-                                  ),
-                                  _FormsNavSubItem(
-                                    label: 'Devir',
-                                    path: '/formlar/devir',
-                                  ),
-                                  _FormsNavSubItem(
-                                    label: 'Seri Takip',
-                                    path: '/formlar/seri-takip',
-                                  ),
-                                ],
+                                subItems: _formsNavSubItems(isBankUser),
                                 matchedLocation: location,
                               )
                             else if (item.pageKey == 'e_fatura')
@@ -207,6 +204,9 @@ class _DesktopShell extends ConsumerWidget {
                             onTap: () => _showMobileAccountSheet(context, ref),
                           )
                         : _AccountCard(
+                            profile: ref
+                                .watch(currentUserProfileProvider)
+                                .value,
                             onSignOut: () async {
                               ref.read(apiAccessTokenProvider.notifier).clear();
                               final client = ref.read(supabaseClientProvider);
@@ -241,9 +241,12 @@ class _MobileShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).matchedLocation;
     final allowedPages = ref.watch(currentUserPagePermissionsProvider);
-    final allowedItems = _navItems
-        .where((item) => allowedPages.contains(item.pageKey))
-        .toList(growable: false);
+    final isBankUser =
+        ref.watch(currentUserProfileProvider).value?.isBankLike ?? false;
+    final allowedItems = _visibleNavItems(
+      allowedPages: allowedPages,
+      isBankUser: isBankUser,
+    );
     final pinnedItems = _mobilePinnedItems(allowedItems);
     final overflowActive = allowedItems.any(
       (item) =>
@@ -259,13 +262,17 @@ class _MobileShell extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: child,
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AppTheme.primary,
-        foregroundColor: Colors.white,
-        onPressed: () => _showQuickCreateSheet(context),
-        child: const Icon(Icons.add_rounded),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButton: isBankUser
+          ? null
+          : FloatingActionButton(
+              backgroundColor: AppTheme.primary,
+              foregroundColor: Colors.white,
+              onPressed: () => _showQuickCreateSheet(context),
+              child: const Icon(Icons.add_rounded),
+            ),
+      floatingActionButtonLocation: isBankUser
+          ? null
+          : FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: BottomAppBar(
         color: AppTheme.surface,
         surfaceTintColor: Colors.transparent,
@@ -484,14 +491,10 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
 }
 
 List<_FormsNavSubItem> _mobileNavSubItems(_NavItem item) {
+  if (item.path == '/banka-panel') return const [];
+  if (item.path == '/formlar/banka-rapor') return const [];
   if (item.pageKey == 'formlar') {
-    return const [
-      _FormsNavSubItem(label: 'Başvuru', path: '/formlar/basvuru'),
-      _FormsNavSubItem(label: 'Hurda', path: '/formlar/hurda'),
-      _FormsNavSubItem(label: 'Arıza', path: '/formlar/ariza'),
-      _FormsNavSubItem(label: 'Devir', path: '/formlar/devir'),
-      _FormsNavSubItem(label: 'Seri Takip', path: '/formlar/seri-takip'),
-    ];
+    return _formsNavSubItems(item.label == 'Başvuru');
   }
   if (item.pageKey == 'e_fatura') {
     return const [
@@ -502,6 +505,29 @@ List<_FormsNavSubItem> _mobileNavSubItems(_NavItem item) {
     ];
   }
   return const [];
+}
+
+List<_FormsNavSubItem> _formsNavSubItems(bool bankOnly) {
+  if (bankOnly) {
+    return const [_FormsNavSubItem(label: 'Başvuru', path: '/formlar/basvuru')];
+  }
+  return const [
+    _FormsNavSubItem(label: 'Başvuru', path: '/formlar/basvuru'),
+    _FormsNavSubItem(label: 'Hurda', path: '/formlar/hurda'),
+    _FormsNavSubItem(label: 'Arıza', path: '/formlar/ariza'),
+    _FormsNavSubItem(label: 'Devir', path: '/formlar/devir'),
+    _FormsNavSubItem(label: 'Seri Takip', path: '/formlar/seri-takip'),
+  ];
+}
+
+List<_NavItem> _visibleNavItems({
+  required Set<String> allowedPages,
+  required bool isBankUser,
+}) {
+  if (isBankUser) return _bankNavItems;
+  return _navItems
+      .where((item) => allowedPages.contains(item.pageKey))
+      .toList(growable: false);
 }
 
 class _MobileModuleTile extends StatelessWidget {
@@ -725,9 +751,10 @@ Future<void> _showMobileAccountSheet(
 }
 
 class _BrandHeader extends StatelessWidget {
-  const _BrandHeader({required this.onTap});
+  const _BrandHeader({required this.onTap, required this.subtitle});
 
   final VoidCallback onTap;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -781,7 +808,7 @@ class _BrandHeader extends StatelessWidget {
                   ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 Text(
-                  'CRM & Servis',
+                  subtitle,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF64748B),
                   ),
@@ -1377,8 +1404,9 @@ class _BottomItem extends StatelessWidget {
 }
 
 class _AccountCard extends StatelessWidget {
-  const _AccountCard({required this.onSignOut});
+  const _AccountCard({required this.profile, required this.onSignOut});
 
+  final UserProfile? profile;
   final VoidCallback onSignOut;
 
   @override
@@ -1392,6 +1420,12 @@ class _AccountCard extends StatelessWidget {
       AppTheme.accent.withValues(alpha: 0.08),
       surface,
     );
+    final name = (profile?.fullName ?? '').trim();
+    final role = profile?.role == 'admin'
+        ? 'Admin'
+        : (profile?.isBankLike ?? false)
+        ? 'Banka Personeli'
+        : 'Personel';
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -1417,13 +1451,15 @@ class _AccountCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Hesap',
+                  name.isEmpty ? 'Hesap' : name,
                   style: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  'Admin / Personel',
+                  role,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF64748B),
                   ),
@@ -1580,6 +1616,15 @@ class _NavItem {
   final String label;
   final IconData icon;
   final String pageKey;
+
+  _NavItem copyWith({String? path, String? label}) {
+    return _NavItem(
+      path: path ?? this.path,
+      label: label ?? this.label,
+      icon: icon,
+      pageKey: pageKey,
+    );
+  }
 }
 
 final _navItems = <_NavItem>[
@@ -1660,5 +1705,26 @@ final _navItems = <_NavItem>[
     label: 'Personel',
     icon: Icons.badge_rounded,
     pageKey: 'personel',
+  ),
+];
+
+final _bankNavItems = <_NavItem>[
+  const _NavItem(
+    path: '/banka-panel',
+    label: 'Panel',
+    icon: Icons.dashboard_rounded,
+    pageKey: 'formlar',
+  ),
+  const _NavItem(
+    path: '/formlar/basvuru',
+    label: 'Başvuru',
+    icon: Icons.description_rounded,
+    pageKey: 'formlar',
+  ),
+  const _NavItem(
+    path: '/formlar/banka-rapor',
+    label: 'Rapor',
+    icon: Icons.bar_chart_rounded,
+    pageKey: 'formlar',
   ),
 ];

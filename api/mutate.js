@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const {
   getAuthenticatedUser,
   hasPageAccess,
+  isBankLikeUser,
   resolvePublicUserAuthId,
 } = require('./_lib/auth');
 const { query } = require('./_lib/db');
@@ -27,6 +28,8 @@ const {
   ensureServiceRecordsStatusCheckConstraint,
   ensureServiceActivityLogsTable,
   ensureFinanceTables,
+  ensureApplicationFormsApprovalColumns,
+  ensureApplicationFormActivityLogsTable,
 } = require('./_lib/schema');
 const {
   handleCors,
@@ -251,6 +254,53 @@ async function sanitizeWorkOrderValues(values, user) {
 }
 
 async function sanitizeValuesForTable({ table, values, user }) {
+  if (table === 'customers' && isBankLikeUser(user)) {
+    const next = {};
+    const source = values || {};
+    for (const key of ['name', 'vkn', 'address', 'director_name', 'city', 'email', 'phone_1', 'is_active']) {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        next[key] = source[key];
+      }
+    }
+    next.is_active = true;
+    if (source.vkn != null) {
+      next.vkn = String(source.vkn || '').replace(/\D/g, '');
+    }
+    if (source.name != null) {
+      next.name = String(source.name || '').trim();
+    }
+    if (source.address != null) {
+      next.address = String(source.address || '').trim();
+    }
+    if (source.director_name != null) {
+      next.director_name = String(source.director_name || '').trim();
+    }
+    if (source.city != null) {
+      next.city = String(source.city || '').trim();
+    }
+    if (source.email != null) {
+      next.email = String(source.email || '').trim();
+    }
+    if (source.phone_1 != null) {
+      next.phone_1 = String(source.phone_1 || '').trim();
+      next.phone_1_title = 'Telefon';
+    }
+    return next;
+  }
+  if (table === 'business_activity_types' && isBankLikeUser(user)) {
+    const source = values || {};
+    return {
+      name: String(source.name || '').trim(),
+      is_active: true,
+    };
+  }
+  if (table === 'application_forms') {
+    const next = { ...(values || {}) };
+    if (!next.created_by) {
+      next.created_by = user?.auth_user_id || user?.id || null;
+    }
+    return next;
+  }
   if (table === 'work_orders') {
     return sanitizeWorkOrderValues(values, user);
   }
@@ -475,6 +525,121 @@ async function deleteWhere({ table, filters }) {
   );
 }
 
+const applicationFormAuditLabels = {
+  application_date: 'Başvuru tarihi',
+  customer_id: 'Müşteri',
+  customer_name: 'Ünvan',
+  customer_tckn_ms: 'VKN/TCKN',
+  work_address: 'İş yeri adresi',
+  tax_office_city_id: 'Vergi dairesi id',
+  tax_office_city_name: 'Vergi dairesi',
+  document_type: 'Belge tipi',
+  file_registry_number: 'Dosya no',
+  director: 'Yetkili / Direktör',
+  brand_id: 'Marka id',
+  brand_name: 'Marka',
+  model_id: 'Model id',
+  model_name: 'Model',
+  fiscal_symbol_id: 'Mali sembol id',
+  fiscal_symbol_name: 'Mali sembol',
+  stock_product_id: 'Ürün id',
+  stock_product_name: 'Ürün',
+  stock_registry_number: 'Sicil no',
+  accounting_office: 'Muhasebe ofisi',
+  okc_start_date: 'ÖKC başlama tarihi',
+  business_activity_type_id: 'Faaliyet türü id',
+  business_activity_name: 'Faaliyet türü',
+  invoice_number: 'Fatura no',
+  customer_phone: 'Telefon',
+  customer_email: 'E-posta',
+  taxpayer_registration_document_name: 'Yükümlü belgesi',
+  taxpayer_registration_document_mime_type: 'Belge tipi',
+  taxpayer_registration_document_data: 'Yükümlü belgesi içeriği',
+  taxpayer_registration_document_uploaded_at: 'Belge yükleme tarihi',
+  approval_status: 'Onay durumu',
+  approved_at: 'Onay tarihi',
+  approved_by: 'Onaylayan',
+  created_by: 'Kaydı giren',
+  is_active: 'Aktiflik',
+};
+
+function normalizeAuditValue(key, value) {
+  if (value == null) return null;
+  if (key === 'taxpayer_registration_document_data') {
+    return String(value || '').trim() ? '[belge var]' : null;
+  }
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function buildApplicationFormChanges(before, after) {
+  const keys = new Set([
+    ...Object.keys(before || {}),
+    ...Object.keys(after || {}),
+  ]);
+  const changes = [];
+  for (const key of keys) {
+    if (['id', 'created_at'].includes(key)) continue;
+    const oldValue = normalizeAuditValue(key, before?.[key]);
+    const newValue = normalizeAuditValue(key, after?.[key]);
+    if (oldValue === newValue) continue;
+    changes.push({
+      field: key,
+      label: applicationFormAuditLabels[key] || key,
+      old: oldValue,
+      new: newValue,
+    });
+  }
+  return changes;
+}
+
+async function selectApplicationFormAuditRow(id) {
+  const rowId = String(id || '').trim();
+  if (!rowId) return null;
+  const result = await query(
+    `select * from public.application_forms where id = $1 limit 1`,
+    [rowId],
+  );
+  return result.rows[0] || null;
+}
+
+async function insertApplicationFormLog({ formId, action, before, after, user }) {
+  const changes = buildApplicationFormChanges(before, after);
+  if (action === 'update' && changes.length === 0) return;
+  await ensureApplicationFormActivityLogsTable();
+  await query(
+    `
+      insert into public.application_form_activity_logs (
+        application_form_id,
+        action,
+        actor_id,
+        actor_name,
+        changes,
+        old_values,
+        new_values
+      )
+      values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb)
+    `,
+    [
+      formId,
+      action,
+      user?.auth_user_id || user?.id || null,
+      user?.full_name || user?.email || null,
+      JSON.stringify(changes),
+      before ? JSON.stringify(before) : null,
+      after ? JSON.stringify(after) : null,
+    ],
+  );
+}
+
+function applicationFormIdFilter(filters) {
+  const idFilter = Array.isArray(filters)
+    ? filters.find((f) => f?.col === 'id' && f?.op === 'eq')
+    : null;
+  return String(idFilter?.value || '').trim();
+}
+
 async function insertMany({ table, rows, user }) {
   if (!Array.isArray(rows) || rows.length === 0) return { inserted: 0 };
   const columns = await getColumns(table);
@@ -521,6 +686,55 @@ async function insertMany({ table, rows, user }) {
   return { inserted: rows.length };
 }
 
+async function assertApplicationFormsMutable({ op, values, filters, id }) {
+  if (op === 'upsert') {
+    const rowId = String(values?.id || '').trim();
+    if (!rowId) return;
+    const current = await query(
+      `select approval_status from public.application_forms where id = $1 limit 1`,
+      [rowId],
+    );
+    if (current.rows[0]?.approval_status !== 'approved') return;
+    throw new Error('Onaylanan başvuru düzenlenemez.');
+  }
+
+  if (op === 'delete') {
+    const rowId = String(id || '').trim();
+    if (!rowId) return;
+    const current = await query(
+      `select approval_status from public.application_forms where id = $1 limit 1`,
+      [rowId],
+    );
+    if (current.rows[0]?.approval_status === 'approved') {
+      throw new Error('Onaylanan başvuru silinemez.');
+    }
+    return;
+  }
+
+  if (op !== 'updateWhere') return;
+
+  const nextStatus = String(values?.approval_status || '').trim();
+  const onlyApprovalUpdate =
+    nextStatus === 'approved' &&
+    Object.keys(values || {}).every((key) =>
+      ['approval_status', 'approved_at', 'approved_by', 'stock_registry_number'].includes(key),
+    );
+  if (onlyApprovalUpdate) return;
+
+  const idFilter = Array.isArray(filters)
+    ? filters.find((f) => f?.col === 'id' && f?.op === 'eq')
+    : null;
+  const rowId = String(idFilter?.value || '').trim();
+  if (!rowId) return;
+  const current = await query(
+    `select approval_status from public.application_forms where id = $1 limit 1`,
+    [rowId],
+  );
+  if (current.rows[0]?.approval_status === 'approved') {
+    throw new Error('Onaylanan başvuru değiştirilemez.');
+  }
+}
+
 module.exports = async (req, res) => {
   if (handleCors(req, res)) return;
   if (req.method !== 'POST') {
@@ -558,6 +772,10 @@ module.exports = async (req, res) => {
     }
     if (table === 'fault_forms') {
       await ensureFaultFormsTable();
+    }
+    if (table === 'application_forms') {
+      await ensureApplicationFormsApprovalColumns();
+      await ensureApplicationFormActivityLogsTable();
     }
     if (table === 'device_registries') {
       await ensureDeviceRegistriesTable();
@@ -599,20 +817,71 @@ module.exports = async (req, res) => {
       await ensureFinanceTables();
     }
 
+    const bankCustomerCreate =
+      isBankLikeUser(user) && table === 'customers' && op === 'upsert';
+    const bankBusinessActivityCreate =
+      isBankLikeUser(user) &&
+      table === 'business_activity_types' &&
+      ['upsert', 'insertMany'].includes(op);
     const requiredPage = tablePermissions[table] || null;
-    if (requiredPage && !requireAnyPage(req, user, requiredPage, res)) return;
+    if (
+      requiredPage &&
+      !bankCustomerCreate &&
+      !bankBusinessActivityCreate &&
+      !requireAnyPage(req, user, requiredPage, res)
+    )
+      return;
+    if (
+      isBankLikeUser(user) &&
+      ['scrap_forms', 'transfer_forms', 'fault_forms', 'serial_tracking'].includes(table)
+    ) {
+      return forbidden(req, res, 'Banka kullanıcısı yalnızca başvuru formu işlemi yapabilir.');
+    }
 
     if (op === 'upsert') {
       const values = body.values;
       const returningRow = body.returning === 'row';
+      const before =
+        table === 'application_forms' && values?.id
+          ? await selectApplicationFormAuditRow(values.id)
+          : null;
+      if (table === 'application_forms') {
+        await assertApplicationFormsMutable({ op, values });
+      }
       const result = await upsertRow({ table, values, returningRow, user });
+      if (table === 'application_forms' && result.id) {
+        const after = await selectApplicationFormAuditRow(result.id);
+        await insertApplicationFormLog({
+          formId: result.id,
+          action: before ? 'update' : 'create',
+          before,
+          after,
+          user,
+        });
+      }
       return ok(req, res, { ok: true, ...result });
     }
 
     if (op === 'delete') {
       const id = String(body.id || '').trim();
       if (!id) return badRequest(req, res, 'id zorunludur.');
+      const before =
+        table === 'application_forms'
+          ? await selectApplicationFormAuditRow(id)
+          : null;
+      if (table === 'application_forms') {
+        await assertApplicationFormsMutable({ op, id });
+      }
       await deleteRow({ table, id });
+      if (table === 'application_forms' && before) {
+        await insertApplicationFormLog({
+          formId: id,
+          action: 'delete',
+          before,
+          after: null,
+          user,
+        });
+      }
       return ok(req, res, { ok: true });
     }
 
@@ -625,7 +894,29 @@ module.exports = async (req, res) => {
     if (op === 'updateWhere') {
       const values = body.values;
       const filters = body.filters;
+      const formId =
+        table === 'application_forms' ? applicationFormIdFilter(filters) : '';
+      const before = formId ? await selectApplicationFormAuditRow(formId) : null;
+      if (table === 'application_forms') {
+        await assertApplicationFormsMutable({ op, values, filters });
+      }
       await updateWhere({ table, values, filters, user });
+      if (table === 'application_forms' && formId) {
+        const after = await selectApplicationFormAuditRow(formId);
+        const action =
+          values?.approval_status === 'approved'
+            ? 'approve'
+            : Object.prototype.hasOwnProperty.call(values || {}, 'is_active')
+              ? 'status'
+              : 'update';
+        await insertApplicationFormLog({
+          formId,
+          action,
+          before,
+          after,
+          user,
+        });
+      }
       return ok(req, res, { ok: true });
     }
 

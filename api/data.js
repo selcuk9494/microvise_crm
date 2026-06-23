@@ -1,4 +1,9 @@
-const { getAuthenticatedUser, hasPageAccess } = require('./_lib/auth');
+const {
+  getAuthenticatedUser,
+  hasPageAccess,
+  isBankAdminLikeUser,
+  isBankLikeUser,
+} = require('./_lib/auth');
 const { query } = require('./_lib/db');
 const https = require('https');
 const {
@@ -24,6 +29,8 @@ const {
   ensureWorkOrdersPaymentRequiredColumn,
   ensureWorkOrdersStatusCheckConstraint,
   ensureFinanceTables,
+  ensureApplicationFormsApprovalColumns,
+  ensureApplicationFormActivityLogsTable,
 } = require('./_lib/schema');
 const {
   handleCors,
@@ -168,8 +175,15 @@ module.exports = async (req, res) => {
       ) {
         if (!requireAnyPage(req, user, ['tanimlamalar', 'servis'], res)) return;
       } else if (resource === 'definition_cities') {
-        if (!requireAnyPage(req, user, ['tanimlamalar', 'musteriler', 'is_emirleri'], res))
+        if (!requireAnyPage(req, user, ['tanimlamalar', 'musteriler', 'is_emirleri', 'formlar'], res))
           return;
+      } else if (
+        resource === 'definition_device_brands' ||
+        resource === 'definition_device_models' ||
+        resource === 'definition_fiscal_symbols' ||
+        resource === 'definition_business_activity_types'
+      ) {
+        if (!requireAnyPage(req, user, ['tanimlamalar', 'formlar'], res)) return;
       } else if (resource === 'definition_tax_rates') {
         if (!requireAnyPage(req, user, ['tanimlamalar', 'e_fatura', 'faturalama'], res)) return;
       } else {
@@ -212,6 +226,17 @@ module.exports = async (req, res) => {
     }
     if (resource.startsWith('form_')) {
       if (!requirePage(req, user, 'formlar', res)) return;
+      if (
+        isBankLikeUser(user) &&
+        ![
+          'form_customer_by_vkn',
+          'form_customers_bulk',
+          'form_application_list',
+          'form_stock_products',
+        ].includes(resource)
+      ) {
+        return forbidden(req, res, 'Banka kullanıcısı yalnızca başvuru formu verilerine erişebilir.');
+      }
     }
 
     switch (resource) {
@@ -1104,6 +1129,8 @@ module.exports = async (req, res) => {
               name,
               vkn,
               tckn_ms,
+              email,
+              phone_1,
               city,
               address,
               director_name,
@@ -1113,6 +1140,32 @@ module.exports = async (req, res) => {
           `,
         );
         return ok(req, res, { items: result.rows });
+      }
+
+      case 'form_customer_by_vkn': {
+        const digits = String(req.query.vkn || '').replace(/\D/g, '');
+        if (!digits) return badRequest(req, res, 'VKN zorunludur.');
+        const result = await query(
+          `
+            select
+              id,
+              name,
+              vkn,
+              tckn_ms,
+              email,
+              phone_1,
+              city,
+              address,
+              director_name,
+              is_active
+            from public.customers
+            where regexp_replace(coalesce(vkn, ''), '\\D', '', 'g') = $1
+            order by created_at desc nulls last
+            limit 1
+          `,
+          [digits],
+        );
+        return ok(req, res, { item: result.rows[0] || null });
       }
 
       case 'form_customers_bulk': {
@@ -1155,12 +1208,34 @@ module.exports = async (req, res) => {
       }
 
       case 'form_application_list': {
+        await ensureApplicationFormsApprovalColumns();
         const showPassive = parseBoolean(req.query.showPassive, false);
         const values = [];
         let whereSql = 'where true';
         if (!showPassive) {
           values.push(true);
           whereSql += ` and is_active = $${values.length}`;
+        }
+        if (isBankAdminLikeUser(user)) {
+          whereSql += `
+            and created_by in (
+              select id
+              from public.users
+              where
+                role = 'bank'
+                or (
+                  role = 'personel'
+                  and coalesce(page_permissions, '{}'::text[]) = array['formlar']::text[]
+                  and (
+                    coalesce(action_permissions, '{}'::text[]) = '{}'::text[]
+                    or 'banka_admin' = any(coalesce(action_permissions, '{}'::text[]))
+                  )
+                )
+            )
+          `;
+        } else if (isBankLikeUser(user)) {
+          values.push(user.auth_user_id || user.id);
+          whereSql += ` and created_by = $${values.length}`;
         }
         const result = await query(
           `
@@ -1185,6 +1260,15 @@ module.exports = async (req, res) => {
               okc_start_date,
               business_activity_name,
               invoice_number,
+              customer_phone,
+              customer_email,
+              taxpayer_registration_document_name,
+              taxpayer_registration_document_mime_type,
+              taxpayer_registration_document_data,
+              coalesce(approval_status, 'pending') as approval_status,
+              approved_at,
+              approved_by,
+              created_by,
               is_active,
               created_at
             from public.application_forms
@@ -1193,6 +1277,34 @@ module.exports = async (req, res) => {
             limit 1200
           `,
           values,
+        );
+        return ok(req, res, { items: result.rows });
+      }
+
+      case 'application_form_logs': {
+        if (!requireAnyPage(req, user, ['formlar'], res)) return;
+        await ensureApplicationFormActivityLogsTable();
+        const formId = String(req.query.formId || '').trim();
+        if (!formId) return badRequest(req, res, 'formId zorunludur.');
+
+        const result = await query(
+          `
+            select
+              id,
+              application_form_id,
+              action,
+              actor_id,
+              actor_name,
+              changes,
+              old_values,
+              new_values,
+              created_at
+            from public.application_form_activity_logs
+            where application_form_id = $1
+            order by created_at desc
+            limit 200
+          `,
+          [formId],
         );
         return ok(req, res, { items: result.rows });
       }

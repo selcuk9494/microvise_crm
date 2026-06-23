@@ -24,6 +24,8 @@ const ensured = {
   work_orders_payment_required: false,
   work_orders_status_check: false,
   finance_tables: false,
+  application_forms_approval: false,
+  application_form_activity_logs: false,
 };
 
 async function tableExists(tableName) {
@@ -1484,6 +1486,86 @@ async function ensureServiceActivityLogsTable() {
   return true;
 }
 
+async function ensureApplicationFormsApprovalColumns() {
+  if (ensured.application_forms_approval) return true;
+
+  const exists = await tableExists('application_forms');
+  if (!exists) return false;
+
+  await query(
+    `
+      alter table public.application_forms
+        add column if not exists approval_status text not null default 'pending',
+        add column if not exists approved_at timestamptz,
+        add column if not exists approved_by uuid,
+        add column if not exists created_by uuid,
+        add column if not exists customer_phone text,
+        add column if not exists customer_email text,
+        add column if not exists taxpayer_registration_document_name text,
+        add column if not exists taxpayer_registration_document_mime_type text,
+        add column if not exists taxpayer_registration_document_data text,
+        add column if not exists taxpayer_registration_document_uploaded_at timestamptz
+    `,
+  );
+  await query(
+    `
+      alter table public.application_forms
+        drop constraint if exists application_forms_approval_status_check
+    `,
+  );
+  await query(
+    `
+      alter table public.application_forms
+        add constraint application_forms_approval_status_check
+        check (approval_status in ('pending','approved'))
+    `,
+  );
+  await query(
+    `
+      create index if not exists idx_application_forms_approval_status
+      on public.application_forms (approval_status, created_at desc)
+    `,
+  );
+  await query(
+    `
+      create index if not exists idx_application_forms_created_by
+      on public.application_forms (created_by, created_at desc)
+    `,
+  );
+
+  ensured.application_forms_approval = true;
+  return true;
+}
+
+async function ensureApplicationFormActivityLogsTable() {
+  if (ensured.application_form_activity_logs) return true;
+
+  await query(
+    `
+      create table if not exists public.application_form_activity_logs (
+        id uuid primary key default gen_random_uuid(),
+        application_form_id uuid not null,
+        action text not null,
+        actor_id uuid,
+        actor_name text,
+        changes jsonb not null default '[]'::jsonb,
+        old_values jsonb,
+        new_values jsonb,
+        created_at timestamptz not null default now()
+      )
+    `,
+  );
+  await query(
+    `
+      create index if not exists idx_application_form_activity_logs_form_created
+      on public.application_form_activity_logs (application_form_id, created_at desc)
+    `,
+  );
+
+  ensured.application_form_activity_logs = true;
+  return true;
+}
+
 module.exports = {
   ensureSerialTrackingTable,
   ensureUsersAuthColumns,
@@ -1508,4 +1590,6 @@ module.exports = {
   ensureWorkOrdersPaymentRequiredColumn,
   ensureWorkOrdersStatusCheckConstraint,
   ensureFinanceTables,
+  ensureApplicationFormsApprovalColumns,
+  ensureApplicationFormActivityLogsTable,
 };

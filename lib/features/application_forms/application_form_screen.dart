@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:async';
+
 import 'package:excel/excel.dart' as excel;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -96,7 +100,7 @@ final applicationFormsProvider = FutureProvider<List<ApplicationFormRecord>>((
   final rows = await client
       .from('application_forms')
       .select(
-        'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
+        'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,approval_status,approved_at,approved_by,created_by,is_active,created_at',
       )
       .order('created_at', ascending: false)
       .limit(1200);
@@ -105,6 +109,98 @@ final applicationFormsProvider = FutureProvider<List<ApplicationFormRecord>>((
       .map((row) => ApplicationFormRecord.fromJson(row as Map<String, dynamic>))
       .toList(growable: false);
 });
+
+final applicationFormLogsProvider =
+    FutureProvider.family<List<ApplicationFormLogEntry>, String>((
+      ref,
+      formId,
+    ) async {
+      final apiClient = ref.watch(apiClientProvider);
+      final client = ref.watch(supabaseClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {
+            'resource': 'application_form_logs',
+            'formId': formId,
+          },
+        );
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(ApplicationFormLogEntry.fromJson)
+            .toList(growable: false);
+      }
+      if (client == null) return const [];
+      final rows = await client
+          .from('application_form_activity_logs')
+          .select(
+            'id,application_form_id,action,actor_id,actor_name,changes,created_at',
+          )
+          .eq('application_form_id', formId)
+          .order('created_at', ascending: false)
+          .limit(200);
+      return (rows as List)
+          .map(
+            (row) => ApplicationFormLogEntry.fromJson(
+              (row as Map).cast<String, dynamic>(),
+            ),
+          )
+          .toList(growable: false);
+    });
+
+class ApplicationFormLogEntry {
+  const ApplicationFormLogEntry({
+    required this.id,
+    required this.action,
+    required this.actorName,
+    required this.createdAt,
+    required this.changes,
+  });
+
+  final String id;
+  final String action;
+  final String? actorName;
+  final DateTime createdAt;
+  final List<ApplicationFormLogChange> changes;
+
+  factory ApplicationFormLogEntry.fromJson(Map<String, dynamic> json) {
+    return ApplicationFormLogEntry(
+      id: (json['id'] ?? '').toString(),
+      action: (json['action'] ?? 'update').toString(),
+      actorName: json['actor_name']?.toString(),
+      createdAt:
+          DateTime.tryParse((json['created_at'] ?? '').toString()) ??
+          DateTime.now(),
+      changes: ((json['changes'] as List?) ?? const [])
+          .whereType<Map>()
+          .map(
+            (item) =>
+                ApplicationFormLogChange.fromJson(item.cast<String, dynamic>()),
+          )
+          .toList(growable: false),
+    );
+  }
+}
+
+class ApplicationFormLogChange {
+  const ApplicationFormLogChange({
+    required this.label,
+    required this.oldValue,
+    required this.newValue,
+  });
+
+  final String label;
+  final String? oldValue;
+  final String? newValue;
+
+  factory ApplicationFormLogChange.fromJson(Map<String, dynamic> json) {
+    return ApplicationFormLogChange(
+      label: (json['label'] ?? json['field'] ?? 'Alan').toString(),
+      oldValue: json['old']?.toString(),
+      newValue: json['new']?.toString(),
+    );
+  }
+}
 
 class ApplicationFormScreen extends ConsumerStatefulWidget {
   const ApplicationFormScreen({super.key});
@@ -119,16 +215,37 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   final _registryFilterController = TextEditingController();
   final _dateFormat = DateFormat('dd.MM.yyyy', 'tr_TR');
   final Set<String> _selectedRecordIds = <String>{};
+  Timer? _autoRefreshTimer;
   bool _showPassive = false;
-  bool _todayOnly = true;
+  bool _todayOnly = false;
+  String _approvalFilter = 'pending';
   DateTime? _fromDate;
   DateTime? _toDate;
 
   @override
+  void initState() {
+    super.initState();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      _refreshApplicationsSoon();
+    });
+  }
+
+  @override
   void dispose() {
+    _autoRefreshTimer?.cancel();
     _customerFilterController.dispose();
     _registryFilterController.dispose();
     super.dispose();
+  }
+
+  void _refreshApplicationsSoon() {
+    if (!mounted) return;
+    if (ModalRoute.of(context)?.isCurrent != true) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ModalRoute.of(context)?.isCurrent != true) return;
+      ref.invalidate(applicationFormsProvider);
+    });
   }
 
   Future<void> _pickFilterDate({
@@ -146,14 +263,18 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   }
 
   Future<void> _openCreateDialog() async {
+    final profile = ref.read(currentUserProfileProvider).value;
+    final isBankUser = profile?.isBankLike ?? false;
     final savedRecords = await showDialog<List<ApplicationFormRecord>>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const _ApplicationFormDialog(),
+      builder: (context) => isBankUser
+          ? const _BankApplicationFormDialog()
+          : const _ApplicationFormDialog(),
     );
     if (savedRecords == null || savedRecords.isEmpty || !mounted) return;
 
-    final _ = await ref.refresh(applicationFormsProvider.future);
+    _refreshApplicationsSoon();
     if (!mounted) return;
     if (savedRecords.length == 1) {
       await _showPrintOptions(savedRecords.first);
@@ -167,13 +288,60 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   }
 
   Future<void> _openEditDialog(ApplicationFormRecord record) async {
+    if (record.isApproved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Onaylanan başvuru düzenlenemez.')),
+      );
+      return;
+    }
+    final profile = ref.read(currentUserProfileProvider).value;
+    final isBankUser = profile?.isBankLike ?? false;
     final savedRecords = await showDialog<List<ApplicationFormRecord>>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => _ApplicationFormDialog(initialRecord: record),
+      builder: (context) => isBankUser
+          ? _BankApplicationFormDialog(initialRecord: record)
+          : _ApplicationFormDialog(initialRecord: record),
     );
     if (savedRecords == null || savedRecords.isEmpty || !mounted) return;
-    final _ = await ref.refresh(applicationFormsProvider.future);
+    _refreshApplicationsSoon();
+  }
+
+  Future<void> _downloadTaxpayerDocument(ApplicationFormRecord record) async {
+    final data = (record.taxpayerRegistrationDocumentData ?? '').trim();
+    if (data.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bu başvuruda belge bulunmuyor.')),
+      );
+      return;
+    }
+    try {
+      final bytes = base64Decode(data);
+      final rawName =
+          (record.taxpayerRegistrationDocumentName ?? '').trim().isEmpty
+          ? 'yukumlu-kayit-belgesi.pdf'
+          : record.taxpayerRegistrationDocumentName!.trim();
+      await downloadBinaryFile(
+        bytes,
+        rawName,
+        mimeType:
+            record.taxpayerRegistrationDocumentMimeType ??
+            'application/octet-stream',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Belge açılamadı: $e')));
+    }
+  }
+
+  Future<void> _openRecordLogs(ApplicationFormRecord record) async {
+    ref.invalidate(applicationFormLogsProvider(record.id));
+    await showDialog<void>(
+      context: context,
+      builder: (context) => _ApplicationFormLogsDialog(record: record),
+    );
   }
 
   Future<void> _openDuplicateDialog(ApplicationFormRecord record) async {
@@ -184,7 +352,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
           _ApplicationFormDialog(initialRecord: record, duplicateMode: true),
     );
     if (savedRecords == null || savedRecords.isEmpty || !mounted) return;
-    final _ = await ref.refresh(applicationFormsProvider.future);
+    _refreshApplicationsSoon();
     if (!mounted) return;
     if (savedRecords.length == 1) {
       await _showPrintOptions(savedRecords.first);
@@ -198,12 +366,16 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   }
 
   Future<void> _showPrintOptions(ApplicationFormRecord record) async {
+    final profile = ref.read(currentUserProfileProvider).value;
+    final isBankUser = profile?.isBankLike ?? false;
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Yazdırma Seçenekleri'),
-        content: const Text(
-          'Kayıt tamamlandı. İstersen KDV4 veya KDV4A çıktısını hemen alabilirsin.',
+        content: Text(
+          isBankUser
+              ? 'Kayıt tamamlandı. KDV4 çıktısını hemen alabilirsin.'
+              : 'Kayıt tamamlandı. İstersen KDV4 veya KDV4A çıktısını hemen alabilirsin.',
         ),
         actions: [
           TextButton(
@@ -217,13 +389,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
             },
             child: const Text('KDV4 Yazdır'),
           ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              await _print(record, kind: ApplicationPrintKind.kdv4a);
-            },
-            child: const Text('KDV4A Yazdır'),
-          ),
+          if (!isBankUser)
+            FilledButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _print(record, kind: ApplicationPrintKind.kdv4a);
+              },
+              child: const Text('KDV4A Yazdır'),
+            ),
         ],
       ),
     );
@@ -299,6 +472,12 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     ApplicationFormRecord record,
     bool active,
   ) async {
+    if (record.isApproved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Onaylanan başvuru değiştirilemez.')),
+      );
+      return;
+    }
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
     try {
@@ -394,8 +573,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
           }
         }
       }
-      ref.invalidate(applicationFormsProvider);
       if (!mounted) return;
+      _refreshApplicationsSoon();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -414,6 +593,12 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   }
 
   Future<void> _deleteRecordPermanently(ApplicationFormRecord record) async {
+    if (record.isApproved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Onaylanan başvuru silinemez.')),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -480,8 +665,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         }
         await client.from('application_forms').delete().eq('id', record.id);
       }
-      ref.invalidate(applicationFormsProvider);
       if (!mounted) return;
+      _refreshApplicationsSoon();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Başvuru kalıcı olarak silindi.')),
       );
@@ -490,6 +675,320 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Silinemedi: $e')));
+    }
+  }
+
+  Future<void> _approveRecord(ApplicationFormRecord record) async {
+    if (record.isApproved) return;
+
+    final registryController = TextEditingController(
+      text: record.stockRegistryNumber?.trim() ?? '',
+    );
+    final registryNumber = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final current = registryController.text.trim();
+          return AlertDialog(
+            title: const Text('Başvuruyu onayla'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '"${record.customerName}" başvurusu onaylanmış başvurulara taşınacak.',
+                ),
+                const Gap(14),
+                TextField(
+                  controller: registryController,
+                  textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9-]')),
+                  ],
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'Cihaz sicil numarası',
+                    hintText: 'Onaylanan sicil no',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Vazgeç'),
+              ),
+              FilledButton(
+                onPressed: current.isEmpty
+                    ? null
+                    : () => Navigator.of(context).pop(current.toUpperCase()),
+                child: const Text('Onayla'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    registryController.dispose();
+    if (registryNumber == null) return;
+    final approvedRegistry = registryNumber.trim().toUpperCase();
+    if (approvedRegistry.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sicil numarası girmeden onaylanamaz.')),
+      );
+      return;
+    }
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    final profile = await ref.read(currentUserProfileProvider.future);
+    final approverId = (profile?.id ?? '').trim();
+    final nowIso = DateTime.now().toIso8601String();
+
+    try {
+      final values = {
+        'stock_registry_number': approvedRegistry,
+        'approval_status': 'approved',
+        'approved_at': nowIso,
+        'approved_by': approverId.isEmpty ? null : approverId,
+      };
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'application_forms',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': record.id},
+            ],
+            'values': values,
+          },
+        );
+        if ((record.customerId ?? '').trim().isNotEmpty) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'upsert',
+              'table': 'device_registries',
+              'values': {
+                'registry_number': approvedRegistry,
+                'model': record.modelName,
+                'customer_id': record.customerId,
+                'application_form_id': record.id,
+                'is_active': true,
+                'assigned_at': nowIso,
+                'released_at': null,
+              },
+            },
+          );
+        }
+      } else {
+        if (client == null) return;
+        await client
+            .from('application_forms')
+            .update(values)
+            .eq('id', record.id);
+        if ((record.customerId ?? '').trim().isNotEmpty) {
+          await client.from('device_registries').upsert({
+            'registry_number': approvedRegistry,
+            'model': record.modelName,
+            'customer_id': record.customerId,
+            'application_form_id': record.id,
+            'is_active': true,
+            'assigned_at': nowIso,
+            'released_at': null,
+          });
+        }
+      }
+      if (!mounted) return;
+      await reloadCurrentPage();
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Onaylanamadı: $e')));
+    }
+  }
+
+  Future<void> _approveRecordsBulk(List<ApplicationFormRecord> records) async {
+    final pendingRecords = records
+        .where((record) => record.isPendingApproval)
+        .toList(growable: false);
+    if (pendingRecords.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Seçili kayıtlarda onay bekleyen başvuru yok.'),
+        ),
+      );
+      return;
+    }
+
+    final controllers = {
+      for (final record in pendingRecords)
+        record.id: TextEditingController(
+          text: record.stockRegistryNumber?.trim() ?? '',
+        ),
+    };
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final allFilled = pendingRecords.every(
+            (record) => controllers[record.id]!.text.trim().isNotEmpty,
+          );
+          return AlertDialog(
+            title: const Text('Toplu Onayla'),
+            content: SizedBox(
+              width: 620,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final record in pendingRecords) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: Text(
+                                record.customerName,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.labelLarge,
+                              ),
+                            ),
+                          ),
+                          const Gap(12),
+                          SizedBox(
+                            width: 220,
+                            child: TextField(
+                              controller: controllers[record.id],
+                              textCapitalization: TextCapitalization.characters,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'[a-zA-Z0-9-]'),
+                                ),
+                              ],
+                              onChanged: (_) => setDialogState(() {}),
+                              decoration: const InputDecoration(
+                                labelText: 'Sicil no',
+                                hintText: 'Örn: PAX123456',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Gap(10),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Vazgeç'),
+              ),
+              FilledButton(
+                onPressed: allFilled
+                    ? () => Navigator.of(context).pop(true)
+                    : null,
+                child: Text('Onayla (${pendingRecords.length})'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (confirmed != true) {
+      for (final controller in controllers.values) {
+        controller.dispose();
+      }
+      return;
+    }
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    final profile = await ref.read(currentUserProfileProvider.future);
+    final approverId = (profile?.id ?? '').trim();
+    final nowIso = DateTime.now().toIso8601String();
+
+    try {
+      for (final record in pendingRecords) {
+        final registry = controllers[record.id]!.text.trim().toUpperCase();
+        final values = {
+          'stock_registry_number': registry,
+          'approval_status': 'approved',
+          'approved_at': nowIso,
+          'approved_by': approverId.isEmpty ? null : approverId,
+        };
+        if (apiClient != null) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'updateWhere',
+              'table': 'application_forms',
+              'filters': [
+                {'col': 'id', 'op': 'eq', 'value': record.id},
+              ],
+              'values': values,
+            },
+          );
+          if ((record.customerId ?? '').trim().isNotEmpty) {
+            await apiClient.postJson(
+              '/mutate',
+              body: {
+                'op': 'upsert',
+                'table': 'device_registries',
+                'values': {
+                  'registry_number': registry,
+                  'model': record.modelName,
+                  'customer_id': record.customerId,
+                  'application_form_id': record.id,
+                  'is_active': true,
+                  'assigned_at': nowIso,
+                  'released_at': null,
+                },
+              },
+            );
+          }
+        } else {
+          if (client == null) return;
+          await client
+              .from('application_forms')
+              .update(values)
+              .eq('id', record.id);
+          if ((record.customerId ?? '').trim().isNotEmpty) {
+            await client.from('device_registries').upsert({
+              'registry_number': registry,
+              'model': record.modelName,
+              'customer_id': record.customerId,
+              'application_form_id': record.id,
+              'is_active': true,
+              'assigned_at': nowIso,
+              'released_at': null,
+            });
+          }
+        }
+      }
+      if (!mounted) return;
+      await reloadCurrentPage();
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Toplu onaylanamadı: $e')));
+    } finally {
+      for (final controller in controllers.values) {
+        controller.dispose();
+      }
     }
   }
 
@@ -1045,6 +1544,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final isMobile = width < 820;
     final recordsAsync = ref.watch(applicationFormsProvider);
+    final profile = ref.watch(currentUserProfileProvider).value;
+    final isBankUser = profile?.isBankLike ?? false;
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
     final canArchive = ref.watch(
       hasActionAccessProvider(kActionArchiveRecords),
@@ -1052,13 +1553,17 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     final canDeletePermanently = ref.watch(
       hasActionAccessProvider(kActionDeleteRecords),
     );
+    final canApprove = !isBankUser && canEdit;
+    final canUseInternalApplicationActions = !isBankUser;
 
     return AppPageLayout(
-      title: 'Başvuru Formları',
-      subtitle: 'Başvuru kayıtlarını filtreleyin, listeleyin ve yazdırın.',
+      title: isBankUser ? 'Capital Bank ÖKC Talep' : 'Başvuru Formları',
+      subtitle: isBankUser
+          ? 'ÖKC taleplerinizi oluşturun ve KDV4 çıktısını alın.'
+          : 'Başvuru kayıtlarını filtreleyin, listeleyin ve yazdırın.',
       actions: [
         OutlinedButton.icon(
-          onPressed: () => ref.invalidate(applicationFormsProvider),
+          onPressed: _refreshApplicationsSoon,
           icon: const Icon(Icons.refresh_rounded, size: 18),
           label: const Text('Yenile'),
         ),
@@ -1070,8 +1575,23 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       ],
       body: recordsAsync.when(
         data: (records) {
-          final baseFiltered = _filterRecords(records, includeTodayOnly: false)
-              .where((item) => _showPassive ? !item.isActive : item.isActive)
+          final visibleRecords = bankVisibleApplicationRecords(
+            records: records,
+            profile: profile,
+            isBankUser: isBankUser,
+          );
+          final activeFiltered =
+              _filterRecords(visibleRecords, includeTodayOnly: false)
+                  .where(
+                    (item) => _showPassive ? !item.isActive : item.isActive,
+                  )
+                  .toList(growable: false);
+          final baseFiltered = activeFiltered
+              .where(
+                (item) =>
+                    _approvalFilter == 'all' ||
+                    item.approvalStatus == _approvalFilter,
+              )
               .toList(growable: false);
           final today = DateTime.now();
           final filtered = _todayOnly
@@ -1084,8 +1604,15 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
               .toList(growable: false);
           final allFilteredSelected =
               filtered.isNotEmpty && selectedRecords.length == filtered.length;
+          final canEditRecords = isBankUser ? true : canEdit;
           final todayCount = baseFiltered
               .where((item) => _isSameDay(item.applicationDate, today))
+              .length;
+          final pendingCount = activeFiltered
+              .where((item) => item.isPendingApproval)
+              .length;
+          final approvedCount = activeFiltered
+              .where((item) => item.isApproved)
               .length;
 
           Future<void> openMobileFiltersSheet() async {
@@ -1380,18 +1907,52 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                         label: const Text('Pasifleri Göster'),
                         visualDensity: VisualDensity.compact,
                       ),
+                      FilterChip(
+                        selected: _approvalFilter == 'pending',
+                        onSelected: (_) =>
+                            setState(() => _approvalFilter = 'pending'),
+                        label: Text('Onay Bekleyen ($pendingCount)'),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      FilterChip(
+                        selected: _approvalFilter == 'approved',
+                        onSelected: (_) =>
+                            setState(() => _approvalFilter = 'approved'),
+                        label: Text('Onaylanmış ($approvedCount)'),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      FilterChip(
+                        selected: _approvalFilter == 'all',
+                        onSelected: (_) =>
+                            setState(() => _approvalFilter = 'all'),
+                        label: const Text('Tümü'),
+                        visualDensity: VisualDensity.compact,
+                      ),
                       if (selectedRecords.isNotEmpty) ...[
-                        FilledButton.icon(
-                          onPressed: () =>
-                              _openCreateWorkOrdersDialog(selectedRecords),
-                          icon: const Icon(
-                            Icons.playlist_add_rounded,
-                            size: 18,
+                        if (canApprove &&
+                            selectedRecords.any(
+                              (record) => record.isPendingApproval,
+                            ))
+                          FilledButton.icon(
+                            onPressed: () =>
+                                _approveRecordsBulk(selectedRecords),
+                            icon: const Icon(Icons.verified_rounded, size: 18),
+                            label: Text(
+                              'Toplu Onayla (${selectedRecords.where((record) => record.isPendingApproval).length})',
+                            ),
                           ),
-                          label: Text(
-                            'İş Emri Oluştur (${selectedRecords.length})',
+                        if (canUseInternalApplicationActions)
+                          FilledButton.icon(
+                            onPressed: () =>
+                                _openCreateWorkOrdersDialog(selectedRecords),
+                            icon: const Icon(
+                              Icons.playlist_add_rounded,
+                              size: 18,
+                            ),
+                            label: Text(
+                              'İş Emri Oluştur (${selectedRecords.length})',
+                            ),
                           ),
-                        ),
                         OutlinedButton.icon(
                           onPressed: () => _printBulk(
                             selectedRecords,
@@ -1402,30 +1963,36 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                             'KDV4 Yazdır (${selectedRecords.length})',
                           ),
                         ),
-                        OutlinedButton.icon(
-                          onPressed: () => _printBulk(
-                            selectedRecords,
-                            kind: ApplicationPrintKind.kdv4a,
+                        if (canUseInternalApplicationActions) ...[
+                          OutlinedButton.icon(
+                            onPressed: () => _printBulk(
+                              selectedRecords,
+                              kind: ApplicationPrintKind.kdv4a,
+                            ),
+                            icon: const Icon(Icons.print_rounded, size: 18),
+                            label: Text(
+                              'KDV4A Yazdır (${selectedRecords.length})',
+                            ),
                           ),
-                          icon: const Icon(Icons.print_rounded, size: 18),
-                          label: Text(
-                            'KDV4A Yazdır (${selectedRecords.length})',
+                          FilledButton.icon(
+                            onPressed: () =>
+                                _exportForTaxOffice(selectedRecords),
+                            icon: const Icon(Icons.download_rounded, size: 18),
+                            label: Text(
+                              'Vergi Dairesine Gönder (${selectedRecords.length})',
+                            ),
                           ),
-                        ),
-                        FilledButton.icon(
-                          onPressed: () => _exportForTaxOffice(selectedRecords),
-                          icon: const Icon(Icons.download_rounded, size: 18),
-                          label: Text(
-                            'Vergi Dairesine Gönder (${selectedRecords.length})',
+                          OutlinedButton.icon(
+                            onPressed: () => _exportForTsm(selectedRecords),
+                            icon: const Icon(
+                              Icons.table_chart_rounded,
+                              size: 18,
+                            ),
+                            label: Text(
+                              'TSM\'e Gönder (${selectedRecords.length})',
+                            ),
                           ),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: () => _exportForTsm(selectedRecords),
-                          icon: const Icon(Icons.table_chart_rounded, size: 18),
-                          label: Text(
-                            'TSM\'e Gönder (${selectedRecords.length})',
-                          ),
-                        ),
+                        ],
                       ],
                     ] else ...[
                       FilledButton.tonalIcon(
@@ -1479,6 +2046,57 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                           title: const Text('Pasifleri Göster'),
                                           contentPadding: EdgeInsets.zero,
                                         ),
+                                        ListTile(
+                                          leading: Icon(
+                                            _approvalFilter == 'pending'
+                                                ? Icons.pending_actions_rounded
+                                                : Icons
+                                                      .pending_actions_outlined,
+                                          ),
+                                          title: Text(
+                                            'Onay Bekleyen ($pendingCount)',
+                                          ),
+                                          selected:
+                                              _approvalFilter == 'pending',
+                                          onTap: () {
+                                            setState(
+                                              () => _approvalFilter = 'pending',
+                                            );
+                                            Navigator.of(context).pop();
+                                          },
+                                        ),
+                                        ListTile(
+                                          leading: Icon(
+                                            _approvalFilter == 'approved'
+                                                ? Icons.verified_rounded
+                                                : Icons.verified_outlined,
+                                          ),
+                                          title: Text(
+                                            'Onaylanmış ($approvedCount)',
+                                          ),
+                                          selected:
+                                              _approvalFilter == 'approved',
+                                          onTap: () {
+                                            setState(
+                                              () =>
+                                                  _approvalFilter = 'approved',
+                                            );
+                                            Navigator.of(context).pop();
+                                          },
+                                        ),
+                                        ListTile(
+                                          leading: const Icon(
+                                            Icons.list_alt_rounded,
+                                          ),
+                                          title: const Text('Tüm Başvurular'),
+                                          selected: _approvalFilter == 'all',
+                                          onTap: () {
+                                            setState(
+                                              () => _approvalFilter = 'all',
+                                            );
+                                            Navigator.of(context).pop();
+                                          },
+                                        ),
                                         if (filtered.isNotEmpty) ...[
                                           ListTile(
                                             leading: Icon(
@@ -1514,20 +2132,40 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                           ),
                                         ],
                                         if (selectedRecords.isNotEmpty) ...[
-                                          ListTile(
-                                            leading: const Icon(
-                                              Icons.playlist_add_rounded,
+                                          if (canApprove &&
+                                              selectedRecords.any(
+                                                (record) =>
+                                                    record.isPendingApproval,
+                                              ))
+                                            ListTile(
+                                              leading: const Icon(
+                                                Icons.verified_rounded,
+                                              ),
+                                              title: Text(
+                                                'Toplu Onayla (${selectedRecords.where((record) => record.isPendingApproval).length})',
+                                              ),
+                                              onTap: () {
+                                                Navigator.of(context).pop();
+                                                _approveRecordsBulk(
+                                                  selectedRecords,
+                                                );
+                                              },
                                             ),
-                                            title: Text(
-                                              'İş Emri Oluştur (${selectedRecords.length})',
+                                          if (canUseInternalApplicationActions)
+                                            ListTile(
+                                              leading: const Icon(
+                                                Icons.playlist_add_rounded,
+                                              ),
+                                              title: Text(
+                                                'İş Emri Oluştur (${selectedRecords.length})',
+                                              ),
+                                              onTap: () {
+                                                Navigator.of(context).pop();
+                                                _openCreateWorkOrdersDialog(
+                                                  selectedRecords,
+                                                );
+                                              },
                                             ),
-                                            onTap: () {
-                                              Navigator.of(context).pop();
-                                              _openCreateWorkOrdersDialog(
-                                                selectedRecords,
-                                              );
-                                            },
-                                          ),
                                           ListTile(
                                             leading: const Icon(
                                               Icons.print_rounded,
@@ -1543,48 +2181,50 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                               );
                                             },
                                           ),
-                                          ListTile(
-                                            leading: const Icon(
-                                              Icons.print_rounded,
+                                          if (canUseInternalApplicationActions) ...[
+                                            ListTile(
+                                              leading: const Icon(
+                                                Icons.print_rounded,
+                                              ),
+                                              title: Text(
+                                                'KDV4A Yazdır (${selectedRecords.length})',
+                                              ),
+                                              onTap: () {
+                                                Navigator.of(context).pop();
+                                                _printBulk(
+                                                  selectedRecords,
+                                                  kind: ApplicationPrintKind
+                                                      .kdv4a,
+                                                );
+                                              },
                                             ),
-                                            title: Text(
-                                              'KDV4A Yazdır (${selectedRecords.length})',
+                                            ListTile(
+                                              leading: const Icon(
+                                                Icons.download_rounded,
+                                              ),
+                                              title: Text(
+                                                'Vergi Dairesine Gönder (${selectedRecords.length})',
+                                              ),
+                                              onTap: () {
+                                                Navigator.of(context).pop();
+                                                _exportForTaxOffice(
+                                                  selectedRecords,
+                                                );
+                                              },
                                             ),
-                                            onTap: () {
-                                              Navigator.of(context).pop();
-                                              _printBulk(
-                                                selectedRecords,
-                                                kind:
-                                                    ApplicationPrintKind.kdv4a,
-                                              );
-                                            },
-                                          ),
-                                          ListTile(
-                                            leading: const Icon(
-                                              Icons.download_rounded,
+                                            ListTile(
+                                              leading: const Icon(
+                                                Icons.table_chart_rounded,
+                                              ),
+                                              title: Text(
+                                                'TSM\'e Gönder (${selectedRecords.length})',
+                                              ),
+                                              onTap: () {
+                                                Navigator.of(context).pop();
+                                                _exportForTsm(selectedRecords);
+                                              },
                                             ),
-                                            title: Text(
-                                              'Vergi Dairesine Gönder (${selectedRecords.length})',
-                                            ),
-                                            onTap: () {
-                                              Navigator.of(context).pop();
-                                              _exportForTaxOffice(
-                                                selectedRecords,
-                                              );
-                                            },
-                                          ),
-                                          ListTile(
-                                            leading: const Icon(
-                                              Icons.table_chart_rounded,
-                                            ),
-                                            title: Text(
-                                              'TSM\'e Gönder (${selectedRecords.length})',
-                                            ),
-                                            onTap: () {
-                                              Navigator.of(context).pop();
-                                              _exportForTsm(selectedRecords);
-                                            },
-                                          ),
+                                          ],
                                         ],
                                       ],
                                     ),
@@ -1620,9 +2260,12 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                 return _ApplicationRecordCard(
                   record: r,
                   colorIndex: index - 2,
-                  canEdit: canEdit,
+                  canEdit: canEditRecords,
+                  canApprove: canApprove,
                   canArchive: canArchive,
                   canDeletePermanently: canDeletePermanently,
+                  canPrintKdv4a: canUseInternalApplicationActions,
+                  canCreateWorkOrder: canUseInternalApplicationActions,
                   selected: _selectedRecordIds.contains(r.id),
                   onSelectionChanged: (selected) {
                     setState(() {
@@ -1634,9 +2277,12 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                     });
                   },
                   onPrintKdv: () => _print(r, kind: ApplicationPrintKind.kdv),
+                  onViewDocument: () => _downloadTaxpayerDocument(r),
+                  onViewLogs: () => _openRecordLogs(r),
                   onPrintKdv4a: () =>
                       _print(r, kind: ApplicationPrintKind.kdv4a),
                   onCreateWorkOrder: () => _openCreateWorkOrdersDialog([r]),
+                  onApprove: () => _approveRecord(r),
                   onEdit: () => _openEditDialog(r),
                   onDuplicate: () => _openDuplicateDialog(r),
                   onToggleActive: () => _setRecordActive(r, !r.isActive),
@@ -1670,9 +2316,12 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
               return _ApplicationRecordCard(
                 record: r,
                 colorIndex: recordIndex,
-                canEdit: canEdit,
+                canEdit: canEditRecords,
+                canApprove: canApprove,
                 canArchive: canArchive,
                 canDeletePermanently: canDeletePermanently,
+                canPrintKdv4a: canUseInternalApplicationActions,
+                canCreateWorkOrder: canUseInternalApplicationActions,
                 selected: _selectedRecordIds.contains(r.id),
                 onSelectionChanged: (selected) {
                   setState(() {
@@ -1684,8 +2333,11 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                   });
                 },
                 onPrintKdv: () => _print(r, kind: ApplicationPrintKind.kdv),
+                onViewDocument: () => _downloadTaxpayerDocument(r),
+                onViewLogs: () => _openRecordLogs(r),
                 onPrintKdv4a: () => _print(r, kind: ApplicationPrintKind.kdv4a),
                 onCreateWorkOrder: () => _openCreateWorkOrdersDialog([r]),
+                onApprove: () => _approveRecord(r),
                 onEdit: () => _openEditDialog(r),
                 onDuplicate: () => _openDuplicateDialog(r),
                 onToggleActive: () => _setRecordActive(r, !r.isActive),
@@ -1755,6 +2407,1432 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
           return true;
         })
         .toList(growable: false);
+  }
+}
+
+String _logActionLabel(String action) {
+  return switch (action) {
+    'create' => 'Oluşturuldu',
+    'approve' => 'Onaylandı',
+    'delete' => 'Silindi',
+    'status' => 'Durum',
+    _ => 'Güncellendi',
+  };
+}
+
+AppBadgeTone _logActionTone(String action) {
+  return switch (action) {
+    'create' => AppBadgeTone.primary,
+    'approve' => AppBadgeTone.success,
+    'delete' => AppBadgeTone.error,
+    'status' => AppBadgeTone.warning,
+    _ => AppBadgeTone.neutral,
+  };
+}
+
+String _logValue(String? value) {
+  final text = (value ?? '').trim();
+  if (text.isEmpty) return '-';
+  if (text.length <= 80) return text;
+  return '${text.substring(0, 80)}...';
+}
+
+List<ApplicationFormRecord> bankVisibleApplicationRecords({
+  required List<ApplicationFormRecord> records,
+  required UserProfile? profile,
+  required bool isBankUser,
+}) {
+  if (!isBankUser) return records;
+  if (profile?.isBankAdminLike ?? false) {
+    return records
+        .where((record) => (record.createdBy ?? '').trim().isNotEmpty)
+        .toList(growable: false);
+  }
+  final userId = (profile?.id ?? '').trim();
+  if (userId.isEmpty) return const [];
+
+  return records
+      .where((record) => (record.createdBy ?? '').trim() == userId)
+      .toList(growable: false);
+}
+
+List<BusinessActivityTypeDefinition> bankBusinessActivitiesFromRecords(
+  List<ApplicationFormRecord> records,
+) {
+  final byKey = <String, BusinessActivityTypeDefinition>{};
+  for (final record in records) {
+    final name = (record.businessActivityName ?? '').trim();
+    if (name.isEmpty) continue;
+    final key = _sortKey(name);
+    if (key.isEmpty || byKey.containsKey(key)) continue;
+    byKey[key] = BusinessActivityTypeDefinition(
+      id: 'record-$key',
+      name: name,
+      isActive: true,
+    );
+  }
+  final result = byKey.values.toList(growable: false);
+  result.sort((a, b) => _sortKey(a.name).compareTo(_sortKey(b.name)));
+  return result;
+}
+
+List<BusinessActivityTypeDefinition> _mergeBusinessActivities(
+  List<List<BusinessActivityTypeDefinition>> groups,
+) {
+  final byKey = <String, BusinessActivityTypeDefinition>{};
+  for (final group in groups) {
+    for (final item in group) {
+      if (!item.isActive) continue;
+      final key = _sortKey(item.name);
+      if (key.isEmpty || byKey.containsKey(key)) continue;
+      byKey[key] = item;
+    }
+  }
+  final result = byKey.values.toList(growable: false);
+  result.sort((a, b) => _sortKey(a.name).compareTo(_sortKey(b.name)));
+  return result;
+}
+
+String _formatPhoneForDisplay(String value) {
+  final digits = value.replaceAll(RegExp(r'\D'), '');
+  if (digits.isEmpty) return '';
+  final normalized = digits.length == 12 && digits.startsWith('90')
+      ? '0${digits.substring(2)}'
+      : digits.length > 11
+      ? digits.substring(digits.length - 11)
+      : digits;
+  final parts = <String>[];
+  var index = 0;
+  for (final size in const [4, 3, 2, 2]) {
+    if (index >= normalized.length) break;
+    final end = index + size > normalized.length
+        ? normalized.length
+        : index + size;
+    parts.add(normalized.substring(index, end));
+    index = end;
+  }
+  return parts.join(' ');
+}
+
+class _PhoneTextInputFormatter extends TextInputFormatter {
+  const _PhoneTextInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final formatted = _formatPhoneForDisplay(newValue.text);
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
+
+class _BankApplicationFormDialog extends ConsumerStatefulWidget {
+  const _BankApplicationFormDialog({this.initialRecord});
+
+  final ApplicationFormRecord? initialRecord;
+
+  @override
+  ConsumerState<_BankApplicationFormDialog> createState() =>
+      _BankApplicationFormDialogState();
+}
+
+const _bankFallbackTaxOfficeCities = <CityDefinition>[
+  CityDefinition(
+    id: 'fallback-lefkosa',
+    name: 'Lefkoşa',
+    code: null,
+    isActive: true,
+  ),
+  CityDefinition(
+    id: 'fallback-gazimagusa',
+    name: 'Gazimağusa',
+    code: null,
+    isActive: true,
+  ),
+  CityDefinition(
+    id: 'fallback-girne',
+    name: 'Girne',
+    code: null,
+    isActive: true,
+  ),
+  CityDefinition(
+    id: 'fallback-guzelyurt',
+    name: 'Güzelyurt',
+    code: null,
+    isActive: true,
+  ),
+  CityDefinition(
+    id: 'fallback-iskele',
+    name: 'İskele',
+    code: null,
+    isActive: true,
+  ),
+  CityDefinition(
+    id: 'fallback-lefke',
+    name: 'Lefke',
+    code: null,
+    isActive: true,
+  ),
+];
+
+const _bankFallbackBusinessActivities = <BusinessActivityTypeDefinition>[
+  BusinessActivityTypeDefinition(
+    id: 'fallback-market',
+    name: 'Market',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-restoran',
+    name: 'Restoran',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-eczane',
+    name: 'Eczane',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-kafe',
+    name: 'Kafe',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-kuafor',
+    name: 'Kuaför',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-tekstil',
+    name: 'Tekstil',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-oto',
+    name: 'Oto / Servis',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-turizm',
+    name: 'Turizm',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-tirnak',
+    name: 'Tırnak Bakım ve Onarım',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-gida',
+    name: 'Gıda',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-perakende',
+    name: 'Perakende Satış',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-toptan',
+    name: 'Toptan Satış',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-bakkal',
+    name: 'Bakkal',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-kasap',
+    name: 'Kasap',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-pastane',
+    name: 'Pastane',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-firin',
+    name: 'Fırın',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-bufe',
+    name: 'Büfe',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-otel',
+    name: 'Otel',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-giyim',
+    name: 'Giyim',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-ayakkabi',
+    name: 'Ayakkabı',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-elektronik',
+    name: 'Elektronik',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-mobilya',
+    name: 'Mobilya',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-insaat',
+    name: 'İnşaat Malzemeleri',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-kirtasiye',
+    name: 'Kırtasiye',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-kozmetik',
+    name: 'Kozmetik',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-berber',
+    name: 'Berber',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-guzellik',
+    name: 'Güzellik Salonu',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-oto-yedek',
+    name: 'Oto Yedek Parça',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-akaryakit',
+    name: 'Akaryakıt',
+    isActive: true,
+  ),
+  BusinessActivityTypeDefinition(
+    id: 'fallback-hirdavat',
+    name: 'Hırdavat',
+    isActive: true,
+  ),
+];
+
+class _BankApplicationFormDialogState
+    extends ConsumerState<_BankApplicationFormDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _dateFormat = DateFormat('dd.MM.yyyy', 'tr_TR');
+  final _vknController = TextEditingController();
+  final _customerNameController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _directorController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _businessActivityController = TextEditingController();
+  final _businessActivityFocusNode = FocusNode();
+  DateTime _applicationDate = DateTime.now();
+  String? _selectedTaxOfficeCityId;
+  String? _selectedBusinessActivityId;
+  String? _documentName;
+  String? _documentMimeType;
+  String? _documentBase64;
+  _CustomerOption? _customer;
+  bool _lookupDone = false;
+  bool _lookupBusy = false;
+  bool _saving = false;
+
+  bool get _isEditing => widget.initialRecord != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialRecord;
+    if (initial == null) return;
+    _applicationDate = initial.applicationDate;
+    _vknController.text = (initial.customerTcknMs ?? '').trim();
+    _customerNameController.text = initial.customerName.trim();
+    _addressController.text = (initial.workAddress ?? '').trim();
+    _directorController.text = (initial.director ?? '').trim();
+    _phoneController.text = _formatPhoneForDisplay(
+      (initial.customerPhone ?? '').trim(),
+    );
+    _emailController.text = (initial.customerEmail ?? '').trim();
+    _businessActivityController.text = (initial.businessActivityName ?? '')
+        .trim();
+    _documentName = initial.taxpayerRegistrationDocumentName;
+    _documentMimeType = initial.taxpayerRegistrationDocumentMimeType;
+    _documentBase64 = initial.taxpayerRegistrationDocumentData;
+    _lookupDone = true;
+    _customer = _CustomerOption(
+      id: (initial.customerId ?? '').trim(),
+      name: initial.customerName.trim(),
+      vkn: initial.customerTcknMs,
+      tcknMs: initial.customerTcknMs,
+      email: initial.customerEmail,
+      phone: initial.customerPhone,
+      city: initial.taxOfficeCityName,
+      address: initial.workAddress,
+      directorName: initial.director,
+      isActive: initial.isActive,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final city = _currentTaxOfficeCities()
+          .where(
+            (item) =>
+                _sortKey(item.name) ==
+                _sortKey(initial.taxOfficeCityName ?? ''),
+          )
+          .firstOrNull;
+      if (city != null) {
+        setState(() => _selectedTaxOfficeCityId = city.id);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _vknController.dispose();
+    _customerNameController.dispose();
+    _addressController.dispose();
+    _directorController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    _businessActivityController.dispose();
+    _businessActivityFocusNode.dispose();
+    super.dispose();
+  }
+
+  String get _normalizedVkn =>
+      _vknController.text.replaceAll(RegExp(r'\D'), '');
+
+  List<CityDefinition> _taxOfficeCitiesFromAsync(
+    AsyncValue<List<CityDefinition>> citiesAsync,
+  ) {
+    final remote =
+        citiesAsync.asData?.value
+            .where((item) => item.isActive)
+            .toList(growable: false) ??
+        const <CityDefinition>[];
+    return remote.isNotEmpty ? remote : _bankFallbackTaxOfficeCities;
+  }
+
+  List<CityDefinition> _currentTaxOfficeCities() {
+    final remote =
+        ref
+            .read(cityDefinitionsProvider)
+            .asData
+            ?.value
+            .where((item) => item.isActive)
+            .toList(growable: false) ??
+        const <CityDefinition>[];
+    return remote.isNotEmpty ? remote : _bankFallbackTaxOfficeCities;
+  }
+
+  CityDefinition? _selectedTaxOfficeCity() {
+    return _currentTaxOfficeCities()
+        .where((item) => item.id == _selectedTaxOfficeCityId)
+        .firstOrNull;
+  }
+
+  String? _persistableTaxOfficeCityId(CityDefinition? city) {
+    final id = city?.id.trim() ?? '';
+    if (id.isEmpty || id.startsWith('fallback-')) return null;
+    return id;
+  }
+
+  List<BusinessActivityTypeDefinition> _currentBusinessActivities() {
+    final remote =
+        ref
+            .read(businessActivityTypesProvider)
+            .asData
+            ?.value
+            .where((item) => item.isActive)
+            .toList(growable: false) ??
+        const <BusinessActivityTypeDefinition>[];
+    return remote.isNotEmpty ? remote : _bankFallbackBusinessActivities;
+  }
+
+  Future<BusinessActivityTypeDefinition?> _ensureBusinessActivity() async {
+    final name = _businessActivityController.text.trim();
+    if (name.isEmpty) return null;
+
+    final selected = _currentBusinessActivities()
+        .where((item) => item.id == _selectedBusinessActivityId)
+        .firstOrNull;
+    if (selected != null &&
+        _sortKey(selected.name) == _sortKey(name) &&
+        !selected.id.startsWith('fallback-')) {
+      return selected;
+    }
+
+    final existing = _currentBusinessActivities()
+        .where((item) => _sortKey(item.name) == _sortKey(name))
+        .firstOrNull;
+    if (existing != null && !existing.id.startsWith('fallback-')) {
+      return existing;
+    }
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    try {
+      if (apiClient != null) {
+        final response = await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'upsert',
+            'table': 'business_activity_types',
+            'returning': 'row',
+            'values': {'name': name, 'is_active': true},
+          },
+        );
+        final row = (response['row'] as Map?)?.cast<String, dynamic>();
+        if (row != null && row.isNotEmpty) {
+          ref.invalidate(businessActivityTypesProvider);
+          return BusinessActivityTypeDefinition.fromJson(row);
+        }
+      } else if (client != null) {
+        final row = await client
+            .from('business_activity_types')
+            .upsert({'name': name, 'is_active': true})
+            .select('id,name,is_active')
+            .single();
+        ref.invalidate(businessActivityTypesProvider);
+        return BusinessActivityTypeDefinition.fromJson(row);
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDialog<DateTime>(
+      context: context,
+      builder: (context) =>
+          _ApplicationDatePickerDialog(initialDate: _applicationDate),
+    );
+    if (picked == null) return;
+    setState(() => _applicationDate = picked);
+  }
+
+  Future<void> _lookupCustomer() async {
+    final vkn = _normalizedVkn;
+    if (vkn.length < 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('VKN en az 10 haneli olmalı.')),
+      );
+      return;
+    }
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    setState(() {
+      _lookupBusy = true;
+      _lookupDone = false;
+      _customer = null;
+      _customerNameController.clear();
+      _addressController.clear();
+      _directorController.clear();
+      _phoneController.clear();
+      _emailController.clear();
+      _selectedTaxOfficeCityId = null;
+      _businessActivityController.clear();
+      _selectedBusinessActivityId = null;
+    });
+
+    try {
+      Map<String, dynamic>? row;
+      if (apiClient != null) {
+        try {
+          final response = await apiClient.getJson(
+            '/data',
+            queryParameters: {'resource': 'form_customer_by_vkn', 'vkn': vkn},
+          );
+          row = (response['item'] as Map?)?.cast<String, dynamic>();
+        } catch (e) {
+          if (!e.toString().contains('form_customer_by_vkn') &&
+              !e.toString().contains('Bilinmeyen resource')) {
+            rethrow;
+          }
+          final response = await apiClient.getJson(
+            '/data',
+            queryParameters: {'resource': 'form_application_customers'},
+          );
+          final rows = ((response['items'] as List?) ?? const [])
+              .whereType<Map<String, dynamic>>();
+          row = rows
+              .where(
+                (item) =>
+                    (item['vkn']?.toString() ?? '').replaceAll(
+                      RegExp(r'\D'),
+                      '',
+                    ) ==
+                    vkn,
+              )
+              .firstOrNull;
+        }
+      } else {
+        final rows = await client!
+            .from('customers')
+            .select(
+              'id,name,vkn,tckn_ms,email,phone_1,city,address,director_name,is_active',
+            )
+            .eq('vkn', vkn)
+            .limit(1);
+        row = (rows as List).whereType<Map<String, dynamic>>().firstOrNull;
+      }
+
+      final found = row == null ? null : _CustomerOption.fromJson(row);
+      if (!mounted) return;
+      setState(() {
+        _customer = found;
+        _lookupDone = true;
+        if (found != null) {
+          _customerNameController.text = found.name;
+          _addressController.text = (found.address ?? '').trim();
+          _directorController.text = (found.directorName ?? '').trim();
+          _phoneController.text = (found.phone ?? '').trim();
+          _emailController.text = (found.email ?? '').trim();
+          final city = _currentTaxOfficeCities()
+              .where(
+                (item) => _sortKey(item.name) == _sortKey(found.city ?? ''),
+              )
+              .firstOrNull;
+          _selectedTaxOfficeCityId = city?.id;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('VKN sorgulanamadı: $e')));
+    } finally {
+      if (mounted) setState(() => _lookupBusy = false);
+    }
+  }
+
+  Future<void> _pickTaxpayerDocument() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
+        withData: true,
+      );
+      final file = result?.files.single;
+      final bytes = file?.bytes;
+      if (file == null || bytes == null) return;
+      if (bytes.length > 6 * 1024 * 1024) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Belge en fazla 6 MB olabilir.')),
+        );
+        return;
+      }
+      final ext = file.extension?.toLowerCase() ?? '';
+      setState(() {
+        _documentName = file.name;
+        _documentMimeType = switch (ext) {
+          'pdf' => 'application/pdf',
+          'jpg' || 'jpeg' => 'image/jpeg',
+          'png' => 'image/png',
+          _ => 'application/octet-stream',
+        };
+        _documentBase64 = base64Encode(bytes);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Belge seçilemedi: $e')));
+    }
+  }
+
+  DeviceModel? _resolvePaxModel(List<DeviceModel> models) {
+    final active = models.where((item) => item.isActive);
+    return active
+            .where(
+              (item) =>
+                  _sortKey(item.brandName ?? '').contains('pax') &&
+                  _sortKey(item.name).contains('a910sf'),
+            )
+            .firstOrNull ??
+        active
+            .where((item) => _sortKey(item.name).contains('a910sf'))
+            .firstOrNull ??
+        active
+            .where(
+              (item) =>
+                  _sortKey(item.brandName ?? '').contains('pax') ||
+                  _sortKey(item.name).contains('pax'),
+            )
+            .firstOrNull;
+  }
+
+  FiscalSymbolDefinition? _resolvePaxFiscal(
+    List<FiscalSymbolDefinition> fiscalSymbols,
+  ) {
+    return fiscalSymbols
+        .where(
+          (item) =>
+              item.isActive &&
+              (_sortKey(item.code ?? '') == _sortKey('MF 2D') ||
+                  _sortKey(item.code ?? '') == _sortKey('MF-2D') ||
+                  _sortKey(item.name) == _sortKey('MF 2D') ||
+                  _sortKey(item.name) == _sortKey('MF-2D')),
+        )
+        .firstOrNull;
+  }
+
+  Future<_CustomerOption> _ensureCustomer() async {
+    if (_customer != null && _customer!.id.trim().isNotEmpty) {
+      return _customer!;
+    }
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    final city = _selectedTaxOfficeCity();
+    final formattedPhone = _formatPhoneForDisplay(_phoneController.text);
+    final values = {
+      'name': _customerNameController.text.trim(),
+      'vkn': _normalizedVkn,
+      'address': _addressController.text.trim(),
+      'director_name': _directorController.text.trim(),
+      'city': city?.name,
+      'email': _emailController.text.trim(),
+      'phone_1': formattedPhone,
+      'is_active': true,
+    };
+
+    Map<String, dynamic>? row;
+    try {
+      if (apiClient != null) {
+        final response = await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'upsert',
+            'table': 'customers',
+            'returning': 'row',
+            'values': values,
+          },
+        );
+        row = (response['row'] as Map?)?.cast<String, dynamic>() ?? {};
+      } else {
+        row = await client!
+            .from('customers')
+            .insert(values)
+            .select(
+              'id,name,vkn,tckn_ms,email,phone_1,city,address,director_name,is_active',
+            )
+            .single();
+      }
+    } catch (_) {
+      if (client != null) {
+        try {
+          row = await client
+              .from('customers')
+              .insert(values)
+              .select(
+                'id,name,vkn,tckn_ms,email,phone_1,city,address,director_name,is_active',
+              )
+              .single();
+        } catch (_) {}
+      }
+    }
+    return _CustomerOption.fromJson(
+      row ??
+          {
+            'id': '',
+            'name': _customerNameController.text.trim(),
+            'vkn': _normalizedVkn,
+            'email': _emailController.text.trim(),
+            'phone_1': formattedPhone,
+            'city': city?.name,
+            'address': _addressController.text.trim(),
+            'director_name': _directorController.text.trim(),
+            'is_active': true,
+          },
+    );
+  }
+
+  Future<void> _save() async {
+    if (!_lookupDone) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Önce VKN sorgulayın.')));
+      return;
+    }
+    if ((_documentBase64 ?? '').isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Yükümlü kayıt belgesini yükleyin.')),
+      );
+      return;
+    }
+    if (!_formKey.currentState!.validate()) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+
+    setState(() => _saving = true);
+    try {
+      final customer = await _ensureCustomer();
+      final profile = await ref.read(currentUserProfileProvider.future);
+      final models = ref.read(deviceModelsProvider).asData?.value ?? const [];
+      final fiscalSymbols =
+          ref.read(fiscalSymbolsProvider).asData?.value ?? const [];
+      final taxOfficeCity = _selectedTaxOfficeCity();
+      final businessActivity = await _ensureBusinessActivity();
+      final businessActivityName = _businessActivityController.text.trim();
+      final paxModel = _resolvePaxModel(models);
+      final fiscal = _resolvePaxFiscal(fiscalSymbols);
+      final createdBy = _isEditing
+          ? (widget.initialRecord?.createdBy ?? '').trim()
+          : (profile?.id ?? '').trim();
+      final formattedPhone = _formatPhoneForDisplay(_phoneController.text);
+
+      final payload = {
+        if (_isEditing) 'id': widget.initialRecord!.id,
+        'application_date': DateFormat('yyyy-MM-dd').format(_applicationDate),
+        'customer_id': customer.id.trim().isEmpty ? null : customer.id,
+        'customer_name': _customerNameController.text.trim(),
+        'customer_tckn_ms': _normalizedVkn,
+        'work_address': _addressController.text.trim(),
+        'tax_office_city_id': _persistableTaxOfficeCityId(taxOfficeCity),
+        'tax_office_city_name': taxOfficeCity?.name,
+        'document_type': 'VKN',
+        'file_registry_number': _normalizedVkn,
+        'director': _directorController.text.trim(),
+        'brand_id': paxModel?.brandId,
+        'brand_name': 'PAX',
+        'model_id': paxModel?.id,
+        'model_name': paxModel?.name ?? 'A910SF',
+        'fiscal_symbol_id': fiscal?.id,
+        'fiscal_symbol_name': fiscal?.code?.trim().isNotEmpty ?? false
+            ? fiscal!.code!.trim()
+            : (fiscal?.name ?? 'MF 2D'),
+        'stock_product_id': null,
+        'stock_product_name': 'ÖKC',
+        'stock_registry_number': null,
+        'okc_start_date': DateFormat('yyyy-MM-dd').format(_applicationDate),
+        'business_activity_type_id': businessActivity?.id,
+        'business_activity_name':
+            businessActivity?.name ?? businessActivityName,
+        'invoice_number': null,
+        'customer_phone': formattedPhone,
+        'customer_email': _emailController.text.trim(),
+        'taxpayer_registration_document_name': _documentName,
+        'taxpayer_registration_document_mime_type': _documentMimeType,
+        'taxpayer_registration_document_data': _documentBase64,
+        'taxpayer_registration_document_uploaded_at': DateTime.now()
+            .toIso8601String(),
+        if (createdBy.isNotEmpty) 'created_by': createdBy,
+        'is_active': true,
+      };
+
+      Map<String, dynamic> inserted;
+      if (apiClient != null) {
+        final response = await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'upsert',
+            'table': 'application_forms',
+            'returning': 'row',
+            'values': payload,
+          },
+        );
+        inserted = (response['row'] as Map?)?.cast<String, dynamic>() ?? {};
+      } else {
+        inserted = await client!
+            .from('application_forms')
+            .upsert(payload)
+            .select(
+              'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,approval_status,approved_at,approved_by,created_by,is_active,created_at',
+            )
+            .single();
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pop([ApplicationFormRecord.fromJson(inserted)]);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Başvuru kaydedilemedi: $e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final isMobile = width < 840;
+    final models = ref.watch(deviceModelsProvider).asData?.value ?? const [];
+    final citiesAsync = ref.watch(cityDefinitionsProvider);
+    final activitiesAsync = ref.watch(businessActivityTypesProvider);
+    final applicationRecords =
+        ref.watch(applicationFormsProvider).asData?.value ??
+        const <ApplicationFormRecord>[];
+    final recordActivities = bankBusinessActivitiesFromRecords(
+      applicationRecords,
+    );
+    final taxOfficeCities = _taxOfficeCitiesFromAsync(citiesAsync);
+    final remoteBusinessActivities =
+        activitiesAsync.asData?.value
+            .where((item) => item.isActive)
+            .toList(growable: false) ??
+        const <BusinessActivityTypeDefinition>[];
+    final businessActivities = _mergeBusinessActivities([
+      remoteBusinessActivities,
+      recordActivities,
+      if (remoteBusinessActivities.isEmpty && recordActivities.isEmpty)
+        _bankFallbackBusinessActivities,
+    ]);
+    final paxModel = _resolvePaxModel(models);
+    final existingCustomer = _customer != null;
+    final fieldsLocked = existingCustomer && !_isEditing;
+
+    return Dialog(
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 12 : 32,
+        vertical: isMobile ? 16 : 28,
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 980),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(isMobile ? 18 : 28),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Capital Bank ÖKC Talep',
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const Gap(6),
+                          Text(
+                            'VKN ile sorgulayın, zorunlu alanları tamamlayın ve talebi gönderin.',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: AppTheme.textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const Gap(24),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _BankTextField(
+                          controller: _vknController,
+                          label: 'VKN',
+                          hintText: 'Örn: 0938010101',
+                          enabled: !_saving && !_lookupBusy,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(11),
+                          ],
+                          validator: (value) {
+                            final digits = (value ?? '').replaceAll(
+                              RegExp(r'\D'),
+                              '',
+                            );
+                            if (digits.length < 10) {
+                              return 'VKN en az 10 haneli olmalı.';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                      const Gap(12),
+                      SizedBox(
+                        height: 50,
+                        child: FilledButton.icon(
+                          onPressed: _lookupBusy || _saving
+                              ? null
+                              : _lookupCustomer,
+                          icon: _lookupBusy
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.search_rounded),
+                          label: const Text('Sorgula'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_lookupDone) ...[
+                  const Gap(12),
+                  AppBadge(
+                    label: existingCustomer
+                        ? 'Müşteri bulundu, bilgiler getirildi.'
+                        : 'Müşteri bulunamadı, kayıt oluşturulacak.',
+                    tone: existingCustomer
+                        ? AppBadgeTone.success
+                        : AppBadgeTone.warning,
+                  ),
+                ],
+                const Gap(20),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final twoColumns = constraints.maxWidth >= 760;
+                    final left = Column(
+                      children: [
+                        _BankTextField(
+                          controller: _customerNameController,
+                          label: 'Ünvan',
+                          hintText: 'Örn: Capital Market Ltd.',
+                          enabled: !fieldsLocked && !_saving,
+                          validator: _requiredValidator,
+                        ),
+                        const Gap(14),
+                        _BankTextField(
+                          controller: _addressController,
+                          label: 'İş yeri adresi',
+                          hintText: 'Örn: Dereboyu Cad. No: 12 Lefkoşa',
+                          enabled: !fieldsLocked && !_saving,
+                          maxLines: 3,
+                          validator: _requiredValidator,
+                        ),
+                        const Gap(14),
+                        _BankTextField(
+                          controller: _directorController,
+                          label: 'Yetkili / Direktör',
+                          hintText: 'Örn: Ahmet Yılmaz',
+                          enabled: !fieldsLocked && !_saving,
+                          validator: _requiredValidator,
+                        ),
+                        const Gap(14),
+                        _ApplicationDropdown<String>(
+                          value:
+                              taxOfficeCities.any(
+                                (item) => item.id == _selectedTaxOfficeCityId,
+                              )
+                              ? _selectedTaxOfficeCityId
+                              : null,
+                          hintText: 'Vergi Dairesi seçin',
+                          items: taxOfficeCities
+                              .map(
+                                (item) => DropdownMenuItem(
+                                  value: item.id,
+                                  child: Text(item.name),
+                                ),
+                              )
+                              .toList(growable: false),
+                          onChanged: _saving
+                              ? null
+                              : (value) => setState(
+                                  () => _selectedTaxOfficeCityId = value,
+                                ),
+                          validator: (value) =>
+                              value == null ? 'Vergi Dairesi seçin.' : null,
+                        ),
+                      ],
+                    );
+                    final right = Column(
+                      children: [
+                        _BankTextField(
+                          controller: _phoneController,
+                          label: 'Müşteri telefonu',
+                          hintText: 'Örn: 0533 890 90 90',
+                          enabled: !_saving,
+                          keyboardType: TextInputType.phone,
+                          inputFormatters: const [_PhoneTextInputFormatter()],
+                          validator: _requiredValidator,
+                        ),
+                        const Gap(14),
+                        _BankTextField(
+                          controller: _emailController,
+                          label: 'Müşteri e-posta',
+                          hintText: 'Örn: muhasebe@capital.com',
+                          enabled: !_saving,
+                          keyboardType: TextInputType.emailAddress,
+                          validator: (value) {
+                            final text = (value ?? '').trim();
+                            if (text.isEmpty) return 'Zorunlu alan.';
+                            if (!text.contains('@') || !text.contains('.')) {
+                              return 'Geçerli e-posta yazın.';
+                            }
+                            return null;
+                          },
+                        ),
+                        const Gap(14),
+                        _BankBusinessActivityField(
+                          controller: _businessActivityController,
+                          focusNode: _businessActivityFocusNode,
+                          items: businessActivities,
+                          enabled: !_saving,
+                          onSelected: (item) {
+                            _selectedBusinessActivityId = item?.id;
+                            if (item != null) {
+                              _businessActivityController.text = item.name;
+                            }
+                          },
+                        ),
+                        const Gap(14),
+                        _BankReadOnlyField(
+                          label: 'Model',
+                          value: [
+                            'PAX',
+                            paxModel?.name ?? 'A910SF',
+                          ].where((item) => item.trim().isNotEmpty).join(' / '),
+                        ),
+                        const Gap(14),
+                        _BankDocumentField(
+                          fileName: _documentName,
+                          onPick: _saving ? null : _pickTaxpayerDocument,
+                        ),
+                        const Gap(14),
+                        _BankDateField(
+                          label: 'Talep tarihi',
+                          value: _dateFormat.format(_applicationDate),
+                          onTap: _saving ? null : _pickDate,
+                        ),
+                      ],
+                    );
+                    if (!twoColumns) {
+                      return Column(children: [left, const Gap(14), right]);
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: left),
+                        const Gap(18),
+                        Expanded(child: right),
+                      ],
+                    );
+                  },
+                ),
+                const Gap(24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        child: const Text('Vazgeç'),
+                      ),
+                    ),
+                    const Gap(14),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _saving ? null : _save,
+                        child: _saving
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(_isEditing ? 'Kaydet' : 'Talebi Gönder'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String? _requiredValidator(String? value) {
+    if ((value ?? '').trim().isEmpty) return 'Zorunlu alan.';
+    return null;
+  }
+}
+
+class _BankTextField extends StatelessWidget {
+  const _BankTextField({
+    required this.controller,
+    required this.label,
+    this.hintText,
+    this.enabled = true,
+    this.maxLines = 1,
+    this.keyboardType,
+    this.inputFormatters,
+    this.validator,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String? hintText;
+  final bool enabled;
+  final int maxLines;
+  final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
+  final String? Function(String?)? validator;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      enabled: enabled,
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hintText,
+        filled: true,
+        fillColor: enabled ? Colors.white : const Color(0xFFF1F5F9),
+        border: const OutlineInputBorder(),
+      ),
+    );
+  }
+}
+
+class _BankBusinessActivityField extends StatelessWidget {
+  const _BankBusinessActivityField({
+    required this.controller,
+    required this.focusNode,
+    required this.items,
+    required this.enabled,
+    required this.onSelected,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final List<BusinessActivityTypeDefinition> items;
+  final bool enabled;
+  final ValueChanged<BusinessActivityTypeDefinition?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return RawAutocomplete<BusinessActivityTypeDefinition>(
+      textEditingController: controller,
+      focusNode: focusNode,
+      displayStringForOption: (option) => option.name,
+      optionsBuilder: (textEditingValue) {
+        final query = _sortKey(textEditingValue.text);
+        final ordered = [...items]
+          ..sort((a, b) => _sortKey(a.name).compareTo(_sortKey(b.name)));
+        if (query.isEmpty) {
+          return ordered.take(240);
+        }
+        return ordered
+            .where((item) => _sortKey(item.name).contains(query))
+            .take(240);
+      },
+      onSelected: onSelected,
+      fieldViewBuilder:
+          (context, textEditingController, fieldFocusNode, onFieldSubmitted) {
+            return TextFormField(
+              controller: textEditingController,
+              focusNode: fieldFocusNode,
+              enabled: enabled,
+              decoration: const InputDecoration(
+                labelText: 'Meslek türü',
+                hintText: 'Örn: Market / Restoran / Eczane',
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(),
+                suffixIcon: Icon(Icons.search_rounded, size: 18),
+              ),
+              validator: (value) {
+                if ((value ?? '').trim().isEmpty) return 'Meslek türü yazın.';
+                return null;
+              },
+              onChanged: (_) => onSelected(null),
+              onFieldSubmitted: (_) => onFieldSubmitted(),
+            );
+          },
+      optionsViewBuilder: (context, onSelectedOption, options) {
+        final optionsList = options.toList(growable: false);
+        if (optionsList.isEmpty) return const SizedBox.shrink();
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(8),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 420, maxWidth: 560),
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                itemCount: optionsList.length,
+                itemBuilder: (context, index) {
+                  final item = optionsList[index];
+                  return ListTile(
+                    dense: true,
+                    title: Text(item.name),
+                    onTap: () => onSelectedOption(item),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _BankReadOnlyField extends StatelessWidget {
+  const _BankReadOnlyField({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: const Color(0xFFF1F5F9),
+        border: const OutlineInputBorder(),
+      ),
+      child: Text(
+        value,
+        style: Theme.of(
+          context,
+        ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _BankDocumentField extends StatelessWidget {
+  const _BankDocumentField({required this.fileName, required this.onPick});
+
+  final String? fileName;
+  final VoidCallback? onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasFile = fileName?.trim().isNotEmpty ?? false;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: hasFile ? AppTheme.success : AppTheme.borderStrong,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            hasFile ? Icons.task_rounded : Icons.upload_file_rounded,
+            color: hasFile ? AppTheme.success : AppTheme.textMuted,
+          ),
+          const Gap(10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Yükümlü kayıt belgesi',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const Gap(3),
+                Text(
+                  hasFile ? fileName!.trim() : 'PDF, JPG veya PNG yükleyin',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+                ),
+              ],
+            ),
+          ),
+          const Gap(10),
+          OutlinedButton.icon(
+            onPressed: onPick,
+            icon: const Icon(Icons.attach_file_rounded, size: 18),
+            label: Text(hasFile ? 'Değiştir' : 'Yükle'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BankDateField extends StatelessWidget {
+  const _BankDateField({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          filled: true,
+          fillColor: Colors.white,
+          border: const OutlineInputBorder(),
+          suffixIcon: const Icon(Icons.calendar_today_rounded, size: 18),
+        ),
+        child: Text(
+          value,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
   }
 }
 
@@ -2278,6 +4356,8 @@ class _ApplicationFormDialogState
       return;
     }
 
+    final profile = await ref.read(currentUserProfileProvider.future);
+    final createdBy = (profile?.id ?? '').trim();
     setState(() => _saving = true);
     try {
       final basePayload = {
@@ -2319,6 +4399,7 @@ class _ApplicationFormDialogState
         'invoice_number': _invoiceNumberController.text.trim().isEmpty
             ? null
             : _invoiceNumberController.text.trim(),
+        if (createdBy.isNotEmpty) 'created_by': createdBy,
       };
 
       if (widget.isEdit) {
@@ -2352,7 +4433,7 @@ class _ApplicationFormDialogState
               })
               .eq('id', widget.initialRecord!.id)
               .select(
-                'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
+                'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,approval_status,approved_at,approved_by,created_by,is_active,created_at',
               )
               .single();
         }
@@ -2440,7 +4521,6 @@ class _ApplicationFormDialogState
           }
         } catch (_) {}
 
-        ref.invalidate(applicationFormsProvider);
         if (!mounted) return;
         Navigator.of(context).pop([ApplicationFormRecord.fromJson(inserted)]);
         return;
@@ -2588,7 +4668,7 @@ class _ApplicationFormDialogState
             .from('application_forms')
             .insert(payloads)
             .select(
-              'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,is_active,created_at',
+              'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,approval_status,approved_at,approved_by,created_by,is_active,created_at',
             );
 
         insertedRecords = (insertedRows as List)
@@ -2681,7 +4761,6 @@ class _ApplicationFormDialogState
         } catch (_) {}
       }
 
-      ref.invalidate(applicationFormsProvider);
       if (!mounted) return;
       Navigator.of(context).pop(insertedRecords);
     } finally {
@@ -3415,18 +5494,201 @@ class _SerialTrackingPickerDialogState
   }
 }
 
+class _ApplicationFormLogsDialog extends ConsumerWidget {
+  const _ApplicationFormLogsDialog({required this.record});
+
+  final ApplicationFormRecord record;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final logsAsync = ref.watch(applicationFormLogsProvider(record.id));
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
+    return Dialog(
+      insetPadding: EdgeInsets.all(isMobile ? 12 : 28),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 820, maxHeight: 680),
+        child: Padding(
+          padding: EdgeInsets.all(isMobile ? 16 : 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Form Logları',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const Gap(4),
+                        Text(
+                          record.customerName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: AppTheme.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const Gap(14),
+              Expanded(
+                child: logsAsync.when(
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (error, _) =>
+                      Center(child: Text('Loglar yüklenemedi: $error')),
+                  data: (logs) {
+                    if (logs.isEmpty) {
+                      return const Center(
+                        child: Text('Bu form için henüz log yok.'),
+                      );
+                    }
+                    return ListView.separated(
+                      itemCount: logs.length,
+                      separatorBuilder: (_, _) => const Gap(10),
+                      itemBuilder: (context, index) =>
+                          _ApplicationFormLogCard(entry: logs[index]),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ApplicationFormLogCard extends StatelessWidget {
+  const _ApplicationFormLogCard({required this.entry});
+
+  final ApplicationFormLogEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              AppBadge(
+                label: _logActionLabel(entry.action),
+                tone: _logActionTone(entry.action),
+              ),
+              const Gap(8),
+              Expanded(
+                child: Text(
+                  entry.actorName?.trim().isNotEmpty ?? false
+                      ? entry.actorName!.trim()
+                      : 'Kullanıcı',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+              ),
+              Text(
+                DateFormat('dd.MM.yyyy HH:mm', 'tr_TR').format(entry.createdAt),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+              ),
+            ],
+          ),
+          const Gap(10),
+          if (entry.changes.isEmpty)
+            Text(
+              'Alan değişikliği yok.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+            )
+          else
+            for (final change in entry.changes.take(12)) ...[
+              _ApplicationFormLogChangeRow(change: change),
+              const Gap(6),
+            ],
+          if (entry.changes.length > 12)
+            Text(
+              '+${entry.changes.length - 12} değişiklik daha',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ApplicationFormLogChangeRow extends StatelessWidget {
+  const _ApplicationFormLogChangeRow({required this.change});
+
+  final ApplicationFormLogChange change;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceSoft,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 150,
+            child: Text(
+              change.label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+          ),
+          const Gap(8),
+          Expanded(
+            child: Text(
+              '${_logValue(change.oldValue)} -> ${_logValue(change.newValue)}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ApplicationRecordCard extends StatelessWidget {
   const _ApplicationRecordCard({
     required this.record,
     required this.colorIndex,
     required this.canEdit,
+    required this.canApprove,
     required this.canArchive,
     required this.canDeletePermanently,
+    required this.canPrintKdv4a,
+    required this.canCreateWorkOrder,
     required this.selected,
     required this.onSelectionChanged,
     required this.onPrintKdv,
+    required this.onViewDocument,
+    required this.onViewLogs,
     required this.onPrintKdv4a,
     required this.onCreateWorkOrder,
+    required this.onApprove,
     required this.onEdit,
     required this.onDuplicate,
     required this.onToggleActive,
@@ -3436,13 +5698,19 @@ class _ApplicationRecordCard extends StatelessWidget {
   final ApplicationFormRecord record;
   final int colorIndex;
   final bool canEdit;
+  final bool canApprove;
   final bool canArchive;
   final bool canDeletePermanently;
+  final bool canPrintKdv4a;
+  final bool canCreateWorkOrder;
   final bool selected;
   final ValueChanged<bool> onSelectionChanged;
   final VoidCallback onPrintKdv;
+  final VoidCallback onViewDocument;
+  final VoidCallback onViewLogs;
   final VoidCallback onPrintKdv4a;
   final VoidCallback onCreateWorkOrder;
+  final VoidCallback onApprove;
   final VoidCallback onEdit;
   final VoidCallback onDuplicate;
   final VoidCallback onToggleActive;
@@ -3456,10 +5724,14 @@ class _ApplicationRecordCard extends StatelessWidget {
     ).format(record.applicationDate);
     final isMobile = MediaQuery.sizeOf(context).width < 900;
     final accentColor = record.isActive ? AppTheme.primary : AppTheme.textMuted;
-    final badgeLabel = record.isActive ? record.documentType : 'Pasif';
-    final badgeTone = record.isActive
-        ? AppBadgeTone.primary
-        : AppBadgeTone.neutral;
+    final approvalLabel = record.isApproved ? 'Onaylandı' : 'Onay Bekliyor';
+    final approvalTone = record.isApproved
+        ? AppBadgeTone.success
+        : AppBadgeTone.warning;
+    final canModify = canEdit && !record.isApproved;
+    final canChangeActive = canArchive && !record.isApproved;
+    final canDelete =
+        !record.isActive && canDeletePermanently && !record.isApproved;
 
     final backgrounds = [
       const Color(0xFFF0F9FF),
@@ -3473,21 +5745,28 @@ class _ApplicationRecordCard extends StatelessWidget {
         : null;
 
     final menuItems = <PopupMenuEntry<String>>[
-      if (canEdit) const PopupMenuItem(value: 'edit', child: Text('Düzenle')),
-      if (canEdit)
+      if (canModify) const PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+      if (canModify && canPrintKdv4a)
         const PopupMenuItem(value: 'duplicate', child: Text('Kopya Oluştur')),
+      if (record.hasTaxpayerRegistrationDocument)
+        const PopupMenuItem(value: 'document', child: Text('Yükümlü Belgesi')),
+      const PopupMenuItem(value: 'logs', child: Text('Loglar')),
+      if (canApprove && record.isPendingApproval)
+        const PopupMenuItem(value: 'approve', child: Text('Onayla')),
       const PopupMenuItem(value: 'print_kdv4', child: Text('KDV4 Yazdır')),
-      const PopupMenuItem(value: 'print_kdv4a', child: Text('KDV4A Yazdır')),
-      const PopupMenuItem(
-        value: 'create_work_order',
-        child: Text('İş Emri Oluştur'),
-      ),
-      if (canArchive)
+      if (canPrintKdv4a)
+        const PopupMenuItem(value: 'print_kdv4a', child: Text('KDV4A Yazdır')),
+      if (canCreateWorkOrder)
+        const PopupMenuItem(
+          value: 'create_work_order',
+          child: Text('İş Emri Oluştur'),
+        ),
+      if (canChangeActive)
         PopupMenuItem(
           value: 'toggle_active',
           child: Text(record.isActive ? 'Pasife Al' : 'Aktifleştir'),
         ),
-      if (!record.isActive && canDeletePermanently)
+      if (canDelete)
         const PopupMenuItem(
           value: 'delete_permanently',
           child: Text('Kalıcı Sil'),
@@ -3576,49 +5855,72 @@ class _ApplicationRecordCard extends StatelessWidget {
             ),
             _ApplicationMetaCell(
               width: 170,
-              icon: Icons.memory_rounded,
-              label: 'Cihaz',
+              icon: record.isApproved
+                  ? Icons.verified_rounded
+                  : Icons.memory_rounded,
+              label: record.isApproved ? 'Onaylı Sicil' : 'Cihaz',
               value: record.stockRegistryNumber?.trim().isNotEmpty == true
                   ? record.stockRegistryNumber!.trim()
                   : '-',
+              highlighted: record.isApproved,
             ),
             SizedBox(
-              width: 82,
-              child: AppBadge(label: badgeLabel, tone: badgeTone),
+              width: 116,
+              child: AppBadge(label: approvalLabel, tone: approvalTone),
             ),
             const Gap(8),
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (canEdit) ...[
+                if (canModify) ...[
                   _ActionButton(
                     onPressed: onEdit,
                     icon: Icons.edit_rounded,
                     label: 'Düzenle',
                   ),
-                  _ActionButton(
-                    onPressed: onDuplicate,
-                    icon: Icons.content_copy_rounded,
-                    label: 'Kopya Oluştur',
-                  ),
+                  if (canPrintKdv4a)
+                    _ActionButton(
+                      onPressed: onDuplicate,
+                      icon: Icons.content_copy_rounded,
+                      label: 'Kopya Oluştur',
+                    ),
                 ],
+                if (canApprove && record.isPendingApproval)
+                  _ActionButton(
+                    onPressed: onApprove,
+                    icon: Icons.verified_rounded,
+                    label: 'Onayla',
+                    primary: true,
+                  ),
+                if (record.hasTaxpayerRegistrationDocument)
+                  _ActionButton(
+                    onPressed: onViewDocument,
+                    icon: Icons.attach_file_rounded,
+                    label: 'Yükümlü Belgesi',
+                  ),
+                _ActionButton(
+                  onPressed: onViewLogs,
+                  icon: Icons.history_rounded,
+                  label: 'Loglar',
+                ),
                 _ActionButton(
                   onPressed: onPrintKdv,
                   icon: Icons.print_rounded,
                   label: 'KDV4 Yazdır',
                 ),
-                _ActionButton(
-                  onPressed: onPrintKdv4a,
-                  icon: Icons.picture_as_pdf_rounded,
-                  label: 'KDV4A Yazdır',
-                  primary: true,
-                ),
-                _ActionButton(
-                  onPressed: onCreateWorkOrder,
-                  icon: Icons.playlist_add_rounded,
-                  label: 'İş Emri Oluştur',
-                ),
-                if (canArchive)
+                if (canPrintKdv4a)
+                  _ActionButton(
+                    onPressed: onPrintKdv4a,
+                    icon: Icons.picture_as_pdf_rounded,
+                    label: 'KDV4A Yazdır',
+                  ),
+                if (canCreateWorkOrder)
+                  _ActionButton(
+                    onPressed: onCreateWorkOrder,
+                    icon: Icons.playlist_add_rounded,
+                    label: 'İş Emri Oluştur',
+                  ),
+                if (canChangeActive)
                   _ActionButton(
                     onPressed: onToggleActive,
                     icon: record.isActive
@@ -3626,7 +5928,7 @@ class _ApplicationRecordCard extends StatelessWidget {
                         : Icons.restore_rounded,
                     label: record.isActive ? 'Pasife Al' : 'Aktifleştir',
                   ),
-                if (!record.isActive && canDeletePermanently)
+                if (canDelete)
                   _ActionButton(
                     onPressed: onDeletePermanently,
                     icon: Icons.delete_forever_rounded,
@@ -3687,7 +5989,7 @@ class _ApplicationRecordCard extends StatelessWidget {
                 ),
               ),
               const Gap(8),
-              AppBadge(label: badgeLabel, tone: badgeTone),
+              AppBadge(label: approvalLabel, tone: approvalTone),
               const Gap(6),
               if (isMobile)
                 PopupMenuButton<String>(
@@ -3704,11 +6006,20 @@ class _ApplicationRecordCard extends StatelessWidget {
                       case 'print_kdv4':
                         onPrintKdv();
                         break;
+                      case 'document':
+                        onViewDocument();
+                        break;
+                      case 'logs':
+                        onViewLogs();
+                        break;
                       case 'print_kdv4a':
                         onPrintKdv4a();
                         break;
                       case 'create_work_order':
                         onCreateWorkOrder();
+                        break;
+                      case 'approve':
+                        onApprove();
                         break;
                       case 'toggle_active':
                         onToggleActive();
@@ -3726,19 +6037,21 @@ class _ApplicationRecordCard extends StatelessWidget {
                   ),
                 )
               else ...[
-                if (canEdit) ...[
+                if (canModify) ...[
                   _ActionButton(
                     onPressed: onEdit,
                     icon: Icons.edit_rounded,
                     label: 'Düzenle',
                   ),
                   const Gap(4),
-                  _ActionButton(
-                    onPressed: onDuplicate,
-                    icon: Icons.content_copy_rounded,
-                    label: 'Kopya',
-                  ),
-                  const Gap(4),
+                  if (canPrintKdv4a) ...[
+                    _ActionButton(
+                      onPressed: onDuplicate,
+                      icon: Icons.content_copy_rounded,
+                      label: 'Kopya',
+                    ),
+                    const Gap(4),
+                  ],
                 ],
                 _ActionButton(
                   onPressed: onPrintKdv,
@@ -3746,19 +6059,45 @@ class _ApplicationRecordCard extends StatelessWidget {
                   label: 'KDV4',
                 ),
                 const Gap(4),
+                if (record.hasTaxpayerRegistrationDocument) ...[
+                  _ActionButton(
+                    onPressed: onViewDocument,
+                    icon: Icons.attach_file_rounded,
+                    label: 'Belge',
+                  ),
+                  const Gap(4),
+                ],
                 _ActionButton(
-                  onPressed: onPrintKdv4a,
-                  icon: Icons.picture_as_pdf_rounded,
-                  label: 'KDV4A',
-                  primary: true,
+                  onPressed: onViewLogs,
+                  icon: Icons.history_rounded,
+                  label: 'Log',
                 ),
                 const Gap(4),
-                _ActionButton(
-                  onPressed: onCreateWorkOrder,
-                  icon: Icons.playlist_add_rounded,
-                  label: 'İş Emri',
-                ),
-                if (canArchive) ...[
+                if (canPrintKdv4a) ...[
+                  _ActionButton(
+                    onPressed: onPrintKdv4a,
+                    icon: Icons.picture_as_pdf_rounded,
+                    label: 'KDV4A',
+                    primary: true,
+                  ),
+                  const Gap(4),
+                ],
+                if (canApprove && record.isPendingApproval) ...[
+                  _ActionButton(
+                    onPressed: onApprove,
+                    icon: Icons.verified_rounded,
+                    label: 'Onayla',
+                    primary: true,
+                  ),
+                  const Gap(4),
+                ],
+                if (canCreateWorkOrder)
+                  _ActionButton(
+                    onPressed: onCreateWorkOrder,
+                    icon: Icons.playlist_add_rounded,
+                    label: 'İş Emri',
+                  ),
+                if (canChangeActive) ...[
                   const Gap(4),
                   _ActionButton(
                     onPressed: onToggleActive,
@@ -3768,7 +6107,7 @@ class _ApplicationRecordCard extends StatelessWidget {
                     label: record.isActive ? 'Pasif' : 'Aktif',
                   ),
                 ],
-                if (!record.isActive && canDeletePermanently) ...[
+                if (canDelete) ...[
                   const Gap(4),
                   _ActionButton(
                     onPressed: onDeletePermanently,
@@ -3792,8 +6131,13 @@ class _ApplicationRecordCard extends StatelessWidget {
                 ),
               if (record.stockRegistryNumber?.trim().isNotEmpty ?? false)
                 _InfoChip(
-                  icon: Icons.memory_rounded,
-                  text: 'Cihaz: ${record.stockRegistryNumber}',
+                  icon: record.isApproved
+                      ? Icons.verified_rounded
+                      : Icons.memory_rounded,
+                  text: record.isApproved
+                      ? 'Onaylı Sicil: ${record.stockRegistryNumber}'
+                      : 'Cihaz: ${record.stockRegistryNumber}',
+                  highlighted: record.isApproved,
                 ),
               if (record.brandModel.isNotEmpty)
                 _InfoChip(
@@ -4504,29 +6848,42 @@ class _CompactStat extends StatelessWidget {
 }
 
 class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.icon, required this.text});
+  const _InfoChip({
+    required this.icon,
+    required this.text,
+    this.highlighted = false,
+  });
 
   final IconData icon;
   final String text;
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
+    final color = highlighted ? AppTheme.success : AppTheme.textMuted;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: highlighted
+            ? AppTheme.success.withValues(alpha: 0.10)
+            : const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(
+          color: highlighted
+              ? AppTheme.success.withValues(alpha: 0.22)
+              : AppTheme.border,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 10, color: AppTheme.textMuted),
+          Icon(icon, size: 10, color: color),
           const Gap(3),
           Text(
             text,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w600,
+              color: highlighted ? AppTheme.success : null,
               fontSize: 10.5,
               height: 1.0,
             ),
@@ -4543,12 +6900,14 @@ class _ApplicationMetaCell extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    this.highlighted = false,
   });
 
   final double width;
   final IconData icon;
   final String label;
   final String value;
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
@@ -4556,7 +6915,11 @@ class _ApplicationMetaCell extends StatelessWidget {
       width: width,
       child: Row(
         children: [
-          Icon(icon, size: 15, color: AppTheme.textMuted),
+          Icon(
+            icon,
+            size: 15,
+            color: highlighted ? AppTheme.success : AppTheme.textMuted,
+          ),
           const Gap(7),
           Expanded(
             child: Column(
@@ -4579,7 +6942,7 @@ class _ApplicationMetaCell extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textSoft,
+                    color: highlighted ? AppTheme.success : AppTheme.textSoft,
                     fontWeight: FontWeight.w800,
                     height: 1,
                   ),
@@ -5480,6 +7843,8 @@ class _CustomerOption {
     required this.name,
     required this.vkn,
     required this.tcknMs,
+    required this.email,
+    required this.phone,
     required this.city,
     required this.address,
     required this.directorName,
@@ -5490,6 +7855,8 @@ class _CustomerOption {
   final String name;
   final String? vkn;
   final String? tcknMs;
+  final String? email;
+  final String? phone;
   final String? city;
   final String? address;
   final String? directorName;
@@ -5501,6 +7868,8 @@ class _CustomerOption {
       name: json['name']?.toString() ?? '',
       vkn: json['vkn']?.toString(),
       tcknMs: json['tckn_ms']?.toString(),
+      email: json['email']?.toString(),
+      phone: json['phone_1']?.toString(),
       city: json['city']?.toString(),
       address: json['address']?.toString(),
       directorName: json['director_name']?.toString(),
