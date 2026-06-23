@@ -1504,7 +1504,13 @@ async function ensureApplicationFormsApprovalColumns() {
         add column if not exists taxpayer_registration_document_name text,
         add column if not exists taxpayer_registration_document_mime_type text,
         add column if not exists taxpayer_registration_document_data text,
-        add column if not exists taxpayer_registration_document_uploaded_at timestamptz
+        add column if not exists taxpayer_registration_document_uploaded_at timestamptz,
+        add column if not exists approval_document_name text,
+        add column if not exists approval_document_mime_type text,
+        add column if not exists approval_document_storage_bucket text,
+        add column if not exists approval_document_storage_path text,
+        add column if not exists approval_document_url text,
+        add column if not exists approval_document_uploaded_at timestamptz
     `,
   );
   await query(

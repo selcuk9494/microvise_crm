@@ -59,6 +59,7 @@ async function readJson(req) {
 
 const serviceImageBucket = 'service-images';
 const serviceImageMaxBytes = 5 * 1024 * 1024;
+const approvalDocumentMaxBytes = 10 * 1024 * 1024;
 const allowedServiceImageContentTypes = new Set([
   'image/jpeg',
   'image/png',
@@ -76,13 +77,16 @@ function safeStorageSegment(value, fallback) {
 
 function serviceImageExtension(contentType, filename) {
   const ext = String(filename || '').toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
-  if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) return ext === 'jpeg' ? 'jpg' : ext;
+  if (['jpg', 'jpeg', 'png', 'webp', 'pdf'].includes(ext)) {
+    return ext === 'jpeg' ? 'jpg' : ext;
+  }
   if (contentType === 'image/png') return 'png';
   if (contentType === 'image/webp') return 'webp';
+  if (contentType === 'application/pdf') return 'pdf';
   return 'jpg';
 }
 
-async function uploadServiceImage(body) {
+function getSupabaseStorageConfig() {
   const supabaseUrl = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
   const serviceRoleKey = String(
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '',
@@ -90,31 +94,35 @@ async function uploadServiceImage(body) {
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.');
   }
+  return { supabaseUrl, serviceRoleKey };
+}
 
-  const serviceId = safeStorageSegment(body.serviceId, 'service');
-  const filename = safeStorageSegment(body.filename, 'image');
-  const contentType = String(body.contentType || '').trim().toLowerCase();
-  if (!allowedServiceImageContentTypes.has(contentType)) {
-    const error = new Error('Sadece JPG, PNG veya WEBP görsel yüklenebilir.');
-    error.statusCode = 400;
-    throw error;
-  }
+async function uploadStorageObject({
+  folder,
+  filename,
+  contentType,
+  data,
+  maxBytes,
+  emptyMessage,
+  tooLargeMessage,
+}) {
+  const { supabaseUrl, serviceRoleKey } = getSupabaseStorageConfig();
 
-  const base64 = String(body.data || '').replace(/^data:[^;]+;base64,/i, '').trim();
+  const base64 = String(data || '').replace(/^data:[^;]+;base64,/i, '').trim();
   if (!base64) {
-    const error = new Error('Görsel verisi eksik.');
+    const error = new Error(emptyMessage);
     error.statusCode = 400;
     throw error;
   }
 
   const bytes = Buffer.from(base64, 'base64');
   if (!bytes.length) {
-    const error = new Error('Görsel verisi okunamadı.');
+    const error = new Error(emptyMessage);
     error.statusCode = 400;
     throw error;
   }
-  if (bytes.length > serviceImageMaxBytes) {
-    const error = new Error('Görsel 5 MB sınırını aşıyor.');
+  if (bytes.length > maxBytes) {
+    const error = new Error(tooLargeMessage);
     error.statusCode = 400;
     throw error;
   }
@@ -124,7 +132,7 @@ async function uploadServiceImage(body) {
     typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : crypto.randomBytes(16).toString('hex');
-  const objectPath = `${serviceId}/${Date.now()}-${random}.${ext}`;
+  const objectPath = `${safeStorageSegment(folder, 'uploads')}/${Date.now()}-${random}.${ext}`;
   const uploadUrl = `${supabaseUrl}/storage/v1/object/${serviceImageBucket}/${encodeURIComponent(
     objectPath,
   ).replace(/%2F/g, '/')}`;
@@ -153,6 +161,45 @@ async function uploadServiceImage(body) {
     contentType,
     size: bytes.length,
   };
+}
+
+async function uploadServiceImage(body) {
+  const filename = safeStorageSegment(body.filename, 'image');
+  const contentType = String(body.contentType || '').trim().toLowerCase();
+  if (!allowedServiceImageContentTypes.has(contentType)) {
+    const error = new Error('Sadece JPG, PNG veya WEBP görsel yüklenebilir.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return uploadStorageObject({
+    folder: safeStorageSegment(body.serviceId, 'service'),
+    filename,
+    contentType,
+    data: body.data,
+    maxBytes: serviceImageMaxBytes,
+    emptyMessage: 'Görsel verisi eksik.',
+    tooLargeMessage: 'Görsel 5 MB sınırını aşıyor.',
+  });
+}
+
+async function uploadApplicationApprovalDocument(body) {
+  const contentType = String(body.contentType || '').trim().toLowerCase();
+  if (contentType !== 'application/pdf') {
+    const error = new Error('Onay belgesi PDF olarak yüklenmelidir.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return uploadStorageObject({
+    folder: `application-approval-documents/${safeStorageSegment(body.applicationFormId, 'form')}`,
+    filename: safeStorageSegment(body.filename, 'onay-belgesi.pdf'),
+    contentType,
+    data: body.data,
+    maxBytes: approvalDocumentMaxBytes,
+    emptyMessage: 'PDF verisi eksik.',
+    tooLargeMessage: 'PDF 10 MB sınırını aşıyor.',
+  });
 }
 
 const allowedTables = new Set([
@@ -654,6 +701,12 @@ const applicationFormAuditLabels = {
   taxpayer_registration_document_mime_type: 'Belge tipi',
   taxpayer_registration_document_data: 'Yükümlü belgesi içeriği',
   taxpayer_registration_document_uploaded_at: 'Belge yükleme tarihi',
+  approval_document_name: 'Onay belgesi',
+  approval_document_mime_type: 'Onay belge tipi',
+  approval_document_storage_bucket: 'Onay belge bucket',
+  approval_document_storage_path: 'Onay belge yolu',
+  approval_document_url: 'Onay belge URL',
+  approval_document_uploaded_at: 'Onay belge yükleme tarihi',
   approval_status: 'Onay durumu',
   approved_at: 'Onay tarihi',
   approved_by: 'Onaylayan',
@@ -663,7 +716,7 @@ const applicationFormAuditLabels = {
 
 function normalizeAuditValue(key, value) {
   if (value == null) return null;
-  if (key === 'taxpayer_registration_document_data') {
+  if (key === 'taxpayer_registration_document_data' || key === 'approval_document_url') {
     return String(value || '').trim() ? '[belge var]' : null;
   }
   if (value instanceof Date) return value.toISOString();
@@ -822,7 +875,19 @@ async function assertApplicationFormsMutable({ op, values, filters, id }) {
     Object.keys(values || {}).every((key) =>
       ['approval_status', 'approved_at', 'approved_by'].includes(key),
     );
-  if (onlyApprovalUpdate || onlyApprovalReset) return;
+  const onlyApprovalDocumentUpdate =
+    Object.keys(values || {}).length > 0 &&
+    Object.keys(values || {}).every((key) =>
+      [
+        'approval_document_name',
+        'approval_document_mime_type',
+        'approval_document_storage_bucket',
+        'approval_document_storage_path',
+        'approval_document_url',
+        'approval_document_uploaded_at',
+      ].includes(key),
+    );
+  if (onlyApprovalUpdate || onlyApprovalReset || onlyApprovalDocumentUpdate) return;
 
   const idFilter = Array.isArray(filters)
     ? filters.find((f) => f?.col === 'id' && f?.op === 'eq')
@@ -857,6 +922,15 @@ module.exports = async (req, res) => {
       if (!hasPageAccess(user, 'servis')) return forbidden(req, res);
       try {
         return ok(req, res, await uploadServiceImage(body));
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'uploadApplicationApprovalDocument') {
+      if (!hasPageAccess(user, 'formlar')) return forbidden(req, res);
+      try {
+        return ok(req, res, await uploadApplicationApprovalDocument(body));
       } catch (error) {
         if (error?.statusCode === 400) return badRequest(req, res, error.message);
         throw error;

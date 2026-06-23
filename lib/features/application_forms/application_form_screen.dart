@@ -7,7 +7,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:share_plus/share_plus.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
@@ -100,7 +105,7 @@ final applicationFormsProvider = FutureProvider<List<ApplicationFormRecord>>((
   final rows = await client
       .from('application_forms')
       .select(
-        'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,approval_status,approved_at,approved_by,created_by,is_active,created_at',
+        'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,approval_document_name,approval_document_mime_type,approval_document_storage_bucket,approval_document_storage_path,approval_document_url,approval_document_uploaded_at,approval_status,approved_at,approved_by,created_by,is_active,created_at',
       )
       .order('created_at', ascending: false)
       .limit(1200);
@@ -333,6 +338,171 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Belge açılamadı: $e')));
+    }
+  }
+
+  Future<Uint8List> _buildApprovalDocumentPdfFromImage({
+    required Uint8List imageBytes,
+    required ApplicationFormRecord record,
+  }) async {
+    final doc = pw.Document(
+      title: 'Onay Belgesi - ${record.customerName}',
+      author: 'Microvise CRM',
+      creator: 'Microvise CRM',
+    );
+    final image = pw.MemoryImage(imageBytes);
+    doc.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(18),
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+          children: [
+            pw.Text(
+              'Onay Belgesi',
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(
+              record.customerName,
+              style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+            ),
+            pw.SizedBox(height: 10),
+            pw.Expanded(child: pw.Image(image, fit: pw.BoxFit.contain)),
+          ],
+        ),
+      ),
+    );
+    return doc.save();
+  }
+
+  String _approvalDocumentFilename(ApplicationFormRecord record) {
+    final customer = record.customerName
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9ğüşöçıİĞÜŞÖÇ]+', unicode: true), '-')
+        .replaceAll(RegExp(r'-+'), '-')
+        .replaceAll(RegExp(r'^-|-$'), '');
+    final suffix = DateTime.now().toIso8601String().substring(0, 10);
+    final name = customer.isEmpty ? 'onay-belgesi' : 'onay-belgesi-$customer';
+    return '$name-$suffix.pdf';
+  }
+
+  Future<void> _uploadApprovalDocumentFromCamera(
+    ApplicationFormRecord record,
+  ) async {
+    if (!record.isApproved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Onay belgesi yalnızca onaylı kayda yüklenir.'),
+        ),
+      );
+      return;
+    }
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('API bağlantısı yok.')));
+      return;
+    }
+
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.camera,
+        imageQuality: 88,
+        maxWidth: 1800,
+      );
+      if (picked == null) return;
+      final imageBytes = await picked.readAsBytes();
+      if (imageBytes.isEmpty) return;
+
+      final pdfBytes = await _buildApprovalDocumentPdfFromImage(
+        imageBytes: imageBytes,
+        record: record,
+      );
+      final filename = _approvalDocumentFilename(record);
+      final uploaded = await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'uploadApplicationApprovalDocument',
+          'applicationFormId': record.id,
+          'filename': filename,
+          'contentType': 'application/pdf',
+          'data': base64Encode(pdfBytes),
+        },
+      );
+      final nowIso = DateTime.now().toIso8601String();
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'application_forms',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': record.id},
+          ],
+          'values': {
+            'approval_document_name': filename,
+            'approval_document_mime_type': 'application/pdf',
+            'approval_document_storage_bucket': uploaded['bucket'],
+            'approval_document_storage_path': uploaded['path'],
+            'approval_document_url': uploaded['url'],
+            'approval_document_uploaded_at': nowIso,
+          },
+        },
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Onay belgesi yüklendi.')));
+      await reloadCurrentPage();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Onay belgesi yüklenemedi: $e')));
+    }
+  }
+
+  Future<void> _shareApprovalDocument(ApplicationFormRecord record) async {
+    final url = (record.approvalDocumentUrl ?? '').trim();
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bu kayıtta onay belgesi yok.')),
+      );
+      return;
+    }
+
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Belge indirilemedi (${response.statusCode}).');
+      }
+      final filename = (record.approvalDocumentName ?? '').trim().isEmpty
+          ? _approvalDocumentFilename(record)
+          : record.approvalDocumentName!.trim();
+      if (!mounted) return;
+      final box = context.findRenderObject() as RenderBox?;
+      final origin = box == null
+          ? null
+          : box.localToGlobal(Offset.zero) & box.size;
+      await Share.shareXFiles(
+        [
+          XFile.fromData(
+            response.bodyBytes,
+            mimeType: 'application/pdf',
+            name: filename,
+          ),
+        ],
+        text: '${record.customerName} onay belgesi',
+        subject: '${record.customerName} onay belgesi',
+        sharePositionOrigin: origin,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Belge paylaşılamadı: $e')));
     }
   }
 
@@ -2807,6 +2977,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                   },
                   onPrintKdv: () => _print(r, kind: ApplicationPrintKind.kdv),
                   onViewDocument: () => _downloadTaxpayerDocument(r),
+                  onUploadApprovalDocument: () =>
+                      _uploadApprovalDocumentFromCamera(r),
+                  onShareApprovalDocument: () => _shareApprovalDocument(r),
                   onViewLogs: () => _openRecordLogs(r),
                   onPrintKdv4a: () =>
                       _print(r, kind: ApplicationPrintKind.kdv4a),
@@ -2864,6 +3037,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                 },
                 onPrintKdv: () => _print(r, kind: ApplicationPrintKind.kdv),
                 onViewDocument: () => _downloadTaxpayerDocument(r),
+                onUploadApprovalDocument: () =>
+                    _uploadApprovalDocumentFromCamera(r),
+                onShareApprovalDocument: () => _shareApprovalDocument(r),
                 onViewLogs: () => _openRecordLogs(r),
                 onPrintKdv4a: () => _print(r, kind: ApplicationPrintKind.kdv4a),
                 onCreateWorkOrder: () => _openCreateWorkOrdersDialog([r]),
@@ -6246,6 +6422,8 @@ class _ApplicationRecordCard extends StatelessWidget {
     required this.onSelectionChanged,
     required this.onPrintKdv,
     required this.onViewDocument,
+    required this.onUploadApprovalDocument,
+    required this.onShareApprovalDocument,
     required this.onViewLogs,
     required this.onPrintKdv4a,
     required this.onCreateWorkOrder,
@@ -6269,6 +6447,8 @@ class _ApplicationRecordCard extends StatelessWidget {
   final ValueChanged<bool> onSelectionChanged;
   final VoidCallback onPrintKdv;
   final VoidCallback onViewDocument;
+  final VoidCallback onUploadApprovalDocument;
+  final VoidCallback onShareApprovalDocument;
   final VoidCallback onViewLogs;
   final VoidCallback onPrintKdv4a;
   final VoidCallback onCreateWorkOrder;
@@ -6313,6 +6493,20 @@ class _ApplicationRecordCard extends StatelessWidget {
         const PopupMenuItem(value: 'duplicate', child: Text('Kopya Oluştur')),
       if (record.hasTaxpayerRegistrationDocument)
         const PopupMenuItem(value: 'document', child: Text('Yükümlü Belgesi')),
+      if (canApprove && record.isApproved)
+        PopupMenuItem(
+          value: 'upload_approval_document',
+          child: Text(
+            record.hasApprovalDocument
+                ? 'Onay Belgesini Yenile'
+                : 'Onay Belgesi Yükle',
+          ),
+        ),
+      if (record.hasApprovalDocument)
+        const PopupMenuItem(
+          value: 'share_approval_document',
+          child: Text('Onay Belgesini Paylaş'),
+        ),
       const PopupMenuItem(value: 'logs', child: Text('Loglar')),
       if (canApprove && record.isPendingApproval)
         const PopupMenuItem(value: 'approve', child: Text('Onayla')),
@@ -6351,6 +6545,12 @@ class _ApplicationRecordCard extends StatelessWidget {
           break;
         case 'document':
           onViewDocument();
+          break;
+        case 'upload_approval_document':
+          onUploadApprovalDocument();
+          break;
+        case 'share_approval_document':
+          onShareApprovalDocument();
           break;
         case 'logs':
           onViewLogs();
@@ -6482,7 +6682,22 @@ class _ApplicationRecordCard extends StatelessWidget {
                 width: 154,
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: AppBadge(label: approvalLabel, tone: approvalTone),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      AppBadge(label: approvalLabel, tone: approvalTone),
+                      if (record.isApproved)
+                        AppBadge(
+                          label: record.hasApprovalDocument
+                              ? 'Belge Var'
+                              : 'Belge Yok',
+                          tone: record.hasApprovalDocument
+                              ? AppBadgeTone.primary
+                              : AppBadgeTone.warning,
+                        ),
+                    ],
+                  ),
                 ),
               ),
               SizedBox(
@@ -6591,6 +6806,15 @@ class _ApplicationRecordCard extends StatelessWidget {
               ),
               const Gap(8),
               AppBadge(label: approvalLabel, tone: approvalTone),
+              if (record.isApproved) ...[
+                const Gap(4),
+                AppBadge(
+                  label: record.hasApprovalDocument ? 'Belge Var' : 'Belge Yok',
+                  tone: record.hasApprovalDocument
+                      ? AppBadgeTone.primary
+                      : AppBadgeTone.warning,
+                ),
+              ],
               const Gap(6),
               if (isMobile)
                 PopupMenuButton<String>(
@@ -6630,6 +6854,23 @@ class _ApplicationRecordCard extends StatelessWidget {
                     onPressed: onViewDocument,
                     icon: Icons.attach_file_rounded,
                     label: 'Belge',
+                  ),
+                  const Gap(4),
+                ],
+                if (canApprove && record.isApproved) ...[
+                  _ActionButton(
+                    onPressed: onUploadApprovalDocument,
+                    icon: Icons.document_scanner_rounded,
+                    label: record.hasApprovalDocument ? 'Yenile' : 'Yükle',
+                    primary: !record.hasApprovalDocument,
+                  ),
+                  const Gap(4),
+                ],
+                if (record.hasApprovalDocument) ...[
+                  _ActionButton(
+                    onPressed: onShareApprovalDocument,
+                    icon: Icons.ios_share_rounded,
+                    label: 'Paylaş',
                   ),
                   const Gap(4),
                 ],
@@ -6722,6 +6963,16 @@ class _ApplicationRecordCard extends StatelessWidget {
                 _InfoChip(
                   icon: Icons.storefront_rounded,
                   text: record.businessActivityName!,
+                ),
+              if (record.isApproved)
+                _InfoChip(
+                  icon: record.hasApprovalDocument
+                      ? Icons.picture_as_pdf_rounded
+                      : Icons.upload_file_rounded,
+                  text: record.hasApprovalDocument
+                      ? 'Onay belgesi var'
+                      : 'Onay belgesi yok',
+                  highlighted: record.hasApprovalDocument,
                 ),
             ],
           ),

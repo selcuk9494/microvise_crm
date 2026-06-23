@@ -27,6 +27,12 @@ class ApplicationFormRecord {
     required this.taxpayerRegistrationDocumentName,
     required this.taxpayerRegistrationDocumentMimeType,
     required this.taxpayerRegistrationDocumentData,
+    required this.approvalDocumentName,
+    required this.approvalDocumentMimeType,
+    required this.approvalDocumentStorageBucket,
+    required this.approvalDocumentStoragePath,
+    required this.approvalDocumentUrl,
+    required this.approvalDocumentUploadedAt,
     required this.approvalStatus,
     required this.approvedAt,
     required this.approvedBy,
@@ -60,6 +66,12 @@ class ApplicationFormRecord {
   final String? taxpayerRegistrationDocumentName;
   final String? taxpayerRegistrationDocumentMimeType;
   final String? taxpayerRegistrationDocumentData;
+  final String? approvalDocumentName;
+  final String? approvalDocumentMimeType;
+  final String? approvalDocumentStorageBucket;
+  final String? approvalDocumentStoragePath;
+  final String? approvalDocumentUrl;
+  final DateTime? approvalDocumentUploadedAt;
   final String approvalStatus;
   final DateTime? approvedAt;
   final String? approvedBy;
@@ -71,6 +83,8 @@ class ApplicationFormRecord {
   bool get isPendingApproval => approvalStatus == 'pending';
   bool get hasTaxpayerRegistrationDocument =>
       taxpayerRegistrationDocumentData?.trim().isNotEmpty ?? false;
+  bool get hasApprovalDocument =>
+      approvalDocumentUrl?.trim().isNotEmpty ?? false;
 
   String get brandModel {
     final parts = [
@@ -119,6 +133,17 @@ class ApplicationFormRecord {
           json['taxpayer_registration_document_mime_type']?.toString(),
       taxpayerRegistrationDocumentData:
           json['taxpayer_registration_document_data']?.toString(),
+      approvalDocumentName: json['approval_document_name']?.toString(),
+      approvalDocumentMimeType: json['approval_document_mime_type']?.toString(),
+      approvalDocumentStorageBucket: json['approval_document_storage_bucket']
+          ?.toString(),
+      approvalDocumentStoragePath: json['approval_document_storage_path']
+          ?.toString(),
+      approvalDocumentUrl: json['approval_document_url']?.toString(),
+      approvalDocumentUploadedAt: parseAppDateTime(
+        json['approval_document_uploaded_at']?.toString(),
+        fixedOffsetHours: offsetHours,
+      ),
       approvalStatus: json['approval_status']?.toString() ?? 'pending',
       approvedAt: parseAppDateTime(
         json['approved_at']?.toString(),
