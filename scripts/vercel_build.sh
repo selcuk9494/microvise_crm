@@ -50,5 +50,7 @@ if [ "${SUPABASE_ANON_KEY:-}" != "" ]; then
   BUILD_DEFINES+=("--dart-define=SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}")
 fi
 
+BUILD_DEFINES+=("--dart-define=API_BASE_URL=${API_BASE_URL:-https://crm.microvise.net/api}")
+
 # Build faster: skip source maps and icon tree shaking for CI web builds
 flutter build web --release --no-source-maps --no-tree-shake-icons "${BUILD_DEFINES[@]}"
