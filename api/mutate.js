@@ -137,17 +137,32 @@ async function uploadStorageObject({
     objectPath,
   ).replace(/%2F/g, '/')}`;
 
-  const response = await fetch(uploadUrl, {
-    method: 'POST',
-    headers: {
-      apikey: serviceRoleKey,
-      authorization: `Bearer ${serviceRoleKey}`,
-      'cache-control': '3600',
-      'content-type': contentType,
-      'x-upsert': 'false',
-    },
-    body: bytes,
-  });
+  let response;
+  try {
+    response = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        apikey: serviceRoleKey,
+        authorization: `Bearer ${serviceRoleKey}`,
+        'cache-control': '3600',
+        'content-type': contentType,
+        'x-upsert': 'false',
+      },
+      body: bytes,
+    });
+  } catch (error) {
+    const cause = error?.cause;
+    const host = (() => {
+      try {
+        return new URL(uploadUrl).hostname;
+      } catch (_) {
+        return 'invalid-url';
+      }
+    })();
+    throw new Error(
+      `Supabase Storage fetch failed: host=${host} code=${cause?.code || error?.code || 'unknown'} message=${cause?.message || error?.message || 'unknown'}`,
+    );
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
