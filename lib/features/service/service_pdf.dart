@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -23,6 +24,21 @@ Uint8List? _decodeDataUrl(String? dataUrl) {
   }
 }
 
+Future<Uint8List?> _loadImageBytes(String? imageRef) async {
+  final raw = (imageRef ?? '').trim();
+  if (raw.isEmpty) return null;
+  if (raw.startsWith('data:')) return _decodeDataUrl(raw);
+  final uri = Uri.tryParse(raw);
+  if (uri == null || !uri.hasScheme) return null;
+  try {
+    final response = await http.get(uri).timeout(const Duration(seconds: 8));
+    if (response.statusCode < 200 || response.statusCode >= 300) return null;
+    return response.bodyBytes;
+  } catch (_) {
+    return null;
+  }
+}
+
 Future<Uint8List> buildServicePdfBytes({
   required ServiceDetail detail,
   required List<String> accessoryNames,
@@ -33,10 +49,7 @@ Future<Uint8List> buildServicePdfBytes({
   final boldFont = pw.Font.ttf(
     await rootBundle.load('assets/fonts/noto_sans/NotoSans-Regular.ttf'),
   );
-  final theme = pw.ThemeData.withFont(
-    base: regularFont,
-    bold: boldFont,
-  );
+  final theme = pw.ThemeData.withFont(base: regularFont, bold: boldFont);
 
   final doc = pw.Document(
     title: 'Servis - ${detail.title}',
@@ -70,8 +83,15 @@ Future<Uint8List> buildServicePdfBytes({
   final registry = (detail.registryNumber ?? '').trim();
   final fault = (detail.faultTypeName ?? '').trim();
   final notes = (detail.notes ?? '').trim();
-  final serviceNoText =
-      detail.serviceNo == null ? 'SRV' : 'SRV-${detail.serviceNo}';
+  final serviceNoText = detail.serviceNo == null
+      ? 'SRV'
+      : 'SRV-${detail.serviceNo}';
+  final deviceImageBytes = <Uint8List>[];
+  for (final imageRef in detail.deviceImageDataUrls.take(4)) {
+    final bytes = await _loadImageBytes(imageRef);
+    if (bytes == null || bytes.isEmpty) continue;
+    deviceImageBytes.add(bytes);
+  }
 
   pw.Widget sigBox(String title, Uint8List? bytes) {
     final img = bytes == null || bytes.isEmpty ? null : pw.MemoryImage(bytes);
@@ -121,9 +141,7 @@ Future<Uint8List> buildServicePdfBytes({
       margin: const pw.EdgeInsets.all(18),
       build: (context) {
         final imageWidgets = <pw.Widget>[];
-        for (final url in detail.deviceImageDataUrls.take(4)) {
-          final bytes = _decodeDataUrl(url);
-          if (bytes == null || bytes.isEmpty) continue;
+        for (final bytes in deviceImageBytes) {
           imageWidgets.add(
             pw.Container(
               padding: const pw.EdgeInsets.all(3),
@@ -143,31 +161,34 @@ Future<Uint8List> buildServicePdfBytes({
         }
 
         pw.Widget titleText(String v) => pw.Text(
-              v,
-              style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
-            );
+          v,
+          style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+        );
 
         pw.Widget kv(String k, String v) => pw.Padding(
-              padding: const pw.EdgeInsets.only(bottom: 2),
-              child: pw.Row(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.SizedBox(
-                    width: 64,
-                    child: pw.Text(
-                      k,
-                      style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
-                    ),
-                  ),
-                  pw.Expanded(
-                    child: pw.Text(
-                      v,
-                      style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
-                    ),
-                  ),
-                ],
+          padding: const pw.EdgeInsets.only(bottom: 2),
+          child: pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.SizedBox(
+                width: 64,
+                child: pw.Text(
+                  k,
+                  style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+                ),
               ),
-            );
+              pw.Expanded(
+                child: pw.Text(
+                  v,
+                  style: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
 
         pw.Widget section(String title, pw.Widget child) {
           return pw.Container(
@@ -181,7 +202,10 @@ Future<Uint8List> buildServicePdfBytes({
               children: [
                 pw.Text(
                   title,
-                  style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+                  style: pw.TextStyle(
+                    fontSize: 10,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                 ),
                 pw.SizedBox(height: 6),
                 child,
@@ -202,8 +226,13 @@ Future<Uint8List> buildServicePdfBytes({
             children: [
               pw.TableHelper.fromTextArray(
                 border: null,
-                headerStyle: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                headerStyle: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                ),
                 cellStyle: const pw.TextStyle(fontSize: 9),
                 cellAlignment: pw.Alignment.centerLeft,
                 columnWidths: const {
@@ -218,10 +247,22 @@ Future<Uint8List> buildServicePdfBytes({
                     [
                       clip((r['name'] ?? '').toString(), 34),
                       (r['qty'] ?? '').toString(),
-                      moneyFormat.format((r['unit_price'] as num?) ?? double.tryParse((r['unit_price'] ?? '').toString()) ?? 0),
                       moneyFormat.format(
-                        ((r['qty'] as num?) ?? double.tryParse((r['qty'] ?? '').toString()) ?? 0) *
-                            ((r['unit_price'] as num?) ?? double.tryParse((r['unit_price'] ?? '').toString()) ?? 0),
+                        (r['unit_price'] as num?) ??
+                            double.tryParse(
+                              (r['unit_price'] ?? '').toString(),
+                            ) ??
+                            0,
+                      ),
+                      moneyFormat.format(
+                        ((r['qty'] as num?) ??
+                                double.tryParse((r['qty'] ?? '').toString()) ??
+                                0) *
+                            ((r['unit_price'] as num?) ??
+                                double.tryParse(
+                                  (r['unit_price'] ?? '').toString(),
+                                ) ??
+                                0),
                       ),
                     ],
                 ],
@@ -259,15 +300,23 @@ Future<Uint8List> buildServicePdfBytes({
                     children: [
                       pw.Text(
                         'SERVİS FORMU',
-                        style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+                        style: pw.TextStyle(
+                          fontSize: 14,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
                       ),
                       pw.SizedBox(height: 2),
-                      titleText('$serviceNoText • $statusLabel • $createdAtText'),
+                      titleText(
+                        '$serviceNoText • $statusLabel • $createdAtText',
+                      ),
                     ],
                   ),
                 ),
                 pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const pw.EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: pw.BoxDecoration(
                     color: PdfColors.grey200,
                     borderRadius: pw.BorderRadius.circular(10),
@@ -277,11 +326,17 @@ Future<Uint8List> buildServicePdfBytes({
                     children: [
                       pw.Text(
                         'TOPLAM',
-                        style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+                        style: pw.TextStyle(
+                          fontSize: 8,
+                          color: PdfColors.grey700,
+                        ),
                       ),
                       pw.Text(
                         totalText,
-                        style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                        style: pw.TextStyle(
+                          fontSize: 12,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -300,13 +355,18 @@ Future<Uint8List> buildServicePdfBytes({
                       children: [
                         pw.Text(
                           clip(detail.customerName ?? '—', 48),
-                          style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+                          style: pw.TextStyle(
+                            fontSize: 10,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
                         ),
                         pw.SizedBox(height: 4),
                         kv('Başlık', clip(detail.title, 70)),
-                        if (registry.isNotEmpty) kv('Sicil', clip(registry, 40)),
+                        if (registry.isNotEmpty)
+                          kv('Sicil', clip(registry, 40)),
                         if (fault.isNotEmpty) kv('Arıza', clip(fault, 40)),
-                        if (detail.accessoriesReceived && accessoryNames.isNotEmpty)
+                        if (detail.accessoriesReceived &&
+                            accessoryNames.isNotEmpty)
                           kv('Aksesuar', clippedAccessory),
                       ],
                     ),
@@ -338,12 +398,18 @@ Future<Uint8List> buildServicePdfBytes({
                           if (hiddenSteps > 0)
                             pw.Text(
                               '+$hiddenSteps adım daha',
-                              style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+                              style: pw.TextStyle(
+                                fontSize: 9,
+                                color: PdfColors.grey600,
+                              ),
                             ),
                         ] else
                           pw.Text(
                             '—',
-                            style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
+                            style: pw.TextStyle(
+                              fontSize: 10,
+                              color: PdfColors.grey600,
+                            ),
                           ),
                       ],
                     ),
@@ -359,7 +425,13 @@ Future<Uint8List> buildServicePdfBytes({
                   child: section(
                     'Parça',
                     detail.parts.isEmpty
-                        ? pw.Text('—', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600))
+                        ? pw.Text(
+                            '—',
+                            style: pw.TextStyle(
+                              fontSize: 10,
+                              color: PdfColors.grey600,
+                            ),
+                          )
                         : compactTable(
                             header0: 'Parça',
                             rows: detail.parts,
@@ -372,7 +444,13 @@ Future<Uint8List> buildServicePdfBytes({
                   child: section(
                     'İşçilik',
                     detail.labor.isEmpty
-                        ? pw.Text('—', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600))
+                        ? pw.Text(
+                            '—',
+                            style: pw.TextStyle(
+                              fontSize: 10,
+                              color: PdfColors.grey600,
+                            ),
+                          )
                         : compactTable(
                             header0: 'İşçilik',
                             rows: detail.labor,
@@ -408,14 +486,18 @@ Future<Uint8List> buildServicePdfBytes({
                         pw.Expanded(
                           child: sigBox(
                             'Teslim Eden',
-                            _decodeDataUrl(detail.intakeCustomerSignatureDataUrl),
+                            _decodeDataUrl(
+                              detail.intakeCustomerSignatureDataUrl,
+                            ),
                           ),
                         ),
                         pw.SizedBox(width: 8),
                         pw.Expanded(
                           child: sigBox(
                             'Teslim Alan',
-                            _decodeDataUrl(detail.intakePersonnelSignatureDataUrl),
+                            _decodeDataUrl(
+                              detail.intakePersonnelSignatureDataUrl,
+                            ),
                           ),
                         ),
                       ],
@@ -431,14 +513,18 @@ Future<Uint8List> buildServicePdfBytes({
                         pw.Expanded(
                           child: sigBox(
                             'Teslim Eden',
-                            _decodeDataUrl(detail.deliveryPersonnelSignatureDataUrl),
+                            _decodeDataUrl(
+                              detail.deliveryPersonnelSignatureDataUrl,
+                            ),
                           ),
                         ),
                         pw.SizedBox(width: 8),
                         pw.Expanded(
                           child: sigBox(
                             'Teslim Alan',
-                            _decodeDataUrl(detail.deliveryCustomerSignatureDataUrl),
+                            _decodeDataUrl(
+                              detail.deliveryCustomerSignatureDataUrl,
+                            ),
                           ),
                         ),
                       ],

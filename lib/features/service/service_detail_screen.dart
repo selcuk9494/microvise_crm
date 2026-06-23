@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -15,8 +16,10 @@ import '../../core/ui/app_page_layout.dart';
 import 'service_definitions.dart';
 import 'service_share.dart';
 
-final serviceDetailProvider =
-    FutureProvider.family<ServiceDetail, String>((ref, serviceId) async {
+final serviceDetailProvider = FutureProvider.family<ServiceDetail, String>((
+  ref,
+  serviceId,
+) async {
   final apiClient = ref.watch(apiClientProvider);
   if (apiClient == null) throw Exception('API bağlantısı yok.');
   final row = await apiClient.getJson(
@@ -33,7 +36,8 @@ class ServiceDetailScreen extends ConsumerStatefulWidget {
   final String serviceId;
 
   @override
-  ConsumerState<ServiceDetailScreen> createState() => _ServiceDetailScreenState();
+  ConsumerState<ServiceDetailScreen> createState() =>
+      _ServiceDetailScreenState();
 }
 
 class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
@@ -51,7 +55,8 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
           Builder(
             builder: (context) {
               final accessoryAsync = ref.watch(serviceAccessoryTypesProvider);
-              final accessoryNames = accessoryAsync.asData?.value
+              final accessoryNames =
+                  accessoryAsync.asData?.value
                       .where((e) => detail.accessoryTypeIds.contains(e.id))
                       .map((e) => e.name)
                       .toList(growable: false) ??
@@ -83,7 +88,8 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         body: _Body(
           key: _bodyKey,
           detail: detail,
-          onChanged: () => ref.invalidate(serviceDetailProvider(widget.serviceId)),
+          onChanged: () =>
+              ref.invalidate(serviceDetailProvider(widget.serviceId)),
         ),
       ),
       loading: () => const AppPageLayout(
@@ -97,18 +103,15 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
             padding: const EdgeInsets.all(16),
             child: Text(
               'Servis kaydı yüklenemedi.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: const Color(0xFF64748B)),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
             ),
           ),
         ),
       ),
     );
   }
-
-  
 }
 
 class _Body extends ConsumerStatefulWidget {
@@ -131,7 +134,7 @@ class _BodyState extends ConsumerState<_Body> {
   late String _currency;
   bool _accessoriesReceived = false;
   final Set<String> _selectedAccessoryTypeIds = {};
-  List<String> _deviceImages = const [];
+  List<ServiceImage> _deviceImages = const [];
   bool _saving = false;
 
   @override
@@ -142,7 +145,9 @@ class _BodyState extends ConsumerState<_Body> {
     ];
     _parts = widget.detail.parts.map(_LineItemDraft.from).toList();
     _labor = widget.detail.labor.map(_LineItemDraft.from).toList();
-    _registryController = TextEditingController(text: widget.detail.registryNumber ?? '');
+    _registryController = TextEditingController(
+      text: widget.detail.registryNumber ?? '',
+    );
     _notesController = TextEditingController(text: widget.detail.notes ?? '');
     _currency = (widget.detail.currency ?? 'TRY').toUpperCase();
     _faultTypeId = (widget.detail.faultTypeId ?? '').trim().isEmpty
@@ -152,7 +157,7 @@ class _BodyState extends ConsumerState<_Body> {
     _selectedAccessoryTypeIds
       ..clear()
       ..addAll(widget.detail.accessoryTypeIds);
-    _deviceImages = widget.detail.deviceImageDataUrls;
+    _deviceImages = widget.detail.deviceImages;
   }
 
   @override
@@ -186,7 +191,7 @@ class _BodyState extends ConsumerState<_Body> {
     _selectedAccessoryTypeIds
       ..clear()
       ..addAll(widget.detail.accessoryTypeIds);
-    _deviceImages = widget.detail.deviceImageDataUrls;
+    _deviceImages = widget.detail.deviceImages;
   }
 
   @override
@@ -210,6 +215,9 @@ class _BodyState extends ConsumerState<_Body> {
     return sum;
   }
 
+  String _dataUrl(Uint8List bytes, String mimeType) =>
+      'data:$mimeType;base64,${base64Encode(bytes)}';
+
   String get _currencySymbol {
     return switch (_currency) {
       'USD' => r'$',
@@ -218,8 +226,11 @@ class _BodyState extends ConsumerState<_Body> {
     };
   }
 
-  NumberFormat get _moneyFormat =>
-      NumberFormat.currency(locale: 'tr_TR', symbol: _currencySymbol, decimalDigits: 2);
+  NumberFormat get _moneyFormat => NumberFormat.currency(
+    locale: 'tr_TR',
+    symbol: _currencySymbol,
+    decimalDigits: 2,
+  );
 
   Future<void> _save() async {
     final apiClient = ref.read(apiClientProvider);
@@ -251,14 +262,14 @@ class _BodyState extends ConsumerState<_Body> {
 
       widget.onChanged();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kaydedildi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Kaydedildi.')));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kaydedilemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Kaydedilemedi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -275,7 +286,9 @@ class _BodyState extends ConsumerState<_Body> {
     if (steps.isEmpty && _parts.isEmpty && _labor.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Önce yapılan işlem / parça / işçilik ekleyin.')),
+        const SnackBar(
+          content: Text('Önce yapılan işlem / parça / işçilik ekleyin.'),
+        ),
       );
       return;
     }
@@ -302,9 +315,9 @@ class _BodyState extends ConsumerState<_Body> {
       );
       widget.onChanged();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Onaya gönderildi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Onaya gönderildi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -328,9 +341,9 @@ class _BodyState extends ConsumerState<_Body> {
       );
       widget.onChanged();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hazır durumuna alındı.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hazır durumuna alındı.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -354,28 +367,33 @@ class _BodyState extends ConsumerState<_Body> {
             'registry_number': _registryController.text.trim().isEmpty
                 ? null
                 : _registryController.text.trim(),
-            'fault_type_id': (_faultTypeId ?? '').trim().isEmpty ? null : _faultTypeId,
+            'fault_type_id': (_faultTypeId ?? '').trim().isEmpty
+                ? null
+                : _faultTypeId,
             'currency': _currency,
             'accessories_received': _accessoriesReceived,
-            'accessory_type_ids': _selectedAccessoryTypeIds.toList(growable: false),
-            'notes':
-                _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+            'accessory_type_ids': _selectedAccessoryTypeIds.toList(
+              growable: false,
+            ),
+            'notes': _notesController.text.trim().isEmpty
+                ? null
+                : _notesController.text.trim(),
             'device_images': _deviceImages
-                .map((e) => {'data_url': e})
+                .map((e) => e.toJson())
                 .toList(growable: false),
           },
         },
       );
       widget.onChanged();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kaydedildi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Kaydedildi.')));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kaydedilemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Kaydedilemedi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -403,10 +421,10 @@ class _BodyState extends ConsumerState<_Body> {
     }
   }
 
-  String _dataUrl(Uint8List bytes, String mimeType) =>
-      'data:$mimeType;base64,${base64Encode(bytes)}';
-
   Future<void> _addImage(ImageSource source) async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: source,
@@ -419,9 +437,29 @@ class _BodyState extends ConsumerState<_Body> {
 
     final name = picked.name.toLowerCase();
     final mime = name.endsWith('.png') ? 'image/png' : 'image/jpeg';
-    final url = _dataUrl(bytes, mime);
-    setState(() => _deviceImages = [..._deviceImages, url]);
-    await _saveInfo();
+
+    setState(() => _saving = true);
+    try {
+      final uploaded = await apiClient.postJson(
+        '/storage/service-image',
+        body: {
+          'serviceId': widget.detail.id,
+          'filename': picked.name,
+          'contentType': mime,
+          'data': base64Encode(bytes),
+        },
+      );
+      final image = ServiceImage.fromJson(uploaded);
+      setState(() => _deviceImages = [..._deviceImages, image]);
+      await _saveInfo();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Fotoğraf yüklenemedi.')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _captureSignatures({required bool delivery}) async {
@@ -451,8 +489,12 @@ class _BodyState extends ConsumerState<_Body> {
               padding: const EdgeInsets.all(16),
               child: StatefulBuilder(
                 builder: (context, setState) {
-                  final leftTitle = delivery ? 'Teslim Eden (Personel)' : 'Teslim Eden (Müşteri)';
-                  final rightTitle = delivery ? 'Teslim Alan (Müşteri)' : 'Teslim Alan (Personel)';
+                  final leftTitle = delivery
+                      ? 'Teslim Eden (Personel)'
+                      : 'Teslim Eden (Müşteri)';
+                  final rightTitle = delivery
+                      ? 'Teslim Alan (Müşteri)'
+                      : 'Teslim Alan (Personel)';
                   return Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -461,7 +503,9 @@ class _BodyState extends ConsumerState<_Body> {
                         children: [
                           Expanded(
                             child: Text(
-                              delivery ? 'Teslim İmzaları' : 'Teslim Alma İmzaları',
+                              delivery
+                                  ? 'Teslim İmzaları'
+                                  : 'Teslim Alma İmzaları',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                           ),
@@ -498,7 +542,9 @@ class _BodyState extends ConsumerState<_Body> {
                           contentPadding: EdgeInsets.zero,
                           value: markDone,
                           onChanged: (v) => setState(() => markDone = v),
-                          title: const Text('Servisi Teslim Et (Durum: Teslim)'),
+                          title: const Text(
+                            'Servisi Teslim Et (Durum: Teslim)',
+                          ),
                         ),
                       ],
                       const Gap(12),
@@ -534,10 +580,12 @@ class _BodyState extends ConsumerState<_Body> {
 
       final leftBytes = await left.toPngBytes();
       final rightBytes = await right.toPngBytes();
-      final leftUrl =
-          leftBytes == null || leftBytes.isEmpty ? null : _dataUrl(leftBytes, 'image/png');
-      final rightUrl =
-          rightBytes == null || rightBytes.isEmpty ? null : _dataUrl(rightBytes, 'image/png');
+      final leftUrl = leftBytes == null || leftBytes.isEmpty
+          ? null
+          : _dataUrl(leftBytes, 'image/png');
+      final rightUrl = rightBytes == null || rightBytes.isEmpty
+          ? null
+          : _dataUrl(rightBytes, 'image/png');
 
       setState(() => _saving = true);
       try {
@@ -567,14 +615,20 @@ class _BodyState extends ConsumerState<_Body> {
       }
 
       final accessoryAsync = ref.read(serviceAccessoryTypesProvider);
-      final accessoryNames = accessoryAsync.asData?.value
+      final accessoryNames =
+          accessoryAsync.asData?.value
               .where((e) => widget.detail.accessoryTypeIds.contains(e.id))
               .map((e) => e.name)
               .toList(growable: false) ??
           widget.detail.accessoryTypeIds.toList(growable: false);
       try {
-        final refreshed = await ref.read(serviceDetailProvider(widget.detail.id).future);
-        await shareServicePdf(detail: refreshed, accessoryNames: accessoryNames);
+        final refreshed = await ref.read(
+          serviceDetailProvider(widget.detail.id).future,
+        );
+        await shareServicePdf(
+          detail: refreshed,
+          accessoryNames: accessoryNames,
+        );
       } catch (_) {}
     } finally {
       left.dispose();
@@ -679,14 +733,16 @@ class _BodyState extends ConsumerState<_Body> {
                 ),
                 AppBadge(label: status.$1, tone: status.$2),
                 if (!isMobile) ...[
-                  if (widget.detail.status == 'waiting' || widget.detail.status == 'open') ...[
+                  if (widget.detail.status == 'waiting' ||
+                      widget.detail.status == 'open') ...[
                     const Gap(8),
                     FilledButton.tonal(
                       onPressed: _saving ? null : _sendToApproval,
                       child: const Text('Onaya Gönder'),
                     ),
                   ],
-                  if (widget.detail.status == 'approval' || widget.detail.status == 'in_progress') ...[
+                  if (widget.detail.status == 'approval' ||
+                      widget.detail.status == 'in_progress') ...[
                     const Gap(8),
                     FilledButton.tonal(
                       onPressed: _saving ? null : _markReady,
@@ -718,10 +774,9 @@ class _BodyState extends ConsumerState<_Body> {
             const Gap(6),
             Text(
               date,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: const Color(0xFF64748B)),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
             ),
             if (isMobile) ...[
               const Gap(10),
@@ -729,12 +784,14 @@ class _BodyState extends ConsumerState<_Body> {
                 spacing: 10,
                 runSpacing: 10,
                 children: [
-                  if (widget.detail.status == 'waiting' || widget.detail.status == 'open')
+                  if (widget.detail.status == 'waiting' ||
+                      widget.detail.status == 'open')
                     FilledButton.tonal(
                       onPressed: _saving ? null : _sendToApproval,
                       child: const Text('Onaya Gönder'),
                     ),
-                  if (widget.detail.status == 'approval' || widget.detail.status == 'in_progress')
+                  if (widget.detail.status == 'approval' ||
+                      widget.detail.status == 'in_progress')
                     FilledButton.tonal(
                       onPressed: _saving ? null : _markReady,
                       child: const Text('Hazır'),
@@ -752,19 +809,23 @@ class _BodyState extends ConsumerState<_Body> {
                                   children: [
                                     ListTile(
                                       title: const Text('Bekliyor'),
-                                      onTap: () => Navigator.of(context).pop('waiting'),
+                                      onTap: () =>
+                                          Navigator.of(context).pop('waiting'),
                                     ),
                                     ListTile(
                                       title: const Text('Onayda'),
-                                      onTap: () => Navigator.of(context).pop('approval'),
+                                      onTap: () =>
+                                          Navigator.of(context).pop('approval'),
                                     ),
                                     ListTile(
                                       title: const Text('Hazır'),
-                                      onTap: () => Navigator.of(context).pop('ready'),
+                                      onTap: () =>
+                                          Navigator.of(context).pop('ready'),
                                     ),
                                     ListTile(
                                       title: const Text('Teslim'),
-                                      onTap: () => Navigator.of(context).pop('done'),
+                                      onTap: () =>
+                                          Navigator.of(context).pop('done'),
                                     ),
                                   ],
                                 ),
@@ -827,15 +888,21 @@ class _BodyState extends ConsumerState<_Body> {
                       DropdownMenuItem(value: 'USD', child: Text(r'USD ($)')),
                       DropdownMenuItem(value: 'EUR', child: Text('EUR (€)')),
                     ],
-                    onChanged: _saving ? null : (v) => setState(() => _currency = v ?? 'TRY'),
+                    onChanged: _saving
+                        ? null
+                        : (v) => setState(() => _currency = v ?? 'TRY'),
                     decoration: const InputDecoration(labelText: 'Para Birimi'),
                   ),
                 ),
                 const Gap(10),
                 Expanded(
-                  child: ref.watch(serviceFaultTypesProvider).when(
+                  child: ref
+                      .watch(serviceFaultTypesProvider)
+                      .when(
                         data: (items) => DropdownButtonFormField<String?>(
-                          initialValue: (_faultTypeId ?? '').trim().isEmpty ? null : _faultTypeId,
+                          initialValue: (_faultTypeId ?? '').trim().isEmpty
+                              ? null
+                              : _faultTypeId,
                           items: [
                             const DropdownMenuItem<String?>(
                               value: null,
@@ -847,8 +914,12 @@ class _BodyState extends ConsumerState<_Body> {
                                 child: Text(t.name),
                               ),
                           ],
-                          onChanged: _saving ? null : (v) => setState(() => _faultTypeId = v),
-                          decoration: const InputDecoration(labelText: 'Arıza Tipi'),
+                          onChanged: _saving
+                              ? null
+                              : (v) => setState(() => _faultTypeId = v),
+                          decoration: const InputDecoration(
+                            labelText: 'Arıza Tipi',
+                          ),
                         ),
                         loading: () => const SizedBox.shrink(),
                         error: (_, _) => const SizedBox.shrink(),
@@ -863,25 +934,25 @@ class _BodyState extends ConsumerState<_Body> {
               onChanged: _saving
                   ? null
                   : (v) => setState(() {
-                        _accessoriesReceived = v;
-                        if (!v) _selectedAccessoryTypeIds.clear();
-                      }),
+                      _accessoriesReceived = v;
+                      if (!v) _selectedAccessoryTypeIds.clear();
+                    }),
               title: const Text('Aksesuar Teslim Alındı'),
             ),
             if (_accessoriesReceived)
               OutlinedButton.icon(
                 onPressed: _saving ? null : pickAccessories,
                 icon: const Icon(Icons.tune_rounded, size: 18),
-                label: Text('Aksesuarları Seç (${_selectedAccessoryTypeIds.length})'),
+                label: Text(
+                  'Aksesuarları Seç (${_selectedAccessoryTypeIds.length})',
+                ),
               ),
             const Gap(10),
             TextField(
               controller: _notesController,
               minLines: 2,
               maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Not',
-              ),
+              decoration: const InputDecoration(labelText: 'Not'),
             ),
           ],
         ),
@@ -902,13 +973,17 @@ class _BodyState extends ConsumerState<_Body> {
                   ),
                 ),
                 OutlinedButton.icon(
-                  onPressed: _saving ? null : () => _captureSignatures(delivery: false),
+                  onPressed: _saving
+                      ? null
+                      : () => _captureSignatures(delivery: false),
                   icon: const Icon(Icons.edit_rounded, size: 18),
                   label: const Text('Teslim Alım'),
                 ),
                 const Gap(8),
                 FilledButton.icon(
-                  onPressed: _saving ? null : () => _captureSignatures(delivery: true),
+                  onPressed: _saving
+                      ? null
+                      : () => _captureSignatures(delivery: true),
                   icon: const Icon(Icons.check_rounded, size: 18),
                   label: const Text('Teslim'),
                 ),
@@ -920,12 +995,16 @@ class _BodyState extends ConsumerState<_Body> {
               runSpacing: 10,
               children: [
                 OutlinedButton.icon(
-                  onPressed: _saving ? null : () => _addImage(ImageSource.camera),
+                  onPressed: _saving
+                      ? null
+                      : () => _addImage(ImageSource.camera),
                   icon: const Icon(Icons.photo_camera_rounded, size: 18),
                   label: const Text('Kamera'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: _saving ? null : () => _addImage(ImageSource.gallery),
+                  onPressed: _saving
+                      ? null
+                      : () => _addImage(ImageSource.gallery),
                   icon: const Icon(Icons.photo_library_rounded, size: 18),
                   label: const Text('Galeri'),
                 ),
@@ -935,10 +1014,9 @@ class _BodyState extends ConsumerState<_Body> {
             if (_deviceImages.isEmpty)
               Text(
                 'Fotoğraf yok.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: const Color(0xFF64748B)),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
               )
             else
               Wrap(
@@ -947,7 +1025,7 @@ class _BodyState extends ConsumerState<_Body> {
                 children: [
                   for (int i = 0; i < _deviceImages.length; i++)
                     _ImageThumb(
-                      dataUrl: _deviceImages[i],
+                      image: _deviceImages[i],
                       onRemove: _saving
                           ? null
                           : () async {
@@ -975,14 +1053,19 @@ class _BodyState extends ConsumerState<_Body> {
             Row(
               children: [
                 Expanded(
-                  child: Text('Yapılan İşlemler', style: Theme.of(context).textTheme.titleSmall),
+                  child: Text(
+                    'Yapılan İşlemler',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
                 ),
                 OutlinedButton.icon(
                   onPressed: _saving
                       ? null
                       : () => setState(
-                            () => _stepControllers.add(TextEditingController(text: 'Yeni adım')),
+                          () => _stepControllers.add(
+                            TextEditingController(text: 'Yeni adım'),
                           ),
+                        ),
                   icon: const Icon(Icons.add_rounded, size: 18),
                   label: const Text('Ekle'),
                 ),
@@ -999,15 +1082,17 @@ class _BodyState extends ConsumerState<_Body> {
                     decoration: BoxDecoration(
                       color: AppTheme.primary.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
+                      border: Border.all(
+                        color: AppTheme.primary.withValues(alpha: 0.18),
+                      ),
                     ),
                     child: Center(
                       child: Text(
                         '${i + 1}',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.primary,
-                            ),
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.primary,
+                        ),
                       ),
                     ),
                   ),
@@ -1015,9 +1100,7 @@ class _BodyState extends ConsumerState<_Body> {
                   Expanded(
                     child: TextField(
                       controller: _stepControllers[i],
-                      decoration: const InputDecoration(
-                        labelText: 'Açıklama',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Açıklama'),
                     ),
                   ),
                   const Gap(10),
@@ -1026,9 +1109,9 @@ class _BodyState extends ConsumerState<_Body> {
                     onPressed: _saving
                         ? null
                         : () => setState(() {
-                              _stepControllers[i].dispose();
-                              _stepControllers.removeAt(i);
-                            }),
+                            _stepControllers[i].dispose();
+                            _stepControllers.removeAt(i);
+                          }),
                     icon: const Icon(Icons.delete_outline_rounded),
                   ),
                 ],
@@ -1064,26 +1147,30 @@ class _BodyState extends ConsumerState<_Body> {
             title: 'Parçalar',
             items: _parts,
             currencySymbol: _currencySymbol,
-            onAdd: _saving ? null : () => setState(() => _parts.add(_LineItemDraft.empty())),
+            onAdd: _saving
+                ? null
+                : () => setState(() => _parts.add(_LineItemDraft.empty())),
             onRemove: _saving
                 ? null
                 : (i) => setState(() {
-                      _parts[i].dispose();
-                      _parts.removeAt(i);
-                    }),
+                    _parts[i].dispose();
+                    _parts.removeAt(i);
+                  }),
           ),
           const Gap(12),
           _CostCard(
             title: 'İşçilik',
             items: _labor,
             currencySymbol: _currencySymbol,
-            onAdd: _saving ? null : () => setState(() => _labor.add(_LineItemDraft.empty())),
+            onAdd: _saving
+                ? null
+                : () => setState(() => _labor.add(_LineItemDraft.empty())),
             onRemove: _saving
                 ? null
                 : (i) => setState(() {
-                      _labor[i].dispose();
-                      _labor.removeAt(i);
-                    }),
+                    _labor[i].dispose();
+                    _labor.removeAt(i);
+                  }),
           ),
           if (includeTotal) ...[
             const Gap(12),
@@ -1099,8 +1186,8 @@ class _BodyState extends ConsumerState<_Body> {
                   Text(
                     _moneyFormat.format(_total),
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ],
               ),
@@ -1131,11 +1218,7 @@ class _BodyState extends ConsumerState<_Body> {
                   SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     child: Column(
-                      children: [
-                        infoCard(),
-                        const Gap(12),
-                        costsColumn(),
-                      ],
+                      children: [infoCard(), const Gap(12), costsColumn()],
                     ),
                   ),
                   SingleChildScrollView(
@@ -1150,11 +1233,7 @@ class _BodyState extends ConsumerState<_Body> {
                   ),
                   SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Column(
-                      children: [
-                        mediaCard(),
-                      ],
-                    ),
+                    child: Column(children: [mediaCard()]),
                   ),
                 ],
               ),
@@ -1176,22 +1255,14 @@ class _BodyState extends ConsumerState<_Body> {
               Expanded(
                 flex: 3,
                 child: Column(
-                  children: [
-                    infoCard(),
-                    const Gap(12),
-                    stepsCard(),
-                  ],
+                  children: [infoCard(), const Gap(12), stepsCard()],
                 ),
               ),
               const Gap(12),
               Expanded(
                 flex: 2,
                 child: Column(
-                  children: [
-                    mediaCard(),
-                    const Gap(12),
-                    costsColumn(),
-                  ],
+                  children: [mediaCard(), const Gap(12), costsColumn()],
                 ),
               ),
             ],
@@ -1203,13 +1274,13 @@ class _BodyState extends ConsumerState<_Body> {
 }
 
 class _ImageThumb extends StatelessWidget {
-  const _ImageThumb({required this.dataUrl, required this.onRemove});
+  const _ImageThumb({required this.image, required this.onRemove});
 
-  final String dataUrl;
+  final ServiceImage image;
   final VoidCallback? onRemove;
 
   Uint8List? _decode() {
-    final raw = dataUrl.trim();
+    final raw = (image.dataUrl ?? '').trim();
     final idx = raw.indexOf('base64,');
     if (idx < 0) return null;
     final b64 = raw.substring(idx + 'base64,'.length).trim();
@@ -1224,6 +1295,7 @@ class _ImageThumb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bytes = _decode();
+    final imageUrl = (image.url ?? '').trim();
     return Stack(
       children: [
         Container(
@@ -1234,12 +1306,20 @@ class _ImageThumb extends StatelessWidget {
             border: Border.all(color: AppTheme.border),
             color: const Color(0xFFF8FAFC),
           ),
-          child: bytes == null
-              ? const Center(child: Icon(Icons.image_not_supported_outlined))
-              : ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.memory(bytes, fit: BoxFit.cover),
-                ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: bytes != null
+                ? Image.memory(bytes, fit: BoxFit.cover)
+                : imageUrl.isNotEmpty
+                ? Image.network(
+                    imageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => const Center(
+                      child: Icon(Icons.image_not_supported_outlined),
+                    ),
+                  )
+                : const Center(child: Icon(Icons.image_not_supported_outlined)),
+          ),
         ),
         if (onRemove != null)
           Positioned(
@@ -1327,7 +1407,10 @@ class _CostCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(title, style: Theme.of(context).textTheme.titleSmall),
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
               ),
               OutlinedButton.icon(
                 onPressed: onAdd,
@@ -1340,10 +1423,9 @@ class _CostCard extends StatelessWidget {
           if (items.isEmpty)
             Text(
               'Kayıt yok.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: const Color(0xFF64748B)),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
             )
           else
             for (int i = 0; i < items.length; i++) ...[
@@ -1397,7 +1479,9 @@ class _LineItemEditor extends StatelessWidget {
           child: TextField(
             controller: item.unitPriceController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(labelText: 'Birim Fiyat ($currencySymbol)'),
+            decoration: InputDecoration(
+              labelText: 'Birim Fiyat ($currencySymbol)',
+            ),
           ),
         ),
         const Gap(10),
@@ -1424,23 +1508,30 @@ class _LineItemDraft {
   final TextEditingController unitPriceController;
 
   factory _LineItemDraft.empty() => _LineItemDraft(
-        nameController: TextEditingController(),
-        qtyController: TextEditingController(text: '1'),
-        unitPriceController: TextEditingController(text: '0'),
-      );
+    nameController: TextEditingController(),
+    qtyController: TextEditingController(text: '1'),
+    unitPriceController: TextEditingController(text: '0'),
+  );
 
   factory _LineItemDraft.from(Map<String, dynamic> json) {
     return _LineItemDraft(
-      nameController: TextEditingController(text: json['name']?.toString() ?? ''),
-      qtyController: TextEditingController(text: json['qty']?.toString() ?? '1'),
-      unitPriceController:
-          TextEditingController(text: json['unit_price']?.toString() ?? '0'),
+      nameController: TextEditingController(
+        text: json['name']?.toString() ?? '',
+      ),
+      qtyController: TextEditingController(
+        text: json['qty']?.toString() ?? '1',
+      ),
+      unitPriceController: TextEditingController(
+        text: json['unit_price']?.toString() ?? '0',
+      ),
     );
   }
 
-  double get qty => double.tryParse(qtyController.text.trim().replaceAll(',', '.')) ?? 0;
+  double get qty =>
+      double.tryParse(qtyController.text.trim().replaceAll(',', '.')) ?? 0;
   double get unitPrice =>
-      double.tryParse(unitPriceController.text.trim().replaceAll(',', '.')) ?? 0;
+      double.tryParse(unitPriceController.text.trim().replaceAll(',', '.')) ??
+      0;
   double get total => qty * unitPrice;
 
   Map<String, dynamic> toJson() {
@@ -1480,7 +1571,7 @@ class ServiceDetail {
     required this.technicianName,
     required this.accessoriesReceived,
     required this.accessoryTypeIds,
-    required this.deviceImageDataUrls,
+    required this.deviceImages,
     required this.intakeCustomerSignatureDataUrl,
     required this.intakePersonnelSignatureDataUrl,
     required this.deliveryCustomerSignatureDataUrl,
@@ -1516,7 +1607,11 @@ class ServiceDetail {
   final String? technicianName;
   final bool accessoriesReceived;
   final List<String> accessoryTypeIds;
-  final List<String> deviceImageDataUrls;
+  final List<ServiceImage> deviceImages;
+  List<String> get deviceImageDataUrls => deviceImages
+      .map((e) => e.displayUrl)
+      .where((e) => e.trim().isNotEmpty)
+      .toList(growable: false);
   final String? intakeCustomerSignatureDataUrl;
   final String? intakePersonnelSignatureDataUrl;
   final String? deliveryCustomerSignatureDataUrl;
@@ -1557,9 +1652,12 @@ class ServiceDetail {
       title: (json['title'] ?? '').toString(),
       status: (json['status'] ?? 'open').toString(),
       priority: json['priority']?.toString(),
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+      createdAt:
+          DateTime.tryParse(json['created_at']?.toString() ?? '') ??
           DateTime.now(),
-      appointmentAt: DateTime.tryParse(json['appointment_at']?.toString() ?? ''),
+      appointmentAt: DateTime.tryParse(
+        json['appointment_at']?.toString() ?? '',
+      ),
       isActive: json['is_active'] as bool? ?? true,
       notes: json['notes']?.toString(),
       registryNumber: json['registry_number']?.toString(),
@@ -1575,20 +1673,14 @@ class ServiceDetail {
       accessoryTypeIds: (accessoryIdsRaw is List)
           ? accessoryIdsRaw.map((e) => e.toString()).toList(growable: false)
           : const [],
-      deviceImageDataUrls: (deviceImagesRaw is List)
+      deviceImages: (deviceImagesRaw is List)
           ? deviceImagesRaw
-              .map((e) {
-                if (e is String) return e;
-                if (e is Map) {
-                  return (e['data_url'] ?? e['url'] ?? '').toString();
-                }
-                return '';
-              })
-              .where((e) => e.trim().isNotEmpty)
-              .toList(growable: false)
+                .map(ServiceImage.fromJson)
+                .where((e) => e.displayUrl.trim().isNotEmpty)
+                .toList(growable: false)
           : const [],
-      intakeCustomerSignatureDataUrl:
-          json['intake_customer_signature_data_url']?.toString(),
+      intakeCustomerSignatureDataUrl: json['intake_customer_signature_data_url']
+          ?.toString(),
       intakePersonnelSignatureDataUrl:
           json['intake_personnel_signature_data_url']?.toString(),
       deliveryCustomerSignatureDataUrl:
@@ -1611,5 +1703,68 @@ class ServiceDetail {
       customerName: customers?['name']?.toString(),
       customerEmail: customers?['email']?.toString(),
     );
+  }
+}
+
+class ServiceImage {
+  const ServiceImage({
+    this.bucket,
+    this.path,
+    this.url,
+    this.dataUrl,
+    this.contentType,
+    this.size,
+  });
+
+  final String? bucket;
+  final String? path;
+  final String? url;
+  final String? dataUrl;
+  final String? contentType;
+  final int? size;
+
+  String get displayUrl {
+    final data = (dataUrl ?? '').trim();
+    if (data.isNotEmpty) return data;
+    return (url ?? '').trim();
+  }
+
+  Map<String, dynamic> toJson() {
+    final result = <String, dynamic>{};
+    if ((bucket ?? '').trim().isNotEmpty) result['bucket'] = bucket!.trim();
+    if ((path ?? '').trim().isNotEmpty) result['path'] = path!.trim();
+    if ((url ?? '').trim().isNotEmpty) result['url'] = url!.trim();
+    if ((dataUrl ?? '').trim().isNotEmpty) result['data_url'] = dataUrl!.trim();
+    if ((contentType ?? '').trim().isNotEmpty) {
+      result['content_type'] = contentType!.trim();
+    }
+    if (size != null) result['size'] = size;
+    return result;
+  }
+
+  factory ServiceImage.fromJson(Object? value) {
+    if (value is String) {
+      final raw = value.trim();
+      if (raw.startsWith('data:')) return ServiceImage(dataUrl: raw);
+      return ServiceImage(url: raw);
+    }
+    if (value is Map) {
+      int? parseSize(Object? raw) {
+        if (raw is int) return raw;
+        if (raw is num) return raw.toInt();
+        return int.tryParse(raw?.toString() ?? '');
+      }
+
+      return ServiceImage(
+        bucket: value['bucket']?.toString(),
+        path: value['path']?.toString(),
+        url: (value['url'] ?? value['public_url'])?.toString(),
+        dataUrl: value['data_url']?.toString(),
+        contentType: (value['content_type'] ?? value['contentType'])
+            ?.toString(),
+        size: parseSize(value['size']),
+      );
+    }
+    return const ServiceImage();
   }
 }
