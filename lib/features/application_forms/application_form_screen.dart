@@ -592,6 +592,232 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     }
   }
 
+  Future<void> _setRecordsPassiveBulk(
+    List<ApplicationFormRecord> records,
+  ) async {
+    final profile = ref.read(currentUserProfileProvider).value;
+    if (profile?.role != 'admin') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bu işlemi yalnızca admin yapabilir.')),
+      );
+      return;
+    }
+    final targets = records
+        .where((record) => record.isActive && !record.isApproved)
+        .toList(growable: false);
+    if (targets.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pasife alınacak uygun kayıt yok.')),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Seçili kayıtları pasife al'),
+        content: Text(
+          '${targets.length} başvuru pasife alınacak. Onaylanmış kayıtlar bu işleme dahil edilmez.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Pasife Al'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    try {
+      final nowIso = DateTime.now().toIso8601String();
+      for (final record in targets) {
+        final registry = record.stockRegistryNumber?.trim() ?? '';
+        if (apiClient != null) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'updateWhere',
+              'table': 'application_forms',
+              'filters': [
+                {'col': 'id', 'op': 'eq', 'value': record.id},
+              ],
+              'values': {'is_active': false},
+            },
+          );
+          if (registry.isNotEmpty) {
+            await apiClient.postJson(
+              '/mutate',
+              body: {
+                'op': 'updateWhere',
+                'table': 'device_registries',
+                'filters': [
+                  {'col': 'registry_number', 'op': 'eq', 'value': registry},
+                  {
+                    'col': 'application_form_id',
+                    'op': 'eq',
+                    'value': record.id,
+                  },
+                ],
+                'values': {
+                  'customer_id': null,
+                  'application_form_id': null,
+                  'released_at': nowIso,
+                  'is_active': true,
+                },
+              },
+            );
+          }
+        } else {
+          if (client == null) return;
+          await client
+              .from('application_forms')
+              .update({'is_active': false})
+              .eq('id', record.id);
+          if (registry.isNotEmpty) {
+            await client
+                .from('device_registries')
+                .update({
+                  'customer_id': null,
+                  'application_form_id': null,
+                  'released_at': nowIso,
+                  'is_active': true,
+                })
+                .eq('registry_number', registry)
+                .eq('application_form_id', record.id);
+          }
+        }
+      }
+      if (!mounted) return;
+      setState(() => _selectedRecordIds.removeAll(targets.map((r) => r.id)));
+      _refreshApplicationsSoon();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${targets.length} başvuru pasife alındı.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Toplu pasife alma başarısız: $e')),
+      );
+    }
+  }
+
+  Future<void> _deletePassiveRecordsBulk(
+    List<ApplicationFormRecord> records,
+  ) async {
+    final profile = ref.read(currentUserProfileProvider).value;
+    if (profile?.role != 'admin') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bu işlemi yalnızca admin yapabilir.')),
+      );
+      return;
+    }
+    final targets = records
+        .where((record) => !record.isActive && !record.isApproved)
+        .toList(growable: false);
+    if (targets.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Silinecek pasif kayıt yok.')),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pasif kayıtları kalıcı sil'),
+        content: Text(
+          '${targets.length} pasif başvuru kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Kalıcı Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    try {
+      final nowIso = DateTime.now().toIso8601String();
+      for (final record in targets) {
+        final registry = record.stockRegistryNumber?.trim() ?? '';
+        if (apiClient != null) {
+          if (registry.isNotEmpty) {
+            await apiClient.postJson(
+              '/mutate',
+              body: {
+                'op': 'updateWhere',
+                'table': 'device_registries',
+                'filters': [
+                  {'col': 'registry_number', 'op': 'eq', 'value': registry},
+                  {
+                    'col': 'application_form_id',
+                    'op': 'eq',
+                    'value': record.id,
+                  },
+                ],
+                'values': {
+                  'customer_id': null,
+                  'application_form_id': null,
+                  'released_at': nowIso,
+                  'is_active': true,
+                },
+              },
+            );
+          }
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'delete',
+              'table': 'application_forms',
+              'id': record.id,
+            },
+          );
+        } else {
+          if (client == null) return;
+          if (registry.isNotEmpty) {
+            await client
+                .from('device_registries')
+                .update({
+                  'customer_id': null,
+                  'application_form_id': null,
+                  'released_at': nowIso,
+                  'is_active': true,
+                })
+                .eq('registry_number', registry)
+                .eq('application_form_id', record.id);
+          }
+          await client.from('application_forms').delete().eq('id', record.id);
+        }
+      }
+      if (!mounted) return;
+      setState(() => _selectedRecordIds.removeAll(targets.map((r) => r.id)));
+      _refreshApplicationsSoon();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${targets.length} pasif başvuru silindi.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Toplu silme başarısız: $e')));
+    }
+  }
+
   Future<void> _deleteRecordPermanently(ApplicationFormRecord record) async {
     if (record.isApproved) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -989,6 +1215,214 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       for (final controller in controllers.values) {
         controller.dispose();
       }
+    }
+  }
+
+  Future<void> _unapproveRecord(ApplicationFormRecord record) async {
+    if (!record.isApproved) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Onayı geri al'),
+        content: Text(
+          '"${record.customerName}" başvurusu yeniden onay bekleyenlere alınacak.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Onayı Geri Al'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    final nowIso = DateTime.now().toIso8601String();
+    final registry = record.stockRegistryNumber?.trim() ?? '';
+
+    try {
+      final values = {
+        'approval_status': 'pending',
+        'approved_at': null,
+        'approved_by': null,
+      };
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'application_forms',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': record.id},
+            ],
+            'values': values,
+          },
+        );
+        if (registry.isNotEmpty) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'updateWhere',
+              'table': 'device_registries',
+              'filters': [
+                {'col': 'registry_number', 'op': 'eq', 'value': registry},
+                {'col': 'application_form_id', 'op': 'eq', 'value': record.id},
+              ],
+              'values': {
+                'customer_id': null,
+                'application_form_id': null,
+                'released_at': nowIso,
+                'is_active': true,
+              },
+            },
+          );
+        }
+      } else {
+        if (client == null) return;
+        await client
+            .from('application_forms')
+            .update(values)
+            .eq('id', record.id);
+        if (registry.isNotEmpty) {
+          await client
+              .from('device_registries')
+              .update({
+                'customer_id': null,
+                'application_form_id': null,
+                'released_at': nowIso,
+                'is_active': true,
+              })
+              .eq('registry_number', registry)
+              .eq('application_form_id', record.id);
+        }
+      }
+      if (!mounted) return;
+      await reloadCurrentPage();
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Onay geri alınamadı: $e')));
+    }
+  }
+
+  Future<void> _unapproveRecordsBulk(
+    List<ApplicationFormRecord> records,
+  ) async {
+    final approvedRecords = records
+        .where((record) => record.isApproved)
+        .toList(growable: false);
+    if (approvedRecords.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Seçili kayıtlarda onaylı başvuru yok.')),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Toplu onayı geri al'),
+        content: Text(
+          '${approvedRecords.length} başvuru yeniden onay bekleyenlere alınacak.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Onayları Geri Al'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    final nowIso = DateTime.now().toIso8601String();
+
+    try {
+      const values = {
+        'approval_status': 'pending',
+        'approved_at': null,
+        'approved_by': null,
+      };
+      for (final record in approvedRecords) {
+        final registry = record.stockRegistryNumber?.trim() ?? '';
+        if (apiClient != null) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'updateWhere',
+              'table': 'application_forms',
+              'filters': [
+                {'col': 'id', 'op': 'eq', 'value': record.id},
+              ],
+              'values': values,
+            },
+          );
+          if (registry.isNotEmpty) {
+            await apiClient.postJson(
+              '/mutate',
+              body: {
+                'op': 'updateWhere',
+                'table': 'device_registries',
+                'filters': [
+                  {'col': 'registry_number', 'op': 'eq', 'value': registry},
+                  {
+                    'col': 'application_form_id',
+                    'op': 'eq',
+                    'value': record.id,
+                  },
+                ],
+                'values': {
+                  'customer_id': null,
+                  'application_form_id': null,
+                  'released_at': nowIso,
+                  'is_active': true,
+                },
+              },
+            );
+          }
+        } else {
+          if (client == null) return;
+          await client
+              .from('application_forms')
+              .update(values)
+              .eq('id', record.id);
+          if (registry.isNotEmpty) {
+            await client
+                .from('device_registries')
+                .update({
+                  'customer_id': null,
+                  'application_form_id': null,
+                  'released_at': nowIso,
+                  'is_active': true,
+                })
+                .eq('registry_number', registry)
+                .eq('application_form_id', record.id);
+          }
+        }
+      }
+      if (!mounted) return;
+      await reloadCurrentPage();
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Toplu onay geri alınamadı: $e')));
     }
   }
 
@@ -1545,6 +1979,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     final isMobile = width < 820;
     final recordsAsync = ref.watch(applicationFormsProvider);
     final profile = ref.watch(currentUserProfileProvider).value;
+    final isAdmin = profile?.role == 'admin';
     final isBankUser = profile?.isBankLike ?? false;
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
     final canArchive = ref.watch(
@@ -1601,6 +2036,15 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
               : baseFiltered;
           final selectedRecords = filtered
               .where((record) => _selectedRecordIds.contains(record.id))
+              .toList(growable: false);
+          final selectedActiveRecords = selectedRecords
+              .where((record) => record.isActive && !record.isApproved)
+              .toList(growable: false);
+          final selectedPassiveRecords = selectedRecords
+              .where((record) => !record.isActive && !record.isApproved)
+              .toList(growable: false);
+          final selectedApprovedRecords = selectedRecords
+              .where((record) => record.isApproved)
               .toList(growable: false);
           final allFilteredSelected =
               filtered.isNotEmpty && selectedRecords.length == filtered.length;
@@ -1941,6 +2385,40 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                               'Toplu Onayla (${selectedRecords.where((record) => record.isPendingApproval).length})',
                             ),
                           ),
+                        if (canApprove && selectedApprovedRecords.isNotEmpty)
+                          OutlinedButton.icon(
+                            onPressed: () =>
+                                _unapproveRecordsBulk(selectedRecords),
+                            icon: const Icon(Icons.undo_rounded, size: 18),
+                            label: Text(
+                              'Onayı Geri Al (${selectedApprovedRecords.length})',
+                            ),
+                          ),
+                        if (isAdmin &&
+                            canArchive &&
+                            selectedActiveRecords.isNotEmpty)
+                          OutlinedButton.icon(
+                            onPressed: () =>
+                                _setRecordsPassiveBulk(selectedRecords),
+                            icon: const Icon(Icons.archive_rounded, size: 18),
+                            label: Text(
+                              'Pasife Al (${selectedActiveRecords.length})',
+                            ),
+                          ),
+                        if (isAdmin &&
+                            canDeletePermanently &&
+                            selectedPassiveRecords.isNotEmpty)
+                          FilledButton.icon(
+                            onPressed: () =>
+                                _deletePassiveRecordsBulk(selectedRecords),
+                            icon: const Icon(
+                              Icons.delete_forever_rounded,
+                              size: 18,
+                            ),
+                            label: Text(
+                              'Pasifleri Sil (${selectedPassiveRecords.length})',
+                            ),
+                          ),
                         if (canUseInternalApplicationActions)
                           FilledButton.icon(
                             onPressed: () =>
@@ -2151,6 +2629,57 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                                 );
                                               },
                                             ),
+                                          if (canApprove &&
+                                              selectedApprovedRecords
+                                                  .isNotEmpty)
+                                            ListTile(
+                                              leading: const Icon(
+                                                Icons.undo_rounded,
+                                              ),
+                                              title: Text(
+                                                'Onayı Geri Al (${selectedApprovedRecords.length})',
+                                              ),
+                                              onTap: () {
+                                                Navigator.of(context).pop();
+                                                _unapproveRecordsBulk(
+                                                  selectedRecords,
+                                                );
+                                              },
+                                            ),
+                                          if (isAdmin &&
+                                              canArchive &&
+                                              selectedActiveRecords.isNotEmpty)
+                                            ListTile(
+                                              leading: const Icon(
+                                                Icons.archive_rounded,
+                                              ),
+                                              title: Text(
+                                                'Pasife Al (${selectedActiveRecords.length})',
+                                              ),
+                                              onTap: () {
+                                                Navigator.of(context).pop();
+                                                _setRecordsPassiveBulk(
+                                                  selectedRecords,
+                                                );
+                                              },
+                                            ),
+                                          if (isAdmin &&
+                                              canDeletePermanently &&
+                                              selectedPassiveRecords.isNotEmpty)
+                                            ListTile(
+                                              leading: const Icon(
+                                                Icons.delete_forever_rounded,
+                                              ),
+                                              title: Text(
+                                                'Pasifleri Kalıcı Sil (${selectedPassiveRecords.length})',
+                                              ),
+                                              onTap: () {
+                                                Navigator.of(context).pop();
+                                                _deletePassiveRecordsBulk(
+                                                  selectedRecords,
+                                                );
+                                              },
+                                            ),
                                           if (canUseInternalApplicationActions)
                                             ListTile(
                                               leading: const Icon(
@@ -2283,6 +2812,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                       _print(r, kind: ApplicationPrintKind.kdv4a),
                   onCreateWorkOrder: () => _openCreateWorkOrdersDialog([r]),
                   onApprove: () => _approveRecord(r),
+                  onUnapprove: () => _unapproveRecord(r),
                   onEdit: () => _openEditDialog(r),
                   onDuplicate: () => _openDuplicateDialog(r),
                   onToggleActive: () => _setRecordActive(r, !r.isActive),
@@ -2338,6 +2868,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                 onPrintKdv4a: () => _print(r, kind: ApplicationPrintKind.kdv4a),
                 onCreateWorkOrder: () => _openCreateWorkOrdersDialog([r]),
                 onApprove: () => _approveRecord(r),
+                onUnapprove: () => _unapproveRecord(r),
                 onEdit: () => _openEditDialog(r),
                 onDuplicate: () => _openDuplicateDialog(r),
                 onToggleActive: () => _setRecordActive(r, !r.isActive),
@@ -4357,7 +4888,9 @@ class _ApplicationFormDialogState
     }
 
     final profile = await ref.read(currentUserProfileProvider.future);
-    final createdBy = (profile?.id ?? '').trim();
+    final createdBy = widget.isEdit
+        ? (widget.initialRecord?.createdBy ?? '').trim()
+        : (profile?.id ?? '').trim();
     setState(() => _saving = true);
     try {
       final basePayload = {
@@ -4784,7 +5317,6 @@ class _ApplicationFormDialogState
     final formRows = <Widget>[
       _FormRow(
         label: "Satışa Ait faturanın Tarih ve No' su",
-        first: true,
         child: _ResponsiveFieldGroup(
           left: _DateField(
             value: _applicationDate,
@@ -4794,7 +5326,10 @@ class _ApplicationFormDialogState
               onSelected: (value) => setState(() => _applicationDate = value),
             ),
           ),
-          right: _ApplicationTextField(controller: _invoiceNumberController),
+          right: _ApplicationTextField(
+            controller: _invoiceNumberController,
+            hintText: 'Fatura no girin',
+          ),
         ),
       ),
       _FormRow(
@@ -4815,6 +5350,7 @@ class _ApplicationFormDialogState
         label: 'İşyeri Adresi',
         child: _ApplicationTextField(
           controller: _workAddressController,
+          hintText: 'İşyeri adresini girin',
           minLines: 1,
           maxLines: 2,
           validator: (value) => value == null || value.trim().isEmpty
@@ -4828,6 +5364,7 @@ class _ApplicationFormDialogState
           left: citiesAsync.when(
             data: (items) => _ApplicationDropdown<String>(
               value: _selectedCityId,
+              hintText: 'Vergi dairesi seçin',
               items: items
                   .where((item) => item.isActive)
                   .map(
@@ -4854,13 +5391,22 @@ class _ApplicationFormDialogState
       _FormRow(
         label: 'Dosya Sicil No',
         child: _ResponsiveFieldGroup(
-          left: _ApplicationTextField(controller: _fileRegistryController),
-          right: _ApplicationTextField(controller: _customerTcknMsController),
+          left: _ApplicationTextField(
+            controller: _fileRegistryController,
+            hintText: 'Dosya sicil no girin',
+          ),
+          right: _ApplicationTextField(
+            controller: _customerTcknMsController,
+            hintText: 'VKN / MS girin',
+          ),
         ),
       ),
       _FormRow(
         label: 'Direktör Ad Soyad',
-        child: _ApplicationTextField(controller: _directorController),
+        child: _ApplicationTextField(
+          controller: _directorController,
+          hintText: 'Direktör ad soyad girin',
+        ),
       ),
       _FormRow(
         label: 'Markası ve Modeli',
@@ -4898,6 +5444,7 @@ class _ApplicationFormDialogState
         child: _ResponsiveFieldGroup(
           left: _ApplicationTextField(
             controller: _productNameController,
+            hintText: 'Model seçilince ürün adı gelir',
             readOnly: true,
             enabled: false,
             validator: (value) => value == null || value.trim().isEmpty
@@ -4915,11 +5462,15 @@ class _ApplicationFormDialogState
                     label: const Text('Seri Seç'),
                   ),
                   const Gap(10),
-                  Text(
-                    'Kayıtlı seri havuzundan seçebilir veya manuel girebilirsiniz.',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+                  Expanded(
+                    child: Text(
+                      'Kayıtlı seri havuzundan seçebilir veya manuel girebilirsiniz.',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -5077,6 +5628,7 @@ class _ApplicationFormDialogState
           left: fiscalSymbolsAsync.when(
             data: (items) => _ApplicationDropdown<String>(
               value: _selectedFiscalSymbolId,
+              hintText: 'Mali sembol seçin',
               items: items
                   .where((item) => item.isActive)
                   .map(
@@ -5115,7 +5667,10 @@ class _ApplicationFormDialogState
         label: 'Muhasebe Ofisi',
         last: true,
         child: _ResponsiveFieldGroup(
-          left: _ApplicationTextField(controller: _accountingOfficeController),
+          left: _ApplicationTextField(
+            controller: _accountingOfficeController,
+            hintText: 'Muhasebe ofisi girin',
+          ),
           right: _DateField(
             value: _okcStartDate,
             format: _dateFormat,
@@ -5134,8 +5689,8 @@ class _ApplicationFormDialogState
       backgroundColor: Colors.transparent,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: isMobile ? 720 : 1780,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.996,
+          maxWidth: isMobile ? 720 : 1180,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.94,
         ),
         child: AppCard(
           padding: EdgeInsets.symmetric(
@@ -5160,10 +5715,13 @@ class _ApplicationFormDialogState
                                   : widget.duplicateMode
                                   ? 'Başvuru Kopyası Oluştur'
                                   : 'Yeni Başvuru',
-                              style: Theme.of(context).textTheme.titleLarge
-                                  ?.copyWith(fontSize: isMobile ? 19 : 21),
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(
+                                    fontSize: isMobile ? 20 : 22,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                             ),
-                            const Gap(4),
+                            const Gap(6),
                             Text(
                               widget.isEdit
                                   ? 'Kaydı güncelleyin.'
@@ -5171,7 +5729,7 @@ class _ApplicationFormDialogState
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     color: AppTheme.textMuted,
-                                    fontSize: 11,
+                                    fontSize: 13,
                                   ),
                             ),
                           ],
@@ -5188,11 +5746,12 @@ class _ApplicationFormDialogState
                   const Gap(16),
                   isMobile
                       ? Container(
+                          padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppTheme.border),
                           ),
-                          clipBehavior: Clip.antiAlias,
                           child: Column(children: formRows),
                         )
                       : Row(
@@ -5200,11 +5759,12 @@ class _ApplicationFormDialogState
                           children: [
                             Expanded(
                               child: Container(
+                                padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
+                                  color: const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppTheme.border),
                                 ),
-                                clipBehavior: Clip.antiAlias,
                                 child: Column(
                                   children: formRows
                                       .sublist(0, splitIndex)
@@ -5216,11 +5776,12 @@ class _ApplicationFormDialogState
                             const Gap(14),
                             Expanded(
                               child: Container(
+                                padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
+                                  color: const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppTheme.border),
                                 ),
-                                clipBehavior: Clip.antiAlias,
                                 child: Column(
                                   children: formRows
                                       .sublist(splitIndex)
@@ -5689,6 +6250,7 @@ class _ApplicationRecordCard extends StatelessWidget {
     required this.onPrintKdv4a,
     required this.onCreateWorkOrder,
     required this.onApprove,
+    required this.onUnapprove,
     required this.onEdit,
     required this.onDuplicate,
     required this.onToggleActive,
@@ -5711,6 +6273,7 @@ class _ApplicationRecordCard extends StatelessWidget {
   final VoidCallback onPrintKdv4a;
   final VoidCallback onCreateWorkOrder;
   final VoidCallback onApprove;
+  final VoidCallback onUnapprove;
   final VoidCallback onEdit;
   final VoidCallback onDuplicate;
   final VoidCallback onToggleActive;
@@ -5753,6 +6316,8 @@ class _ApplicationRecordCard extends StatelessWidget {
       const PopupMenuItem(value: 'logs', child: Text('Loglar')),
       if (canApprove && record.isPendingApproval)
         const PopupMenuItem(value: 'approve', child: Text('Onayla')),
+      if (canApprove && record.isApproved)
+        const PopupMenuItem(value: 'unapprove', child: Text('Onayı Geri Al')),
       const PopupMenuItem(value: 'print_kdv4', child: Text('KDV4 Yazdır')),
       if (canPrintKdv4a)
         const PopupMenuItem(value: 'print_kdv4a', child: Text('KDV4A Yazdır')),
@@ -5773,171 +6338,207 @@ class _ApplicationRecordCard extends StatelessWidget {
         ),
     ];
 
+    void handleMenuSelection(String value) {
+      switch (value) {
+        case 'edit':
+          onEdit();
+          break;
+        case 'duplicate':
+          onDuplicate();
+          break;
+        case 'print_kdv4':
+          onPrintKdv();
+          break;
+        case 'document':
+          onViewDocument();
+          break;
+        case 'logs':
+          onViewLogs();
+          break;
+        case 'print_kdv4a':
+          onPrintKdv4a();
+          break;
+        case 'create_work_order':
+          onCreateWorkOrder();
+          break;
+        case 'approve':
+          onApprove();
+          break;
+        case 'unapprove':
+          onUnapprove();
+          break;
+        case 'toggle_active':
+          onToggleActive();
+          break;
+        case 'delete_permanently':
+          onDeletePermanently();
+          break;
+        default:
+          break;
+      }
+    }
+
     if (!isMobile) {
       return AppCard(
         padding: EdgeInsets.zero,
-        child: Row(
-          children: [
-            Container(
-              width: 4,
-              height: 64,
-              decoration: BoxDecoration(
-                color: accentColor.withValues(
-                  alpha: record.isActive ? 0.75 : 0.35,
-                ),
-                borderRadius: const BorderRadius.horizontal(
-                  left: Radius.circular(AppTheme.radiusMd),
+        child: IntrinsicHeight(
+          child: Row(
+            children: [
+              Container(
+                width: 5,
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(
+                    alpha: record.isActive ? 0.75 : 0.35,
+                  ),
+                  borderRadius: const BorderRadius.horizontal(
+                    left: Radius.circular(AppTheme.radiusMd),
+                  ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Checkbox(
-                value: selected,
-                visualDensity: VisualDensity.compact,
-                onChanged: (value) => onSelectionChanged(value ?? false),
+              SizedBox(
+                width: 62,
+                child: Center(
+                  child: Checkbox(
+                    value: selected,
+                    visualDensity: VisualDensity.compact,
+                    onChanged: (value) => onSelectionChanged(value ?? false),
+                  ),
+                ),
               ),
-            ),
-            Expanded(
-              flex: 5,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      record.customerName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        decoration: record.isActive
-                            ? TextDecoration.none
-                            : TextDecoration.lineThrough,
+              Expanded(
+                flex: 36,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 14, 18, 14),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        record.customerName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14.5,
+                          decoration: record.isActive
+                              ? TextDecoration.none
+                              : TextDecoration.lineThrough,
+                        ),
                       ),
-                    ),
-                    const Gap(5),
-                    Wrap(
-                      spacing: 4,
-                      runSpacing: 4,
-                      children: [
-                        if (record.businessActivityName?.trim().isNotEmpty ??
-                            false)
-                          _InfoChip(
-                            icon: Icons.storefront_rounded,
-                            text: record.businessActivityName!,
-                          ),
-                        if (record.brandModel.isNotEmpty)
-                          _InfoChip(
-                            icon: Icons.developer_board_rounded,
-                            text: record.brandModel,
-                          ),
-                      ],
-                    ),
-                  ],
+                      const Gap(5),
+                      Wrap(
+                        spacing: 4,
+                        runSpacing: 4,
+                        children: [
+                          if (record.businessActivityName?.trim().isNotEmpty ??
+                              false)
+                            _InfoChip(
+                              icon: Icons.storefront_rounded,
+                              text: record.businessActivityName!,
+                            ),
+                          if (record.brandModel.isNotEmpty)
+                            _InfoChip(
+                              icon: Icons.developer_board_rounded,
+                              text: record.brandModel,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            _ApplicationMetaCell(
-              width: 132,
-              icon: Icons.calendar_today_rounded,
-              label: 'Tarih',
-              value: dateText,
-            ),
-            _ApplicationMetaCell(
-              width: 170,
-              icon: Icons.folder_open_rounded,
-              label: 'Dosya',
-              value: record.fileRegistryNumber?.trim().isNotEmpty == true
-                  ? record.fileRegistryNumber!.trim()
-                  : '-',
-            ),
-            _ApplicationMetaCell(
-              width: 170,
-              icon: record.isApproved
-                  ? Icons.verified_rounded
-                  : Icons.memory_rounded,
-              label: record.isApproved ? 'Onaylı Sicil' : 'Cihaz',
-              value: record.stockRegistryNumber?.trim().isNotEmpty == true
-                  ? record.stockRegistryNumber!.trim()
-                  : '-',
-              highlighted: record.isApproved,
-            ),
-            SizedBox(
-              width: 116,
-              child: AppBadge(label: approvalLabel, tone: approvalTone),
-            ),
-            const Gap(8),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (canModify) ...[
-                  _ActionButton(
-                    onPressed: onEdit,
-                    icon: Icons.edit_rounded,
-                    label: 'Düzenle',
-                  ),
-                  if (canPrintKdv4a)
-                    _ActionButton(
-                      onPressed: onDuplicate,
-                      icon: Icons.content_copy_rounded,
-                      label: 'Kopya Oluştur',
-                    ),
-                ],
-                if (canApprove && record.isPendingApproval)
-                  _ActionButton(
-                    onPressed: onApprove,
-                    icon: Icons.verified_rounded,
-                    label: 'Onayla',
-                    primary: true,
-                  ),
-                if (record.hasTaxpayerRegistrationDocument)
-                  _ActionButton(
-                    onPressed: onViewDocument,
-                    icon: Icons.attach_file_rounded,
-                    label: 'Yükümlü Belgesi',
-                  ),
-                _ActionButton(
-                  onPressed: onViewLogs,
-                  icon: Icons.history_rounded,
-                  label: 'Loglar',
+              Expanded(
+                flex: 15,
+                child: _ApplicationListMeta(
+                  icon: Icons.calendar_today_rounded,
+                  label: 'Tarih',
+                  value: dateText,
                 ),
-                _ActionButton(
-                  onPressed: onPrintKdv,
-                  icon: Icons.print_rounded,
-                  label: 'KDV4 Yazdır',
+              ),
+              Expanded(
+                flex: 16,
+                child: _ApplicationListMeta(
+                  icon: Icons.folder_open_rounded,
+                  label: 'Dosya',
+                  value: record.fileRegistryNumber?.trim().isNotEmpty == true
+                      ? record.fileRegistryNumber!.trim()
+                      : '-',
                 ),
-                if (canPrintKdv4a)
-                  _ActionButton(
-                    onPressed: onPrintKdv4a,
-                    icon: Icons.picture_as_pdf_rounded,
-                    label: 'KDV4A Yazdır',
+              ),
+              Expanded(
+                flex: 16,
+                child: _ApplicationListMeta(
+                  icon: record.isApproved
+                      ? Icons.verified_rounded
+                      : Icons.memory_rounded,
+                  label: record.isApproved ? 'Onaylı Sicil' : 'Cihaz',
+                  value: record.stockRegistryNumber?.trim().isNotEmpty == true
+                      ? record.stockRegistryNumber!.trim()
+                      : '-',
+                  highlighted: record.isApproved,
+                ),
+              ),
+              SizedBox(
+                width: 154,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: AppBadge(label: approvalLabel, tone: approvalTone),
+                ),
+              ),
+              SizedBox(
+                width: 178,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 14),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      if (canApprove && record.isPendingApproval)
+                        _RecordPrimaryAction(
+                          onPressed: onApprove,
+                          icon: Icons.verified_rounded,
+                          label: 'Onayla',
+                          primary: true,
+                        )
+                      else if (canApprove && record.isApproved)
+                        _RecordPrimaryAction(
+                          onPressed: onUnapprove,
+                          icon: Icons.undo_rounded,
+                          label: 'Geri Al',
+                        )
+                      else if (canModify)
+                        _RecordPrimaryAction(
+                          onPressed: onEdit,
+                          icon: Icons.edit_rounded,
+                          label: 'Düzenle',
+                        )
+                      else
+                        _RecordPrimaryAction(
+                          onPressed: onPrintKdv,
+                          icon: Icons.print_rounded,
+                          label: 'KDV4',
+                        ),
+                      const Gap(8),
+                      PopupMenuButton<String>(
+                        tooltip: 'Diğer işlemler',
+                        itemBuilder: (context) => menuItems,
+                        onSelected: handleMenuSelection,
+                        child: Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppTheme.border),
+                          ),
+                          child: const Icon(Icons.more_horiz_rounded, size: 20),
+                        ),
+                      ),
+                    ],
                   ),
-                if (canCreateWorkOrder)
-                  _ActionButton(
-                    onPressed: onCreateWorkOrder,
-                    icon: Icons.playlist_add_rounded,
-                    label: 'İş Emri Oluştur',
-                  ),
-                if (canChangeActive)
-                  _ActionButton(
-                    onPressed: onToggleActive,
-                    icon: record.isActive
-                        ? Icons.archive_outlined
-                        : Icons.restore_rounded,
-                    label: record.isActive ? 'Pasife Al' : 'Aktifleştir',
-                  ),
-                if (canDelete)
-                  _ActionButton(
-                    onPressed: onDeletePermanently,
-                    icon: Icons.delete_forever_rounded,
-                    label: 'Kalıcı Sil',
-                  ),
-              ],
-            ),
-            const Gap(10),
-          ],
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -5995,42 +6596,7 @@ class _ApplicationRecordCard extends StatelessWidget {
                 PopupMenuButton<String>(
                   tooltip: 'İşlemler',
                   itemBuilder: (context) => menuItems,
-                  onSelected: (value) {
-                    switch (value) {
-                      case 'edit':
-                        onEdit();
-                        break;
-                      case 'duplicate':
-                        onDuplicate();
-                        break;
-                      case 'print_kdv4':
-                        onPrintKdv();
-                        break;
-                      case 'document':
-                        onViewDocument();
-                        break;
-                      case 'logs':
-                        onViewLogs();
-                        break;
-                      case 'print_kdv4a':
-                        onPrintKdv4a();
-                        break;
-                      case 'create_work_order':
-                        onCreateWorkOrder();
-                        break;
-                      case 'approve':
-                        onApprove();
-                        break;
-                      case 'toggle_active':
-                        onToggleActive();
-                        break;
-                      case 'delete_permanently':
-                        onDeletePermanently();
-                        break;
-                      default:
-                        break;
-                    }
-                  },
+                  onSelected: handleMenuSelection,
                   child: const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                     child: Icon(Icons.more_horiz_rounded),
@@ -6088,6 +6654,14 @@ class _ApplicationRecordCard extends StatelessWidget {
                     icon: Icons.verified_rounded,
                     label: 'Onayla',
                     primary: true,
+                  ),
+                  const Gap(4),
+                ],
+                if (canApprove && record.isApproved) ...[
+                  _ActionButton(
+                    onPressed: onUnapprove,
+                    icon: Icons.undo_rounded,
+                    label: 'Geri Al',
                   ),
                   const Gap(4),
                 ],
@@ -6894,16 +7468,14 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
-class _ApplicationMetaCell extends StatelessWidget {
-  const _ApplicationMetaCell({
-    required this.width,
+class _ApplicationListMeta extends StatelessWidget {
+  const _ApplicationListMeta({
     required this.icon,
     required this.label,
     required this.value,
     this.highlighted = false,
   });
 
-  final double width;
   final IconData icon;
   final String label;
   final String value;
@@ -6911,16 +7483,21 @@ class _ApplicationMetaCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
+    final color = highlighted ? AppTheme.success : AppTheme.textMuted;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
       child: Row(
         children: [
-          Icon(
-            icon,
-            size: 15,
-            color: highlighted ? AppTheme.success : AppTheme.textMuted,
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: color),
           ),
-          const Gap(7),
+          const Gap(9),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -6930,21 +7507,21 @@ class _ApplicationMetaCell extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppTheme.textMuted,
                     fontWeight: FontWeight.w700,
                     height: 1,
                   ),
                 ),
-                const Gap(3),
+                const Gap(4),
                 Text(
                   value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: highlighted ? AppTheme.success : AppTheme.textSoft,
                     fontWeight: FontWeight.w800,
-                    height: 1,
+                    height: 1.05,
                   ),
                 ),
               ],
@@ -6953,6 +7530,48 @@ class _ApplicationMetaCell extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _RecordPrimaryAction extends StatelessWidget {
+  const _RecordPrimaryAction({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+    this.primary = false,
+  });
+
+  final VoidCallback onPressed;
+  final IconData icon;
+  final String label;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = (primary ? FilledButton.styleFrom : OutlinedButton.styleFrom)
+        .call(
+          minimumSize: const Size(96, 38),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+            fontSize: 12,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        );
+    final child = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16),
+        const Gap(6),
+        Flexible(
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+      ],
+    );
+
+    return primary
+        ? FilledButton(onPressed: onPressed, style: style, child: child)
+        : OutlinedButton(onPressed: onPressed, style: style, child: child);
   }
 }
 
@@ -6993,108 +7612,40 @@ class _ActionButton extends StatelessWidget {
 }
 
 class _FormRow extends StatelessWidget {
-  const _FormRow({
-    required this.label,
-    required this.child,
-    this.first = false,
-    this.last = false,
-  });
+  const _FormRow({required this.label, required this.child, this.last = false});
 
   final String label;
   final Widget child;
-  final bool first;
   final bool last;
 
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.sizeOf(context).width < 760;
-    if (isMobile) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: const BoxDecoration(
-              color: Color(0xFFFFF15C),
-              border: Border(
-                top: BorderSide(color: Color(0xFF111827)),
-                left: BorderSide(color: Color(0xFF111827)),
-                right: BorderSide(color: Color(0xFF111827)),
-              ),
-            ),
-            child: Text(
+    return Padding(
+      padding: EdgeInsets.only(bottom: last ? 0 : 12),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(isMobile ? 12 : 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
               label,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF3E3200),
-                fontSize: 12,
-                height: 1.12,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: AppTheme.text,
+                fontSize: isMobile ? 12.5 : 13,
               ),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: const Color(0xFF111827)),
-            ),
-            child: child,
-          ),
-        ],
-      );
-    }
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 196,
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 64),
-            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF15C),
-              border: Border(
-                left: const BorderSide(color: Color(0xFF111827)),
-                right: const BorderSide(color: Color(0xFF111827)),
-                top: const BorderSide(color: Color(0xFF111827)),
-                bottom: last
-                    ? const BorderSide(color: Color(0xFF111827))
-                    : BorderSide.none,
-              ),
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF3E3200),
-                  fontSize: 14.5,
-                  height: 1.15,
-                ),
-              ),
-            ),
-          ),
+            const Gap(9),
+            child,
+          ],
         ),
-        Expanded(
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 64),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                right: const BorderSide(color: Color(0xFF111827)),
-                top: const BorderSide(color: Color(0xFF111827)),
-                bottom: last
-                    ? const BorderSide(color: Color(0xFF111827))
-                    : BorderSide.none,
-              ),
-            ),
-            child: child,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -7129,6 +7680,7 @@ class _ApplicationTextField extends StatelessWidget {
     this.validator,
     this.readOnly = false,
     this.enabled = true,
+    this.hintText,
   });
 
   final TextEditingController controller;
@@ -7137,6 +7689,7 @@ class _ApplicationTextField extends StatelessWidget {
   final String? Function(String?)? validator;
   final bool readOnly;
   final bool enabled;
+  final String? hintText;
 
   @override
   Widget build(BuildContext context) {
@@ -7157,6 +7710,7 @@ class _ApplicationTextField extends StatelessWidget {
         filled: true,
         fillColor: enabled ? Colors.white : const Color(0xFFF1F5F9),
         border: const OutlineInputBorder(),
+        hintText: hintText,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 15,
           vertical: 13,

@@ -719,7 +719,12 @@ async function assertApplicationFormsMutable({ op, values, filters, id }) {
     Object.keys(values || {}).every((key) =>
       ['approval_status', 'approved_at', 'approved_by', 'stock_registry_number'].includes(key),
     );
-  if (onlyApprovalUpdate) return;
+  const onlyApprovalReset =
+    nextStatus === 'pending' &&
+    Object.keys(values || {}).every((key) =>
+      ['approval_status', 'approved_at', 'approved_by'].includes(key),
+    );
+  if (onlyApprovalUpdate || onlyApprovalReset) return;
 
   const idFilter = Array.isArray(filters)
     ? filters.find((f) => f?.col === 'id' && f?.op === 'eq')
