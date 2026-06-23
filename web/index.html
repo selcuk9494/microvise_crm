@@ -31,53 +31,186 @@
 
   <title>microvise_crm</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    body.native-login-active {
+      margin: 0;
+      overflow: hidden;
+      background: #f4f7fb;
+    }
+
+    body.native-login-active flutter-view,
+    body.native-login-active flt-glass-pane {
+      display: none !important;
+    }
+
+    #microvise-native-login {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483647;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: linear-gradient(180deg, #f7fbff 0%, #f4f7fb 100%);
+      box-sizing: border-box;
+      font-family: Inter, Roboto, Arial, sans-serif;
+      color: #0f172a;
+    }
+
+    body.native-login-active #microvise-native-login {
+      display: flex;
+    }
+
+    .microvise-login-card {
+      width: min(100%, 440px);
+      padding: 24px;
+      border: 1px solid #dce5f0;
+      border-radius: 12px;
+      background: #ffffff;
+      box-shadow: 0 18px 54px rgba(15, 23, 42, 0.10);
+      box-sizing: border-box;
+    }
+
+    .microvise-login-logo {
+      width: 152px;
+      height: 44px;
+      object-fit: cover;
+      border: 1px solid #dce5f0;
+      border-radius: 8px;
+      background: #fff;
+      display: block;
+      margin-bottom: 18px;
+    }
+
+    .microvise-login-title {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.15;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .microvise-login-subtitle {
+      margin: 4px 0 24px;
+      color: #64748b;
+      font-size: 15px;
+      line-height: 1.35;
+      font-weight: 500;
+    }
+
+    .microvise-field {
+      position: relative;
+      margin-bottom: 12px;
+    }
+
+    .microvise-field label {
+      position: absolute;
+      top: 8px;
+      left: 14px;
+      color: #64748b;
+      font-size: 12px;
+      line-height: 1;
+      font-weight: 600;
+      pointer-events: none;
+    }
+
+    .microvise-field input {
+      width: 100%;
+      height: 58px;
+      padding: 19px 14px 7px;
+      border: 1px solid #dce5f0;
+      border-radius: 10px;
+      background: #fff;
+      color: #0f172a;
+      font: 400 17px Inter, Roboto, Arial, sans-serif;
+      outline: none;
+      box-sizing: border-box;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    .microvise-field input:focus {
+      border-color: #1f4a8a;
+      box-shadow: 0 0 0 3px rgba(31, 74, 138, 0.12);
+    }
+
+    .microvise-password-row {
+      display: flex;
+      justify-content: flex-end;
+      margin: 4px 0 12px;
+    }
+
+    .microvise-link-button {
+      border: 0;
+      background: transparent;
+      color: #2f6fca;
+      font: 700 15px Inter, Roboto, Arial, sans-serif;
+      cursor: pointer;
+      padding: 8px 0;
+    }
+
+    .microvise-remember {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 4px 0 18px;
+      font-size: 16px;
+      color: #0f172a;
+      user-select: none;
+    }
+
+    .microvise-remember input {
+      width: 22px;
+      height: 22px;
+      accent-color: #2f6fca;
+    }
+
+    .microvise-submit {
+      width: 100%;
+      height: 50px;
+      border: 0;
+      border-radius: 10px;
+      background: #1f4383;
+      color: #fff;
+      font: 800 16px Inter, Roboto, Arial, sans-serif;
+      cursor: pointer;
+    }
+
+    .microvise-submit:disabled {
+      opacity: 0.72;
+      cursor: wait;
+    }
+
+    .microvise-login-note {
+      margin: 14px 0 0;
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .microvise-login-error {
+      display: none;
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #fff1f2;
+      color: #be123c;
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    .microvise-login-error.is-visible {
+      display: block;
+    }
+  </style>
   <script>
     window.microviseSubmitCredentialForm = function (email, password) {
-      try {
-        const iframeName = 'microvise_credential_sink';
-        let iframe = document.querySelector('iframe[name="' + iframeName + '"]');
-        if (!iframe) {
-          iframe = document.createElement('iframe');
-          iframe.name = iframeName;
-          iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;top:-9999px;border:0;';
-          iframe.setAttribute('aria-hidden', 'true');
-          document.body.appendChild(iframe);
-        }
-
-        const form = document.createElement('form');
-        form.method = 'post';
-        form.action = '/';
-        form.target = iframeName;
-        form.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;top:-9999px;opacity:0;';
-
-        const userInput = document.createElement('input');
-        userInput.type = 'text';
-        userInput.name = 'username';
-        userInput.autocomplete = 'username';
-        userInput.value = String(email);
-
-        const passwordInput = document.createElement('input');
-        passwordInput.type = 'password';
-        passwordInput.name = 'password';
-        passwordInput.autocomplete = 'current-password';
-        passwordInput.value = String(password);
-
-        form.appendChild(userInput);
-        form.appendChild(passwordInput);
-        document.body.appendChild(form);
-        form.submit();
-        window.setTimeout(function () {
-          form.remove();
-        }, 1000);
-        return true;
-      } catch (_) {
-        return false;
-      }
+      return false;
     };
 
     window.microviseStorePasswordCredential = async function (email, password) {
       if (!email || !password || !navigator.credentials || !window.PasswordCredential) {
-        return window.microviseSubmitCredentialForm(email, password);
+        return false;
       }
       try {
         const credential = new PasswordCredential({
@@ -86,10 +219,9 @@
           password: String(password)
         });
         await navigator.credentials.store(credential);
-        window.microviseSubmitCredentialForm(email, password);
         return true;
       } catch (_) {
-        return window.microviseSubmitCredentialForm(email, password);
+        return false;
       }
     };
 
@@ -109,6 +241,195 @@
         return null;
       }
     };
+
+    (function () {
+      const tokenKey = 'microvise_api_token';
+      const rememberedEmailKey = 'microvise_login_email';
+
+      function apiBaseUrl() {
+        const host = window.location.hostname;
+        const isLocal = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+        if (isLocal) return 'https://microvisecrmflutter.vercel.app/api';
+        return window.location.origin + '/api';
+      }
+
+      function isLoginRoute() {
+        return window.location.hash === '#/giris' || window.location.hash === '#/login';
+      }
+
+      function setError(message) {
+        const error = document.getElementById('microvise-native-login-error');
+        if (!error) return;
+        error.textContent = message || '';
+        error.classList.toggle('is-visible', Boolean(message));
+      }
+
+      function setLoading(isLoading) {
+        const button = document.getElementById('microvise-native-login-submit');
+        const email = document.getElementById('microvise-native-email');
+        const password = document.getElementById('microvise-native-password');
+        const saved = document.getElementById('microvise-native-saved');
+        if (button) {
+          button.disabled = isLoading;
+          button.textContent = isLoading ? 'Giriş yapılıyor...' : 'Giriş Yap';
+        }
+        if (email) email.disabled = isLoading;
+        if (password) password.disabled = isLoading;
+        if (saved) saved.disabled = isLoading;
+      }
+
+      async function storePassword(form, email, password) {
+        if (!navigator.credentials || !window.PasswordCredential || !email || !password) {
+          return;
+        }
+        try {
+          await navigator.credentials.store(new PasswordCredential(form));
+        } catch (_) {
+          try {
+            await window.microviseStorePasswordCredential(email, password);
+          } catch (_) {}
+        }
+      }
+
+      async function requestSavedCredential() {
+        setError('');
+        if (!navigator.credentials) {
+          setError('Tarayıcı kayıtlı şifre erişimini desteklemiyor.');
+          return;
+        }
+        try {
+          const credential = await navigator.credentials.get({
+            password: true,
+            mediation: 'optional'
+          });
+          if (!credential) {
+            setError('Tarayıcıda kayıtlı giriş bulunamadı.');
+            return;
+          }
+          const email = document.getElementById('microvise-native-email');
+          const password = document.getElementById('microvise-native-password');
+          if (email) email.value = credential.id || '';
+          if (password) password.value = credential.password || '';
+          if (password) password.focus();
+        } catch (_) {
+          setError('Kayıtlı şifre okunamadı.');
+        }
+      }
+
+      async function submitNativeLogin(event) {
+        event.preventDefault();
+        setError('');
+
+        const form = event.currentTarget;
+        const emailInput = document.getElementById('microvise-native-email');
+        const passwordInput = document.getElementById('microvise-native-password');
+        const rememberInput = document.getElementById('microvise-native-remember');
+        const email = (emailInput && emailInput.value ? emailInput.value : '').trim().replace(/\.+$/, '');
+        const password = passwordInput && passwordInput.value ? passwordInput.value : '';
+        const remember = !rememberInput || rememberInput.checked;
+
+        if (!email || !password) {
+          setError('E-posta ve şifre gerekli.');
+          return;
+        }
+
+        setLoading(true);
+        try {
+          const response = await fetch(apiBaseUrl() + '/auth/login', {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json; charset=utf-8'
+            },
+            body: JSON.stringify({ email, password })
+          });
+          const text = await response.text();
+          let payload = {};
+          try {
+            payload = text ? JSON.parse(text) : {};
+          } catch (_) {}
+
+          if (!response.ok) {
+            throw new Error(payload.error || 'Giriş başarısız.');
+          }
+
+          const token = payload.accessToken || '';
+          if (!token) throw new Error('Giriş başarısız.');
+
+          window.localStorage.setItem(tokenKey, token);
+          if (remember) {
+            window.localStorage.setItem(rememberedEmailKey, email);
+            await storePassword(form, email, password);
+          } else {
+            window.localStorage.removeItem(rememberedEmailKey);
+          }
+
+          window.location.replace(
+            window.location.origin + window.location.pathname + '?v=' + Date.now() + '#/panel'
+          );
+        } catch (error) {
+          setError(error && error.message ? error.message : 'Giriş başarısız.');
+          setLoading(false);
+        }
+      }
+
+      function ensureNativeLogin() {
+        if (document.getElementById('microvise-native-login')) return;
+
+        const overlay = document.createElement('div');
+        overlay.id = 'microvise-native-login';
+        overlay.innerHTML = `
+          <form id="microvise-native-login-form" class="microvise-login-card" method="post" autocomplete="on" action="${apiBaseUrl()}/auth/login">
+            <img class="microvise-login-logo" src="assets/assets/images/logo.png" alt="Microvise">
+            <h1 class="microvise-login-title">Microvise CRM</h1>
+            <p class="microvise-login-subtitle">Güvenli çalışma alanı</p>
+            <p id="microvise-native-login-error" class="microvise-login-error" role="alert"></p>
+            <div class="microvise-field">
+              <label for="microvise-native-email">E-posta</label>
+              <input id="microvise-native-email" name="username" type="email" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email" placeholder="ornek@firma.com" required>
+            </div>
+            <div class="microvise-field">
+              <label for="microvise-native-password">Şifre</label>
+              <input id="microvise-native-password" name="password" type="password" autocomplete="current-password" placeholder="Şifre" required>
+            </div>
+            <div class="microvise-password-row">
+              <button id="microvise-native-saved" class="microvise-link-button" type="button">*** Kayıtlı şifreyi doldur</button>
+            </div>
+            <label class="microvise-remember">
+              <input id="microvise-native-remember" name="remember" type="checkbox" checked>
+              <span>Beni hatırla</span>
+            </label>
+            <button id="microvise-native-login-submit" class="microvise-submit" type="submit">Giriş Yap</button>
+            <p class="microvise-login-note">Admin ve personel rolleri sistem üzerinden yönetilir.</p>
+          </form>
+        `;
+        document.body.appendChild(overlay);
+
+        const form = document.getElementById('microvise-native-login-form');
+        const saved = document.getElementById('microvise-native-saved');
+        const email = document.getElementById('microvise-native-email');
+        if (form) form.addEventListener('submit', submitNativeLogin);
+        if (saved) saved.addEventListener('click', requestSavedCredential);
+        if (email) email.value = window.localStorage.getItem(rememberedEmailKey) || '';
+      }
+
+      function syncNativeLogin() {
+        ensureNativeLogin();
+        const active = isLoginRoute();
+        document.body.classList.toggle('native-login-active', active);
+        if (active) {
+          window.setTimeout(function () {
+            const email = document.getElementById('microvise-native-email');
+            const password = document.getElementById('microvise-native-password');
+            if (email && !email.value) email.focus();
+            else if (password) password.focus();
+          }, 0);
+        }
+      }
+
+      window.addEventListener('DOMContentLoaded', syncNativeLogin);
+      window.addEventListener('hashchange', syncNativeLogin);
+    })();
   </script>
 </head>
 <body>
