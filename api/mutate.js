@@ -202,6 +202,25 @@ async function uploadApplicationApprovalDocument(body) {
   });
 }
 
+async function uploadTaxpayerRegistrationDocument(body) {
+  const contentType = String(body.contentType || '').trim().toLowerCase();
+  if (!['application/pdf', 'image/jpeg', 'image/png'].includes(contentType)) {
+    const error = new Error('Yükümlü belgesi PDF, JPG veya PNG olmalıdır.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return uploadStorageObject({
+    folder: `taxpayer-registration-documents/${safeStorageSegment(body.applicationFormId, 'form')}`,
+    filename: safeStorageSegment(body.filename, 'yukumlu-kayit-belgesi'),
+    contentType,
+    data: body.data,
+    maxBytes: approvalDocumentMaxBytes,
+    emptyMessage: 'Belge verisi eksik.',
+    tooLargeMessage: 'Belge 10 MB sınırını aşıyor.',
+  });
+}
+
 const allowedTables = new Set([
   'application_forms',
   'branches',
@@ -700,6 +719,9 @@ const applicationFormAuditLabels = {
   taxpayer_registration_document_name: 'Yükümlü belgesi',
   taxpayer_registration_document_mime_type: 'Belge tipi',
   taxpayer_registration_document_data: 'Yükümlü belgesi içeriği',
+  taxpayer_registration_document_storage_bucket: 'Yükümlü belge bucket',
+  taxpayer_registration_document_storage_path: 'Yükümlü belge yolu',
+  taxpayer_registration_document_url: 'Yükümlü belge URL',
   taxpayer_registration_document_uploaded_at: 'Belge yükleme tarihi',
   approval_document_name: 'Onay belgesi',
   approval_document_mime_type: 'Onay belge tipi',
@@ -716,7 +738,11 @@ const applicationFormAuditLabels = {
 
 function normalizeAuditValue(key, value) {
   if (value == null) return null;
-  if (key === 'taxpayer_registration_document_data' || key === 'approval_document_url') {
+  if (
+    key === 'taxpayer_registration_document_data' ||
+    key === 'taxpayer_registration_document_url' ||
+    key === 'approval_document_url'
+  ) {
     return String(value || '').trim() ? '[belge var]' : null;
   }
   if (value instanceof Date) return value.toISOString();
@@ -931,6 +957,15 @@ module.exports = async (req, res) => {
       if (!hasPageAccess(user, 'formlar')) return forbidden(req, res);
       try {
         return ok(req, res, await uploadApplicationApprovalDocument(body));
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'uploadTaxpayerRegistrationDocument') {
+      if (!hasPageAccess(user, 'formlar')) return forbidden(req, res);
+      try {
+        return ok(req, res, await uploadTaxpayerRegistrationDocument(body));
       } catch (error) {
         if (error?.statusCode === 400) return badRequest(req, res, error.message);
         throw error;

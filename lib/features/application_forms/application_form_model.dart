@@ -27,6 +27,9 @@ class ApplicationFormRecord {
     required this.taxpayerRegistrationDocumentName,
     required this.taxpayerRegistrationDocumentMimeType,
     required this.taxpayerRegistrationDocumentData,
+    required this.taxpayerRegistrationDocumentStorageBucket,
+    required this.taxpayerRegistrationDocumentStoragePath,
+    required this.taxpayerRegistrationDocumentUrl,
     required this.approvalDocumentName,
     required this.approvalDocumentMimeType,
     required this.approvalDocumentStorageBucket,
@@ -66,6 +69,9 @@ class ApplicationFormRecord {
   final String? taxpayerRegistrationDocumentName;
   final String? taxpayerRegistrationDocumentMimeType;
   final String? taxpayerRegistrationDocumentData;
+  final String? taxpayerRegistrationDocumentStorageBucket;
+  final String? taxpayerRegistrationDocumentStoragePath;
+  final String? taxpayerRegistrationDocumentUrl;
   final String? approvalDocumentName;
   final String? approvalDocumentMimeType;
   final String? approvalDocumentStorageBucket;
@@ -82,7 +88,8 @@ class ApplicationFormRecord {
   bool get isApproved => approvalStatus == 'approved';
   bool get isPendingApproval => approvalStatus == 'pending';
   bool get hasTaxpayerRegistrationDocument =>
-      taxpayerRegistrationDocumentData?.trim().isNotEmpty ?? false;
+      (taxpayerRegistrationDocumentData?.trim().isNotEmpty ?? false) ||
+      (taxpayerRegistrationDocumentUrl?.trim().isNotEmpty ?? false);
   bool get hasApprovalDocument =>
       approvalDocumentUrl?.trim().isNotEmpty ?? false;
 
@@ -133,6 +140,12 @@ class ApplicationFormRecord {
           json['taxpayer_registration_document_mime_type']?.toString(),
       taxpayerRegistrationDocumentData:
           json['taxpayer_registration_document_data']?.toString(),
+      taxpayerRegistrationDocumentStorageBucket:
+          json['taxpayer_registration_document_storage_bucket']?.toString(),
+      taxpayerRegistrationDocumentStoragePath:
+          json['taxpayer_registration_document_storage_path']?.toString(),
+      taxpayerRegistrationDocumentUrl:
+          json['taxpayer_registration_document_url']?.toString(),
       approvalDocumentName: json['approval_document_name']?.toString(),
       approvalDocumentMimeType: json['approval_document_mime_type']?.toString(),
       approvalDocumentStorageBucket: json['approval_document_storage_bucket']

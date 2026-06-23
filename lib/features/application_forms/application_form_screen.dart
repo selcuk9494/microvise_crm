@@ -105,7 +105,7 @@ final applicationFormsProvider = FutureProvider<List<ApplicationFormRecord>>((
   final rows = await client
       .from('application_forms')
       .select(
-        'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,approval_document_name,approval_document_mime_type,approval_document_storage_bucket,approval_document_storage_path,approval_document_url,approval_document_uploaded_at,approval_status,approved_at,approved_by,created_by,is_active,created_at',
+        'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,taxpayer_registration_document_storage_bucket,taxpayer_registration_document_storage_path,taxpayer_registration_document_url,approval_document_name,approval_document_mime_type,approval_document_storage_bucket,approval_document_storage_path,approval_document_url,approval_document_uploaded_at,approval_status,approved_at,approved_by,created_by,is_active,created_at',
       )
       .order('created_at', ascending: false)
       .limit(1200);
@@ -314,14 +314,17 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
 
   Future<void> _downloadTaxpayerDocument(ApplicationFormRecord record) async {
     final data = (record.taxpayerRegistrationDocumentData ?? '').trim();
-    if (data.isEmpty) {
+    final url = (record.taxpayerRegistrationDocumentUrl ?? '').trim();
+    if (data.isEmpty && url.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bu başvuruda belge bulunmuyor.')),
       );
       return;
     }
     try {
-      final bytes = base64Decode(data);
+      final bytes = url.isNotEmpty
+          ? (await http.get(Uri.parse(url))).bodyBytes
+          : base64Decode(data);
       final rawName =
           (record.taxpayerRegistrationDocumentName ?? '').trim().isEmpty
           ? 'yukumlu-kayit-belgesi.pdf'
@@ -3457,6 +3460,10 @@ class _BankApplicationFormDialogState
   String? _documentName;
   String? _documentMimeType;
   String? _documentBase64;
+  Uint8List? _documentBytes;
+  String? _documentStorageBucket;
+  String? _documentStoragePath;
+  String? _documentUrl;
   _CustomerOption? _customer;
   bool _lookupDone = false;
   bool _lookupBusy = false;
@@ -3483,6 +3490,9 @@ class _BankApplicationFormDialogState
     _documentName = initial.taxpayerRegistrationDocumentName;
     _documentMimeType = initial.taxpayerRegistrationDocumentMimeType;
     _documentBase64 = initial.taxpayerRegistrationDocumentData;
+    _documentStorageBucket = initial.taxpayerRegistrationDocumentStorageBucket;
+    _documentStoragePath = initial.taxpayerRegistrationDocumentStoragePath;
+    _documentUrl = initial.taxpayerRegistrationDocumentUrl;
     _lookupDone = true;
     _customer = _CustomerOption(
       id: (initial.customerId ?? '').trim(),
@@ -3760,7 +3770,11 @@ class _BankApplicationFormDialogState
           'png' => 'image/png',
           _ => 'application/octet-stream',
         };
-        _documentBase64 = base64Encode(bytes);
+        _documentBytes = Uint8List.fromList(bytes);
+        _documentBase64 = null;
+        _documentStorageBucket = null;
+        _documentStoragePath = null;
+        _documentUrl = null;
       });
     } catch (e) {
       if (!mounted) return;
@@ -3884,7 +3898,9 @@ class _BankApplicationFormDialogState
       ).showSnackBar(const SnackBar(content: Text('Önce VKN sorgulayın.')));
       return;
     }
-    if ((_documentBase64 ?? '').isEmpty) {
+    if ((_documentBase64 ?? '').isEmpty &&
+        (_documentUrl ?? '').isEmpty &&
+        _documentBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Yükümlü kayıt belgesini yükleyin.')),
       );
@@ -3912,6 +3928,31 @@ class _BankApplicationFormDialogState
           ? (widget.initialRecord?.createdBy ?? '').trim()
           : (profile?.id ?? '').trim();
       final formattedPhone = _formatPhoneForDisplay(_phoneController.text);
+      final formId = _isEditing
+          ? widget.initialRecord!.id
+          : DateTime.now().microsecondsSinceEpoch.toString();
+      String? documentData = _documentBase64;
+      String? documentBucket = _documentStorageBucket;
+      String? documentPath = _documentStoragePath;
+      String? documentUrl = _documentUrl;
+      if (apiClient != null && _documentBytes != null) {
+        final uploaded = await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'uploadTaxpayerRegistrationDocument',
+            'applicationFormId': formId,
+            'filename': _documentName ?? 'yukumlu-kayit-belgesi',
+            'contentType': _documentMimeType ?? 'application/octet-stream',
+            'data': base64Encode(_documentBytes!),
+          },
+        );
+        documentData = null;
+        documentBucket = uploaded['bucket']?.toString();
+        documentPath = uploaded['path']?.toString();
+        documentUrl = uploaded['url']?.toString();
+      } else if (_documentBytes != null) {
+        documentData = base64Encode(_documentBytes!);
+      }
 
       final payload = {
         if (_isEditing) 'id': widget.initialRecord!.id,
@@ -3945,7 +3986,10 @@ class _BankApplicationFormDialogState
         'customer_email': _emailController.text.trim(),
         'taxpayer_registration_document_name': _documentName,
         'taxpayer_registration_document_mime_type': _documentMimeType,
-        'taxpayer_registration_document_data': _documentBase64,
+        'taxpayer_registration_document_data': documentData,
+        'taxpayer_registration_document_storage_bucket': documentBucket,
+        'taxpayer_registration_document_storage_path': documentPath,
+        'taxpayer_registration_document_url': documentUrl,
         'taxpayer_registration_document_uploaded_at': DateTime.now()
             .toIso8601String(),
         if (createdBy.isNotEmpty) 'created_by': createdBy,
@@ -3969,7 +4013,7 @@ class _BankApplicationFormDialogState
             .from('application_forms')
             .upsert(payload)
             .select(
-              'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,approval_status,approved_at,approved_by,created_by,is_active,created_at',
+              'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,taxpayer_registration_document_storage_bucket,taxpayer_registration_document_storage_path,taxpayer_registration_document_url,approval_status,approved_at,approved_by,created_by,is_active,created_at',
             )
             .single();
       }
@@ -5142,7 +5186,7 @@ class _ApplicationFormDialogState
               })
               .eq('id', widget.initialRecord!.id)
               .select(
-                'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,approval_status,approved_at,approved_by,created_by,is_active,created_at',
+                'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,taxpayer_registration_document_storage_bucket,taxpayer_registration_document_storage_path,taxpayer_registration_document_url,approval_status,approved_at,approved_by,created_by,is_active,created_at',
               )
               .single();
         }
@@ -5377,7 +5421,7 @@ class _ApplicationFormDialogState
             .from('application_forms')
             .insert(payloads)
             .select(
-              'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,approval_status,approved_at,approved_by,created_by,is_active,created_at',
+              'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,taxpayer_registration_document_storage_bucket,taxpayer_registration_document_storage_path,taxpayer_registration_document_url,approval_status,approved_at,approved_by,created_by,is_active,created_at',
             );
 
         insertedRecords = (insertedRows as List)
