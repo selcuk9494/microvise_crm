@@ -371,34 +371,69 @@ class FormDocumentActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      crossAxisAlignment: WrapCrossAlignment.center,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        IconButton.filledTonal(
+        FormRecordIconAction(
           tooltip: document.hasDocument ? 'Belgeyi Yenile' : 'Belge Tara/Yükle',
           onPressed: onUpload,
-          icon: Icon(
-            document.hasDocument
-                ? Icons.upload_file_rounded
-                : Icons.document_scanner_rounded,
-            size: 18,
-          ),
+          icon: document.hasDocument
+              ? Icons.upload_file_rounded
+              : Icons.document_scanner_rounded,
         ),
         if (document.hasDocument) ...[
-          IconButton.filledTonal(
+          const Gap(4),
+          FormRecordIconAction(
             tooltip: 'Belgeyi İndir',
             onPressed: onDownload,
-            icon: const Icon(Icons.download_rounded, size: 18),
+            icon: Icons.download_rounded,
           ),
-          IconButton.filledTonal(
+          const Gap(4),
+          FormRecordIconAction(
             tooltip: 'Belgeyi Sil',
             onPressed: onDelete,
-            icon: const Icon(Icons.delete_sweep_rounded, size: 18),
+            icon: Icons.delete_sweep_rounded,
           ),
         ],
       ],
+    );
+  }
+}
+
+class FormRecordIconAction extends StatelessWidget {
+  const FormRecordIconAction({
+    super.key,
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    this.primary = false,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: IconButton(
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+        style: IconButton.styleFrom(
+          backgroundColor: primary ? AppTheme.primary : AppTheme.surfaceMuted,
+          foregroundColor: primary ? Colors.white : AppTheme.text,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+            side: BorderSide(
+              color: primary ? AppTheme.primary : AppTheme.border,
+            ),
+          ),
+        ),
+        onPressed: onPressed,
+        icon: Icon(icon, size: 17),
+      ),
     );
   }
 }

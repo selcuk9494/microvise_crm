@@ -499,122 +499,127 @@ class _FaultRecordCard extends StatelessWidget {
     final dateText = DateFormat('d MMM y', 'tr_TR').format(record.formDate);
 
     return AppCard(
-      padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 10 : 12,
-        vertical: 10,
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 10 : 12,
+        10,
+        isMobile ? 10 : 12,
+        12,
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 10,
-            height: 48,
-            decoration: BoxDecoration(
-              color: record.isActive
-                  ? AppTheme.primary.withValues(alpha: 0.16)
-                  : const Color(0xFFE2E8F0),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: record.isActive
-                    ? AppTheme.primary.withValues(alpha: 0.25)
-                    : const Color(0xFFE2E8F0),
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: record.isActive
+                      ? AppTheme.primary.withValues(alpha: 0.12)
+                      : AppTheme.surfaceMuted,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                ),
+                child: Icon(
+                  Icons.build_circle_rounded,
+                  color: record.isActive
+                      ? AppTheme.primary
+                      : AppTheme.textMuted,
+                  size: 18,
+                ),
               ),
-            ),
+              const Gap(8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      record.customerName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      (record.deviceBrandModel ?? '').trim().isEmpty
+                          ? 'Arıza formu'
+                          : record.deviceBrandModel!.trim(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              const Gap(8),
+              AppBadge(label: badgeLabel, tone: badgeTone),
+            ],
           ),
-          const Gap(10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          const Gap(8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _InfoChip(icon: Icons.calendar_today_rounded, text: dateText),
+              if ((record.companyCodeAndRegistry ?? '').trim().isNotEmpty)
+                _InfoChip(
+                  icon: Icons.badge_rounded,
+                  text: record.companyCodeAndRegistry!.trim(),
+                ),
+              FormDocumentMetaChip(document: record.document),
+            ],
+          ),
+          const Gap(8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        record.customerName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              fontSize: isMobile ? 14 : 15,
-                            ),
-                      ),
-                    ),
-                    const Gap(8),
-                    AppBadge(label: badgeLabel, tone: badgeTone),
-                  ],
+                FormRecordIconAction(
+                  tooltip: 'Yazdır',
+                  onPressed: onPrint,
+                  icon: Icons.print_rounded,
                 ),
-                const Gap(6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    _InfoChip(
-                      icon: Icons.calendar_today_rounded,
-                      text: dateText,
-                    ),
-                    if ((record.companyCodeAndRegistry ?? '').trim().isNotEmpty)
-                      _InfoChip(
-                        icon: Icons.badge_rounded,
-                        text: record.companyCodeAndRegistry!.trim(),
-                      ),
-                    if ((record.deviceBrandModel ?? '').trim().isNotEmpty)
-                      _InfoChip(
-                        icon: Icons.memory_rounded,
-                        text: record.deviceBrandModel!.trim(),
-                      ),
-                    FormDocumentMetaChip(document: record.document),
-                  ],
+                const Gap(4),
+                FormDocumentActions(
+                  document: record.document,
+                  onUpload: onUploadDocument,
+                  onDownload: onDownloadDocument,
+                  onDelete: onDeleteDocument,
                 ),
+                if (canEdit) const Gap(4),
+                if (canEdit)
+                  FormRecordIconAction(
+                    tooltip: 'Düzenle',
+                    onPressed: onEdit,
+                    icon: Icons.edit_rounded,
+                  ),
+                if (canEdit) const Gap(4),
+                if (canEdit)
+                  FormRecordIconAction(
+                    tooltip: 'Kopya',
+                    onPressed: onDuplicate,
+                    icon: Icons.content_copy_rounded,
+                  ),
+                if (canArchive && onToggleActive != null) const Gap(4),
+                if (canArchive && onToggleActive != null)
+                  FormRecordIconAction(
+                    tooltip: record.isActive ? 'Pasife Al' : 'Aktifleştir',
+                    onPressed: onToggleActive,
+                    icon: record.isActive
+                        ? Icons.archive_outlined
+                        : Icons.restore_rounded,
+                  ),
+                if (canDeletePermanently && onDeletePermanently != null)
+                  const Gap(4),
+                if (canDeletePermanently && onDeletePermanently != null)
+                  FormRecordIconAction(
+                    tooltip: 'Kalıcı Sil',
+                    onPressed: onDeletePermanently,
+                    icon: Icons.delete_forever_rounded,
+                  ),
               ],
             ),
-          ),
-          const Gap(10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              IconButton.filledTonal(
-                tooltip: 'Yazdır',
-                onPressed: onPrint,
-                icon: const Icon(Icons.print_rounded, size: 18),
-              ),
-              FormDocumentActions(
-                document: record.document,
-                onUpload: onUploadDocument,
-                onDownload: onDownloadDocument,
-                onDelete: onDeleteDocument,
-              ),
-              if (canEdit)
-                IconButton.filledTonal(
-                  tooltip: 'Düzenle',
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit_rounded, size: 18),
-                ),
-              if (canEdit)
-                IconButton.filledTonal(
-                  tooltip: 'Kopya',
-                  onPressed: onDuplicate,
-                  icon: const Icon(Icons.content_copy_rounded, size: 18),
-                ),
-              if (canArchive && onToggleActive != null)
-                IconButton.filledTonal(
-                  tooltip: record.isActive ? 'Pasife Al' : 'Aktifleştir',
-                  onPressed: onToggleActive,
-                  icon: Icon(
-                    record.isActive
-                        ? Icons.delete_outline_rounded
-                        : Icons.restore_rounded,
-                    size: 18,
-                  ),
-                ),
-              if (canDeletePermanently && onDeletePermanently != null)
-                IconButton.filledTonal(
-                  tooltip: 'Kalıcı Sil',
-                  onPressed: onDeletePermanently,
-                  icon: const Icon(Icons.delete_forever_rounded, size: 18),
-                ),
-            ],
           ),
         ],
       ),
