@@ -3,11 +3,13 @@ import 'dart:async';
 
 import 'package:excel/excel.dart' as excel;
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:http/http.dart' as http;
+import 'package:image/image.dart' as image_lib;
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -24,12 +26,89 @@ import '../../core/ui/app_page_layout.dart';
 import '../billing/invoice_queue_helper.dart';
 import '../customers/web_download_helper.dart'
     if (dart.library.io) '../customers/io_download_helper.dart';
+import 'application_document_scan.dart';
 import 'application_form_model.dart';
 import '../customers/customer_form_dialog.dart';
 import '../customers/customer_model.dart';
 import '../definitions/definitions_screen.dart';
 import 'application_form_print.dart';
 import '../work_orders/work_orders_providers.dart';
+
+Uint8List _prepareDocumentImageForPdf(Uint8List sourceBytes) {
+  final decoded = image_lib.decodeImage(sourceBytes);
+  if (decoded == null) return sourceBytes;
+  final oriented = image_lib.bakeOrientation(decoded);
+  const maxLongSide = 2200;
+  final longSide = oriented.width > oriented.height
+      ? oriented.width
+      : oriented.height;
+  final resized = longSide > maxLongSide
+      ? image_lib.copyResize(
+          oriented,
+          width: oriented.width >= oriented.height ? maxLongSide : null,
+          height: oriented.height > oriented.width ? maxLongSide : null,
+          interpolation: image_lib.Interpolation.cubic,
+        )
+      : oriented;
+  return Uint8List.fromList(image_lib.encodeJpg(resized, quality: 85));
+}
+
+Future<Uint8List> _buildDocumentPdfFromImages({
+  required List<Uint8List> imagePages,
+  required String title,
+  required String subtitle,
+}) async {
+  final doc = pw.Document(
+    title: title,
+    author: 'Microvise CRM',
+    creator: 'Microvise CRM',
+  );
+  for (final pageBytes in imagePages) {
+    final pageImage = pw.MemoryImage(_prepareDocumentImageForPdf(pageBytes));
+    doc.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(18),
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+          children: [
+            pw.Text(
+              title,
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(
+              subtitle,
+              style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+            ),
+            pw.SizedBox(height: 10),
+            pw.Expanded(child: pw.Image(pageImage, fit: pw.BoxFit.contain)),
+          ],
+        ),
+      ),
+    );
+  }
+  return doc.save();
+}
+
+String _taxpayerDocumentFilename([String? sourceName]) {
+  final base = (sourceName ?? '').trim();
+  final withoutExt = base.replaceFirst(RegExp(r'\.[^.]+$'), '').trim();
+  final safeBase = withoutExt.isEmpty
+      ? 'yukumlu-kayit-belgesi'
+      : withoutExt
+            .toLowerCase()
+            .replaceAll(RegExp(r'[^a-z0-9ğüşöçıİĞÜŞÖÇ]+', unicode: true), '-')
+            .replaceAll(RegExp(r'-+'), '-')
+            .replaceAll(RegExp(r'^-|-$'), '');
+  final suffix = DateTime.now().toIso8601String().substring(0, 10);
+  return '${safeBase.isEmpty ? 'yukumlu-kayit-belgesi' : safeBase}-$suffix.pdf';
+}
+
+bool get _isMobileRuntime =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS);
 
 final applicationFormCustomersProvider = FutureProvider<List<_CustomerOption>>((
   ref,
@@ -344,41 +423,6 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     }
   }
 
-  Future<Uint8List> _buildApprovalDocumentPdfFromImage({
-    required Uint8List imageBytes,
-    required ApplicationFormRecord record,
-  }) async {
-    final doc = pw.Document(
-      title: 'Onay Belgesi - ${record.customerName}',
-      author: 'Microvise CRM',
-      creator: 'Microvise CRM',
-    );
-    final image = pw.MemoryImage(imageBytes);
-    doc.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(18),
-        build: (context) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-          children: [
-            pw.Text(
-              'Onay Belgesi',
-              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.SizedBox(height: 4),
-            pw.Text(
-              record.customerName,
-              style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
-            ),
-            pw.SizedBox(height: 10),
-            pw.Expanded(child: pw.Image(image, fit: pw.BoxFit.contain)),
-          ],
-        ),
-      ),
-    );
-    return doc.save();
-  }
-
   String _approvalDocumentFilename(ApplicationFormRecord record) {
     final customer = record.customerName
         .toLowerCase()
@@ -411,18 +455,22 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     }
 
     try {
-      final picked = await ImagePicker().pickImage(
-        source: ImageSource.camera,
-        imageQuality: 88,
-        maxWidth: 1800,
-      );
-      if (picked == null) return;
-      final imageBytes = await picked.readAsBytes();
+      Uint8List? imageBytes = await scanSingleDocumentPage();
+      if (imageBytes == null) {
+        final picked = await ImagePicker().pickImage(
+          source: ImageSource.camera,
+          imageQuality: 90,
+          maxWidth: 2600,
+        );
+        if (picked == null) return;
+        imageBytes = await picked.readAsBytes();
+      }
       if (imageBytes.isEmpty) return;
 
-      final pdfBytes = await _buildApprovalDocumentPdfFromImage(
-        imageBytes: imageBytes,
-        record: record,
+      final pdfBytes = await _buildDocumentPdfFromImages(
+        imagePages: [imageBytes],
+        title: 'Onay Belgesi',
+        subtitle: record.customerName,
       );
       final filename = _approvalDocumentFilename(record);
       final uploaded = await apiClient.postJson(
@@ -3745,6 +3793,65 @@ class _BankApplicationFormDialogState
   }
 
   Future<void> _pickTaxpayerDocument() async {
+    if (_isMobileRuntime) {
+      final action = await showModalBottomSheet<String>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.document_scanner_rounded),
+                title: const Text('Belge tara'),
+                subtitle: const Text('Kamera ile kırpılmış PDF oluştur'),
+                onTap: () => Navigator.of(context).pop('scan'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.attach_file_rounded),
+                title: const Text('Dosya seç'),
+                subtitle: const Text('Hazır PDF veya görsel yükle'),
+                onTap: () => Navigator.of(context).pop('file'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (action == 'scan') {
+        await _scanTaxpayerDocument();
+      } else if (action == 'file') {
+        await _pickTaxpayerDocumentFile();
+      }
+      return;
+    }
+    await _pickTaxpayerDocumentFile();
+  }
+
+  Future<void> _scanTaxpayerDocument() async {
+    try {
+      final imageBytes = await scanSingleDocumentPage();
+      if (imageBytes == null || imageBytes.isEmpty) return;
+      final pdfBytes = await _buildDocumentPdfFromImages(
+        imagePages: [imageBytes],
+        title: 'Yükümlü Kayıt Belgesi',
+        subtitle: _customerNameController.text.trim().isEmpty
+            ? _normalizedVkn
+            : _customerNameController.text.trim(),
+      );
+      _setTaxpayerDocument(
+        name: _taxpayerDocumentFilename(),
+        mimeType: 'application/pdf',
+        bytes: pdfBytes,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Belge taranamadı: $e')));
+    }
+  }
+
+  Future<void> _pickTaxpayerDocumentFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -3754,34 +3861,56 @@ class _BankApplicationFormDialogState
       final file = result?.files.single;
       final bytes = file?.bytes;
       if (file == null || bytes == null) return;
-      if (bytes.length > 6 * 1024 * 1024) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Belge en fazla 6 MB olabilir.')),
-        );
-        return;
-      }
       final ext = file.extension?.toLowerCase() ?? '';
-      setState(() {
-        _documentName = file.name;
-        _documentMimeType = switch (ext) {
-          'pdf' => 'application/pdf',
-          'jpg' || 'jpeg' => 'image/jpeg',
-          'png' => 'image/png',
-          _ => 'application/octet-stream',
-        };
-        _documentBytes = Uint8List.fromList(bytes);
-        _documentBase64 = null;
-        _documentStorageBucket = null;
-        _documentStoragePath = null;
-        _documentUrl = null;
-      });
+      if (ext == 'jpg' || ext == 'jpeg' || ext == 'png') {
+        final pdfBytes = await _buildDocumentPdfFromImages(
+          imagePages: [Uint8List.fromList(bytes)],
+          title: 'Yükümlü Kayıt Belgesi',
+          subtitle: _customerNameController.text.trim().isEmpty
+              ? _normalizedVkn
+              : _customerNameController.text.trim(),
+        );
+        _setTaxpayerDocument(
+          name: _taxpayerDocumentFilename(file.name),
+          mimeType: 'application/pdf',
+          bytes: pdfBytes,
+        );
+      } else {
+        _setTaxpayerDocument(
+          name: file.name,
+          mimeType: 'application/pdf',
+          bytes: Uint8List.fromList(bytes),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Belge seçilemedi: $e')));
     }
+  }
+
+  void _setTaxpayerDocument({
+    required String name,
+    required String mimeType,
+    required Uint8List bytes,
+  }) {
+    if (bytes.length > 6 * 1024 * 1024) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Belge en fazla 6 MB olabilir.')),
+      );
+      return;
+    }
+    setState(() {
+      _documentName = name;
+      _documentMimeType = mimeType;
+      _documentBytes = bytes;
+      _documentBase64 = null;
+      _documentStorageBucket = null;
+      _documentStoragePath = null;
+      _documentUrl = null;
+    });
   }
 
   DeviceModel? _resolvePaxModel(List<DeviceModel> models) {
@@ -4530,7 +4659,9 @@ class _BankDocumentField extends StatelessWidget {
                 ),
                 const Gap(3),
                 Text(
-                  hasFile ? fileName!.trim() : 'PDF, JPG veya PNG yükleyin',
+                  hasFile
+                      ? fileName!.trim()
+                      : 'Mobilde tarayın veya PDF/JPG/PNG yükleyin',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(
