@@ -59,6 +59,7 @@ dependencies:
   syncfusion_flutter_pdf: ^33.2.3
   cunning_document_scanner: ^2.3.0
   image: ^4.1.7
+  archive: ^3.6.1
 
 dev_dependencies:
   flutter_test:

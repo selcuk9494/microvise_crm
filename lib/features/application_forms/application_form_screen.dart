@@ -91,18 +91,27 @@ Future<Uint8List> _buildDocumentPdfFromImages({
   return doc.save();
 }
 
-String _taxpayerDocumentFilename([String? sourceName]) {
+String _safeDocumentNamePart(String value) {
+  return value
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9ğüşöçıİĞÜŞÖÇ]+', unicode: true), '-')
+      .replaceAll(RegExp(r'-+'), '-')
+      .replaceAll(RegExp(r'^-|-$'), '');
+}
+
+String _taxpayerDocumentFilename({String? sourceName, String? companyName}) {
   final base = (sourceName ?? '').trim();
   final withoutExt = base.replaceFirst(RegExp(r'\.[^.]+$'), '').trim();
-  final safeBase = withoutExt.isEmpty
-      ? 'yukumlu-kayit-belgesi'
-      : withoutExt
-            .toLowerCase()
-            .replaceAll(RegExp(r'[^a-z0-9ğüşöçıİĞÜŞÖÇ]+', unicode: true), '-')
-            .replaceAll(RegExp(r'-+'), '-')
-            .replaceAll(RegExp(r'^-|-$'), '');
+  final company = _safeDocumentNamePart(companyName ?? '');
+  final source = _safeDocumentNamePart(withoutExt);
+  final safeBase = [
+    'yukumlu-kayit-belgesi',
+    if (company.isNotEmpty) company,
+    if (source.isNotEmpty && source != company) source,
+  ].join('-');
   final suffix = DateTime.now().toIso8601String().substring(0, 10);
-  return '${safeBase.isEmpty ? 'yukumlu-kayit-belgesi' : safeBase}-$suffix.pdf';
+  return '$safeBase-$suffix.pdf';
 }
 
 bool get _isMobileRuntime =>
@@ -527,6 +536,18 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (response.statusCode == 404 || response.statusCode == 410) {
+          await _clearApprovalDocumentMetadata(record, showSuccess: false);
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Storage dosyası bulunamadı; belge etiketi temizlendi.',
+              ),
+            ),
+          );
+          return;
+        }
         throw Exception('Belge indirilemedi (${response.statusCode}).');
       }
       final filename = (record.approvalDocumentName ?? '').trim().isEmpty
@@ -554,6 +575,54 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Belge paylaşılamadı: $e')));
+    }
+  }
+
+  Future<void> _clearApprovalDocumentMetadata(
+    ApplicationFormRecord record, {
+    bool showSuccess = true,
+  }) async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    final values = {
+      'approval_document_name': null,
+      'approval_document_mime_type': null,
+      'approval_document_storage_bucket': null,
+      'approval_document_storage_path': null,
+      'approval_document_url': null,
+      'approval_document_uploaded_at': null,
+    };
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'application_forms',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': record.id},
+            ],
+            'values': values,
+          },
+        );
+      } else {
+        await client!
+            .from('application_forms')
+            .update(values)
+            .eq('id', record.id);
+      }
+      if (!mounted) return;
+      if (showSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Onay belgesi kaydı temizlendi.')),
+        );
+      }
+      await reloadCurrentPage();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Belge kaydı temizlenemedi: $e')));
     }
   }
 
@@ -3031,6 +3100,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                   onUploadApprovalDocument: () =>
                       _uploadApprovalDocumentFromCamera(r),
                   onShareApprovalDocument: () => _shareApprovalDocument(r),
+                  onClearApprovalDocument: () =>
+                      _clearApprovalDocumentMetadata(r),
                   onViewLogs: () => _openRecordLogs(r),
                   onPrintKdv4a: () =>
                       _print(r, kind: ApplicationPrintKind.kdv4a),
@@ -3091,6 +3162,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                 onUploadApprovalDocument: () =>
                     _uploadApprovalDocumentFromCamera(r),
                 onShareApprovalDocument: () => _shareApprovalDocument(r),
+                onClearApprovalDocument: () =>
+                    _clearApprovalDocumentMetadata(r),
                 onViewLogs: () => _openRecordLogs(r),
                 onPrintKdv4a: () => _print(r, kind: ApplicationPrintKind.kdv4a),
                 onCreateWorkOrder: () => _openCreateWorkOrdersDialog([r]),
@@ -3839,7 +3912,9 @@ class _BankApplicationFormDialogState
             : _customerNameController.text.trim(),
       );
       _setTaxpayerDocument(
-        name: _taxpayerDocumentFilename(),
+        name: _taxpayerDocumentFilename(
+          companyName: _customerNameController.text,
+        ),
         mimeType: 'application/pdf',
         bytes: pdfBytes,
       );
@@ -3871,13 +3946,19 @@ class _BankApplicationFormDialogState
               : _customerNameController.text.trim(),
         );
         _setTaxpayerDocument(
-          name: _taxpayerDocumentFilename(file.name),
+          name: _taxpayerDocumentFilename(
+            sourceName: file.name,
+            companyName: _customerNameController.text,
+          ),
           mimeType: 'application/pdf',
           bytes: pdfBytes,
         );
       } else {
         _setTaxpayerDocument(
-          name: file.name,
+          name: _taxpayerDocumentFilename(
+            sourceName: file.name,
+            companyName: _customerNameController.text,
+          ),
           mimeType: 'application/pdf',
           bytes: Uint8List.fromList(bytes),
         );
@@ -6599,6 +6680,7 @@ class _ApplicationRecordCard extends StatelessWidget {
     required this.onViewDocument,
     required this.onUploadApprovalDocument,
     required this.onShareApprovalDocument,
+    required this.onClearApprovalDocument,
     required this.onViewLogs,
     required this.onPrintKdv4a,
     required this.onCreateWorkOrder,
@@ -6624,6 +6706,7 @@ class _ApplicationRecordCard extends StatelessWidget {
   final VoidCallback onViewDocument;
   final VoidCallback onUploadApprovalDocument;
   final VoidCallback onShareApprovalDocument;
+  final VoidCallback onClearApprovalDocument;
   final VoidCallback onViewLogs;
   final VoidCallback onPrintKdv4a;
   final VoidCallback onCreateWorkOrder;
@@ -6682,6 +6765,11 @@ class _ApplicationRecordCard extends StatelessWidget {
           value: 'share_approval_document',
           child: Text('Onay Belgesini Paylaş'),
         ),
+      if (record.hasApprovalDocument)
+        const PopupMenuItem(
+          value: 'clear_approval_document',
+          child: Text('Onay Belgesi Kaydını Temizle'),
+        ),
       const PopupMenuItem(value: 'logs', child: Text('Loglar')),
       if (canApprove && record.isPendingApproval)
         const PopupMenuItem(value: 'approve', child: Text('Onayla')),
@@ -6726,6 +6814,9 @@ class _ApplicationRecordCard extends StatelessWidget {
           break;
         case 'share_approval_document':
           onShareApprovalDocument();
+          break;
+        case 'clear_approval_document':
+          onClearApprovalDocument();
           break;
         case 'logs':
           onViewLogs();

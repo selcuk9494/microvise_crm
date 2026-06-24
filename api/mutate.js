@@ -86,6 +86,13 @@ function serviceImageExtension(contentType, filename) {
   return 'jpg';
 }
 
+function storageFilenameStem(filename, fallback) {
+  const withoutExt = String(filename || '')
+    .trim()
+    .replace(/\.[a-z0-9]+$/i, '');
+  return safeStorageSegment(withoutExt, fallback);
+}
+
 function getSupabaseStorageConfig() {
   const supabaseUrl = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
   const serviceRoleKey = String(
@@ -142,7 +149,8 @@ async function uploadStorageObject({
     typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : crypto.randomBytes(16).toString('hex');
-  const objectPath = `${safeStorageSegment(folder, 'uploads')}/${Date.now()}-${random}.${ext}`;
+  const name = storageFilenameStem(filename, 'dosya');
+  const objectPath = `${safeStorageSegment(folder, 'uploads')}/${name}-${Date.now()}-${random}.${ext}`;
   const uploadUrl = `${supabaseUrl}/storage/v1/object/${serviceImageBucket}/${encodeURIComponent(
     objectPath,
   ).replace(/%2F/g, '/')}`;
@@ -185,6 +193,37 @@ async function uploadStorageObject({
     contentType,
     size: bytes.length,
   };
+}
+
+async function deleteStorageObject(body) {
+  const { supabaseUrl, serviceRoleKey } = getSupabaseStorageConfig();
+  const bucket = safeStorageSegment(body.bucket, serviceImageBucket);
+  const objectPath = String(body.path || '').trim();
+  if (!objectPath) {
+    const error = new Error('Silinecek dosya yolu eksik.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const deleteUrl = `${supabaseUrl}/storage/v1/object/${bucket}/${encodeURIComponent(
+    objectPath,
+  ).replace(/%2F/g, '/')}`;
+  let response;
+  try {
+    response = await fetch(deleteUrl, {
+      method: 'DELETE',
+      headers: supabaseAdminHeaders(serviceRoleKey),
+    });
+  } catch (error) {
+    const cause = error?.cause;
+    throw new Error(
+      `Supabase Storage delete failed: code=${cause?.code || error?.code || 'unknown'} message=${cause?.message || error?.message || 'unknown'}`,
+    );
+  }
+  if (!response.ok && response.status !== 404) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Supabase Storage delete failed: ${response.status} ${text}`);
+  }
+  return { deleted: response.status !== 404 };
 }
 
 async function uploadServiceImage(body) {
@@ -1028,6 +1067,17 @@ module.exports = async (req, res) => {
       if (!hasPageAccess(user, 'formlar')) return forbidden(req, res);
       try {
         return ok(req, res, await uploadTaxpayerRegistrationDocument(body));
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'deleteStorageObject') {
+      if (!hasPageAccess(user, 'formlar') && !hasPageAccess(user, 'servis')) {
+        return forbidden(req, res);
+      }
+      try {
+        return ok(req, res, await deleteStorageObject(body));
       } catch (error) {
         if (error?.statusCode === 400) return badRequest(req, res, error.message);
         throw error;

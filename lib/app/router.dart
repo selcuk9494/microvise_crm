@@ -9,6 +9,7 @@ import '../features/auth/login_screen.dart';
 import '../features/customers/customer_detail_screen.dart';
 import '../features/customers/customers_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
+import '../features/documents/document_library_screen.dart';
 import '../features/billing/billing_screen.dart';
 import '../features/billing/invoice_pdf_analysis_screen.dart';
 import '../features/e_invoice/e_invoice_screen.dart';
@@ -121,6 +122,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   const NoTransitionPage(child: SerialTrackingScreen()),
             ),
           ],
+        ),
+        GoRoute(
+          path: '/belgeler',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: DocumentLibraryScreen()),
         ),
         GoRoute(
           path: '/is-emirleri',
@@ -262,6 +268,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       String? requiredPage;
       if (location.startsWith('/musteriler')) requiredPage = 'musteriler';
       if (location.startsWith('/formlar')) requiredPage = 'formlar';
+      if (location.startsWith('/belgeler')) requiredPage = 'formlar';
       if (location.startsWith('/is-emirleri')) requiredPage = 'is_emirleri';
       if (location.startsWith('/servis')) requiredPage = 'servis';
       if (location.startsWith('/raporlar')) requiredPage = 'raporlar';

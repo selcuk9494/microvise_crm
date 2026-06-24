@@ -154,9 +154,7 @@ class _DesktopShell extends ConsumerWidget {
                                 icon: item.icon,
                                 active: _isActive(location, item.path),
                                 accentColor: _navAccentColor(item.pageKey),
-                                expanded:
-                                    isEInvoiceExpanded ||
-                                    _isActive(location, item.path),
+                                expanded: isEInvoiceExpanded,
                                 onHeaderTap: () {
                                   ref
                                       .read(
@@ -1647,6 +1645,18 @@ final _navItems = <_NavItem>[
     pageKey: 'formlar',
   ),
   _NavItem(
+    path: '/e-fatura',
+    label: 'E-Fatura',
+    icon: Icons.request_quote_rounded,
+    pageKey: 'e_fatura',
+  ),
+  _NavItem(
+    path: '/belgeler',
+    label: 'Belgeler',
+    icon: Icons.folder_copy_rounded,
+    pageKey: 'formlar',
+  ),
+  _NavItem(
     path: '/is-emirleri',
     label: 'İş Emirleri',
     icon: Icons.view_kanban_rounded,
@@ -1675,12 +1685,6 @@ final _navItems = <_NavItem>[
     label: 'Faturalama',
     icon: Icons.receipt_long_rounded,
     pageKey: 'faturalama',
-  ),
-  _NavItem(
-    path: '/e-fatura',
-    label: 'E-Fatura',
-    icon: Icons.request_quote_rounded,
-    pageKey: 'e_fatura',
   ),
   _NavItem(
     path: '/finans',
