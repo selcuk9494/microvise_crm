@@ -1,4 +1,5 @@
 import '../../core/format/app_date_time.dart';
+import 'form_document_actions.dart';
 
 class FaultFormRecord {
   const FaultFormRecord({
@@ -19,6 +20,12 @@ class FaultFormRecord {
     required this.lastZReportNo,
     required this.totalRevenue,
     required this.totalVat,
+    required this.documentName,
+    required this.documentMimeType,
+    required this.documentStorageBucket,
+    required this.documentStoragePath,
+    required this.documentUrl,
+    required this.documentUploadedAt,
     required this.isActive,
     required this.createdAt,
   });
@@ -40,8 +47,23 @@ class FaultFormRecord {
   final String? lastZReportNo;
   final String? totalRevenue;
   final String? totalVat;
+  final String? documentName;
+  final String? documentMimeType;
+  final String? documentStorageBucket;
+  final String? documentStoragePath;
+  final String? documentUrl;
+  final DateTime? documentUploadedAt;
   final bool isActive;
   final DateTime? createdAt;
+
+  FormDocumentInfo get document => FormDocumentInfo(
+    name: documentName,
+    mimeType: documentMimeType,
+    bucket: documentStorageBucket,
+    path: documentStoragePath,
+    url: documentUrl,
+    uploadedAt: documentUploadedAt,
+  );
 
   String get lastZReportDisplay {
     final d = lastZReportDate;
@@ -66,15 +88,24 @@ class FaultFormRecord {
       customerVkn: json['customer_vkn']?.toString(),
       deviceBrandModel: json['device_brand_model']?.toString(),
       companyCodeAndRegistry: json['company_code_and_registry']?.toString(),
-      okcApprovalDateAndNumber: json['okc_approval_date_and_number']?.toString(),
+      okcApprovalDateAndNumber: json['okc_approval_date_and_number']
+          ?.toString(),
       faultDateTimeText: json['fault_date_time_text']?.toString(),
       faultDescription: json['fault_description']?.toString(),
-      lastZReportDateAndNumber:
-          json['last_z_report_date_and_number']?.toString(),
+      lastZReportDateAndNumber: json['last_z_report_date_and_number']
+          ?.toString(),
       lastZReportDate: parseAppDateTime(json['last_z_report_date']?.toString()),
       lastZReportNo: json['last_z_report_no']?.toString(),
       totalRevenue: json['total_revenue']?.toString(),
       totalVat: json['total_vat']?.toString(),
+      documentName: json['document_name']?.toString(),
+      documentMimeType: json['document_mime_type']?.toString(),
+      documentStorageBucket: json['document_storage_bucket']?.toString(),
+      documentStoragePath: json['document_storage_path']?.toString(),
+      documentUrl: json['document_url']?.toString(),
+      documentUploadedAt: parseAppDateTime(
+        json['document_uploaded_at']?.toString(),
+      ),
       isActive: json['is_active'] as bool? ?? true,
       createdAt: parseAppDateTime(json['created_at']?.toString()),
     );
@@ -144,11 +175,13 @@ class FaultFormPrintSettings {
   factory FaultFormPrintSettings.fromJson(Map<String, dynamic> json) {
     return FaultFormPrintSettings(
       id: json['id']?.toString() ?? defaults.id,
-      officeCityText: json['office_city_text']?.toString() ?? defaults.officeCityText,
+      officeCityText:
+          json['office_city_text']?.toString() ?? defaults.officeCityText,
       officeTitleText:
           json['office_title_text']?.toString() ?? defaults.officeTitleText,
       formCodeText: json['form_code_text']?.toString() ?? defaults.formCodeText,
-      serviceSectionTitle: json['service_section_title']?.toString() ??
+      serviceSectionTitle:
+          json['service_section_title']?.toString() ??
           defaults.serviceSectionTitle,
       licenseNoLabel:
           json['license_no_label']?.toString() ?? defaults.licenseNoLabel,
@@ -158,17 +191,21 @@ class FaultFormPrintSettings {
           json['service_name_label']?.toString() ?? defaults.serviceNameLabel,
       serviceNameValue:
           json['service_name_value']?.toString() ?? defaults.serviceNameValue,
-      serviceAddressLabel: json['service_address_label']?.toString() ??
+      serviceAddressLabel:
+          json['service_address_label']?.toString() ??
           defaults.serviceAddressLabel,
-      serviceAddressValue: json['service_address_value']?.toString() ??
+      serviceAddressValue:
+          json['service_address_value']?.toString() ??
           defaults.serviceAddressValue,
       serviceVknLabel:
           json['service_vkn_label']?.toString() ?? defaults.serviceVknLabel,
       serviceVknValue:
           json['service_vkn_value']?.toString() ?? defaults.serviceVknValue,
-      authorizedServiceLabel: json['authorized_service_label']?.toString() ??
+      authorizedServiceLabel:
+          json['authorized_service_label']?.toString() ??
           defaults.authorizedServiceLabel,
-      authorizedServiceValue: json['authorized_service_value']?.toString() ??
+      authorizedServiceValue:
+          json['authorized_service_value']?.toString() ??
           defaults.authorizedServiceValue,
       sealOfficeLine:
           json['seal_office_line']?.toString() ?? defaults.sealOfficeLine,

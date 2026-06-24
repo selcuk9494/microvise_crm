@@ -14,11 +14,13 @@ import '../../core/ui/app_page_layout.dart';
 import '../billing/invoice_queue_helper.dart';
 import '../customers/customer_form_dialog.dart';
 import '../definitions/definitions_screen.dart';
+import 'form_document_actions.dart';
 import 'scrap_form_model.dart';
 import 'scrap_form_print.dart';
 
-final scrapFormCustomersProvider =
-    FutureProvider<List<_ScrapCustomerOption>>((ref) async {
+final scrapFormCustomersProvider = FutureProvider<List<_ScrapCustomerOption>>((
+  ref,
+) async {
   final apiClient = ref.watch(apiClientProvider);
   final client = ref.watch(supabaseClientProvider);
   if (apiClient != null) {
@@ -60,39 +62,42 @@ final scrapFormCustomersProvider =
 
 final scrapCustomerDeviceRegistriesProvider =
     FutureProvider.family<List<_ScrapDeviceRegistryOption>, String>((
-  ref,
-  customerId,
-) async {
-  final apiClient = ref.watch(apiClientProvider);
-  final client = ref.watch(supabaseClientProvider);
-  if (apiClient != null) {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: {
-        'resource': 'customer_device_registries',
-        'customerId': customerId,
-        'showPassive': 'false',
-      },
-    );
-    return ((response['items'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(_ScrapDeviceRegistryOption.fromJson)
-        .where((e) => e.registryNumber.trim().isNotEmpty)
-        .toList(growable: false);
-  }
-  if (client == null) return const [];
-  final rows = await client
-      .from('device_registries')
-      .select('registry_number,model,is_active')
-      .eq('customer_id', customerId)
-      .eq('is_active', true)
-      .order('registry_number', ascending: true)
-      .limit(1000);
-  return (rows as List)
-      .map((e) => _ScrapDeviceRegistryOption.fromJson(e as Map<String, dynamic>))
-      .where((e) => e.registryNumber.trim().isNotEmpty)
-      .toList(growable: false);
-});
+      ref,
+      customerId,
+    ) async {
+      final apiClient = ref.watch(apiClientProvider);
+      final client = ref.watch(supabaseClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {
+            'resource': 'customer_device_registries',
+            'customerId': customerId,
+            'showPassive': 'false',
+          },
+        );
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(_ScrapDeviceRegistryOption.fromJson)
+            .where((e) => e.registryNumber.trim().isNotEmpty)
+            .toList(growable: false);
+      }
+      if (client == null) return const [];
+      final rows = await client
+          .from('device_registries')
+          .select('registry_number,model,is_active')
+          .eq('customer_id', customerId)
+          .eq('is_active', true)
+          .order('registry_number', ascending: true)
+          .limit(1000);
+      return (rows as List)
+          .map(
+            (e) =>
+                _ScrapDeviceRegistryOption.fromJson(e as Map<String, dynamic>),
+          )
+          .where((e) => e.registryNumber.trim().isNotEmpty)
+          .toList(growable: false);
+    });
 
 final scrapFormsProvider = FutureProvider<List<ScrapFormRecord>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
@@ -113,7 +118,7 @@ final scrapFormsProvider = FutureProvider<List<ScrapFormRecord>>((ref) async {
     final rows = await client
         .from('scrap_forms')
         .select(
-          'id,form_date,row_number,customer_id,customer_name,customer_address,customer_tax_office_and_number,device_brand_model_registry,okc_start_date,last_used_date,z_report_count,total_vat_collection,total_collection,intervention_purpose,other_findings,is_active,created_at',
+          'id,form_date,row_number,customer_id,customer_name,customer_address,customer_tax_office_and_number,device_brand_model_registry,okc_start_date,last_used_date,z_report_count,total_vat_collection,total_collection,intervention_purpose,other_findings,document_name,document_mime_type,document_storage_bucket,document_storage_path,document_url,document_uploaded_at,is_active,created_at',
         )
         .order('created_at', ascending: false)
         .limit(500);
@@ -196,7 +201,9 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
   }
 
   Future<void> _print(ScrapFormRecord record) async {
-    final settings = ref.read(scrapFormPrintSettingsProvider).maybeWhen(
+    final settings = ref
+        .read(scrapFormPrintSettingsProvider)
+        .maybeWhen(
           data: (value) => value,
           orElse: () => ScrapFormPrintSettings.defaults,
         );
@@ -214,8 +221,8 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
           error != null
               ? 'Hurda formu yazdırma hatası: $error'
               : ok
-                  ? 'Hurda formu çıktısı hazırlandı.'
-                  : 'Hurda formu çıktısı bu platformda açılamadı.',
+              ? 'Hurda formu çıktısı hazırlandı.'
+              : 'Hurda formu çıktısı bu platformda açılamadı.',
         ),
       ),
     );
@@ -249,24 +256,26 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            active ? 'Hurda formu aktifleştirildi.' : 'Hurda formu pasife alındı.',
+            active
+                ? 'Hurda formu aktifleştirildi.'
+                : 'Hurda formu pasife alındı.',
           ),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('İşlem başarısız: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('İşlem başarısız: $e')));
     }
   }
 
   Future<void> _deleteRecordPermanently(ScrapFormRecord record) async {
     if (record.isActive) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Önce kaydı pasife alın.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Önce kaydı pasife alın.')));
       return;
     }
     final confirmed = await showDialog<bool>(
@@ -309,9 +318,9 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Silinemedi: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Silinemedi: $e')));
     }
   }
 
@@ -356,7 +365,9 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
     final isMobile = width < 820;
     final recordsAsync = ref.watch(scrapFormsProvider);
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
-    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
+    final canArchive = ref.watch(
+      hasActionAccessProvider(kActionArchiveRecords),
+    );
     final canDeletePermanently = ref.watch(
       hasActionAccessProvider(kActionDeleteRecords),
     );
@@ -415,8 +426,9 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                   width: isMobile ? double.infinity : 180,
                   child: TextField(
                     controller: TextEditingController(
-                      text:
-                          _fromDate == null ? '' : _dateFormat.format(_fromDate!),
+                      text: _fromDate == null
+                          ? ''
+                          : _dateFormat.format(_fromDate!),
                     ),
                     readOnly: true,
                     onTap: () => _pickDate(
@@ -518,6 +530,31 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                 onEdit: () => _openEditDialog(record),
                 onDuplicate: () => _openDuplicateDialog(record),
                 onPrint: () => _print(record),
+                onUploadDocument: () => handleFormDocumentAction(
+                  context: context,
+                  ref: ref,
+                  table: 'scrap_forms',
+                  recordId: record.id,
+                  defaultFilename:
+                      'hurda-formu-${safeFormDocumentFilePart(record.customerName)}',
+                  onChanged: () => ref.invalidate(scrapFormsProvider),
+                ),
+                onDownloadDocument: record.document.hasDocument
+                    ? () => downloadFormDocument(
+                        context: context,
+                        document: record.document,
+                      )
+                    : null,
+                onDeleteDocument: record.document.hasDocument
+                    ? () => clearFormDocument(
+                        context: context,
+                        ref: ref,
+                        table: 'scrap_forms',
+                        recordId: record.id,
+                        document: record.document,
+                        onChanged: () => ref.invalidate(scrapFormsProvider),
+                      )
+                    : null,
                 onToggleActive: canArchive
                     ? () => _setRecordActive(record, !record.isActive)
                     : null,
@@ -536,7 +573,10 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
 }
 
 class _ScrapDeviceRegistryOption {
-  const _ScrapDeviceRegistryOption({required this.registryNumber, required this.model});
+  const _ScrapDeviceRegistryOption({
+    required this.registryNumber,
+    required this.model,
+  });
 
   final String registryNumber;
   final String? model;
@@ -570,6 +610,9 @@ class _ScrapRecordCard extends StatelessWidget {
     required this.onEdit,
     required this.onDuplicate,
     required this.onPrint,
+    required this.onUploadDocument,
+    required this.onDownloadDocument,
+    required this.onDeleteDocument,
     required this.onToggleActive,
     required this.onDeletePermanently,
   });
@@ -581,6 +624,9 @@ class _ScrapRecordCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDuplicate;
   final VoidCallback onPrint;
+  final VoidCallback onUploadDocument;
+  final VoidCallback? onDownloadDocument;
+  final VoidCallback? onDeleteDocument;
   final VoidCallback? onToggleActive;
   final VoidCallback? onDeletePermanently;
 
@@ -589,12 +635,15 @@ class _ScrapRecordCard extends StatelessWidget {
     final isMobile = MediaQuery.sizeOf(context).width < 900;
     final dateText = DateFormat('d MMM y', 'tr_TR').format(record.formDate);
     final badgeLabel = record.isActive ? 'KDV 15B' : 'Pasif';
-    final badgeTone =
-        record.isActive ? AppBadgeTone.primary : AppBadgeTone.neutral;
+    final badgeTone = record.isActive
+        ? AppBadgeTone.primary
+        : AppBadgeTone.neutral;
 
     return AppCard(
-      padding:
-          EdgeInsets.symmetric(horizontal: isMobile ? 10 : 12, vertical: 10),
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 10 : 12,
+        vertical: 10,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -625,7 +674,8 @@ class _ScrapRecordCard extends StatelessWidget {
                         record.customerName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
                               fontWeight: FontWeight.w800,
                               fontSize: isMobile ? 14 : 15,
                             ),
@@ -649,7 +699,9 @@ class _ScrapRecordCard extends StatelessWidget {
                         icon: Icons.tag_rounded,
                         text: 'Sıra: ${record.rowNumber!.trim()}',
                       ),
-                    if ((record.deviceBrandModelRegistry ?? '').trim().isNotEmpty)
+                    if ((record.deviceBrandModelRegistry ?? '')
+                        .trim()
+                        .isNotEmpty)
                       _ScrapInfoChip(
                         icon: Icons.memory_rounded,
                         text: record.deviceBrandModelRegistry!.trim(),
@@ -659,6 +711,7 @@ class _ScrapRecordCard extends StatelessWidget {
                         icon: Icons.task_alt_rounded,
                         text: record.interventionPurpose!.trim(),
                       ),
+                    FormDocumentMetaChip(document: record.document),
                   ],
                 ),
               ],
@@ -673,6 +726,12 @@ class _ScrapRecordCard extends StatelessWidget {
                 tooltip: 'Yazdır',
                 onPressed: onPrint,
                 icon: const Icon(Icons.print_rounded, size: 18),
+              ),
+              FormDocumentActions(
+                document: record.document,
+                onUpload: onUploadDocument,
+                onDownload: onDownloadDocument,
+                onDelete: onDeleteDocument,
               ),
               if (canEdit)
                 IconButton.filledTonal(
@@ -733,10 +792,9 @@ class _ScrapInfoChip extends StatelessWidget {
           const Gap(6),
           Text(
             text,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: const Color(0xFF475569)),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF475569)),
           ),
         ],
       ),
@@ -987,9 +1045,9 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
         inserted =
             await (widget.isEdit
                     ? client!
-                        .from('scrap_forms')
-                        .update(payload)
-                        .eq('id', widget.initialRecord!.id)
+                          .from('scrap_forms')
+                          .update(payload)
+                          .eq('id', widget.initialRecord!.id)
                     : client!.from('scrap_forms').insert(payload))
                 .select(
                   'id,form_date,row_number,customer_id,customer_name,customer_address,customer_tax_office_and_number,device_brand_model_registry,okc_start_date,last_used_date,z_report_count,total_vat_collection,total_collection,intervention_purpose,other_findings,is_active,created_at',
@@ -1166,7 +1224,9 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                                         child: Text(
                                           [
                                             e.registryNumber.trim(),
-                                            if ((e.model ?? '').trim().isNotEmpty)
+                                            if ((e.model ?? '')
+                                                .trim()
+                                                .isNotEmpty)
                                               e.model!.trim(),
                                           ].join(' • '),
                                         ),
@@ -1183,8 +1243,10 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                                             orElse: () => items.first,
                                           );
                                           setState(() {
-                                            final model = (selected.model ?? '').trim();
-                                            _deviceController.text = model.isEmpty
+                                            final model = (selected.model ?? '')
+                                                .trim();
+                                            _deviceController.text =
+                                                model.isEmpty
                                                 ? v
                                                 : '$model / $v';
                                           });

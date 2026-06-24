@@ -14,6 +14,7 @@ import '../../core/ui/app_page_layout.dart';
 import '../billing/invoice_queue_helper.dart';
 import '../customers/customer_form_dialog.dart';
 import '../definitions/definitions_screen.dart';
+import 'form_document_actions.dart';
 import 'transfer_form_model.dart';
 import 'transfer_form_print.dart';
 
@@ -61,39 +62,43 @@ final transferFormCustomersProvider =
 
 final transferCustomerDeviceRegistriesProvider =
     FutureProvider.family<List<_TransferDeviceRegistryOption>, String>((
-  ref,
-  customerId,
-) async {
-  final apiClient = ref.watch(apiClientProvider);
-  final client = ref.watch(supabaseClientProvider);
-  if (apiClient != null) {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: {
-        'resource': 'customer_device_registries',
-        'customerId': customerId,
-        'showPassive': 'false',
-      },
-    );
-    return ((response['items'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(_TransferDeviceRegistryOption.fromJson)
-        .where((e) => e.registryNumber.trim().isNotEmpty)
-        .toList(growable: false);
-  }
-  if (client == null) return const [];
-  final rows = await client
-      .from('device_registries')
-      .select('registry_number,model,is_active')
-      .eq('customer_id', customerId)
-      .eq('is_active', true)
-      .order('registry_number', ascending: true)
-      .limit(1000);
-  return (rows as List)
-      .map((e) => _TransferDeviceRegistryOption.fromJson(e as Map<String, dynamic>))
-      .where((e) => e.registryNumber.trim().isNotEmpty)
-      .toList(growable: false);
-});
+      ref,
+      customerId,
+    ) async {
+      final apiClient = ref.watch(apiClientProvider);
+      final client = ref.watch(supabaseClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {
+            'resource': 'customer_device_registries',
+            'customerId': customerId,
+            'showPassive': 'false',
+          },
+        );
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(_TransferDeviceRegistryOption.fromJson)
+            .where((e) => e.registryNumber.trim().isNotEmpty)
+            .toList(growable: false);
+      }
+      if (client == null) return const [];
+      final rows = await client
+          .from('device_registries')
+          .select('registry_number,model,is_active')
+          .eq('customer_id', customerId)
+          .eq('is_active', true)
+          .order('registry_number', ascending: true)
+          .limit(1000);
+      return (rows as List)
+          .map(
+            (e) => _TransferDeviceRegistryOption.fromJson(
+              e as Map<String, dynamic>,
+            ),
+          )
+          .where((e) => e.registryNumber.trim().isNotEmpty)
+          .toList(growable: false);
+    });
 
 final transferFormsProvider = FutureProvider<List<TransferFormRecord>>((
   ref,
@@ -116,7 +121,7 @@ final transferFormsProvider = FutureProvider<List<TransferFormRecord>>((
     final rows = await client
         .from('transfer_forms')
         .select(
-          'id,row_number,transferor_name,transferor_address,transferor_tax_office_and_registry,transferor_approval_date_no,transferee_name,transferee_address,transferee_tax_office_and_registry,transferee_approval_date_no,total_sales_receipt,vat_collected,last_receipt_date_no,z_report_count,other_device_info,brand_model,device_serial_no,fiscal_symbol_company_code,department_count,transfer_date,transfer_reason,is_active,created_at',
+          'id,row_number,transferor_name,transferor_address,transferor_tax_office_and_registry,transferor_approval_date_no,transferee_name,transferee_address,transferee_tax_office_and_registry,transferee_approval_date_no,total_sales_receipt,vat_collected,last_receipt_date_no,z_report_count,other_device_info,brand_model,device_serial_no,fiscal_symbol_company_code,department_count,transfer_date,transfer_reason,document_name,document_mime_type,document_storage_bucket,document_storage_path,document_url,document_uploaded_at,is_active,created_at',
         )
         .order('created_at', ascending: false)
         .limit(500);
@@ -199,7 +204,9 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
   }
 
   Future<void> _print(TransferFormRecord record) async {
-    final settings = ref.read(transferFormPrintSettingsProvider).maybeWhen(
+    final settings = ref
+        .read(transferFormPrintSettingsProvider)
+        .maybeWhen(
           data: (value) => value,
           orElse: () => TransferFormPrintSettings.defaults,
         );
@@ -217,8 +224,8 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
           error != null
               ? 'Devir formu yazdırma hatası: $error'
               : ok
-                  ? 'Devir formu çıktısı hazırlandı.'
-                  : 'Devir formu çıktısı bu platformda açılamadı.',
+              ? 'Devir formu çıktısı hazırlandı.'
+              : 'Devir formu çıktısı bu platformda açılamadı.',
         ),
       ),
     );
@@ -252,24 +259,26 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            active ? 'Devir formu aktifleştirildi.' : 'Devir formu pasife alındı.',
+            active
+                ? 'Devir formu aktifleştirildi.'
+                : 'Devir formu pasife alındı.',
           ),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('İşlem başarısız: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('İşlem başarısız: $e')));
     }
   }
 
   Future<void> _deleteRecordPermanently(TransferFormRecord record) async {
     if (record.isActive) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Önce kaydı pasife alın.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Önce kaydı pasife alın.')));
       return;
     }
     final confirmed = await showDialog<bool>(
@@ -312,9 +321,9 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Silinemedi: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Silinemedi: $e')));
     }
   }
 
@@ -360,7 +369,9 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
     final isMobile = width < 820;
     final recordsAsync = ref.watch(transferFormsProvider);
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
-    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
+    final canArchive = ref.watch(
+      hasActionAccessProvider(kActionArchiveRecords),
+    );
     final canDeletePermanently = ref.watch(
       hasActionAccessProvider(kActionDeleteRecords),
     );
@@ -416,8 +427,9 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
                   width: isMobile ? double.infinity : 180,
                   child: TextField(
                     controller: TextEditingController(
-                      text:
-                          _fromDate == null ? '' : _dateFormat.format(_fromDate!),
+                      text: _fromDate == null
+                          ? ''
+                          : _dateFormat.format(_fromDate!),
                     ),
                     readOnly: true,
                     onTap: () => _pickDate(
@@ -512,6 +524,31 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
                 onEdit: () => _openEditDialog(record),
                 onDuplicate: () => _openDuplicateDialog(record),
                 onPrint: () => _print(record),
+                onUploadDocument: () => handleFormDocumentAction(
+                  context: context,
+                  ref: ref,
+                  table: 'transfer_forms',
+                  recordId: record.id,
+                  defaultFilename:
+                      'devir-formu-${safeFormDocumentFilePart(record.transferorName)}',
+                  onChanged: () => ref.invalidate(transferFormsProvider),
+                ),
+                onDownloadDocument: record.document.hasDocument
+                    ? () => downloadFormDocument(
+                        context: context,
+                        document: record.document,
+                      )
+                    : null,
+                onDeleteDocument: record.document.hasDocument
+                    ? () => clearFormDocument(
+                        context: context,
+                        ref: ref,
+                        table: 'transfer_forms',
+                        recordId: record.id,
+                        document: record.document,
+                        onChanged: () => ref.invalidate(transferFormsProvider),
+                      )
+                    : null,
                 onToggleActive: canArchive
                     ? () => _setRecordActive(record, !record.isActive)
                     : null,
@@ -530,7 +567,10 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
 }
 
 class _TransferDeviceRegistryOption {
-  const _TransferDeviceRegistryOption({required this.registryNumber, required this.model});
+  const _TransferDeviceRegistryOption({
+    required this.registryNumber,
+    required this.model,
+  });
 
   final String registryNumber;
   final String? model;
@@ -565,6 +605,9 @@ class _TransferRecordCard extends StatelessWidget {
     required this.onEdit,
     required this.onDuplicate,
     required this.onPrint,
+    required this.onUploadDocument,
+    required this.onDownloadDocument,
+    required this.onDeleteDocument,
     required this.onToggleActive,
     required this.onDeletePermanently,
   });
@@ -576,6 +619,9 @@ class _TransferRecordCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDuplicate;
   final VoidCallback onPrint;
+  final VoidCallback onUploadDocument;
+  final VoidCallback? onDownloadDocument;
+  final VoidCallback? onDeleteDocument;
   final VoidCallback? onToggleActive;
   final VoidCallback? onDeletePermanently;
 
@@ -584,12 +630,15 @@ class _TransferRecordCard extends StatelessWidget {
     final isMobile = MediaQuery.sizeOf(context).width < 900;
     final dateText = DateFormat('d MMM y', 'tr_TR').format(record.transferDate);
     final badgeLabel = record.isActive ? 'KDV 15' : 'Pasif';
-    final badgeTone =
-        record.isActive ? AppBadgeTone.primary : AppBadgeTone.neutral;
+    final badgeTone = record.isActive
+        ? AppBadgeTone.primary
+        : AppBadgeTone.neutral;
 
     return AppCard(
-      padding:
-          EdgeInsets.symmetric(horizontal: isMobile ? 10 : 12, vertical: 10),
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 10 : 12,
+        vertical: 10,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -620,7 +669,8 @@ class _TransferRecordCard extends StatelessWidget {
                         '${record.transferorName} → ${record.transfereeName}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
                               fontWeight: FontWeight.w800,
                               fontSize: isMobile ? 14 : 15,
                             ),
@@ -654,6 +704,7 @@ class _TransferRecordCard extends StatelessWidget {
                         icon: Icons.badge_rounded,
                         text: record.deviceSerialNo!.trim(),
                       ),
+                    FormDocumentMetaChip(document: record.document),
                   ],
                 ),
               ],
@@ -668,6 +719,12 @@ class _TransferRecordCard extends StatelessWidget {
                 tooltip: 'Yazdır',
                 onPressed: onPrint,
                 icon: const Icon(Icons.print_rounded, size: 18),
+              ),
+              FormDocumentActions(
+                document: record.document,
+                onUpload: onUploadDocument,
+                onDownload: onDownloadDocument,
+                onDelete: onDeleteDocument,
               ),
               if (canEdit)
                 IconButton.filledTonal(
@@ -728,10 +785,9 @@ class _TransferInfoChip extends StatelessWidget {
           const Gap(6),
           Text(
             text,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: const Color(0xFF475569)),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF475569)),
           ),
         ],
       ),
@@ -1032,9 +1088,9 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
         inserted =
             await (widget.isEdit
                     ? client!
-                        .from('transfer_forms')
-                        .update(payload)
-                        .eq('id', widget.initialRecord!.id)
+                          .from('transfer_forms')
+                          .update(payload)
+                          .eq('id', widget.initialRecord!.id)
                     : client!.from('transfer_forms').insert(payload))
                 .select(
                   'id,row_number,transferor_name,transferor_address,transferor_tax_office_and_registry,transferor_approval_date_no,transferee_name,transferee_address,transferee_tax_office_and_registry,transferee_approval_date_no,total_sales_receipt,vat_collected,last_receipt_date_no,z_report_count,other_device_info,brand_model,device_serial_no,fiscal_symbol_company_code,department_count,transfer_date,transfer_reason,is_active,created_at',
@@ -1328,91 +1384,104 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
                                 ),
                               )
                             : ref
-                                .watch(
-                                  transferCustomerDeviceRegistriesProvider(
-                                    _transferorCustomerId!.trim(),
-                                  ),
-                                )
-                                .when(
-                                  data: (items) {
-                                    if (items.isEmpty) {
-                                      return TextFormField(
-                                        controller: _deviceSerialController,
+                                  .watch(
+                                    transferCustomerDeviceRegistriesProvider(
+                                      _transferorCustomerId!.trim(),
+                                    ),
+                                  )
+                                  .when(
+                                    data: (items) {
+                                      if (items.isEmpty) {
+                                        return TextFormField(
+                                          controller: _deviceSerialController,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Cihaz Sicil No',
+                                          ),
+                                        );
+                                      }
+                                      final current = _deviceSerialController
+                                          .text
+                                          .trim();
+                                      final initialValue =
+                                          items.any(
+                                            (e) =>
+                                                e.registryNumber.trim() ==
+                                                current,
+                                          )
+                                          ? current
+                                          : null;
+                                      return DropdownButtonFormField<String?>(
+                                        initialValue: initialValue,
+                                        items: [
+                                          const DropdownMenuItem<String?>(
+                                            value: null,
+                                            child: Text('Sicil seç'),
+                                          ),
+                                          ...items.map(
+                                            (e) => DropdownMenuItem<String?>(
+                                              value: e.registryNumber.trim(),
+                                              child: Text(
+                                                [
+                                                  e.registryNumber.trim(),
+                                                  if ((e.model ?? '')
+                                                      .trim()
+                                                      .isNotEmpty)
+                                                    e.model!.trim(),
+                                                ].join(' • '),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                        onChanged: _saving
+                                            ? null
+                                            : (value) {
+                                                final v = (value ?? '').trim();
+                                                if (v.isEmpty) return;
+                                                final selected = items
+                                                    .firstWhere(
+                                                      (e) =>
+                                                          e.registryNumber
+                                                              .trim() ==
+                                                          v,
+                                                      orElse: () => items.first,
+                                                    );
+                                                setState(() {
+                                                  _deviceSerialController.text =
+                                                      v;
+                                                  if (_brandModelController.text
+                                                      .trim()
+                                                      .isEmpty) {
+                                                    final model =
+                                                        (selected.model ?? '')
+                                                            .trim();
+                                                    if (model.isNotEmpty) {
+                                                      _brandModelController
+                                                              .text =
+                                                          model;
+                                                    }
+                                                  }
+                                                });
+                                              },
                                         decoration: const InputDecoration(
                                           labelText: 'Cihaz Sicil No',
                                         ),
                                       );
-                                    }
-                                    final current =
-                                        _deviceSerialController.text.trim();
-                                    final initialValue = items.any(
-                                      (e) => e.registryNumber.trim() == current,
-                                    )
-                                        ? current
-                                        : null;
-                                    return DropdownButtonFormField<String?>(
-                                      initialValue: initialValue,
-                                      items: [
-                                        const DropdownMenuItem<String?>(
-                                          value: null,
-                                          child: Text('Sicil seç'),
+                                    },
+                                    loading: () => const SizedBox(
+                                      height: 52,
+                                      child: Center(
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
                                         ),
-                                        ...items.map(
-                                          (e) => DropdownMenuItem<String?>(
-                                            value: e.registryNumber.trim(),
-                                            child: Text(
-                                              [
-                                                e.registryNumber.trim(),
-                                                if ((e.model ?? '').trim().isNotEmpty)
-                                                  e.model!.trim(),
-                                              ].join(' • '),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                      onChanged: _saving
-                                          ? null
-                                          : (value) {
-                                              final v = (value ?? '').trim();
-                                              if (v.isEmpty) return;
-                                              final selected = items.firstWhere(
-                                                (e) => e.registryNumber.trim() == v,
-                                                orElse: () => items.first,
-                                              );
-                                              setState(() {
-                                                _deviceSerialController.text = v;
-                                                if (_brandModelController.text
-                                                    .trim()
-                                                    .isEmpty) {
-                                                  final model =
-                                                      (selected.model ?? '').trim();
-                                                  if (model.isNotEmpty) {
-                                                    _brandModelController.text =
-                                                        model;
-                                                  }
-                                                }
-                                              });
-                                            },
+                                      ),
+                                    ),
+                                    error: (_, _) => TextFormField(
+                                      controller: _deviceSerialController,
                                       decoration: const InputDecoration(
                                         labelText: 'Cihaz Sicil No',
                                       ),
-                                    );
-                                  },
-                                  loading: () => const SizedBox(
-                                    height: 52,
-                                    child: Center(
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
                                     ),
                                   ),
-                                  error: (_, _) => TextFormField(
-                                    controller: _deviceSerialController,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Cihaz Sicil No',
-                                    ),
-                                  ),
-                                ),
                       ),
                       SizedBox(
                         width: isMobile ? double.infinity : 220,

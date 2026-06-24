@@ -13,6 +13,7 @@ const {
   ensureWorkOrderCloseNotesTable,
   ensureInvoiceItemsTable,
   ensureFaultFormsTable,
+  ensureFormDocumentColumns,
   ensureDeviceRegistriesTable,
   ensureBusinessActivityTypesTable,
   ensureSoftwareCompaniesTable,
@@ -276,6 +277,25 @@ async function uploadTaxpayerRegistrationDocument(body) {
   return uploadStorageObject({
     folder: `taxpayer-registration-documents/${safeStorageSegment(body.applicationFormId, 'form')}`,
     filename: safeStorageSegment(body.filename, 'yukumlu-kayit-belgesi'),
+    contentType,
+    data: body.data,
+    maxBytes: approvalDocumentMaxBytes,
+    emptyMessage: 'Belge verisi eksik.',
+    tooLargeMessage: 'Belge 10 MB sınırını aşıyor.',
+  });
+}
+
+async function uploadFormDocument(body) {
+  const contentType = String(body.contentType || '').trim().toLowerCase();
+  if (!['application/pdf', 'image/jpeg', 'image/png'].includes(contentType)) {
+    const error = new Error('Form belgesi PDF, JPG veya PNG olmalıdır.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return uploadStorageObject({
+    folder: `form-documents/${safeStorageSegment(body.table, 'forms')}/${safeStorageSegment(body.recordId, 'record')}`,
+    filename: safeStorageSegment(body.filename, 'form-belgesi'),
     contentType,
     data: body.data,
     maxBytes: approvalDocumentMaxBytes,
@@ -1072,6 +1092,20 @@ module.exports = async (req, res) => {
         throw error;
       }
     }
+    if (op === 'uploadFormDocument') {
+      const uploadTable = String(body.table || '').trim();
+      if (!['scrap_forms', 'transfer_forms', 'fault_forms'].includes(uploadTable)) {
+        return badRequest(req, res, 'Form tablosu desteklenmiyor.');
+      }
+      if (!hasPageAccess(user, 'formlar')) return forbidden(req, res);
+      await ensureFormDocumentColumns();
+      try {
+        return ok(req, res, await uploadFormDocument(body));
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
     if (op === 'deleteStorageObject') {
       if (!hasPageAccess(user, 'formlar') && !hasPageAccess(user, 'servis')) {
         return forbidden(req, res);
@@ -1105,6 +1139,9 @@ module.exports = async (req, res) => {
     }
     if (table === 'fault_forms') {
       await ensureFaultFormsTable();
+    }
+    if (['scrap_forms', 'transfer_forms', 'fault_forms'].includes(table)) {
+      await ensureFormDocumentColumns();
     }
     if (table === 'application_forms') {
       await ensureApplicationFormsApprovalColumns();

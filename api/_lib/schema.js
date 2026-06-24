@@ -5,6 +5,7 @@ const ensured = {
   work_order_close_notes: false,
   invoice_items: false,
   fault_forms: false,
+  form_document_columns: false,
   device_registries: false,
   business_activity_types: false,
   software_companies: false,
@@ -582,6 +583,12 @@ async function ensureFaultFormsTable() {
           last_z_report_no text,
           total_revenue text,
           total_vat text,
+          document_name text,
+          document_mime_type text,
+          document_storage_bucket text,
+          document_storage_path text,
+          document_url text,
+          document_uploaded_at timestamptz,
           is_active boolean not null default true,
           created_by uuid,
           created_at timestamptz not null default now()
@@ -608,6 +615,12 @@ async function ensureFaultFormsTable() {
           add column if not exists last_z_report_no text,
           add column if not exists total_revenue text,
           add column if not exists total_vat text,
+          add column if not exists document_name text,
+          add column if not exists document_mime_type text,
+          add column if not exists document_storage_bucket text,
+          add column if not exists document_storage_path text,
+          add column if not exists document_url text,
+          add column if not exists document_uploaded_at timestamptz,
           add column if not exists is_active boolean,
           add column if not exists created_by uuid,
           add column if not exists created_at timestamptz
@@ -616,6 +629,29 @@ async function ensureFaultFormsTable() {
   }
 
   ensured.fault_forms = true;
+  return true;
+}
+
+async function ensureFormDocumentColumns() {
+  if (ensured.form_document_columns) return true;
+
+  for (const table of ['scrap_forms', 'fault_forms', 'transfer_forms']) {
+    const exists = await tableExists(table);
+    if (!exists) continue;
+    await query(
+      `
+        alter table public.${table}
+          add column if not exists document_name text,
+          add column if not exists document_mime_type text,
+          add column if not exists document_storage_bucket text,
+          add column if not exists document_storage_path text,
+          add column if not exists document_url text,
+          add column if not exists document_uploaded_at timestamptz
+      `,
+    );
+  }
+
+  ensured.form_document_columns = true;
   return true;
 }
 
@@ -1582,6 +1618,7 @@ module.exports = {
   ensureWorkOrderCloseNotesTable,
   ensureInvoiceItemsTable,
   ensureFaultFormsTable,
+  ensureFormDocumentColumns,
   ensureDeviceRegistriesTable,
   ensureBusinessActivityTypesTable,
   ensureSoftwareCompaniesTable,

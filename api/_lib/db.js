@@ -64,7 +64,10 @@ function getPool() {
     pool = new Pool({
       ...resolveDbConfig(),
       max: 4,
+      connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS || 5000),
       idleTimeoutMillis: 10000,
+      query_timeout: Number(process.env.PG_QUERY_TIMEOUT_MS || 15000),
+      statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS || 15000),
     });
     pool.on('error', (err) => {
       console.error(err);

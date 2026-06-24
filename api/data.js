@@ -12,6 +12,7 @@ const {
   ensureWorkOrderCloseNotesTable,
   ensureInvoiceItemsTable,
   ensureFaultFormsTable,
+  ensureFormDocumentColumns,
   ensureDeviceRegistriesTable,
   ensureBusinessActivityTypesTable,
   ensureSoftwareCompaniesTable,
@@ -1344,6 +1345,7 @@ module.exports = async (req, res) => {
       }
 
       case 'form_scrap_list': {
+        await ensureFormDocumentColumns();
         const showPassive = parseBoolean(req.query.showPassive, false);
         const values = [];
         let whereSql = 'where true';
@@ -1369,6 +1371,12 @@ module.exports = async (req, res) => {
               total_collection,
               intervention_purpose,
               other_findings,
+              document_name,
+              document_mime_type,
+              document_storage_bucket,
+              document_storage_path,
+              document_url,
+              document_uploaded_at,
               is_active,
               created_at
             from public.scrap_forms
@@ -1384,6 +1392,7 @@ module.exports = async (req, res) => {
       case 'form_fault_list': {
         if (!requirePage(req, user, 'formlar', res)) return;
         await ensureFaultFormsTable();
+        await ensureFormDocumentColumns();
         const showPassive = parseBoolean(req.query.showPassive, false);
         const values = [];
         let whereSql = 'where true';
@@ -1411,6 +1420,12 @@ module.exports = async (req, res) => {
               last_z_report_no,
               total_revenue,
               total_vat,
+              document_name,
+              document_mime_type,
+              document_storage_bucket,
+              document_storage_path,
+              document_url,
+              document_uploaded_at,
               is_active,
               created_at
             from public.fault_forms
@@ -1449,6 +1464,7 @@ module.exports = async (req, res) => {
       }
 
       case 'form_transfer_list': {
+        await ensureFormDocumentColumns();
         const showPassive = parseBoolean(req.query.showPassive, false);
         const values = [];
         let whereSql = 'where true';
@@ -1480,6 +1496,12 @@ module.exports = async (req, res) => {
               department_count,
               transfer_date,
               transfer_reason,
+              document_name,
+              document_mime_type,
+              document_storage_bucket,
+              document_storage_path,
+              document_url,
+              document_uploaded_at,
               is_active,
               created_at
             from public.transfer_forms

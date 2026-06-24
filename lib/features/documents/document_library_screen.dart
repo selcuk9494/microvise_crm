@@ -17,6 +17,12 @@ import '../application_forms/application_form_model.dart';
 import '../application_forms/application_form_screen.dart';
 import '../customers/web_download_helper.dart'
     if (dart.library.io) '../customers/io_download_helper.dart';
+import '../forms/fault_form_model.dart';
+import '../forms/fault_form_screen.dart';
+import '../forms/scrap_form_model.dart';
+import '../forms/scrap_form_screen.dart';
+import '../forms/transfer_form_model.dart';
+import '../forms/transfer_form_screen.dart';
 
 class DocumentLibraryScreen extends ConsumerStatefulWidget {
   const DocumentLibraryScreen({super.key});
@@ -48,6 +54,9 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
   @override
   Widget build(BuildContext context) {
     final recordsAsync = ref.watch(applicationFormsProvider);
+    final scrapAsync = ref.watch(scrapFormsProvider);
+    final faultAsync = ref.watch(faultFormsProvider);
+    final transferAsync = ref.watch(transferFormsProvider);
     return AppPageLayout(
       title: 'Belgeler',
       subtitle: 'Yüklenen belgeleri filtreleyin, indirin veya silin.',
@@ -55,7 +64,12 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
         OutlinedButton.icon(
           onPressed: _busy
               ? null
-              : () => ref.invalidate(applicationFormsProvider),
+              : () {
+                  ref.invalidate(applicationFormsProvider);
+                  ref.invalidate(scrapFormsProvider);
+                  ref.invalidate(faultFormsProvider);
+                  ref.invalidate(transferFormsProvider);
+                },
           icon: const Icon(Icons.refresh_rounded, size: 18),
           label: const Text('Yenile'),
         ),
@@ -64,13 +78,32 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) =>
             Center(child: Text('Belgeler yüklenemedi: $error')),
-        data: (records) => _buildBody(context, records),
+        data: (records) {
+          final formItems = <_DocumentItem>[
+            ...((scrapAsync.asData?.value ?? const <ScrapFormRecord>[]).expand(
+              _DocumentItem.fromScrapForm,
+            )),
+            ...((faultAsync.asData?.value ?? const <FaultFormRecord>[]).expand(
+              _DocumentItem.fromFaultForm,
+            )),
+            ...((transferAsync.asData?.value ?? const <TransferFormRecord>[])
+                .expand(_DocumentItem.fromTransferForm)),
+          ];
+          return _buildBody(context, records, formItems);
+        },
       ),
     );
   }
 
-  Widget _buildBody(BuildContext context, List<ApplicationFormRecord> records) {
-    final allItems = records.expand(_DocumentItem.fromRecord).toList();
+  Widget _buildBody(
+    BuildContext context,
+    List<ApplicationFormRecord> records,
+    List<_DocumentItem> formItems,
+  ) {
+    final allItems = [
+      ...records.expand(_DocumentItem.fromRecord),
+      ...formItems,
+    ];
     final query = _searchController.text.trim().toLowerCase();
     final items = allItems.where((item) {
       final typeOk = _typeFilter == 'all' || item.typeKey == _typeFilter;
@@ -126,6 +159,9 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
                           'all': 'Tüm Belgeler',
                           'taxpayer': 'Yükümlü Belgesi',
                           'approval': 'Onay Belgesi',
+                          'scrap': 'Hurda Formu',
+                          'fault': 'Arıza Formu',
+                          'transfer': 'Devir Formu',
                         },
                         onChanged: (value) =>
                             setState(() => _typeFilter = value),
@@ -314,7 +350,7 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
           '/mutate',
           body: {
             'op': 'updateWhere',
-            'table': 'application_forms',
+            'table': item.sourceTable,
             'filters': [
               {'col': 'id', 'op': 'eq', 'value': item.recordId},
             ],
@@ -324,6 +360,9 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
       }
       _selectedKeys.removeAll(items.map((item) => item.key));
       ref.invalidate(applicationFormsProvider);
+      ref.invalidate(scrapFormsProvider);
+      ref.invalidate(faultFormsProvider);
+      ref.invalidate(transferFormsProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -350,6 +389,7 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
 class _DocumentItem {
   const _DocumentItem({
     required this.key,
+    required this.sourceTable,
     required this.recordId,
     required this.customerName,
     required this.registryNumber,
@@ -365,6 +405,7 @@ class _DocumentItem {
   });
 
   final String key;
+  final String sourceTable;
   final String recordId;
   final String customerName;
   final String registryNumber;
@@ -406,6 +447,7 @@ class _DocumentItem {
     if (taxpayerUrl.isNotEmpty || taxpayerData.isNotEmpty) {
       yield _DocumentItem(
         key: '${record.id}:taxpayer',
+        sourceTable: 'application_forms',
         recordId: record.id,
         customerName: record.customerName,
         registryNumber: record.fileRegistryNumber ?? '',
@@ -434,6 +476,7 @@ class _DocumentItem {
     if (approvalUrl.isNotEmpty) {
       yield _DocumentItem(
         key: '${record.id}:approval',
+        sourceTable: 'application_forms',
         recordId: record.id,
         customerName: record.customerName,
         registryNumber: record.fileRegistryNumber ?? '',
@@ -455,6 +498,103 @@ class _DocumentItem {
         },
       );
     }
+  }
+
+  static Iterable<_DocumentItem> fromScrapForm(ScrapFormRecord record) sync* {
+    final item = _fromFormDocument(
+      recordId: record.id,
+      sourceTable: 'scrap_forms',
+      customerName: record.customerName,
+      registryNumber: record.deviceBrandModelRegistry ?? '',
+      typeKey: 'scrap',
+      typeLabel: 'Hurda Formu',
+      fallbackName: 'hurda-formu.pdf',
+      documentName: record.documentName,
+      mimeType: record.documentMimeType,
+      bucket: record.documentStorageBucket,
+      path: record.documentStoragePath,
+      url: record.documentUrl,
+    );
+    if (item != null) yield item;
+  }
+
+  static Iterable<_DocumentItem> fromFaultForm(FaultFormRecord record) sync* {
+    final item = _fromFormDocument(
+      recordId: record.id,
+      sourceTable: 'fault_forms',
+      customerName: record.customerName,
+      registryNumber: record.companyCodeAndRegistry ?? '',
+      typeKey: 'fault',
+      typeLabel: 'Arıza Formu',
+      fallbackName: 'ariza-formu.pdf',
+      documentName: record.documentName,
+      mimeType: record.documentMimeType,
+      bucket: record.documentStorageBucket,
+      path: record.documentStoragePath,
+      url: record.documentUrl,
+    );
+    if (item != null) yield item;
+  }
+
+  static Iterable<_DocumentItem> fromTransferForm(
+    TransferFormRecord record,
+  ) sync* {
+    final item = _fromFormDocument(
+      recordId: record.id,
+      sourceTable: 'transfer_forms',
+      customerName: '${record.transferorName} → ${record.transfereeName}',
+      registryNumber: record.deviceSerialNo ?? '',
+      typeKey: 'transfer',
+      typeLabel: 'Devir Formu',
+      fallbackName: 'devir-formu.pdf',
+      documentName: record.documentName,
+      mimeType: record.documentMimeType,
+      bucket: record.documentStorageBucket,
+      path: record.documentStoragePath,
+      url: record.documentUrl,
+    );
+    if (item != null) yield item;
+  }
+
+  static _DocumentItem? _fromFormDocument({
+    required String recordId,
+    required String sourceTable,
+    required String customerName,
+    required String registryNumber,
+    required String typeKey,
+    required String typeLabel,
+    required String fallbackName,
+    required String? documentName,
+    required String? mimeType,
+    required String? bucket,
+    required String? path,
+    required String? url,
+  }) {
+    final documentUrl = (url ?? '').trim();
+    if (documentUrl.isEmpty) return null;
+    return _DocumentItem(
+      key: '$recordId:$typeKey',
+      sourceTable: sourceTable,
+      recordId: recordId,
+      customerName: customerName,
+      registryNumber: registryNumber,
+      typeKey: typeKey,
+      typeLabel: typeLabel,
+      fileName: documentName ?? fallbackName,
+      mimeType: mimeType ?? 'application/pdf',
+      bucket: bucket ?? '',
+      path: path ?? '',
+      url: documentUrl,
+      base64Data: '',
+      clearValues: const {
+        'document_name': null,
+        'document_mime_type': null,
+        'document_storage_bucket': null,
+        'document_storage_path': null,
+        'document_url': null,
+        'document_uploaded_at': null,
+      },
+    );
   }
 }
 

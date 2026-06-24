@@ -1,4 +1,5 @@
 import '../../core/format/app_date_time.dart';
+import 'form_document_actions.dart';
 
 class TransferFormRecord {
   const TransferFormRecord({
@@ -23,6 +24,12 @@ class TransferFormRecord {
     required this.departmentCount,
     required this.transferDate,
     required this.transferReason,
+    required this.documentName,
+    required this.documentMimeType,
+    required this.documentStorageBucket,
+    required this.documentStoragePath,
+    required this.documentUrl,
+    required this.documentUploadedAt,
     required this.isActive,
     required this.createdAt,
   });
@@ -48,8 +55,23 @@ class TransferFormRecord {
   final String? departmentCount;
   final DateTime transferDate;
   final String? transferReason;
+  final String? documentName;
+  final String? documentMimeType;
+  final String? documentStorageBucket;
+  final String? documentStoragePath;
+  final String? documentUrl;
+  final DateTime? documentUploadedAt;
   final bool isActive;
   final DateTime? createdAt;
+
+  FormDocumentInfo get document => FormDocumentInfo(
+    name: documentName,
+    mimeType: documentMimeType,
+    bucket: documentStorageBucket,
+    path: documentStoragePath,
+    url: documentUrl,
+    uploadedAt: documentUploadedAt,
+  );
 
   factory TransferFormRecord.fromJson(Map<String, dynamic> json) {
     return TransferFormRecord(
@@ -77,6 +99,14 @@ class TransferFormRecord {
       transferDate:
           parseAppDateTime(json['transfer_date']?.toString()) ?? appNow(),
       transferReason: json['transfer_reason']?.toString(),
+      documentName: json['document_name']?.toString(),
+      documentMimeType: json['document_mime_type']?.toString(),
+      documentStorageBucket: json['document_storage_bucket']?.toString(),
+      documentStoragePath: json['document_storage_path']?.toString(),
+      documentUrl: json['document_url']?.toString(),
+      documentUploadedAt: parseAppDateTime(
+        json['document_uploaded_at']?.toString(),
+      ),
       isActive: json['is_active'] as bool? ?? true,
       createdAt: parseAppDateTime(json['created_at']?.toString()),
     );

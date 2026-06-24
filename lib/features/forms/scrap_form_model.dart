@@ -1,4 +1,5 @@
 import '../../core/format/app_date_time.dart';
+import 'form_document_actions.dart';
 
 class ScrapFormRecord {
   const ScrapFormRecord({
@@ -17,6 +18,12 @@ class ScrapFormRecord {
     required this.totalCollection,
     required this.interventionPurpose,
     required this.otherFindings,
+    required this.documentName,
+    required this.documentMimeType,
+    required this.documentStorageBucket,
+    required this.documentStoragePath,
+    required this.documentUrl,
+    required this.documentUploadedAt,
     required this.isActive,
     required this.createdAt,
   });
@@ -36,8 +43,23 @@ class ScrapFormRecord {
   final String? totalCollection;
   final String? interventionPurpose;
   final String? otherFindings;
+  final String? documentName;
+  final String? documentMimeType;
+  final String? documentStorageBucket;
+  final String? documentStoragePath;
+  final String? documentUrl;
+  final DateTime? documentUploadedAt;
   final bool isActive;
   final DateTime? createdAt;
+
+  FormDocumentInfo get document => FormDocumentInfo(
+    name: documentName,
+    mimeType: documentMimeType,
+    bucket: documentStorageBucket,
+    path: documentStoragePath,
+    url: documentUrl,
+    uploadedAt: documentUploadedAt,
+  );
 
   factory ScrapFormRecord.fromJson(Map<String, dynamic> json) {
     return ScrapFormRecord(
@@ -57,6 +79,14 @@ class ScrapFormRecord {
       totalCollection: json['total_collection']?.toString(),
       interventionPurpose: json['intervention_purpose']?.toString(),
       otherFindings: json['other_findings']?.toString(),
+      documentName: json['document_name']?.toString(),
+      documentMimeType: json['document_mime_type']?.toString(),
+      documentStorageBucket: json['document_storage_bucket']?.toString(),
+      documentStoragePath: json['document_storage_path']?.toString(),
+      documentUrl: json['document_url']?.toString(),
+      documentUploadedAt: parseAppDateTime(
+        json['document_uploaded_at']?.toString(),
+      ),
       isActive: json['is_active'] as bool? ?? true,
       createdAt: parseAppDateTime(json['created_at']?.toString()),
     );
