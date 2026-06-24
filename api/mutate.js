@@ -97,6 +97,16 @@ function getSupabaseStorageConfig() {
   return { supabaseUrl, serviceRoleKey };
 }
 
+function supabaseAdminHeaders(serviceRoleKey) {
+  const headers = { apikey: serviceRoleKey };
+  if (serviceRoleKey.startsWith('sb_')) {
+    headers.authorization = serviceRoleKey;
+  } else {
+    headers.authorization = `Bearer ${serviceRoleKey}`;
+  }
+  return headers;
+}
+
 async function uploadStorageObject({
   folder,
   filename,
@@ -142,8 +152,7 @@ async function uploadStorageObject({
     response = await fetch(uploadUrl, {
       method: 'POST',
       headers: {
-        apikey: serviceRoleKey,
-        authorization: `Bearer ${serviceRoleKey}`,
+        ...supabaseAdminHeaders(serviceRoleKey),
         'cache-control': '3600',
         'content-type': contentType,
         'x-upsert': 'false',
