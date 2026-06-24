@@ -130,7 +130,7 @@ class _DesktopShell extends ConsumerWidget {
                                 accentColor: _navAccentColor(item.pageKey),
                                 onTap: () => context.go(item.path),
                               )
-                            else if (item.pageKey == 'formlar' && !isBankUser)
+                            else if (item.path == '/formlar' && !isBankUser)
                               _FormsNavGroup(
                                 label: item.label,
                                 icon: item.icon,
@@ -491,7 +491,7 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
 List<_FormsNavSubItem> _mobileNavSubItems(_NavItem item) {
   if (item.path == '/banka-panel') return const [];
   if (item.path == '/formlar/banka-rapor') return const [];
-  if (item.pageKey == 'formlar') {
+  if (item.path == '/formlar') {
     return _formsNavSubItems(item.label == 'Başvuru');
   }
   if (item.pageKey == 'e_fatura') {
