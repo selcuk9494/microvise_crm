@@ -37,10 +37,6 @@ class _AppState extends ConsumerState<App> {
       title: 'Microvise CRM',
       theme: AppTheme.light(),
       routerConfig: router,
-      builder: (context, child) {
-        final content = child ?? const SizedBox.shrink();
-        return SelectionArea(child: content);
-      },
     );
   }
 }

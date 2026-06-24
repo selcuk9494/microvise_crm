@@ -220,7 +220,7 @@ class _DesktopShell extends ConsumerWidget {
             child: Column(
               children: [
                 const _TopBar(),
-                Expanded(child: child),
+                Expanded(child: SelectionArea(child: child)),
               ],
             ),
           ),
@@ -259,7 +259,7 @@ class _MobileShell extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: child,
+      body: SelectionArea(child: child),
       floatingActionButton: isBankUser
           ? null
           : FloatingActionButton(

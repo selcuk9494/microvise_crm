@@ -96,44 +96,55 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 360,
-                    child: TextField(
-                      controller: _searchController,
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.search_rounded),
-                        hintText: 'Firma, dosya no veya belge adı ara',
-                        border: OutlineInputBorder(),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 720;
+                  final fieldWidth = compact
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 20) / 3;
+                  return Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: compact ? constraints.maxWidth : fieldWidth,
+                        child: TextField(
+                          controller: _searchController,
+                          decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.search_rounded),
+                            hintText: 'Firma, dosya no veya belge adı ara',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  _FilterMenu(
-                    value: _typeFilter,
-                    icon: Icons.description_rounded,
-                    items: const {
-                      'all': 'Tüm Belgeler',
-                      'taxpayer': 'Yükümlü Belgesi',
-                      'approval': 'Onay Belgesi',
-                    },
-                    onChanged: (value) => setState(() => _typeFilter = value),
-                  ),
-                  _FilterMenu(
-                    value: _storageFilter,
-                    icon: Icons.storage_rounded,
-                    items: const {
-                      'all': 'Tüm Kaynaklar',
-                      'storage': 'Storage',
-                      'database': 'Veritabanı',
-                    },
-                    onChanged: (value) =>
-                        setState(() => _storageFilter = value),
-                  ),
-                ],
+                      _FilterMenu(
+                        width: compact ? constraints.maxWidth : fieldWidth,
+                        value: _typeFilter,
+                        icon: Icons.description_rounded,
+                        items: const {
+                          'all': 'Tüm Belgeler',
+                          'taxpayer': 'Yükümlü Belgesi',
+                          'approval': 'Onay Belgesi',
+                        },
+                        onChanged: (value) =>
+                            setState(() => _typeFilter = value),
+                      ),
+                      _FilterMenu(
+                        width: compact ? constraints.maxWidth : fieldWidth,
+                        value: _storageFilter,
+                        icon: Icons.storage_rounded,
+                        items: const {
+                          'all': 'Tüm Kaynaklar',
+                          'storage': 'Storage',
+                          'database': 'Veritabanı',
+                        },
+                        onChanged: (value) =>
+                            setState(() => _storageFilter = value),
+                      ),
+                    ],
+                  );
+                },
               ),
               const Gap(12),
               Wrap(
@@ -449,12 +460,14 @@ class _DocumentItem {
 
 class _FilterMenu extends StatelessWidget {
   const _FilterMenu({
+    required this.width,
     required this.value,
     required this.icon,
     required this.items,
     required this.onChanged,
   });
 
+  final double width;
   final String value;
   final IconData icon;
   final Map<String, String> items;
@@ -463,16 +476,20 @@ class _FilterMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 210,
+      width: width,
       child: DropdownButtonFormField<String>(
         initialValue: value,
+        isExpanded: true,
         decoration: InputDecoration(
           prefixIcon: Icon(icon),
           border: const OutlineInputBorder(),
         ),
         items: [
           for (final entry in items.entries)
-            DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+            DropdownMenuItem(
+              value: entry.key,
+              child: Text(entry.value, overflow: TextOverflow.ellipsis),
+            ),
         ],
         onChanged: (value) {
           if (value != null) onChanged(value);
