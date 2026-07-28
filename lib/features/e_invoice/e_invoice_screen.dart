@@ -101,7 +101,7 @@ const _defaultSettings = <String, dynamic>{
   'token_url':
       'https://keycloak.maliye.gov.ct.tr/realms/vergi-stage/protocol/openid-connect/token',
   'client_id': 'efatura-frontend',
-  'seller_vkn': '620009058',
+  'seller_vkn': '0620009058',
   'seller_title': 'MICROVISE INNOVATION LTD',
   'seller_branch_code': '1',
   'seller_tax_office': 'Lefkoşa',

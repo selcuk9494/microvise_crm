@@ -21,6 +21,8 @@ class Invoice {
   final String? customerName;
   final DateTime invoiceDate;
   final DateTime? dueDate;
+  final String? irsaliyeNo;
+  final DateTime? irsaliyeTarihi;
   final String currency;
   final double exchangeRate;
   final double subtotal;
@@ -45,6 +47,8 @@ class Invoice {
     this.customerName,
     required this.invoiceDate,
     this.dueDate,
+    this.irsaliyeNo,
+    this.irsaliyeTarihi,
     required this.currency,
     this.exchangeRate = 1.0,
     this.subtotal = 0,
@@ -79,6 +83,10 @@ class Invoice {
           parseAppDateTime(json['invoice_date']?.toString()) ?? appNow(),
       dueDate: json['due_date'] != null
           ? parseAppDateTime(json['due_date'].toString())
+          : null,
+      irsaliyeNo: json['irsaliye_no']?.toString(),
+      irsaliyeTarihi: json['irsaliye_tarihi'] != null
+          ? parseAppDateTime(json['irsaliye_tarihi'].toString())
           : null,
       currency: json['currency']?.toString() ?? 'TRY',
       exchangeRate: _jsonDouble(json['exchange_rate'], fallback: 1.0),
@@ -124,6 +132,10 @@ class Invoice {
       'invoice_date': invoiceDate.toIso8601String().substring(0, 10),
       if (dueDate != null)
         'due_date': dueDate!.toIso8601String().substring(0, 10),
+      if (irsaliyeNo != null && irsaliyeNo!.isNotEmpty)
+        'irsaliye_no': irsaliyeNo,
+      if (irsaliyeTarihi != null)
+        'irsaliye_tarihi': irsaliyeTarihi!.toIso8601String().substring(0, 10),
       'currency': currency,
       'exchange_rate': exchangeRate,
       'status': status,
@@ -148,6 +160,9 @@ class InvoiceItem {
   final double discountAmount;
   final double lineTotal;
   final int sortOrder;
+  final bool specialMatrah;
+  final String? taxExemptionCode;
+  final String? taxExemptionDescription;
 
   const InvoiceItem({
     required this.id,
@@ -163,6 +178,9 @@ class InvoiceItem {
     this.discountAmount = 0,
     this.lineTotal = 0,
     this.sortOrder = 0,
+    this.specialMatrah = false,
+    this.taxExemptionCode,
+    this.taxExemptionDescription,
   });
 
   factory InvoiceItem.fromJson(Map<String, dynamic> json) {
@@ -180,6 +198,9 @@ class InvoiceItem {
       discountAmount: _jsonDouble(json['discount_amount']),
       lineTotal: _jsonDouble(json['line_total']),
       sortOrder: (json['sort_order'] as int?) ?? 0,
+      specialMatrah: json['special_matrah'] as bool? ?? false,
+      taxExemptionCode: json['tax_exemption_code']?.toString(),
+      taxExemptionDescription: json['tax_exemption_description']?.toString(),
     );
   }
 
@@ -187,7 +208,7 @@ class InvoiceItem {
     final baseAmount = quantity * unitPrice;
     final discAmt = baseAmount * (discountRate / 100);
     final afterDiscount = baseAmount - discAmt;
-    final taxAmt = afterDiscount * (taxRate / 100);
+    final taxAmt = specialMatrah ? 0.0 : afterDiscount * (taxRate / 100);
     final total = afterDiscount + taxAmt;
 
     return {
@@ -203,6 +224,11 @@ class InvoiceItem {
       'discount_amount': discAmt,
       'line_total': total,
       'sort_order': sortOrder,
+      'special_matrah': specialMatrah,
+      'tax_exemption_code': specialMatrah ? (taxExemptionCode ?? '101') : null,
+      'tax_exemption_description': specialMatrah
+          ? (taxExemptionDescription ?? 'Özel Matrah')
+          : null,
     };
   }
 
@@ -225,7 +251,7 @@ class InvoiceItem {
     final baseAmount = qty * price;
     final discAmt = baseAmount * (disc / 100);
     final afterDiscount = baseAmount - discAmt;
-    final taxAmt = afterDiscount * (tax / 100);
+    final taxAmt = specialMatrah ? 0.0 : afterDiscount * (tax / 100);
     final total = afterDiscount + taxAmt;
 
     return InvoiceItem(
@@ -242,6 +268,9 @@ class InvoiceItem {
       discountAmount: discAmt,
       lineTotal: total,
       sortOrder: sortOrder,
+      specialMatrah: specialMatrah,
+      taxExemptionCode: taxExemptionCode,
+      taxExemptionDescription: taxExemptionDescription,
     );
   }
 }

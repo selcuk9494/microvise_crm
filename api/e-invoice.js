@@ -38,7 +38,7 @@ async function ensureEInvoiceSchema() {
       client_id text not null default 'efatura-frontend',
       username text,
       password text,
-      seller_vkn text not null default '620009058',
+      seller_vkn text not null default '0620009058',
       seller_title text not null default 'MICROVISE INNOVATION LTD',
       seller_branch_code text not null default '1',
       seller_tax_office text default 'Lefkoşa',
@@ -100,7 +100,7 @@ async function ensureEInvoiceSchema() {
       'https://test-efatura.maliye.gov.ct.tr/api',
       'https://keycloak.maliye.gov.ct.tr/realms/vergi-stage/protocol/openid-connect/token',
       'efatura-frontend',
-      '620009058',
+      '0620009058',
       'MICROVISE INNOVATION LTD',
       '1',
       'Lefkoşa',
@@ -119,7 +119,20 @@ async function ensureEInvoiceSchema() {
       add column if not exists e_invoice_payload jsonb,
       add column if not exists e_invoice_response jsonb,
       add column if not exists e_invoice_error text,
-      add column if not exists e_invoice_sent_at timestamptz
+      add column if not exists e_invoice_sent_at timestamptz,
+      add column if not exists irsaliye_no text,
+      add column if not exists irsaliye_tarihi date
+  `);
+  await query(`
+    alter table public.invoice_items
+      add column if not exists special_matrah boolean not null default false,
+      add column if not exists tax_exemption_code text,
+      add column if not exists tax_exemption_description text
+  `);
+  await query(`
+    update public.e_invoice_settings
+    set seller_vkn = '0' || seller_vkn, updated_at = now()
+    where seller_vkn ~ '^[0-9]{9}$'
   `);
 }
 
@@ -131,6 +144,39 @@ function cleanText(value) {
 function normalizeDigits(value) {
   const digits = String(value ?? '').replace(/[^0-9]/g, '');
   return digits || null;
+}
+
+function normalizeApiVkn(value) {
+  const digits = normalizeDigits(value);
+  if (!digits) return null;
+  if (digits.length === 10 && digits.startsWith('0')) return digits.slice(1);
+  return digits;
+}
+
+function normalizeStoredVkn(value) {
+  const digits = normalizeDigits(value);
+  if (!digits) return null;
+  if (digits.length === 9) return `0${digits}`;
+  return digits;
+}
+
+function requireStoredVkn(value, fieldLabel = 'VKN') {
+  const vkn = normalizeStoredVkn(value);
+  if (!vkn || vkn.length !== 10) {
+    throw new Error(`${fieldLabel} CRM sisteminde 10 haneli olmalıdır.`);
+  }
+  return vkn;
+}
+
+function requireApiVkn(value, fieldLabel = 'VKN') {
+  const storedVkn = requireStoredVkn(value, fieldLabel);
+  const vkn = normalizeApiVkn(storedVkn);
+  if (!vkn || vkn.length !== 9) {
+    throw new Error(
+      `${fieldLabel} API için 9 haneli olmalıdır. 10 haneli değerlerde yalnızca baştaki bir sıfır kaldırılır.`,
+    );
+  }
+  return vkn;
 }
 
 function round2(value) {
@@ -173,6 +219,120 @@ function unitCode(unit) {
   return 'C62';
 }
 
+function validateParty(party, label) {
+  const errors = [];
+  if (!cleanText(party.unvan)) errors.push(`${label} ünvanı zorunludur.`);
+  if (!cleanText(party.adresSatir1)) errors.push(`${label} adresi zorunludur.`);
+  if (!cleanText(party.sehir)) errors.push(`${label} şehri zorunludur.`);
+  if (!/^[A-Z]{3}$/.test(String(party.ulkeKodu || ''))) {
+    errors.push(`${label} ülke kodu ISO3 formatında olmalıdır.`);
+  }
+  if (!party.vkn && !(party.belgeNo && party.belgeTipi)) {
+    errors.push(`${label} VKN veya kimlik belge bilgisi zorunludur.`);
+  }
+  return errors;
+}
+
+function validateInvoiceForEInvoice(settings, invoice) {
+  const errors = [];
+  try {
+    requireStoredVkn(settings.seller_vkn, 'Satıcı VKN');
+    requireApiVkn(settings.seller_vkn, 'Satıcı VKN');
+  } catch (error) {
+    errors.push(error.message);
+  }
+
+  const branch = cleanText(settings.seller_branch_code);
+  if (!branch) {
+    errors.push('Şube kodu zorunludur.');
+  } else if (branch.length > 9) {
+    errors.push('Şube kodu en fazla 9 karakter olmalıdır.');
+  } else if (!/^[A-Za-z0-9_]+$/.test(branch)) {
+    errors.push('Şube kodu yalnızca harf, rakam ve alt çizgi içermelidir.');
+  }
+
+  const currency = String(invoice.currency || '').trim().toUpperCase();
+  if (!['TRY', 'USD', 'EUR', 'GBP'].includes(currency)) {
+    errors.push(`Desteklenmeyen para birimi: ${currency || '(boş)'}.`);
+  }
+  if (Number(invoice.exchange_rate || 0) <= 0) {
+    errors.push('Kur sıfırdan büyük olmalıdır.');
+  }
+  if (Number.isNaN(new Date(invoice.invoice_date).getTime())) {
+    errors.push('Fatura tarihi geçersizdir.');
+  }
+  if (invoice.irsaliye_no && !invoice.irsaliye_tarihi) {
+    errors.push('İrsaliye numarası girildiğinde irsaliye tarihi zorunludur.');
+  }
+  if (invoice.irsaliye_tarihi && !invoice.irsaliye_no) {
+    errors.push('İrsaliye tarihi girildiğinde irsaliye numarası zorunludur.');
+  }
+
+  let seller;
+  let customer;
+  try {
+    seller = partyFromSettings(settings);
+  } catch (error) {
+    errors.push(error.message);
+  }
+  try {
+    customer = partyFromCustomer(invoice.customer || {});
+  } catch (error) {
+    errors.push(error.message);
+  }
+  if (seller) errors.push(...validateParty(seller, 'Satıcı'));
+  if (customer) errors.push(...validateParty(customer, 'Müşteri'));
+
+  const items = Array.isArray(invoice.items) ? invoice.items : [];
+  if (!items.length) errors.push('En az bir fatura kalemi zorunludur.');
+  let subtotal = 0;
+  let discountTotal = 0;
+  let taxTotal = 0;
+  for (const [index, item] of items.entries()) {
+    const prefix = `${index + 1}. kalem`;
+    const qty = Number(item.quantity);
+    const price = Number(item.unit_price);
+    const discount = Number(item.discount_amount || 0);
+    const taxRate = Number(item.tax_rate || 0);
+    const base = qty * price;
+    const specialMatrah = item.special_matrah === true;
+    if (!cleanText(item.description)) errors.push(`${prefix} açıklaması zorunludur.`);
+    if (!Number.isFinite(qty) || qty <= 0) errors.push(`${prefix} miktarı sıfırdan büyük olmalıdır.`);
+    if (!Number.isFinite(price) || price < 0) errors.push(`${prefix} fiyatı negatif olamaz.`);
+    if (!Number.isFinite(discount) || discount < 0 || discount > base) {
+      errors.push(`${prefix} iskontosu kalem tutarı aralığında olmalıdır.`);
+    }
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) {
+      errors.push(`${prefix} vergi oranı 0-100 aralığında olmalıdır.`);
+    }
+    if (specialMatrah && (taxRate !== 0 || Number(item.tax_amount || 0) !== 0)) {
+      errors.push(`${prefix} özel matrahta vergi oranı ve tutarı 0 olmalıdır.`);
+    }
+    subtotal += Number.isFinite(base) ? base : 0;
+    discountTotal += Number.isFinite(discount) ? discount : 0;
+    taxTotal += specialMatrah
+      ? 0
+      : item.tax_amount == null
+        ? round2((base - discount) * (taxRate / 100))
+        : Number(item.tax_amount);
+  }
+  const expected = {
+    subtotal: round2(subtotal),
+    discount_total: round2(discountTotal),
+    tax_total: round2(taxTotal),
+    grand_total: round2(subtotal - discountTotal + taxTotal),
+  };
+  for (const [field, calculated] of Object.entries(expected)) {
+    const stored = round2(invoice[field]);
+    if (Math.abs(stored - calculated) > 0.02) {
+      errors.push(
+        `${field} tutarsız: kayıtlı ${stored.toFixed(2)}, hesaplanan ${calculated.toFixed(2)}.`,
+      );
+    }
+  }
+  return errors;
+}
+
 function partyFromSettings(settings) {
   return {
     ulkeKodu: cleanText(settings.seller_country_code) || 'XCT',
@@ -184,13 +344,13 @@ function partyFromSettings(settings) {
     email: cleanText(settings.seller_email),
     webSitesi: cleanText(settings.seller_website),
     unvan: cleanText(settings.seller_title),
-    vkn: normalizeDigits(settings.seller_vkn),
+    vkn: requireApiVkn(settings.seller_vkn, 'Satıcı VKN'),
   };
 }
 
 function partyFromCustomer(customer) {
   const address = cleanText(customer.address) || cleanText(customer.full_address);
-  return {
+  const party = {
     ulkeKodu: cleanText(customer.country_code) || 'XCT',
     ulke: cleanText(customer.country) || 'Kuzey Kıbrıs Türk Cumhuriyeti',
     sehir: cleanText(customer.city) || null,
@@ -200,11 +360,18 @@ function partyFromCustomer(customer) {
     email: cleanText(customer.email),
     webSitesi: cleanText(customer.website),
     unvan: cleanText(customer.name),
-    vkn:
-      normalizeDigits(customer.tax_number) ||
-      normalizeDigits(customer.vkn) ||
-      normalizeDigits(customer.tckn_ms),
   };
+  const storedVkn = customer.tax_number || customer.vkn;
+  if (storedVkn) {
+    party.vkn = requireApiVkn(storedVkn, 'Müşteri VKN');
+  } else {
+    const identityNumber = normalizeDigits(customer.tckn_ms);
+    if (identityNumber) {
+      party.belgeNo = identityNumber;
+      party.belgeTipi = 'KIMLIKNO';
+    }
+  }
+  return party;
 }
 
 function nextNumber(settings, invoiceType) {
@@ -217,9 +384,16 @@ function nextNumber(settings, invoiceType) {
 }
 
 function invoiceNumber(settings, invoice, serial) {
-  if (invoice.e_invoice_number) return invoice.e_invoice_number;
+  if (invoice.e_invoice_number) {
+    const parts = String(invoice.e_invoice_number).split('-');
+    if (parts.length === 4) {
+      parts[0] = requireApiVkn(parts[0], 'Fatura numarasındaki VKN');
+      return parts.join('-');
+    }
+    return invoice.e_invoice_number;
+  }
   const year = new Date(invoice.invoice_date || Date.now()).getFullYear();
-  const vkn = normalizeDigits(settings.seller_vkn) || '000000000';
+  const vkn = requireApiVkn(settings.seller_vkn, 'Satıcı VKN');
   const branch = cleanText(settings.seller_branch_code) || '1';
   return `${vkn}-${year}-${branch}-${String(serial).padStart(11, '0')}`;
 }
@@ -271,7 +445,10 @@ function buildPayload({ settings, invoice }) {
     const base = qty * price;
     const discount = Number(item.discount_amount || 0);
     const taxRate = Number(item.tax_rate || 0);
-    const taxAmount =
+    const specialMatrah = item.special_matrah === true;
+    const taxAmount = specialMatrah
+      ? 0
+      :
       item.tax_amount == null
         ? round2((base - discount) * (taxRate / 100))
         : round2(item.tax_amount);
@@ -296,8 +473,15 @@ function buildPayload({ settings, invoice }) {
       vergiler: [
         {
           vergiKodu: '0002',
-          vergiOrani: taxRate,
+          vergiOrani: specialMatrah ? 0 : taxRate,
           vergiTutari: taxAmount,
+          ...(specialMatrah
+            ? {
+                vergiMuafiyetKodu: cleanText(item.tax_exemption_code) || '101',
+                vergiMuafiyetAciklamasi:
+                  cleanText(item.tax_exemption_description) || 'Özel Matrah',
+              }
+            : {}),
         },
       ],
     };
@@ -320,6 +504,10 @@ function buildPayload({ settings, invoice }) {
         kdvToplami: round2(invoice.tax_total),
         vergiDahilToplam: round2(invoice.grand_total),
         odenecekToplam: round2(invoice.grand_total),
+        irsaliyeNo: cleanText(invoice.irsaliye_no),
+        irsaliyeTarihi: invoice.irsaliye_tarihi
+          ? isoWithOffset(invoice.irsaliye_tarihi)
+          : null,
         musteri: isPurchase ? seller : customer,
         tedarikci: isPurchase ? customer : seller,
       },
@@ -356,10 +544,122 @@ async function tokenFor(settings) {
   return json.access_token;
 }
 
+function responseItems(value) {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== 'object') return [];
+  for (const key of ['data', 'items', 'content', 'sonuclar', 'subeler']) {
+    if (Array.isArray(value[key])) return value[key];
+  }
+  return [];
+}
+
+function valuesFromRows(rows, keys) {
+  return new Set(
+    rows
+      .map((row) => {
+        if (typeof row === 'string') return row;
+        for (const key of keys) {
+          const value = cleanText(row?.[key]);
+          if (value) return value;
+        }
+        return null;
+      })
+      .filter(Boolean)
+      .map((value) => String(value).toUpperCase()),
+  );
+}
+
+async function apiGet({ base, path, token }) {
+  const response = await fetch(`${base}${path}`, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: 'application/json',
+    },
+  });
+  const text = await response.text();
+  let json;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch (_) {
+    json = { raw: text };
+  }
+  if (!response.ok) {
+    const error = new Error(
+      json?.message || json?.error || text || `${path} doğrulaması başarısız.`,
+    );
+    error.response = json;
+    throw error;
+  }
+  return json;
+}
+
+async function validatePayloadAgainstApi({ settings, payload, token }) {
+  const base = String(settings.api_base_url || '').replace(/\/+$/, '');
+  const vkn = encodeURIComponent(requireApiVkn(settings.seller_vkn, 'Satıcı VKN'));
+  const [invoiceTypesRaw, currenciesRaw, taxesRaw, unitsRaw, branchesRaw] =
+    await Promise.all([
+      apiGet({ base, path: '/fatura-turleri', token }),
+      apiGet({ base, path: '/para-birimleri', token }),
+      apiGet({ base, path: '/vergiler', token }),
+      apiGet({ base, path: '/birim-turleri', token }),
+      apiGet({ base, path: `/mukellefler/${vkn}/subeler`, token }),
+    ]);
+
+  const invoiceTypes = valuesFromRows(responseItems(invoiceTypesRaw), [
+    'kod',
+    'code',
+    'faturaTuru',
+  ]);
+  const currencies = valuesFromRows(responseItems(currenciesRaw), [
+    'kod',
+    'code',
+    'paraBirimi',
+  ]);
+  const taxes = valuesFromRows(responseItems(taxesRaw), [
+    'vergiKodu',
+    'kod',
+    'code',
+  ]);
+  const units = valuesFromRows(responseItems(unitsRaw), [
+    'kod',
+    'code',
+    'birimTurKod',
+  ]);
+  const branches = valuesFromRows(responseItems(branchesRaw), [
+    'subeKod',
+    'kod',
+    'code',
+  ]);
+  const errors = [];
+  for (const invoice of payload.faturalar || []) {
+    if (invoiceTypes.size && !invoiceTypes.has(String(invoice.faturaTuru).toUpperCase())) {
+      errors.push(`Fatura türü Maliye kod listesinde yok: ${invoice.faturaTuru}.`);
+    }
+    if (currencies.size && !currencies.has(String(invoice.paraBirimi).toUpperCase())) {
+      errors.push(`Para birimi Maliye kod listesinde yok: ${invoice.paraBirimi}.`);
+    }
+    if (branches.size && !branches.has(String(invoice.subeKod).toUpperCase())) {
+      errors.push(`Şube kodu Maliye sisteminde kayıtlı değil: ${invoice.subeKod}.`);
+    }
+    for (const item of invoice.malHizmetler || []) {
+      if (units.size && !units.has(String(item.birimTurKod).toUpperCase())) {
+        errors.push(`Birim kodu Maliye kod listesinde yok: ${item.birimTurKod}.`);
+      }
+      for (const tax of item.vergiler || []) {
+        if (taxes.size && !taxes.has(String(tax.vergiKodu).toUpperCase())) {
+          errors.push(`Vergi kodu Maliye kod listesinde yok: ${tax.vergiKodu}.`);
+        }
+      }
+    }
+  }
+  if (errors.length) throw new Error(errors.join(' '));
+}
+
 async function sendToMaliye({ settings, payload }) {
   const token = await tokenFor(settings);
-  const vkn = encodeURIComponent(normalizeDigits(settings.seller_vkn) || '');
+  const vkn = encodeURIComponent(requireApiVkn(settings.seller_vkn, 'Satıcı VKN'));
   const base = String(settings.api_base_url || '').replace(/\/+$/, '');
+  await validatePayloadAgainstApi({ settings, payload, token });
   const response = await fetch(`${base}/mukellefler/${vkn}/faturalar`, {
     method: 'POST',
     headers: {
@@ -385,7 +685,7 @@ async function sendToMaliye({ settings, payload }) {
   return json;
 }
 
-module.exports = async (req, res) => {
+async function handler(req, res) {
   if (handleCors(req, res, 'GET,POST,OPTIONS')) return;
 
   try {
@@ -449,6 +749,13 @@ module.exports = async (req, res) => {
       for (const key of allowed) {
         if (Object.prototype.hasOwnProperty.call(values, key)) picked[key] = values[key];
       }
+      if (Object.prototype.hasOwnProperty.call(picked, 'seller_vkn')) {
+        try {
+          picked.seller_vkn = requireStoredVkn(picked.seller_vkn, 'Satıcı VKN');
+        } catch (error) {
+          return badRequest(req, res, error.message);
+        }
+      }
       picked.updated_at = new Date().toISOString();
       if (user.auth_user_id) picked.created_by = user.auth_user_id;
 
@@ -470,6 +777,10 @@ module.exports = async (req, res) => {
       if (!invoice) return badRequest(req, res, 'Fatura bulunamadı.');
       if (!Array.isArray(invoice.items) || invoice.items.length === 0) {
         return badRequest(req, res, 'E-fatura için en az bir kalem olmalıdır.');
+      }
+      const validationErrors = validateInvoiceForEInvoice(settings, invoice);
+      if (validationErrors.length) {
+        return badRequest(req, res, validationErrors.join(' '));
       }
       const built = buildPayload({ settings, invoice });
 
@@ -557,4 +868,17 @@ module.exports = async (req, res) => {
   } catch (error) {
     return serverError(req, res, error);
   }
+}
+
+module.exports = handler;
+module.exports.testUtils = {
+  normalizeApiVkn,
+  normalizeStoredVkn,
+  requireStoredVkn,
+  requireApiVkn,
+  invoiceNumber,
+  createUuidV7,
+  validateInvoiceForEInvoice,
+  buildPayload,
+  validatePayloadAgainstApi,
 };

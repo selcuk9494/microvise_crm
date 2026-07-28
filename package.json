@@ -7,6 +7,7 @@
     "xlsx": "^0.18.5"
   },
   "scripts": {
+    "test:e-invoice": "node --test test/e_invoice_vkn_test.js",
     "vercel-build": "bash ./scripts/vercel_build.sh",
     "local-web": "bash ./scripts/local_web.sh",
     "local-web-dev": "bash ./scripts/local_web_run.sh",

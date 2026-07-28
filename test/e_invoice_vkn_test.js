@@ -1,0 +1,158 @@
+const assert = require('node:assert/strict');
+const test = require('node:test');
+
+const {
+  normalizeApiVkn,
+  normalizeStoredVkn,
+  requireStoredVkn,
+  requireApiVkn,
+  invoiceNumber,
+  createUuidV7,
+  validateInvoiceForEInvoice,
+  buildPayload,
+} = require('../api/e-invoice').testUtils;
+
+test('10 haneli VKN değerinden yalnızca ilk sıfırı kaldırır', () => {
+  assert.equal(normalizeApiVkn('0007033259'), '007033259');
+});
+
+test('9 haneli VKN değerini değiştirmez', () => {
+  assert.equal(normalizeApiVkn('620009058'), '620009058');
+});
+
+test('baştaki gerekli sıfırları korur', () => {
+  assert.equal(requireApiVkn('0007033259'), '007033259');
+});
+
+test('CRM içinde VKN 10 hane saklanır', () => {
+  assert.equal(normalizeStoredVkn('620009058'), '0620009058');
+  assert.equal(requireStoredVkn('0007033259'), '0007033259');
+  assert.throws(() => requireStoredVkn('7033259'), /10 haneli/);
+});
+
+test('ayraçları temizledikten sonra VKN değerini normalize eder', () => {
+  assert.equal(normalizeApiVkn('000-703-3259'), '007033259');
+});
+
+test('9 haneye dönüşmeyen VKN değerlerini reddeder', () => {
+  assert.throws(() => requireApiVkn('7033259'), /10 haneli/);
+  assert.throws(() => requireApiVkn('1234567890'), /9 haneli/);
+  assert.throws(() => requireApiVkn(''), /10 haneli/);
+});
+
+test('fatura numarasında normalize edilmiş 9 haneli VKN kullanır', () => {
+  const number = invoiceNumber(
+    { seller_vkn: '0007033259', seller_branch_code: 'MERKEZ' },
+    { invoice_date: '2026-07-28', invoice_type: 'sales' },
+    42,
+  );
+  assert.equal(number, '007033259-2026-MERKEZ-00000000042');
+});
+
+test('önceden hazırlanmış 10 haneli VKN içeren fatura numarasını düzeltir', () => {
+  const number = invoiceNumber(
+    { seller_vkn: '620009058', seller_branch_code: '1' },
+    {
+      e_invoice_number: '0007033259-2026-1-00000000001',
+      invoice_type: 'sales',
+    },
+    1,
+  );
+  assert.equal(number, '007033259-2026-1-00000000001');
+});
+
+test('doğrulama kodu UUIDv7 üretir', () => {
+  const uuid = createUuidV7();
+  assert.match(
+    uuid,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
+});
+
+function validSettings() {
+  return {
+    seller_vkn: '0620009058',
+    seller_title: 'MICROVISE INNOVATION LTD',
+    seller_branch_code: 'MERKEZ',
+    seller_city: 'LEFKOŞA',
+    seller_country_code: 'XCT',
+    seller_country: 'Kuzey Kıbrıs Türk Cumhuriyeti',
+    seller_address_line1: 'Test adresi',
+    next_sales_number: 1,
+  };
+}
+
+function validInvoice() {
+  return {
+    invoice_type: 'sales',
+    invoice_date: '2026-07-28',
+    currency: 'TRY',
+    exchange_rate: 1,
+    subtotal: 100,
+    discount_total: 0,
+    tax_total: 20,
+    grand_total: 120,
+    customer: {
+      name: 'Test Müşteri',
+      address: 'Müşteri adresi',
+      city: 'LEFKOŞA',
+      vkn: '0007033259',
+    },
+    items: [
+      {
+        description: 'Hizmet',
+        quantity: 1,
+        unit: 'Adet',
+        unit_price: 100,
+        tax_rate: 20,
+        tax_amount: 20,
+        discount_amount: 0,
+      },
+    ],
+  };
+}
+
+test('geçerli faturanın zorunlu alan ve toplam kontrolleri geçer', () => {
+  assert.deepEqual(
+    validateInvoiceForEInvoice(validSettings(), validInvoice()),
+    [],
+  );
+});
+
+test('eksik adres, uzun şube ve tutarsız toplamı gönderimden önce yakalar', () => {
+  const settings = { ...validSettings(), seller_branch_code: 'ONKARAKTER' };
+  const invoice = validInvoice();
+  invoice.customer = { ...invoice.customer, address: '' };
+  invoice.grand_total = 999;
+  const errors = validateInvoiceForEInvoice(settings, invoice).join(' ');
+  assert.match(errors, /en fazla 9 karakter/);
+  assert.match(errors, /Müşteri adresi zorunludur/);
+  assert.match(errors, /grand_total tutarsız/);
+});
+
+test('özel matrah ve irsaliye alanlarını Maliye payloadına ekler', () => {
+  const invoice = validInvoice();
+  invoice.irsaliye_no = 'IRS-1';
+  invoice.irsaliye_tarihi = '2026-07-28';
+  invoice.tax_total = 0;
+  invoice.grand_total = 100;
+  invoice.items[0] = {
+    ...invoice.items[0],
+    tax_rate: 0,
+    tax_amount: 0,
+    special_matrah: true,
+  };
+  const built = buildPayload({ settings: validSettings(), invoice });
+  const sentInvoice = built.payload.faturalar[0];
+  assert.equal(sentInvoice.tedarikci.vkn, '620009058');
+  assert.equal(sentInvoice.musteri.vkn, '007033259');
+  assert.equal(sentInvoice.irsaliyeNo, 'IRS-1');
+  assert.match(sentInvoice.irsaliyeTarihi, /^2026-07-28T/);
+  assert.deepEqual(sentInvoice.malHizmetler[0].vergiler[0], {
+    vergiKodu: '0002',
+    vergiOrani: 0,
+    vergiTutari: 0,
+    vergiMuafiyetKodu: '101',
+    vergiMuafiyetAciklamasi: 'Özel Matrah',
+  });
+});

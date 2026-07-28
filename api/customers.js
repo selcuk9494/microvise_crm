@@ -93,6 +93,10 @@ function normalizeDigits(value) {
   return digits ? digits : null;
 }
 
+function isValidStoredVkn(value) {
+  return value == null || /^[0-9]{10}$/.test(value);
+}
+
 async function replaceCustomerLocations({ customerId, locations, userId }) {
   const exists = await tableExists('customer_locations');
   if (!exists) return;
@@ -198,6 +202,9 @@ module.exports = async (req, res) => {
 
       const customerColumns = await getColumns('customers');
       const payload = pickValues(payloadRaw, customerColumns);
+      if (!isValidStoredVkn(payload.vkn)) {
+        return badRequest(req, res, 'VKN tam olarak 10 haneli olmalıdır.');
+      }
       if (customerColumns.includes('created_by')) {
         payload.created_by = user.id;
       }
@@ -290,6 +297,12 @@ module.exports = async (req, res) => {
 
       const customerColumns = await getColumns('customers');
       const payload = pickValues(payloadRaw, customerColumns);
+      if (
+        Object.prototype.hasOwnProperty.call(payload, 'vkn') &&
+        !isValidStoredVkn(payload.vkn)
+      ) {
+        return badRequest(req, res, 'VKN tam olarak 10 haneli olmalıdır.');
+      }
       const keys = Object.keys(payload);
       if (keys.length === 0 && !Array.isArray(body.locations)) {
         return badRequest(req, res, 'Güncellenecek alan bulunamadı.');

@@ -33,12 +33,14 @@ class EInvoiceFormScreen extends ConsumerStatefulWidget {
 class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _notesController = TextEditingController();
+  final _irsaliyeNoController = TextEditingController();
   final _exchangeRateController = TextEditingController(text: '1');
   final _items = <_EInvoiceItemDraft>[_EInvoiceItemDraft()];
 
   String? _customerId;
   DateTime _invoiceDate = DateTime.now();
   DateTime? _dueDate;
+  DateTime? _irsaliyeTarihi;
   String _currency = 'TRY';
   double _exchangeRate = 1;
   bool _saving = false;
@@ -62,6 +64,8 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
       _customerId = invoice.customerId;
       _invoiceDate = invoice.invoiceDate;
       _dueDate = invoice.dueDate;
+      _irsaliyeNoController.text = invoice.irsaliyeNo ?? '';
+      _irsaliyeTarihi = invoice.irsaliyeTarihi;
       _currency = invoice.currency;
       _exchangeRate = invoice.exchangeRate;
       _exchangeRateController.text = invoice.exchangeRate.toStringAsFixed(
@@ -91,6 +95,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
   @override
   void dispose() {
     _notesController.dispose();
+    _irsaliyeNoController.dispose();
     _exchangeRateController.dispose();
     for (final item in _items) {
       item.dispose();
@@ -202,6 +207,18 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                 },
               ),
               const Gap(12),
+              _DispatchCard(
+                numberController: _irsaliyeNoController,
+                date: _irsaliyeTarihi,
+                invoiceDate: _invoiceDate,
+                onDateChanged: (value) =>
+                    setState(() => _irsaliyeTarihi = value),
+                onClear: () => setState(() {
+                  _irsaliyeNoController.clear();
+                  _irsaliyeTarihi = null;
+                }),
+              ),
+              const Gap(12),
               AppCard(
                 padding: const EdgeInsets.all(16),
                 child: TextField(
@@ -278,6 +295,18 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                         _items.removeAt(index);
                       });
                     },
+                  ),
+                  const Gap(14),
+                  _DispatchCard(
+                    numberController: _irsaliyeNoController,
+                    date: _irsaliyeTarihi,
+                    invoiceDate: _invoiceDate,
+                    onDateChanged: (value) =>
+                        setState(() => _irsaliyeTarihi = value),
+                    onClear: () => setState(() {
+                      _irsaliyeNoController.clear();
+                      _irsaliyeTarihi = null;
+                    }),
                   ),
                   const Gap(14),
                   Row(
@@ -371,6 +400,12 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
             'notes': _notesController.text.trim().isEmpty
                 ? null
                 : _notesController.text.trim(),
+            'irsaliye_no': _irsaliyeNoController.text.trim().isEmpty
+                ? null
+                : _irsaliyeNoController.text.trim(),
+            'irsaliye_tarihi': _irsaliyeTarihi == null
+                ? null
+                : _dateIso(_irsaliyeTarihi!),
             'created_by': profile?.id,
           },
         },
@@ -411,6 +446,13 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                 'discount_amount': validItems[i].discountAmount,
                 'line_total': validItems[i].lineTotal,
                 'sort_order': i,
+                'special_matrah': validItems[i].specialMatrah,
+                'tax_exemption_code': validItems[i].specialMatrah
+                    ? '101'
+                    : null,
+                'tax_exemption_description': validItems[i].specialMatrah
+                    ? 'Özel Matrah'
+                    : null,
               },
           ],
         },
@@ -1284,7 +1326,7 @@ class _InvoiceTableRow extends StatelessWidget {
                     DropdownMenuItem(value: rate, child: Text(_taxLabel(rate))),
                 ],
                 onChanged: (value) {
-                  item.taxRate = value ?? 20;
+                  item.taxRate = item.specialMatrah ? 0 : (value ?? 20);
                   onChanged();
                 },
               ),
@@ -1306,6 +1348,18 @@ class _InvoiceTableRow extends StatelessWidget {
                   Text(
                     'KDV ${money.format(item.taxAmount)}',
                     style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  Tooltip(
+                    message: 'Özel matrah (muafiyet 101)',
+                    child: Checkbox(
+                      value: item.specialMatrah,
+                      onChanged: (value) {
+                        item.specialMatrah = value ?? false;
+                        if (item.specialMatrah) item.taxRate = 0;
+                        onChanged();
+                      },
+                      visualDensity: VisualDensity.compact,
+                    ),
                   ),
                 ],
               ),
@@ -1676,6 +1730,69 @@ class _InvoiceInfoCard extends StatelessWidget {
   }
 }
 
+class _DispatchCard extends StatelessWidget {
+  const _DispatchCard({
+    required this.numberController,
+    required this.date,
+    required this.invoiceDate,
+    required this.onDateChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController numberController;
+  final DateTime? date;
+  final DateTime invoiceDate;
+  final ValueChanged<DateTime> onDateChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFormat = DateFormat('dd.MM.yyyy');
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(
+            width: 260,
+            child: TextFormField(
+              controller: numberController,
+              decoration: const InputDecoration(
+                labelText: 'İrsaliye Numarası',
+                hintText: 'Mal satışı varsa girin',
+              ),
+              validator: (value) {
+                final hasNumber = (value ?? '').trim().isNotEmpty;
+                if (hasNumber != (date != null)) {
+                  return 'Numara ve tarih birlikte girilmeli';
+                }
+                return null;
+              },
+            ),
+          ),
+          SizedBox(
+            width: 220,
+            child: _DateField(
+              label: 'İrsaliye Tarihi',
+              value: date == null ? 'Seçilmedi' : dateFormat.format(date!),
+              initialDate: date ?? invoiceDate,
+              onPicked: onDateChanged,
+            ),
+          ),
+          if (date != null || numberController.text.trim().isNotEmpty)
+            TextButton.icon(
+              onPressed: onClear,
+              icon: const Icon(Icons.clear_rounded),
+              label: const Text('İrsaliyeyi temizle'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _DateField extends StatelessWidget {
   const _DateField({
     required this.label,
@@ -1901,7 +2018,7 @@ class _ItemEditor extends StatelessWidget {
               DropdownMenuItem(value: rate, child: Text(_taxLabel(rate))),
           ],
           onChanged: (value) {
-            item.taxRate = value ?? 20;
+            item.taxRate = item.specialMatrah ? 0 : (value ?? 20);
             onChanged();
           },
           decoration: inputDecoration.copyWith(labelText: 'KDV'),
@@ -1959,6 +2076,17 @@ class _ItemEditor extends StatelessWidget {
                       twoUp(unitField, taxField),
                       Gap(fieldGap),
                       twoUp(discountField, totalField),
+                      SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Özel matrah'),
+                        subtitle: const Text('Muafiyet kodu 101'),
+                        value: item.specialMatrah,
+                        onChanged: (value) {
+                          item.specialMatrah = value;
+                          if (value) item.taxRate = 0;
+                          onChanged();
+                        },
+                      ),
                     ],
                   )
                 : Column(
@@ -1987,6 +2115,21 @@ class _ItemEditor extends StatelessWidget {
                           SizedBox(width: 120, child: discountField),
                           Gap(fieldGap),
                           SizedBox(width: 170, child: totalField),
+                          const Spacer(),
+                          SizedBox(
+                            width: 190,
+                            child: SwitchListTile.adaptive(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Özel matrah'),
+                              subtitle: const Text('Muafiyet 101'),
+                              value: item.specialMatrah,
+                              onChanged: (value) {
+                                item.specialMatrah = value;
+                                if (value) item.taxRate = 0;
+                                onChanged();
+                              },
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -2173,7 +2316,8 @@ class _EInvoiceItemDraft {
       productId = item.productId,
       unit = item.unit,
       taxRate = item.taxRate,
-      discountRate = item.discountRate;
+      discountRate = item.discountRate,
+      specialMatrah = item.specialMatrah;
 
   final TextEditingController descriptionController;
   final TextEditingController quantityController;
@@ -2182,13 +2326,15 @@ class _EInvoiceItemDraft {
   String unit = 'Adet';
   double taxRate = 20;
   double discountRate = 0;
+  bool specialMatrah = false;
 
   String get description => descriptionController.text.trim();
   double get quantity => _parseDecimal(quantityController.text);
   double get unitPrice => _parseDecimal(priceController.text);
   double get subtotal => quantity * unitPrice;
   double get discountAmount => subtotal * (discountRate / 100);
-  double get taxAmount => (subtotal - discountAmount) * (taxRate / 100);
+  double get taxAmount =>
+      specialMatrah ? 0 : (subtotal - discountAmount) * (taxRate / 100);
   double get lineTotal => subtotal - discountAmount + taxAmount;
 
   void dispose() {

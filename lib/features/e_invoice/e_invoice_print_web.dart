@@ -63,11 +63,14 @@ String _buildInvoiceHtml(Invoice invoice) {
     .summary { margin-left: auto; margin-top: 18px; width: 320px; }
     .line { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
     .total { font-size: 18px; font-weight: 700; }
+    .warning { clear: both; margin: 0 0 20px; padding: 12px; border: 2px solid #b45309;
+      background: #fffbeb; color: #92400e; font-weight: 700; text-align: center; }
     @media print { body { padding: 16px; } button { display: none; } }
   </style>
 </head>
 <body>
   <button onclick="window.print()" style="float:right;padding:10px 14px;margin-bottom:14px">Yazdır / PDF</button>
+  <div class="warning">ÖN İZLEME - RESMİ E-FATURA DEĞİLDİR. Resmî nüshayı Maliye e-Fatura sistemi üzerinden görüntüleyin.</div>
   <div class="top">
     <div>
       <h1>${invoice.invoiceType == 'sales' ? 'Satış Faturası' : 'Alış Faturası'}</h1>
