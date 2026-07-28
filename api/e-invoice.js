@@ -120,6 +120,10 @@ async function ensureEInvoiceSchema() {
       add column if not exists e_invoice_environment text,
       add column if not exists e_invoice_payload jsonb,
       add column if not exists e_invoice_response jsonb,
+      add column if not exists e_invoice_official_data jsonb,
+      add column if not exists e_invoice_official_ubl text,
+      add column if not exists e_invoice_archived_at timestamptz,
+      add column if not exists e_invoice_archive_error text,
       add column if not exists e_invoice_error text,
       add column if not exists e_invoice_sent_at timestamptz,
       add column if not exists e_invoice_sending_at timestamptz,
@@ -634,6 +638,74 @@ async function apiGet({ base, path, token }) {
   return json;
 }
 
+async function apiGetText({ base, path, token, accept }) {
+  const response = await fetch(`${base}${path}`, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept,
+    },
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    const error = new Error(text || `${path} arşivlemesi başarısız.`);
+    error.response = { raw: text };
+    throw error;
+  }
+  return text;
+}
+
+async function fetchOfficialInvoiceArchive({ settings, verificationCode, token }) {
+  const base = urlsForEnvironment(settings.environment).apiBaseUrl;
+  const vkn = encodeURIComponent(requireApiVkn(settings.seller_vkn, 'Satıcı VKN'));
+  const code = encodeURIComponent(cleanText(verificationCode));
+  if (!code) throw new Error('Maliye doğrulama kodu bulunamadı.');
+  const detailPath = `/mukellefler/${vkn}/faturalar/${code}`;
+  const [data, ubl] = await Promise.all([
+    apiGet({ base, path: detailPath, token }),
+    apiGetText({
+      base,
+      path: `${detailPath}/ubl`,
+      token,
+      accept: 'application/xml',
+    }),
+  ]);
+  return { data, ubl };
+}
+
+async function archiveOfficialInvoice({ invoiceId, settings, verificationCode, token }) {
+  try {
+    const archive = await fetchOfficialInvoiceArchive({
+      settings,
+      verificationCode,
+      token: token || (await tokenFor(settings)),
+    });
+    await query(
+      `
+        update public.invoices
+        set e_invoice_official_data = $2::jsonb,
+            e_invoice_official_ubl = $3,
+            e_invoice_archived_at = now(),
+            e_invoice_archive_error = null,
+            updated_at = now()
+        where id = $1
+      `,
+      [invoiceId, JSON.stringify(archive.data), archive.ubl],
+    );
+    return { archived: true, archivedAt: new Date().toISOString() };
+  } catch (error) {
+    await query(
+      `
+        update public.invoices
+        set e_invoice_archive_error = $2,
+            updated_at = now()
+        where id = $1
+      `,
+      [invoiceId, error.message],
+    );
+    return { archived: false, error: error.message };
+  }
+}
+
 async function validatePayloadAgainstApi({ settings, payload, token }) {
   const base = urlsForEnvironment(settings.environment).apiBaseUrl;
   const vkn = encodeURIComponent(requireApiVkn(settings.seller_vkn, 'Satıcı VKN'));
@@ -773,7 +845,7 @@ async function sendToMaliye({ settings, payload }) {
     error.response = json;
     throw error;
   }
-  return assertSuccessfulMaliyeResponse(json);
+  return { response: assertSuccessfulMaliyeResponse(json), token };
 }
 
 async function handler(req, res) {
@@ -865,6 +937,39 @@ async function handler(req, res) {
         [current.id, ...keys.map((key) => picked[key])],
       );
       return ok(req, res, { settings: result.rows[0] });
+    }
+
+    if (action === 'archive') {
+      const invoiceId = String(body.invoiceId || '').trim();
+      if (!invoiceId) return badRequest(req, res, 'invoiceId zorunludur.');
+      const invoice = await fetchInvoice(invoiceId);
+      if (!invoice) return badRequest(req, res, 'Fatura bulunamadı.');
+      if (invoice.e_invoice_status !== 'sent' || !invoice.e_invoice_uuid) {
+        return badRequest(req, res, 'Yalnızca gönderilmiş e-fatura arşivlenebilir.');
+      }
+      if (
+        invoice.e_invoice_official_data &&
+        cleanText(invoice.e_invoice_official_ubl)
+      ) {
+        return ok(req, res, {
+          ok: true,
+          archived: true,
+          alreadyArchived: true,
+          archivedAt: invoice.e_invoice_archived_at,
+        });
+      }
+      const currentSettings = await getSettings();
+      const archiveSettings = {
+        ...currentSettings,
+        environment:
+          invoice.e_invoice_environment === 'production' ? 'production' : 'test',
+      };
+      const archive = await archiveOfficialInvoice({
+        invoiceId,
+        settings: archiveSettings,
+        verificationCode: invoice.e_invoice_uuid,
+      });
+      return ok(req, res, { ok: archive.archived, ...archive });
     }
 
     if (action === 'prepare' || action === 'send') {
@@ -962,7 +1067,8 @@ async function handler(req, res) {
       }
 
       try {
-        const response = await sendToMaliye({ settings, payload: built.payload });
+        const sent = await sendToMaliye({ settings, payload: built.payload });
+        const response = sent.response;
         await query(
           `
             update public.invoices
@@ -984,12 +1090,19 @@ async function handler(req, res) {
           `update public.e_invoice_settings set ${nextColumn} = ${nextColumn} + 1, last_sync_at = now(), updated_at = now() where id = $1`,
           [settings.id],
         );
+        const archive = await archiveOfficialInvoice({
+          invoiceId,
+          settings,
+          verificationCode: built.uuid,
+          token: sent.token,
+        });
         return ok(req, res, {
           ok: true,
           mode: 'send',
           invoiceNumber: built.number,
           uuid: built.uuid,
           response,
+          archive,
         });
       } catch (error) {
         await query(

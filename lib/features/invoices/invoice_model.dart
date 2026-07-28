@@ -34,6 +34,9 @@ class Invoice {
   final String? notes;
   final String eInvoiceStatus;
   final String? eInvoiceNumber;
+  final String? eInvoiceUuid;
+  final String? eInvoiceEnvironment;
+  final DateTime? eInvoiceArchivedAt;
   final DateTime? eInvoiceSentAt;
   final String? serviceRecordId;
   final String? workOrderId;
@@ -63,6 +66,9 @@ class Invoice {
     this.notes,
     this.eInvoiceStatus = 'not_sent',
     this.eInvoiceNumber,
+    this.eInvoiceUuid,
+    this.eInvoiceEnvironment,
+    this.eInvoiceArchivedAt,
     this.eInvoiceSentAt,
     this.serviceRecordId,
     this.workOrderId,
@@ -121,6 +127,11 @@ class Invoice {
       notes: json['notes']?.toString(),
       eInvoiceStatus: json['e_invoice_status']?.toString() ?? 'not_sent',
       eInvoiceNumber: json['e_invoice_number']?.toString(),
+      eInvoiceUuid: json['e_invoice_uuid']?.toString(),
+      eInvoiceEnvironment: json['e_invoice_environment']?.toString(),
+      eInvoiceArchivedAt: json['e_invoice_archived_at'] != null
+          ? parseAppDateTime(json['e_invoice_archived_at'].toString())
+          : null,
       eInvoiceSentAt: json['e_invoice_sent_at'] != null
           ? parseAppDateTime(json['e_invoice_sent_at'].toString())
           : null,

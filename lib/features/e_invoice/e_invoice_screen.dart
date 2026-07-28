@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
+import '../../core/platform/open_external_url.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
@@ -20,6 +21,7 @@ import '../invoices/invoice_model.dart';
 import '../invoices/invoice_providers.dart';
 import '../invoices/invoice_statement_share.dart';
 import 'e_invoice_form_screen.dart';
+import 'e_invoice_official_url.dart';
 import 'e_invoice_print.dart';
 
 final eInvoiceSettingsProvider =
@@ -1910,10 +1912,18 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   onPressed: _busy ? null : _delete,
                 ),
                 _InvoiceIconAction(
-                  tooltip: 'PDF / Yazdır',
+                  tooltip: alreadySent
+                      ? 'Maliye nüshasını görüntüle / PDF'
+                      : 'PDF / Yazdır',
                   icon: Icons.picture_as_pdf_rounded,
                   onPressed: _busy ? null : _print,
                 ),
+                if (alreadySent)
+                  _InvoiceIconAction(
+                    tooltip: 'Veritabanı yedeği / PDF',
+                    icon: Icons.offline_pin_rounded,
+                    onPressed: _busy ? null : _printDatabaseCopy,
+                  ),
                 _InvoiceIconAction(
                   tooltip: 'Ekstre PDF',
                   icon: Icons.description_rounded,
@@ -2075,10 +2085,20 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 ),
                 const Gap(4),
                 _InvoiceIconAction(
-                  tooltip: 'PDF / Yazdır',
+                  tooltip: alreadySent
+                      ? 'Maliye nüshasını görüntüle / PDF'
+                      : 'PDF / Yazdır',
                   icon: Icons.picture_as_pdf_rounded,
                   onPressed: _busy ? null : _print,
                 ),
+                if (alreadySent) ...[
+                  const Gap(4),
+                  _InvoiceIconAction(
+                    tooltip: 'Veritabanı yedeği / PDF',
+                    icon: Icons.offline_pin_rounded,
+                    onPressed: _busy ? null : _printDatabaseCopy,
+                  ),
+                ],
                 const Gap(4),
                 _InvoiceIconAction(
                   tooltip: 'Ekstre PDF',
@@ -2240,6 +2260,51 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   }
 
   Future<void> _print() async {
+    final invoice = await _loadInvoiceDetail();
+    if (invoice == null) return;
+
+    if (invoice.isEInvoiceSent) {
+      final apiClient = ref.read(apiClientProvider);
+      if (invoice.eInvoiceArchivedAt == null && apiClient != null) {
+        try {
+          await apiClient.postJson(
+            '/e-invoice',
+            body: {'action': 'archive', 'invoiceId': invoice.id},
+          );
+          ref.invalidate(invoicesProvider);
+        } catch (_) {
+          // Resmî sayfa yine açılır; arşivleme daha sonra tekrar denenebilir.
+        }
+      }
+      final officialUrl = buildOfficialEInvoiceUrl(
+        verificationCode: invoice.eInvoiceUuid,
+        environment: invoice.eInvoiceEnvironment ?? 'test',
+      );
+      if (officialUrl == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Maliye doğrulama kodu bulunamadı. Fatura detayını yenileyin.',
+            ),
+          ),
+        );
+        return;
+      }
+      final opened = await openExternalUrl(officialUrl);
+      if (!mounted || opened) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Maliye fatura sayfası bu platformda açılamadı.'),
+        ),
+      );
+      return;
+    }
+
+    await _printInvoiceCopy(invoice);
+  }
+
+  Future<Invoice?> _loadInvoiceDetail() async {
     final apiClient = ref.read(apiClientProvider);
     Invoice invoice = widget.invoice;
     if (apiClient != null) {
@@ -2259,6 +2324,16 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         if (mounted) setState(() => _busy = false);
       }
     }
+    return invoice;
+  }
+
+  Future<void> _printDatabaseCopy() async {
+    final invoice = await _loadInvoiceDetail();
+    if (invoice == null) return;
+    await _printInvoiceCopy(invoice);
+  }
+
+  Future<void> _printInvoiceCopy(Invoice invoice) async {
     final ok = await printEInvoice(invoice);
     if (!mounted || ok) return;
     ScaffoldMessenger.of(context).showSnackBar(
