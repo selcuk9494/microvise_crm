@@ -8,7 +8,6 @@ import 'package:gap/gap.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
@@ -1936,13 +1935,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   primary: true,
                 ),
                 _InvoiceIconAction(
-                  tooltip: invoice.invoiceType == 'purchase'
-                      ? 'Borç Fişi Oluştur'
-                      : 'Alacak Fişi Oluştur',
-                  icon: Icons.assignment_return_rounded,
-                  onPressed: _busy || !alreadySent ? null : _openReturnSlip,
-                ),
-                _InvoiceIconAction(
                   tooltip: 'Özet kopyala',
                   icon: Icons.copy_rounded,
                   onPressed: _busy ? null : _copyPreview,
@@ -2109,14 +2101,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                       ? null
                       : () => _prepare(send: true),
                   primary: true,
-                ),
-                const Gap(4),
-                _InvoiceIconAction(
-                  tooltip: invoice.invoiceType == 'purchase'
-                      ? 'Borç Fişi Oluştur'
-                      : 'Alacak Fişi Oluştur',
-                  icon: Icons.assignment_return_rounded,
-                  onPressed: _busy || !alreadySent ? null : _openReturnSlip,
                 ),
                 const Gap(4),
                 _InvoiceIconAction(
@@ -2372,85 +2356,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Fatura özeti kopyalandı.')));
-  }
-
-  Future<void> _openReturnSlip() async {
-    final invoice = widget.invoice;
-    if (!invoice.isEInvoiceSent) return;
-    final settings = ref.read(eInvoiceSettingsProvider).value ?? const {};
-    final isProduction =
-        (settings['environment'] ?? 'test').toString() == 'production';
-    final documentType = invoice.invoiceType == 'purchase'
-        ? 'BORCFISI'
-        : 'ALACAKFISI';
-    final documentLabel = invoice.invoiceType == 'purchase'
-        ? 'Borç Fişi'
-        : 'Alacak Fişi';
-    final reference = (invoice.eInvoiceNumber ?? '').trim().isNotEmpty
-        ? invoice.eInvoiceNumber!.trim()
-        : invoice.invoiceNumber;
-    final portalUri = Uri.parse(
-      isProduction
-          ? 'https://efatura.maliye.gov.ct.tr/mukellef/sec/'
-          : 'https://test-efatura.maliye.gov.ct.tr/mukellef/sec/',
-    );
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('$documentLabel Oluştur'),
-        content: SizedBox(
-          width: 560,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Maliye belge türü: $documentType',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              const Gap(8),
-              SelectableText('Referans e-Fatura: $reference'),
-              const Gap(12),
-              const Text(
-                'Maliye REST API’si iade için zorunlu asıl fatura referansı '
-                'alanını henüz sunmuyor. Belgenin mevzuata uygun kalması için '
-                'Alacak/Borç Fişini Maliye portalında oluşturun.',
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: reference));
-              if (!dialogContext.mounted) return;
-              ScaffoldMessenger.of(dialogContext).showSnackBar(
-                const SnackBar(content: Text('Fatura referansı kopyalandı.')),
-              );
-            },
-            icon: const Icon(Icons.copy_rounded),
-            label: const Text('Referansı Kopyala'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Vazgeç'),
-          ),
-          FilledButton.icon(
-            onPressed: () async {
-              final opened = await launchUrl(
-                portalUri,
-                mode: LaunchMode.externalApplication,
-              );
-              if (!opened || !dialogContext.mounted) return;
-              Navigator.of(dialogContext).pop();
-            },
-            icon: const Icon(Icons.open_in_new_rounded),
-            label: Text('$documentLabel İçin Maliye’yi Aç'),
-          ),
-        ],
-      ),
-    );
   }
 
   String _statusLabel(String status) {
