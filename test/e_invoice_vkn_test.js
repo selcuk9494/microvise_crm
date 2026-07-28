@@ -154,6 +154,22 @@ test('14 günlük faturaya izin verir, 15 günlük faturayı gönderimden önce 
   );
 });
 
+test('veritabanından Date nesnesi gelen bugünün faturasını kabul eder', () => {
+  const invoice = {
+    ...validInvoice(),
+    invoice_date: new Date('2026-07-28T00:00:00.000Z'),
+  };
+
+  assert.deepEqual(
+    validateInvoiceForEInvoice(
+      validSettings(),
+      invoice,
+      new Date('2026-07-28T12:00:00+03:00'),
+    ),
+    [],
+  );
+});
+
 test('testte gönderilen faturayı yalnızca canlıya göndermeye izin verir', () => {
   const testSent = {
     e_invoice_status: 'sent',

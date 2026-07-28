@@ -292,11 +292,35 @@ function validateParty(party, label) {
 }
 
 function calendarDateUtc(value) {
-  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
+  const text = String(value || '');
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    return validCalendarDateUtc(
+      Number(match[1]),
+      Number(match[2]),
+      Number(match[3]),
+    );
+  }
+
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Famagusta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(parsed);
+  const values = Object.fromEntries(
+    parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]),
+  );
+  return validCalendarDateUtc(
+    Number(values.year),
+    Number(values.month),
+    Number(values.day),
+  );
+}
+
+function validCalendarDateUtc(year, month, day) {
   const timestamp = Date.UTC(year, month - 1, day);
   const parsed = new Date(timestamp);
   if (
