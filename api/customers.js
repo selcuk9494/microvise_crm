@@ -13,6 +13,25 @@ const {
 } = require('./_lib/http');
 
 const columnsCache = new Map();
+let countrySchemaReady = false;
+
+async function ensureCustomerCountrySchema() {
+  if (countrySchemaReady) return;
+  await query(`
+    alter table public.customers
+      add column if not exists country_code text not null default 'XCT',
+      add column if not exists country text not null default 'Kuzey Kıbrıs Türk Cumhuriyeti'
+  `);
+  await query(`
+    update public.customers
+    set country_code = 'XCT',
+        country = 'Kuzey Kıbrıs Türk Cumhuriyeti'
+    where nullif(trim(country_code), '') is null
+       or nullif(trim(country), '') is null
+  `);
+  columnsCache.delete('customers');
+  countrySchemaReady = true;
+}
 
 async function getColumns(table) {
   if (columnsCache.has(table)) return columnsCache.get(table);
@@ -176,6 +195,7 @@ module.exports = async (req, res) => {
     if (!hasPageAccess(user, 'musteriler')) {
       return forbidden(req, res, 'Müşteri listesine erişim yetkiniz yok.');
     }
+    await ensureCustomerCountrySchema();
 
     if (req.method === 'POST') {
       const body = await readJson(req);
@@ -186,6 +206,13 @@ module.exports = async (req, res) => {
         name,
         city: body.city ? String(body.city).trim() : null,
         address: body.address ? String(body.address).trim() : null,
+        country_code: String(body.country_code || 'XCT').trim().toUpperCase(),
+        country: String(
+          body.country ||
+            (String(body.country_code || 'XCT').toUpperCase() === 'TUR'
+              ? 'Türkiye'
+              : 'Kuzey Kıbrıs Türk Cumhuriyeti'),
+        ).trim(),
         director_name: body.director_name ? String(body.director_name).trim() : null,
         email: normalizeEmail(body.email),
         vkn: normalizeDigits(body.vkn),
@@ -202,6 +229,9 @@ module.exports = async (req, res) => {
 
       const customerColumns = await getColumns('customers');
       const payload = pickValues(payloadRaw, customerColumns);
+      if (!/^[A-Z]{3}$/.test(payload.country_code || '')) {
+        return badRequest(req, res, 'Ülke kodu ISO3 formatında olmalıdır.');
+      }
       if (!isValidStoredVkn(payload.vkn)) {
         return badRequest(req, res, 'VKN tam olarak 10 haneli olmalıdır.');
       }
@@ -269,6 +299,14 @@ module.exports = async (req, res) => {
         name: body.name == null ? undefined : String(body.name || '').trim() || null,
         city: body.city == null ? undefined : String(body.city || '').trim() || null,
         address: body.address == null ? undefined : String(body.address || '').trim() || null,
+        country_code:
+          body.country_code == null
+            ? undefined
+            : String(body.country_code || '').trim().toUpperCase() || 'XCT',
+        country:
+          body.country == null
+            ? undefined
+            : String(body.country || '').trim() || 'Kuzey Kıbrıs Türk Cumhuriyeti',
         director_name:
           body.director_name == null
             ? undefined
@@ -297,6 +335,18 @@ module.exports = async (req, res) => {
 
       const customerColumns = await getColumns('customers');
       const payload = pickValues(payloadRaw, customerColumns);
+      if (payload.country_code && !/^[A-Z]{3}$/.test(payload.country_code)) {
+        return badRequest(req, res, 'Ülke kodu ISO3 formatında olmalıdır.');
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(payload, 'country_code') &&
+        !Object.prototype.hasOwnProperty.call(payload, 'country')
+      ) {
+        payload.country =
+          payload.country_code === 'TUR'
+            ? 'Türkiye'
+            : 'Kuzey Kıbrıs Türk Cumhuriyeti';
+      }
       if (
         Object.prototype.hasOwnProperty.call(payload, 'vkn') &&
         !isValidStoredVkn(payload.vkn)
@@ -417,6 +467,8 @@ module.exports = async (req, res) => {
             c.name,
             c.city,
             c.address,
+            c.country_code,
+            c.country,
             c.director_name,
             c.email,
             c.phone_1,
@@ -457,6 +509,8 @@ module.exports = async (req, res) => {
           c.name,
           c.city,
           c.address,
+          c.country_code,
+          c.country,
           c.director_name,
           c.email,
           c.phone_1,

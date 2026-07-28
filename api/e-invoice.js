@@ -137,6 +137,11 @@ async function ensureEInvoiceSchema() {
       add column if not exists tax_exemption_description text
   `);
   await query(`
+    alter table public.customers
+      add column if not exists country_code text not null default 'XCT',
+      add column if not exists country text not null default 'Kuzey Kıbrıs Türk Cumhuriyeti'
+  `);
+  await query(`
     create table if not exists public.e_invoice_transmissions (
       id uuid primary key default gen_random_uuid(),
       invoice_id uuid not null references public.invoices(id) on delete cascade,
@@ -478,9 +483,14 @@ function partyFromSettings(settings) {
 
 function partyFromCustomer(customer) {
   const address = cleanText(customer.address) || cleanText(customer.full_address);
+  const countryCode = String(customer.country_code || 'XCT').trim().toUpperCase();
   const party = {
-    ulkeKodu: cleanText(customer.country_code) || 'XCT',
-    ulke: cleanText(customer.country) || 'Kuzey Kıbrıs Türk Cumhuriyeti',
+    ulkeKodu: countryCode,
+    ulke:
+      cleanText(customer.country) ||
+      (countryCode === 'TUR'
+        ? 'Türkiye'
+        : 'Kuzey Kıbrıs Türk Cumhuriyeti'),
     sehir: cleanText(customer.city) || null,
     adresSatir1: address,
     adresSatir2: cleanText(customer.address_line2),
@@ -491,7 +501,16 @@ function partyFromCustomer(customer) {
   };
   const storedVkn = customer.tax_number || customer.vkn;
   if (storedVkn) {
-    party.vkn = requireApiVkn(storedVkn, 'Müşteri VKN');
+    if (countryCode === 'XCT') {
+      party.vkn = requireApiVkn(storedVkn, 'Müşteri VKN');
+    } else {
+      const foreignTaxNumber = normalizeDigits(storedVkn);
+      if (!foreignTaxNumber) {
+        throw new Error('Yabancı müşteri vergi/kimlik numarası zorunludur.');
+      }
+      party.belgeNo = foreignTaxNumber;
+      party.belgeTipi = 'YABANCI_KIMLIKNO';
+    }
   } else {
     const identityNumber = normalizeDigits(customer.tckn_ms);
     if (identityNumber) {

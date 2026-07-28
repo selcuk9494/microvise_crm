@@ -32,6 +32,7 @@ const {
   ensureFinanceTables,
   ensureApplicationFormsApprovalColumns,
   ensureApplicationFormActivityLogsTable,
+  ensureCustomerCountryColumns,
 } = require('./_lib/schema');
 const {
   handleCors,
@@ -267,6 +268,7 @@ module.exports = async (req, res) => {
       }
 
       case 'customer_detail': {
+        await ensureCustomerCountryColumns();
         const id = String(req.query.customerId || '').trim();
         if (!id) return badRequest(req, res, 'customerId zorunludur.');
         const result = await query(
@@ -276,6 +278,8 @@ module.exports = async (req, res) => {
               name,
               city,
               address,
+              country_code,
+              country,
               director_name,
               email,
               vkn,

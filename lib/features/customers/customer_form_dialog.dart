@@ -17,6 +17,8 @@ class CustomerFormData {
     required this.name,
     this.city,
     this.address,
+    this.countryCode = 'XCT',
+    this.country = 'Kuzey Kıbrıs Türk Cumhuriyeti',
     this.directorName,
     this.email,
     this.vkn,
@@ -36,6 +38,8 @@ class CustomerFormData {
   final String name;
   final String? city;
   final String? address;
+  final String countryCode;
+  final String country;
   final String? directorName;
   final String? email;
   final String? vkn;
@@ -99,6 +103,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   late final TextEditingController _phone3TitleController;
   late final TextEditingController _phone3Controller;
   late final TextEditingController _notesController;
+  late String _countryCode;
   late bool _isActive;
   List<_CustomerLocationDraft> _locationDrafts = [];
   bool _saving = false;
@@ -113,6 +118,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     _nameController = TextEditingController(text: initial?.name ?? '');
     _cityController = TextEditingController(text: initial?.city ?? '');
     _addressController = TextEditingController(text: initial?.address ?? '');
+    _countryCode = initial?.countryCode ?? 'XCT';
     _directorNameController = TextEditingController(
       text: initial?.directorName ?? '',
     );
@@ -179,7 +185,10 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     super.dispose();
   }
 
-  void _padDigitsController(TextEditingController controller, {required int length}) {
+  void _padDigitsController(
+    TextEditingController controller, {
+    required int length,
+  }) {
     final digits = controller.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return;
     if (digits.length >= length) return;
@@ -302,6 +311,25 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       );
     }
 
+    Widget buildCountryField() {
+      return DropdownButtonFormField<String>(
+        initialValue: _countryCode,
+        items: const [
+          DropdownMenuItem(
+            value: 'XCT',
+            child: Text('Kuzey Kıbrıs Türk Cumhuriyeti (XCT)'),
+          ),
+          DropdownMenuItem(value: 'TUR', child: Text('Türkiye (TUR)')),
+        ],
+        onChanged: (value) =>
+            setState(() => _countryCode = value?.trim() ?? 'XCT'),
+        decoration: const InputDecoration(
+          labelText: 'Ülke',
+          prefixIcon: Icon(Icons.public_rounded),
+        ),
+      );
+    }
+
     String? validateRequiredDigits(
       String? value, {
       required int length,
@@ -333,12 +361,10 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
           prefixIcon: Icon(Icons.badge_outlined),
           counterText: '',
         ),
-        onFieldSubmitted: (_) => _padDigitsController(_vknController, length: 10),
-        validator: (value) => validateRequiredDigits(
-          value,
-          length: 10,
-          fieldLabel: 'VKN',
-        ),
+        onFieldSubmitted: (_) =>
+            _padDigitsController(_vknController, length: 10),
+        validator: (value) =>
+            validateRequiredDigits(value, length: 10, fieldLabel: 'VKN'),
       );
     }
 
@@ -360,11 +386,8 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
         ),
         onFieldSubmitted: (_) =>
             _padDigitsController(_tcknMsController, length: 11),
-        validator: (value) => validateRequiredDigits(
-          value,
-          length: 11,
-          fieldLabel: 'TCKN-MŞ',
-        ),
+        validator: (value) =>
+            validateRequiredDigits(value, length: 11, fieldLabel: 'TCKN-MŞ'),
       );
     }
 
@@ -460,6 +483,8 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                         ),
                                       ],
                                     ),
+                                    const Gap(12),
+                                    buildCountryField(),
                                     const Gap(12),
                                     TextFormField(
                                       controller: _addressController,
@@ -566,13 +591,9 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                     const Gap(12),
                                     Row(
                                       children: [
-                                        Expanded(
-                                          child: buildVknField(),
-                                        ),
+                                        Expanded(child: buildVknField()),
                                         const Gap(12),
-                                        Expanded(
-                                          child: buildTcknMsField(),
-                                        ),
+                                        Expanded(child: buildTcknMsField()),
                                       ],
                                     ),
                                     const Gap(12),
@@ -669,6 +690,8 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                             buildCityField(),
                           ],
                           const Gap(12),
+                          buildCountryField(),
+                          const Gap(12),
                           TextFormField(
                             controller: _addressController,
                             textInputAction: TextInputAction.next,
@@ -721,13 +744,9 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                           const Gap(12),
                           Row(
                             children: [
-                              Expanded(
-                                child: buildVknField(),
-                              ),
+                              Expanded(child: buildVknField()),
                               const Gap(12),
-                              Expanded(
-                                child: buildTcknMsField(),
-                              ),
+                              Expanded(child: buildTcknMsField()),
                             ],
                           ),
                         ],
@@ -951,9 +970,14 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       _phone1Controller.text = '05333333333';
     }
 
-    final normalizedVkn = _normalizeDigitsFixedLength(_vknController.text, length: 10);
-    final normalizedTcknMs =
-        _normalizeDigitsFixedLength(_tcknMsController.text, length: 11);
+    final normalizedVkn = _normalizeDigitsFixedLength(
+      _vknController.text,
+      length: 10,
+    );
+    final normalizedTcknMs = _normalizeDigitsFixedLength(
+      _tcknMsController.text,
+      length: 11,
+    );
     _vknController.text = normalizedVkn ?? '';
     _tcknMsController.text = normalizedTcknMs ?? '';
 
@@ -990,6 +1014,10 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       'name': _nameController.text.trim(),
       'city': _nullIfEmpty(_cityController.text),
       'address': _nullIfEmpty(_addressController.text),
+      'country_code': _countryCode,
+      'country': _countryCode == 'TUR'
+          ? 'Türkiye'
+          : 'Kuzey Kıbrıs Türk Cumhuriyeti',
       'director_name': _nullIfEmpty(_directorNameController.text),
       'email': _nullIfEmpty(_emailController.text),
       'vkn': normalizedVkn,

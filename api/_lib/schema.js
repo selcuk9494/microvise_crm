@@ -27,7 +27,26 @@ const ensured = {
   finance_tables: false,
   application_forms_approval: false,
   application_form_activity_logs: false,
+  customer_country_columns: false,
 };
+
+async function ensureCustomerCountryColumns() {
+  if (ensured.customer_country_columns) return true;
+  await query(`
+    alter table public.customers
+      add column if not exists country_code text not null default 'XCT',
+      add column if not exists country text not null default 'Kuzey Kıbrıs Türk Cumhuriyeti'
+  `);
+  await query(`
+    update public.customers
+    set country_code = 'XCT',
+        country = 'Kuzey Kıbrıs Türk Cumhuriyeti'
+    where nullif(trim(country_code), '') is null
+       or nullif(trim(country), '') is null
+  `);
+  ensured.customer_country_columns = true;
+  return true;
+}
 
 async function tableExists(tableName) {
   const result = await query(
@@ -1612,6 +1631,7 @@ async function ensureApplicationFormActivityLogsTable() {
 }
 
 module.exports = {
+  ensureCustomerCountryColumns,
   ensureSerialTrackingTable,
   ensureUsersAuthColumns,
   ensureRegionColorsTable,

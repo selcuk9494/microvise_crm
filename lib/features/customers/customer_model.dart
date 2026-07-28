@@ -4,6 +4,8 @@ class Customer {
     required this.name,
     required this.city,
     required this.address,
+    required this.countryCode,
+    required this.country,
     required this.directorName,
     required this.email,
     required this.phone1,
@@ -24,6 +26,8 @@ class Customer {
   final String name;
   final String? city;
   final String? address;
+  final String countryCode;
+  final String country;
   final String? directorName;
   final String? email;
   final String? phone1;
@@ -45,6 +49,8 @@ class Customer {
       name: (json['name'] ?? '').toString(),
       city: json['city']?.toString(),
       address: json['address']?.toString(),
+      countryCode: json['country_code']?.toString() ?? 'XCT',
+      country: json['country']?.toString() ?? 'Kuzey Kıbrıs Türk Cumhuriyeti',
       directorName: json['director_name']?.toString(),
       email: json['email']?.toString(),
       phone1: json['phone_1']?.toString(),

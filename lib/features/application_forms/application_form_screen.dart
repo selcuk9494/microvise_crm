@@ -5039,7 +5039,7 @@ class _ApplicationFormDialogState
       customerRow = await client
           .from('customers')
           .select(
-            'id,name,city,address,director_name,email,vkn,tckn_ms,phone_1_title,phone_1,phone_2_title,phone_2,phone_3_title,phone_3,notes,is_active',
+            'id,name,city,address,country_code,country,director_name,email,vkn,tckn_ms,phone_1_title,phone_1,phone_2_title,phone_2,phone_3_title,phone_3,notes,is_active',
           )
           .eq('id', customerId)
           .maybeSingle();
@@ -5064,6 +5064,9 @@ class _ApplicationFormDialogState
       name: (customerRow['name'] ?? '').toString(),
       city: customerRow['city']?.toString(),
       address: customerRow['address']?.toString(),
+      countryCode: customerRow['country_code']?.toString() ?? 'XCT',
+      country:
+          customerRow['country']?.toString() ?? 'Kuzey Kıbrıs Türk Cumhuriyeti',
       directorName: customerRow['director_name']?.toString(),
       email: customerRow['email']?.toString(),
       vkn: customerRow['vkn']?.toString(),

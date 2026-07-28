@@ -44,7 +44,7 @@ final customerDetailProvider =
   final row = await client
       .from('customers')
       .select(
-        'id,name,city,email,vkn,notes,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,is_active,created_at',
+        'id,name,city,address,country_code,country,email,vkn,notes,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,is_active,created_at',
       )
       .eq('id', customerId)
       .maybeSingle();
@@ -257,6 +257,8 @@ class CustomerDetailScreen extends ConsumerWidget {
                 name: 'Microvise Teknoloji A.Ş.',
                 city: 'İstanbul',
                 address: 'Maslak Mah. Büyükdere Cad.',
+                countryCode: 'TUR',
+                country: 'Türkiye',
                 directorName: 'Yetkili Adı',
                 email: 'ornek@firma.com',
                 vkn: '1234567890',
@@ -371,6 +373,8 @@ class _Content extends ConsumerWidget {
                                 name: detail.name,
                                 city: detail.city,
                                 address: detail.address,
+                                countryCode: detail.countryCode,
+                                country: detail.country,
                                 directorName: detail.directorName,
                                 email: detail.email,
                                 vkn: detail.vkn,
@@ -528,6 +532,11 @@ class _GeneralTab extends ConsumerWidget {
           ),
           const Gap(16),
           _InfoRow(label: 'Firma Adı', value: detail.name),
+          const Gap(10),
+          _InfoRow(
+            label: 'Ülke',
+            value: '${detail.country} (${detail.countryCode})',
+          ),
           const Gap(10),
           _InfoRow(label: 'Şehir', value: detail.city ?? '—'),
           const Gap(10),
@@ -4501,6 +4510,8 @@ class CustomerDetail {
     required this.name,
     required this.city,
     required this.address,
+    required this.countryCode,
+    required this.country,
     required this.directorName,
     required this.email,
     required this.vkn,
@@ -4520,6 +4531,8 @@ class CustomerDetail {
   final String name;
   final String? city;
   final String? address;
+  final String countryCode;
+  final String country;
   final String? directorName;
   final String? email;
   final String? vkn;
@@ -4540,6 +4553,9 @@ class CustomerDetail {
       name: (json['name'] ?? '').toString(),
       city: json['city']?.toString(),
       address: json['address']?.toString(),
+      countryCode: (json['country_code'] ?? 'XCT').toString(),
+      country:
+          (json['country'] ?? 'Kuzey Kıbrıs Türk Cumhuriyeti').toString(),
       directorName: json['director_name']?.toString(),
       email: json['email']?.toString(),
       vkn: json['vkn']?.toString(),

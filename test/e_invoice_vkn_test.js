@@ -233,6 +233,25 @@ test('özel matrah ve irsaliye alanlarını Maliye payloadına ekler', () => {
   });
 });
 
+test('Türkiye firmasının 10 haneli VKN değerini yabancı belge olarak korur', () => {
+  const invoice = validInvoice();
+  invoice.customer = {
+    ...invoice.customer,
+    country_code: 'TUR',
+    country: 'Türkiye',
+    vkn: '1234567890',
+  };
+
+  const built = buildPayload({ settings: validSettings(), invoice });
+  const customer = built.payload.faturalar[0].musteri;
+
+  assert.equal(customer.ulkeKodu, 'TUR');
+  assert.equal(customer.ulke, 'Türkiye');
+  assert.equal(customer.vkn, undefined);
+  assert.equal(customer.belgeNo, '1234567890');
+  assert.equal(customer.belgeTipi, 'YABANCI_KIMLIKNO');
+});
+
 test('yalnızca banka hesaplarını fatura açıklamasına ekler', () => {
   const settings = {
     ...validSettings(),

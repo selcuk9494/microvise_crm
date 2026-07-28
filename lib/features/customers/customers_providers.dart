@@ -7,7 +7,7 @@ import 'customer_model.dart';
 
 const customerPageSize = 50;
 const _customerBaseSelect =
-    'id,name,city,address,email,vkn,tckn_ms,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,notes,is_active,created_at';
+    'id,name,city,address,country_code,country,email,vkn,tckn_ms,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,notes,is_active,created_at';
 const _customerDirectorSelect = '$_customerBaseSelect,director_name';
 
 final customerFiltersProvider =
@@ -183,7 +183,10 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
       );
     }
 
-    final pageRows = filtered.skip(start).take(customerPageSize).toList(growable: false);
+    final pageRows = filtered
+        .skip(start)
+        .take(customerPageSize)
+        .toList(growable: false);
     final currentPageIds = pageRows
         .map((row) => row['id']?.toString())
         .whereType<String>()
@@ -436,7 +439,10 @@ dynamic _applyCustomerFilters(
     if (variants.isNotEmpty) {
       final clauses = <String>[];
       for (final v in variants) {
-        final safe = v.replaceAll(',', ' ').replaceAll('(', ' ').replaceAll(')', ' ');
+        final safe = v
+            .replaceAll(',', ' ')
+            .replaceAll('(', ' ')
+            .replaceAll(')', ' ');
         final like = '%$safe%';
         clauses.add('name.ilike.$like');
         clauses.add('director_name.ilike.$like');

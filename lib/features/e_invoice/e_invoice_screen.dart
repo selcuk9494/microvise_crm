@@ -1622,6 +1622,8 @@ class _CustomerFilterDialogState extends State<_CustomerFilterDialog> {
                     name: 'Cari: Tümü',
                     city: null,
                     address: null,
+                    countryCode: 'XCT',
+                    country: 'Kuzey Kıbrıs Türk Cumhuriyeti',
                     directorName: null,
                     email: null,
                     phone1: null,
