@@ -619,7 +619,6 @@ module.exports = async (req, res) => {
         const offset = (page - 1) * pageSize;
 
         const status = String(req.query.status || '').trim();
-        const eInvoiceStatus = String(req.query.eInvoiceStatus || '').trim();
         const priority = String(req.query.priority || '').trim();
         const technicianId = String(req.query.technicianId || '').trim();
         const startDate = String(req.query.startDate || '').trim();
@@ -1703,6 +1702,7 @@ module.exports = async (req, res) => {
         if (!requireAnyPage(req, user, ['faturalama'], res)) return;
         const invoiceType = String(req.query.invoiceType || '').trim();
         const status = String(req.query.status || '').trim();
+        const eInvoiceStatus = String(req.query.eInvoiceStatus || '').trim();
         const customerId = String(req.query.customerId || '').trim();
         const startDate = String(req.query.startDate || '').trim();
         const endDate = String(req.query.endDate || '').trim();
