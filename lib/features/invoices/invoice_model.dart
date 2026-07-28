@@ -32,6 +32,9 @@ class Invoice {
   final double paidAmount;
   final String status; // 'draft', 'open', 'partial', 'paid', 'cancelled'
   final String? notes;
+  final String eInvoiceStatus;
+  final String? eInvoiceNumber;
+  final DateTime? eInvoiceSentAt;
   final String? serviceRecordId;
   final String? workOrderId;
   final bool isActive;
@@ -58,6 +61,9 @@ class Invoice {
     this.paidAmount = 0,
     required this.status,
     this.notes,
+    this.eInvoiceStatus = 'not_sent',
+    this.eInvoiceNumber,
+    this.eInvoiceSentAt,
     this.serviceRecordId,
     this.workOrderId,
     this.isActive = true,
@@ -69,6 +75,7 @@ class Invoice {
   double get remainingAmount => grandTotal - paidAmount;
   bool get isPaid => status == 'paid';
   bool get isOpen => status == 'open' || status == 'partial';
+  bool get isEInvoiceSent => eInvoiceStatus == 'sent';
 
   factory Invoice.fromJson(Map<String, dynamic> json) {
     return Invoice(
@@ -112,6 +119,11 @@ class Invoice {
           json['status']?.toString() ??
           'open',
       notes: json['notes']?.toString(),
+      eInvoiceStatus: json['e_invoice_status']?.toString() ?? 'not_sent',
+      eInvoiceNumber: json['e_invoice_number']?.toString(),
+      eInvoiceSentAt: json['e_invoice_sent_at'] != null
+          ? parseAppDateTime(json['e_invoice_sent_at'].toString())
+          : null,
       serviceRecordId: json['service_record_id']?.toString(),
       workOrderId: json['work_order_id']?.toString(),
       isActive: json['is_active'] as bool? ?? true,

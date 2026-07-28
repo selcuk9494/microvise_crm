@@ -10,6 +10,7 @@ const {
   createUuidV7,
   validateInvoiceForEInvoice,
   buildPayload,
+  assertSuccessfulMaliyeResponse,
   urlsForEnvironment,
 } = require('../api/e-invoice').testUtils;
 
@@ -171,4 +172,45 @@ test('özel matrah ve irsaliye alanlarını Maliye payloadına ekler', () => {
     vergiMuafiyetKodu: '101',
     vergiMuafiyetAciklamasi: 'Özel Matrah',
   });
+});
+
+test('yalnızca banka hesaplarını fatura açıklamasına ekler', () => {
+  const settings = {
+    ...validSettings(),
+    seller_bank_details:
+      'Banka Hesap Bilgileri\nTürkiye İş Bankası\nTL IBAN: TR57 0006 4000 0016 8010 3409 94\nUSD IBAN: TR41 0006 4000 0026 8010 4107 29',
+  };
+  const invoice = validInvoice();
+  invoice.notes = 'WORLDLINE';
+
+  const built = buildPayload({ settings, invoice });
+
+  assert.equal(
+    built.payload.faturalar[0].aciklama,
+    'Banka Hesap Bilgileri\nTürkiye İş Bankası\nTL IBAN: TR57 0006 4000 0016 8010 3409 94\nUSD IBAN: TR41 0006 4000 0026 8010 4107 29',
+  );
+  assert.equal('logo' in built.payload.faturalar[0], false);
+  assert.equal('logoUrl' in built.payload.faturalar[0], false);
+});
+
+test('Maliye kayıt bazında reddettiği faturayı başarılı saymaz', () => {
+  assert.throws(
+    () =>
+      assertSuccessfulMaliyeResponse({
+        ozet: { toplamKayit: 1, basariliKayit: 0, basarisizKayit: 1 },
+        sonuclar: [
+          {
+            basarili: false,
+            hataMesaji: 'Şube kodu kayıtlı değil.',
+          },
+        ],
+      }),
+    /Şube kodu kayıtlı değil/,
+  );
+  assert.doesNotThrow(() =>
+    assertSuccessfulMaliyeResponse({
+      ozet: { toplamKayit: 1, basariliKayit: 1, basarisizKayit: 0 },
+      sonuclar: [{ basarili: true }],
+    }),
+  );
 });

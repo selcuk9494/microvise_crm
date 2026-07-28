@@ -50,6 +50,7 @@ async function ensureEInvoiceSchema() {
       seller_phone text,
       seller_email text,
       seller_website text,
+      seller_bank_details text,
       akinsoft_sync_enabled text default 'false',
       akinsoft_vpn_name text,
       akinsoft_vpn_host text,
@@ -76,6 +77,7 @@ async function ensureEInvoiceSchema() {
   await query(`
     alter table public.e_invoice_settings
       add column if not exists akinsoft_sync_enabled text default 'false',
+      add column if not exists seller_bank_details text,
       add column if not exists akinsoft_vpn_name text,
       add column if not exists akinsoft_vpn_host text,
       add column if not exists akinsoft_vpn_username text,
@@ -120,6 +122,7 @@ async function ensureEInvoiceSchema() {
       add column if not exists e_invoice_response jsonb,
       add column if not exists e_invoice_error text,
       add column if not exists e_invoice_sent_at timestamptz,
+      add column if not exists e_invoice_sending_at timestamptz,
       add column if not exists irsaliye_no text,
       add column if not exists irsaliye_tarihi date
   `);
@@ -139,6 +142,10 @@ async function ensureEInvoiceSchema() {
 function cleanText(value) {
   const text = String(value ?? '').trim();
   return text.length ? text : null;
+}
+
+function invoiceDescription(settings) {
+  return cleanText(settings.seller_bank_details);
 }
 
 const environmentUrls = {
@@ -517,7 +524,7 @@ function buildPayload({ settings, invoice }) {
         faturaTarihi: isoWithOffset(invoice.invoice_date),
         paraBirimi: invoice.currency || 'TRY',
         faturaTuru: isPurchase ? 'ALIS' : 'SATIS',
-        aciklama: cleanText(invoice.notes),
+        aciklama: invoiceDescription(settings),
         kur: Number(invoice.exchange_rate || 1),
         faturaToplami: round2(invoice.subtotal),
         iskontoToplami: round2(invoice.discount_total),
@@ -706,6 +713,25 @@ async function applyRegisteredSupplierIdentity({ settings, payload, token }) {
   }
 }
 
+function assertSuccessfulMaliyeResponse(response) {
+  const failedCount = Number(response?.ozet?.basarisizKayit || 0);
+  const failedItems = Array.isArray(response?.sonuclar)
+    ? response.sonuclar.filter((item) => item?.basarili === false)
+    : [];
+  if (failedCount > 0 || failedItems.length > 0) {
+    const messages = failedItems
+      .map((item) => cleanText(item?.hataMesaji))
+      .filter(Boolean);
+    const error = new Error(
+      messages.join(' ') ||
+        `${Math.max(failedCount, failedItems.length)} fatura reddedildi.`,
+    );
+    error.response = response;
+    throw error;
+  }
+  return response;
+}
+
 async function sendToMaliye({ settings, payload }) {
   const token = await tokenFor(settings);
   const vkn = encodeURIComponent(requireApiVkn(settings.seller_vkn, 'Satıcı VKN'));
@@ -734,7 +760,7 @@ async function sendToMaliye({ settings, payload }) {
     error.response = json;
     throw error;
   }
-  return json;
+  return assertSuccessfulMaliyeResponse(json);
 }
 
 async function handler(req, res) {
@@ -780,6 +806,7 @@ async function handler(req, res) {
         'seller_phone',
         'seller_email',
         'seller_website',
+        'seller_bank_details',
         'akinsoft_sync_enabled',
         'akinsoft_vpn_name',
         'akinsoft_vpn_host',
@@ -833,6 +860,15 @@ async function handler(req, res) {
       const settings = await getSettings();
       const invoice = await fetchInvoice(invoiceId);
       if (!invoice) return badRequest(req, res, 'Fatura bulunamadı.');
+      if (invoice.e_invoice_status === 'sent') {
+        return badRequest(
+          req,
+          res,
+          `Bu fatura daha önce başarıyla gönderildi${
+            invoice.e_invoice_number ? `: ${invoice.e_invoice_number}` : '.'
+          } Tekrar gönderilemez.`,
+        );
+      }
       if (!Array.isArray(invoice.items) || invoice.items.length === 0) {
         return badRequest(req, res, 'E-fatura için en az bir kalem olmalıdır.');
       }
@@ -842,7 +878,42 @@ async function handler(req, res) {
       }
       const built = buildPayload({ settings, invoice });
 
-      await query(
+      if (action === 'prepare') {
+        const prepared = await query(
+          `
+            update public.invoices
+            set e_invoice_number = $2,
+                e_invoice_uuid = $3,
+                e_invoice_status = 'prepared',
+                e_invoice_environment = $4,
+                e_invoice_payload = $5::jsonb,
+                e_invoice_error = null,
+                updated_at = now()
+            where id = $1
+              and e_invoice_status is distinct from 'sent'
+            returning id
+          `,
+          [
+            invoiceId,
+            built.number,
+            built.uuid,
+            settings.environment,
+            JSON.stringify(built.payload),
+          ],
+        );
+        if (!prepared.rows.length) {
+          return badRequest(req, res, 'Başarıyla gönderilmiş fatura değiştirilemez.');
+        }
+        return ok(req, res, {
+          ok: true,
+          mode: 'prepare',
+          invoiceNumber: built.number,
+          uuid: built.uuid,
+          payload: built.payload,
+        });
+      }
+
+      const claimed = await query(
         `
           update public.invoices
           set e_invoice_number = $2,
@@ -851,8 +922,15 @@ async function handler(req, res) {
               e_invoice_environment = $4,
               e_invoice_payload = $5::jsonb,
               e_invoice_error = null,
+              e_invoice_sending_at = now(),
               updated_at = now()
           where id = $1
+            and e_invoice_status is distinct from 'sent'
+            and (
+              e_invoice_sending_at is null
+              or e_invoice_sending_at < now() - interval '10 minutes'
+            )
+          returning id
         `,
         [
           invoiceId,
@@ -862,15 +940,12 @@ async function handler(req, res) {
           JSON.stringify(built.payload),
         ],
       );
-
-      if (action === 'prepare') {
-        return ok(req, res, {
-          ok: true,
-          mode: 'prepare',
-          invoiceNumber: built.number,
-          uuid: built.uuid,
-          payload: built.payload,
-        });
+      if (!claimed.rows.length) {
+        return badRequest(
+          req,
+          res,
+          'Bu fatura daha önce gönderildi veya gönderim işlemi halen devam ediyor.',
+        );
       }
 
       try {
@@ -882,6 +957,7 @@ async function handler(req, res) {
                 e_invoice_response = $2::jsonb,
                 e_invoice_error = null,
                 e_invoice_sent_at = now(),
+                e_invoice_sending_at = null,
                 updated_at = now()
             where id = $1
           `,
@@ -909,6 +985,7 @@ async function handler(req, res) {
             set e_invoice_status = 'failed',
                 e_invoice_response = $2::jsonb,
                 e_invoice_error = $3,
+                e_invoice_sending_at = null,
                 updated_at = now()
             where id = $1
           `,
@@ -938,6 +1015,7 @@ module.exports.testUtils = {
   createUuidV7,
   validateInvoiceForEInvoice,
   buildPayload,
+  assertSuccessfulMaliyeResponse,
   validatePayloadAgainstApi,
   urlsForEnvironment,
   applyRegisteredSupplierIdentity,

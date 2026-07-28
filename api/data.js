@@ -619,6 +619,7 @@ module.exports = async (req, res) => {
         const offset = (page - 1) * pageSize;
 
         const status = String(req.query.status || '').trim();
+        const eInvoiceStatus = String(req.query.eInvoiceStatus || '').trim();
         const priority = String(req.query.priority || '').trim();
         const technicianId = String(req.query.technicianId || '').trim();
         const startDate = String(req.query.startDate || '').trim();
@@ -1729,6 +1730,11 @@ module.exports = async (req, res) => {
             values.push(status);
             whereSql += ` and i.status = $${values.length}`;
           }
+        }
+        if (eInvoiceStatus === 'sent') {
+          whereSql += ` and i.e_invoice_status = 'sent'`;
+        } else if (eInvoiceStatus === 'not_sent') {
+          whereSql += ` and coalesce(i.e_invoice_status, 'not_sent') <> 'sent'`;
         }
         if (customerId) {
           values.push(customerId);

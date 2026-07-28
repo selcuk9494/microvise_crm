@@ -8,6 +8,7 @@ import 'package:gap/gap.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
@@ -109,6 +110,8 @@ const _defaultSettings = <String, dynamic>{
   'seller_country_code': 'XCT',
   'seller_country': 'Kuzey Kıbrıs Türk Cumhuriyeti',
   'seller_address_line1': 'ATATÜRK CAD YENİŞEHİR EMEK 2 APT. DIŞ KAPI NO:1',
+  'seller_bank_details':
+      'Banka Hesap Bilgileri\nTürkiye İş Bankası\nMicrovise Innovation Ltd\nTL IBAN: TR57 0006 4000 0016 8010 3409 94\nUSD IBAN: TR41 0006 4000 0026 8010 4107 29',
   'next_sales_number': 1,
   'next_purchase_number': 1,
   'akinsoft_sync_enabled': 'false',
@@ -334,6 +337,13 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
 
     final itemIds = items.map((invoice) => invoice.id).toSet();
     _selectedInvoiceIds.removeWhere((id) => !itemIds.contains(id));
+    final selectedSendableCount = items
+        .where(
+          (invoice) =>
+              _selectedInvoiceIds.contains(invoice.id) &&
+              !invoice.isEInvoiceSent,
+        )
+        .length;
     final visibleItems = items.take(_visibleInvoiceLimit).toList();
     final hasHiddenItems = visibleItems.length < items.length;
     final sales = items.where((e) => e.invoiceType == 'sales').length;
@@ -510,7 +520,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                   const Gap(8),
                                   OutlinedButton.icon(
                                     onPressed:
-                                        _selectedInvoiceIds.isEmpty ||
+                                        selectedSendableCount == 0 ||
                                             _bulkDeleting ||
                                             _bulkProcessing
                                         ? null
@@ -641,7 +651,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                     const Gap(8),
                                     OutlinedButton.icon(
                                       onPressed:
-                                          _selectedInvoiceIds.isEmpty ||
+                                          selectedSendableCount == 0 ||
                                               _bulkDeleting ||
                                               _bulkProcessing
                                           ? null
@@ -1054,9 +1064,15 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     final settings = ref.read(eInvoiceSettingsProvider).value ?? const {};
     final isProduction =
         (settings['environment'] ?? 'test').toString() == 'production';
-    final selected = visibleInvoices
+    final allSelected = visibleInvoices
         .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
         .toList(growable: false);
+    final selected = send
+        ? allSelected
+              .where((invoice) => !invoice.isEInvoiceSent)
+              .toList(growable: false)
+        : allSelected;
+    final skippedSent = allSelected.length - selected.length;
     if (selected.isEmpty) return;
 
     final confirmed = send
@@ -1070,7 +1086,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               ),
               content: Text(
                 '${selected.length} fatura için payload hazırlanıp '
-                '${isProduction ? 'canlı' : 'test'} API’ye gönderilsin mi?',
+                '${isProduction ? 'canlı' : 'test'} API’ye gönderilsin mi?'
+                '${skippedSent > 0 ? '\n\nDaha önce gönderilmiş $skippedSent fatura atlanacak.' : ''}',
               ),
               actions: [
                 TextButton(
@@ -1134,6 +1151,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Başarılı: $success • Hatalı: $failed'),
+                if (skippedSent > 0)
+                  Text('Atlanan (önceden gönderilmiş): $skippedSent'),
                 const Gap(12),
                 Expanded(
                   child: DecoratedBox(
@@ -1348,6 +1367,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
                   InvoiceFilter(
                     invoiceType: filter.invoiceType,
                     status: (value ?? '').isEmpty ? null : value,
+                    eInvoiceStatus: filter.eInvoiceStatus,
                     customerId: filter.customerId,
                     startDate: filter.startDate,
                     endDate: filter.endDate,
@@ -1356,6 +1376,46 @@ class _InvoiceFiltersCard extends StatelessWidget {
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.fact_check_rounded),
                   labelText: 'Açık / Kapalı',
+                ),
+              ),
+            ),
+            SizedBox(
+              width: compact ? double.infinity : 210,
+              child: DropdownButtonFormField<String>(
+                initialValue: filter.eInvoiceStatus ?? '',
+                isExpanded: true,
+                items: const [
+                  DropdownMenuItem(
+                    value: '',
+                    child: Text(
+                      'E-Fatura: Tümü',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'sent',
+                    child: Text(
+                      'Gönderilenler',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'not_sent',
+                    child: Text(
+                      'Gönderilmeyenler',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+                onChanged: (value) => onChanged(
+                  filter.copyWith(
+                    eInvoiceStatus: (value ?? '').isEmpty ? null : value,
+                    clearEInvoiceStatus: (value ?? '').isEmpty,
+                  ),
+                ),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.cloud_done_rounded),
+                  labelText: 'E-Fatura Gönderimi',
                 ),
               ),
             ),
@@ -1405,6 +1465,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
       InvoiceFilter(
         invoiceType: filter.invoiceType,
         status: filter.status,
+        eInvoiceStatus: filter.eInvoiceStatus,
         customerId: filter.customerId,
         startDate: isStart ? picked : filter.startDate,
         endDate: isStart ? filter.endDate : picked,
@@ -1700,8 +1761,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   Widget build(BuildContext context) {
     final invoice = widget.invoice;
     final settings = ref.watch(eInvoiceSettingsProvider).value ?? const {};
-    final sendTooltip =
-        (settings['environment'] ?? 'test').toString() == 'production'
+    final alreadySent = invoice.isEInvoiceSent;
+    final sendTooltip = alreadySent
+        ? 'Bu fatura başarıyla gönderildi'
+        : (settings['environment'] ?? 'test').toString() == 'production'
         ? 'Canlı API’ye gönder'
         : 'Test API’ye gönder';
     final money = NumberFormat.currency(
@@ -1796,7 +1859,9 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           ),
           Expanded(
             flex: 2,
-            child: Row(
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
               children: [
                 AppBadge(
                   label: invoice.isActive
@@ -1805,6 +1870,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   tone: invoice.isActive
                       ? _statusTone(invoice.status)
                       : AppBadgeTone.neutral,
+                ),
+                AppBadge(
+                  label: _eInvoiceStatusLabel(invoice.eInvoiceStatus),
+                  tone: _eInvoiceStatusTone(invoice.eInvoiceStatus),
                 ),
               ],
             ),
@@ -1861,8 +1930,17 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   icon: _busy
                       ? Icons.hourglass_empty_rounded
                       : Icons.cloud_upload_rounded,
-                  onPressed: _busy ? null : () => _prepare(send: true),
+                  onPressed: _busy || alreadySent
+                      ? null
+                      : () => _prepare(send: true),
                   primary: true,
+                ),
+                _InvoiceIconAction(
+                  tooltip: invoice.invoiceType == 'purchase'
+                      ? 'Borç Fişi Oluştur'
+                      : 'Alacak Fişi Oluştur',
+                  icon: Icons.assignment_return_rounded,
+                  onPressed: _busy || !alreadySent ? null : _openReturnSlip,
                 ),
                 _InvoiceIconAction(
                   tooltip: 'Özet kopyala',
@@ -1883,6 +1961,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     NumberFormat money,
     String sendTooltip,
   ) {
+    final alreadySent = invoice.isEInvoiceSent;
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
       decoration: const BoxDecoration(
@@ -1960,6 +2039,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                     ? _statusTone(invoice.status)
                     : AppBadgeTone.neutral,
               ),
+              AppBadge(
+                label: _eInvoiceStatusLabel(invoice.eInvoiceStatus),
+                tone: _eInvoiceStatusTone(invoice.eInvoiceStatus),
+              ),
               Text(
                 DateFormat('dd.MM.yyyy').format(invoice.invoiceDate),
                 style: Theme.of(context).textTheme.bodySmall,
@@ -2022,8 +2105,18 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   icon: _busy
                       ? Icons.hourglass_empty_rounded
                       : Icons.cloud_upload_rounded,
-                  onPressed: _busy ? null : () => _prepare(send: true),
+                  onPressed: _busy || alreadySent
+                      ? null
+                      : () => _prepare(send: true),
                   primary: true,
+                ),
+                const Gap(4),
+                _InvoiceIconAction(
+                  tooltip: invoice.invoiceType == 'purchase'
+                      ? 'Borç Fişi Oluştur'
+                      : 'Alacak Fişi Oluştur',
+                  icon: Icons.assignment_return_rounded,
+                  onPressed: _busy || !alreadySent ? null : _openReturnSlip,
                 ),
                 const Gap(4),
                 _InvoiceIconAction(
@@ -2281,6 +2374,85 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     ).showSnackBar(const SnackBar(content: Text('Fatura özeti kopyalandı.')));
   }
 
+  Future<void> _openReturnSlip() async {
+    final invoice = widget.invoice;
+    if (!invoice.isEInvoiceSent) return;
+    final settings = ref.read(eInvoiceSettingsProvider).value ?? const {};
+    final isProduction =
+        (settings['environment'] ?? 'test').toString() == 'production';
+    final documentType = invoice.invoiceType == 'purchase'
+        ? 'BORCFISI'
+        : 'ALACAKFISI';
+    final documentLabel = invoice.invoiceType == 'purchase'
+        ? 'Borç Fişi'
+        : 'Alacak Fişi';
+    final reference = (invoice.eInvoiceNumber ?? '').trim().isNotEmpty
+        ? invoice.eInvoiceNumber!.trim()
+        : invoice.invoiceNumber;
+    final portalUri = Uri.parse(
+      isProduction
+          ? 'https://efatura.maliye.gov.ct.tr/mukellef/sec/'
+          : 'https://test-efatura.maliye.gov.ct.tr/mukellef/sec/',
+    );
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('$documentLabel Oluştur'),
+        content: SizedBox(
+          width: 560,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Maliye belge türü: $documentType',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const Gap(8),
+              SelectableText('Referans e-Fatura: $reference'),
+              const Gap(12),
+              const Text(
+                'Maliye REST API’si iade için zorunlu asıl fatura referansı '
+                'alanını henüz sunmuyor. Belgenin mevzuata uygun kalması için '
+                'Alacak/Borç Fişini Maliye portalında oluşturun.',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: reference));
+              if (!dialogContext.mounted) return;
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(content: Text('Fatura referansı kopyalandı.')),
+              );
+            },
+            icon: const Icon(Icons.copy_rounded),
+            label: const Text('Referansı Kopyala'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              final opened = await launchUrl(
+                portalUri,
+                mode: LaunchMode.externalApplication,
+              );
+              if (!opened || !dialogContext.mounted) return;
+              Navigator.of(dialogContext).pop();
+            },
+            icon: const Icon(Icons.open_in_new_rounded),
+            label: Text('$documentLabel İçin Maliye’yi Aç'),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _statusLabel(String status) {
     return switch (status) {
       'draft' => 'Taslak',
@@ -2298,6 +2470,26 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       'partial' => AppBadgeTone.warning,
       'cancelled' => AppBadgeTone.error,
       _ => AppBadgeTone.primary,
+    };
+  }
+
+  String _eInvoiceStatusLabel(String status) {
+    return switch (status) {
+      'sent' => 'E-Fatura Gönderildi',
+      'prepared' => 'E-Fatura Hazır',
+      'failed' => 'E-Fatura Hatalı',
+      'cancelled' => 'E-Fatura İptal',
+      _ => 'E-Fatura Gönderilmedi',
+    };
+  }
+
+  AppBadgeTone _eInvoiceStatusTone(String status) {
+    return switch (status) {
+      'sent' => AppBadgeTone.success,
+      'prepared' => AppBadgeTone.warning,
+      'failed' => AppBadgeTone.error,
+      'cancelled' => AppBadgeTone.neutral,
+      _ => AppBadgeTone.neutral,
     };
   }
 }
@@ -3736,6 +3928,12 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                   _field('seller_title', 'Satıcı Ünvanı'),
                   const Gap(10),
                   _field('seller_address_line1', 'Adres Satırı 1'),
+                  const Gap(10),
+                  _field(
+                    'seller_bank_details',
+                    'Faturada Gösterilecek Banka Hesapları',
+                    maxLines: 6,
+                  ),
                   const Gap(10),
                   Row(
                     children: [
@@ -6097,6 +6295,7 @@ const _settingKeys = [
   'seller_phone',
   'seller_email',
   'seller_website',
+  'seller_bank_details',
   'next_sales_number',
   'next_purchase_number',
   'akinsoft_sync_enabled',

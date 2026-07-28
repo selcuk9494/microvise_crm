@@ -4,82 +4,88 @@ import '../work_orders/currency_service.dart';
 import 'invoice_model.dart';
 
 // Fatura listesi provider
-final invoicesProvider = FutureProvider.autoDispose.family<List<Invoice>, InvoiceFilter>((ref, filter) async {
-  final apiClient = ref.read(apiClientProvider);
-  if (apiClient == null) return [];
+final invoicesProvider = FutureProvider.autoDispose
+    .family<List<Invoice>, InvoiceFilter>((ref, filter) async {
+      final apiClient = ref.read(apiClientProvider);
+      if (apiClient == null) return [];
 
-  final response = await apiClient.getJson(
-    '/data',
-    queryParameters: {
-      'resource': 'invoices_list',
-      if (filter.invoiceType != null) 'invoiceType': filter.invoiceType!,
-      if (filter.status != null) 'status': filter.status!,
-      if (filter.customerId != null) 'customerId': filter.customerId!,
-      if (filter.startDate != null)
-        'startDate': filter.startDate!.toIso8601String().substring(0, 10),
-      if (filter.endDate != null)
-        'endDate': filter.endDate!.toIso8601String().substring(0, 10),
-    },
-  );
-  return ((response['items'] as List?) ?? const [])
-      .whereType<Map<String, dynamic>>()
-      .map(Invoice.fromJson)
-      .toList(growable: false);
-});
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {
+          'resource': 'invoices_list',
+          if (filter.invoiceType != null) 'invoiceType': filter.invoiceType!,
+          if (filter.status != null) 'status': filter.status!,
+          if (filter.eInvoiceStatus != null)
+            'eInvoiceStatus': filter.eInvoiceStatus!,
+          if (filter.customerId != null) 'customerId': filter.customerId!,
+          if (filter.startDate != null)
+            'startDate': filter.startDate!.toIso8601String().substring(0, 10),
+          if (filter.endDate != null)
+            'endDate': filter.endDate!.toIso8601String().substring(0, 10),
+        },
+      );
+      return ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(Invoice.fromJson)
+          .toList(growable: false);
+    });
 
 // Tek fatura detay
-final invoiceDetailProvider = FutureProvider.autoDispose.family<Invoice?, String>((ref, invoiceId) async {
-  final apiClient = ref.read(apiClientProvider);
-  if (apiClient == null) return null;
-  final row = await apiClient.getJson(
-    '/data',
-    queryParameters: {'resource': 'invoice_detail', 'invoiceId': invoiceId},
-  );
-  if (row.isEmpty) return null;
-  return Invoice.fromJson(row);
-});
+final invoiceDetailProvider = FutureProvider.autoDispose
+    .family<Invoice?, String>((ref, invoiceId) async {
+      final apiClient = ref.read(apiClientProvider);
+      if (apiClient == null) return null;
+      final row = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'invoice_detail', 'invoiceId': invoiceId},
+      );
+      if (row.isEmpty) return null;
+      return Invoice.fromJson(row);
+    });
 
 // Cari hesap bakiyeleri
-final accountBalancesProvider = FutureProvider.autoDispose<List<AccountBalance>>((ref) async {
-  final apiClient = ref.read(apiClientProvider);
-  if (apiClient == null) return [];
-  final response = await apiClient.getJson(
-    '/data',
-    queryParameters: {'resource': 'account_balances'},
-  );
-  return ((response['items'] as List?) ?? const [])
-      .whereType<Map<String, dynamic>>()
-      .map(AccountBalance.fromJson)
-      .toList(growable: false);
-});
+final accountBalancesProvider =
+    FutureProvider.autoDispose<List<AccountBalance>>((ref) async {
+      final apiClient = ref.read(apiClientProvider);
+      if (apiClient == null) return [];
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'account_balances'},
+      );
+      return ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(AccountBalance.fromJson)
+          .toList(growable: false);
+    });
 
 // Cari hesap işlemleri (tahsilat/ödeme)
-final transactionsProvider = FutureProvider.autoDispose.family<List<Transaction>, TransactionFilter>((ref, filter) async {
-  final apiClient = ref.read(apiClientProvider);
-  if (apiClient == null) return [];
-  final response = await apiClient.getJson(
-    '/data',
-    queryParameters: {
-      'resource': 'transactions_list',
-      if (filter.customerId != null) 'customerId': filter.customerId!,
-      if (filter.transactionType != null)
-        'transactionType': filter.transactionType!,
-      if (filter.invoiceId != null) 'invoiceId': filter.invoiceId!,
-      if (filter.startDate != null)
-        'startDate': filter.startDate!.toIso8601String().substring(0, 10),
-      if (filter.endDate != null)
-        'endDate': filter.endDate!.toIso8601String().substring(0, 10),
-      'includePassive': filter.includePassive.toString(),
-    },
-  );
-  return ((response['items'] as List?) ?? const [])
-      .whereType<Map<String, dynamic>>()
-      .map(Transaction.fromJson)
-      .toList(growable: false);
-});
+final transactionsProvider = FutureProvider.autoDispose
+    .family<List<Transaction>, TransactionFilter>((ref, filter) async {
+      final apiClient = ref.read(apiClientProvider);
+      if (apiClient == null) return [];
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {
+          'resource': 'transactions_list',
+          if (filter.customerId != null) 'customerId': filter.customerId!,
+          if (filter.transactionType != null)
+            'transactionType': filter.transactionType!,
+          if (filter.invoiceId != null) 'invoiceId': filter.invoiceId!,
+          if (filter.startDate != null)
+            'startDate': filter.startDate!.toIso8601String().substring(0, 10),
+          if (filter.endDate != null)
+            'endDate': filter.endDate!.toIso8601String().substring(0, 10),
+          'includePassive': filter.includePassive.toString(),
+        },
+      );
+      return ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(Transaction.fromJson)
+          .toList(growable: false);
+    });
 
-final exchangeRatesProvider =
-    FutureProvider.autoDispose.family<Map<String, ExchangeRate>, DateTime?>((ref, date) async {
+final exchangeRatesProvider = FutureProvider.autoDispose
+    .family<Map<String, ExchangeRate>, DateTime?>((ref, date) async {
       final targetDate = DateTime(
         (date ?? DateTime.now()).year,
         (date ?? DateTime.now()).month,
@@ -113,24 +119,27 @@ Future<Map<String, ExchangeRate>> _fallbackRates(DateTime date) async {
 }
 
 // Ürün/Hizmet listesi
-final productsProvider = FutureProvider.autoDispose.family<List<Product>, String?>((ref, category) async {
-  final apiClient = ref.read(apiClientProvider);
-  if (apiClient == null) return [];
-  final response = await apiClient.getJson(
-    '/data',
-    queryParameters: {
-      'resource': 'products_list',
-      if ((category ?? '').trim().isNotEmpty) 'category': category!.trim(),
-    },
-  );
-  return ((response['items'] as List?) ?? const [])
-      .whereType<Map<String, dynamic>>()
-      .map(Product.fromJson)
-      .toList(growable: false);
-});
+final productsProvider = FutureProvider.autoDispose
+    .family<List<Product>, String?>((ref, category) async {
+      final apiClient = ref.read(apiClientProvider);
+      if (apiClient == null) return [];
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {
+          'resource': 'products_list',
+          if ((category ?? '').trim().isNotEmpty) 'category': category!.trim(),
+        },
+      );
+      return ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(Product.fromJson)
+          .toList(growable: false);
+    });
 
 // Stok seviyeleri
-final stockLevelsProvider = FutureProvider.autoDispose<List<Product>>((ref) async {
+final stockLevelsProvider = FutureProvider.autoDispose<List<Product>>((
+  ref,
+) async {
   final apiClient = ref.read(apiClientProvider);
   if (apiClient == null) return [];
   final response = await apiClient.getJson(
@@ -154,23 +163,28 @@ final stockLevelsProvider = FutureProvider.autoDispose<List<Product>>((ref) asyn
 });
 
 // Müşteri açık faturaları
-final customerOpenInvoicesProvider = FutureProvider.autoDispose.family<List<Invoice>, String>((ref, customerId) async {
-  final apiClient = ref.read(apiClientProvider);
-  if (apiClient == null) return [];
-  final response = await apiClient.getJson(
-    '/data',
-    queryParameters: {'resource': 'customer_open_invoices', 'customerId': customerId},
-  );
-  return ((response['items'] as List?) ?? const [])
-      .whereType<Map<String, dynamic>>()
-      .map(Invoice.fromJson)
-      .toList(growable: false);
-});
+final customerOpenInvoicesProvider = FutureProvider.autoDispose
+    .family<List<Invoice>, String>((ref, customerId) async {
+      final apiClient = ref.read(apiClientProvider);
+      if (apiClient == null) return [];
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {
+          'resource': 'customer_open_invoices',
+          'customerId': customerId,
+        },
+      );
+      return ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(Invoice.fromJson)
+          .toList(growable: false);
+    });
 
 // Filter sınıfları
 class InvoiceFilter {
   final String? invoiceType;
   final String? status;
+  final String? eInvoiceStatus;
   final String? customerId;
   final DateTime? startDate;
   final DateTime? endDate;
@@ -178,6 +192,7 @@ class InvoiceFilter {
   const InvoiceFilter({
     this.invoiceType,
     this.status,
+    this.eInvoiceStatus,
     this.customerId,
     this.startDate,
     this.endDate,
@@ -186,16 +201,21 @@ class InvoiceFilter {
   InvoiceFilter copyWith({
     String? invoiceType,
     String? status,
+    String? eInvoiceStatus,
     String? customerId,
     DateTime? startDate,
     DateTime? endDate,
     bool clearInvoiceType = false,
     bool clearStatus = false,
+    bool clearEInvoiceStatus = false,
     bool clearCustomerId = false,
   }) {
     return InvoiceFilter(
       invoiceType: clearInvoiceType ? null : (invoiceType ?? this.invoiceType),
       status: clearStatus ? null : (status ?? this.status),
+      eInvoiceStatus: clearEInvoiceStatus
+          ? null
+          : (eInvoiceStatus ?? this.eInvoiceStatus),
       customerId: clearCustomerId ? null : (customerId ?? this.customerId),
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,
@@ -222,12 +242,17 @@ class TransactionFilter {
 }
 
 // Fatura numarası üretimi
-final invoiceNumberProvider = FutureProvider.autoDispose.family<String, String>((ref, invoiceType) async {
-  final apiClient = ref.read(apiClientProvider);
-  if (apiClient == null) return '';
-  final response = await apiClient.getJson(
-    '/data',
-    queryParameters: {'resource': 'invoice_number', 'invoiceType': invoiceType},
-  );
-  return (response['value'] ?? '').toString();
-});
+final invoiceNumberProvider = FutureProvider.autoDispose.family<String, String>(
+  (ref, invoiceType) async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return '';
+    final response = await apiClient.getJson(
+      '/data',
+      queryParameters: {
+        'resource': 'invoice_number',
+        'invoiceType': invoiceType,
+      },
+    );
+    return (response['value'] ?? '').toString();
+  },
+);
