@@ -274,7 +274,38 @@ function validateParty(party, label) {
   return errors;
 }
 
-function validateInvoiceForEInvoice(settings, invoice) {
+function calendarDateUtc(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const timestamp = Date.UTC(year, month - 1, day);
+  const parsed = new Date(timestamp);
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return timestamp;
+}
+
+function currentCalendarDateUtc(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Famagusta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const values = Object.fromEntries(
+    parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]),
+  );
+  return Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day));
+}
+
+function validateInvoiceForEInvoice(settings, invoice, now = new Date()) {
   const errors = [];
   try {
     requireStoredVkn(settings.seller_vkn, 'Satıcı VKN');
@@ -299,8 +330,20 @@ function validateInvoiceForEInvoice(settings, invoice) {
   if (Number(invoice.exchange_rate || 0) <= 0) {
     errors.push('Kur sıfırdan büyük olmalıdır.');
   }
-  if (Number.isNaN(new Date(invoice.invoice_date).getTime())) {
+  const invoiceDate = calendarDateUtc(invoice.invoice_date);
+  if (invoiceDate == null) {
     errors.push('Fatura tarihi geçersizdir.');
+  } else {
+    const ageInDays = Math.floor(
+      (currentCalendarDateUtc(now) - invoiceDate) / (24 * 60 * 60 * 1000),
+    );
+    if (ageInDays > 14) {
+      errors.push(
+        `Fatura tarihi ${ageInDays} gün önce. Maliye en fazla 14 günlük faturayı kabul eder.`,
+      );
+    } else if (ageInDays < 0) {
+      errors.push('Fatura tarihi gelecekte olamaz.');
+    }
   }
   if (invoice.irsaliye_no && !invoice.irsaliye_tarihi) {
     errors.push('İrsaliye numarası girildiğinde irsaliye tarihi zorunludur.');

@@ -129,8 +129,27 @@ function validInvoice() {
 
 test('geçerli faturanın zorunlu alan ve toplam kontrolleri geçer', () => {
   assert.deepEqual(
-    validateInvoiceForEInvoice(validSettings(), validInvoice()),
+    validateInvoiceForEInvoice(
+      validSettings(),
+      validInvoice(),
+      new Date('2026-07-28T12:00:00+03:00'),
+    ),
     [],
+  );
+});
+
+test('14 günlük faturaya izin verir, 15 günlük faturayı gönderimden önce reddeder', () => {
+  const now = new Date('2026-07-28T12:00:00+03:00');
+  const fourteenDaysOld = { ...validInvoice(), invoice_date: '2026-07-14' };
+  const fifteenDaysOld = { ...validInvoice(), invoice_date: '2026-07-13' };
+
+  assert.deepEqual(
+    validateInvoiceForEInvoice(validSettings(), fourteenDaysOld, now),
+    [],
+  );
+  assert.match(
+    validateInvoiceForEInvoice(validSettings(), fifteenDaysOld, now).join(' '),
+    /15 gün önce.*en fazla 14 günlük/,
   );
 });
 
@@ -139,7 +158,11 @@ test('eksik adres, uzun şube ve tutarsız toplamı gönderimden önce yakalar',
   const invoice = validInvoice();
   invoice.customer = { ...invoice.customer, address: '' };
   invoice.grand_total = 999;
-  const errors = validateInvoiceForEInvoice(settings, invoice).join(' ');
+  const errors = validateInvoiceForEInvoice(
+    settings,
+    invoice,
+    new Date('2026-07-28T12:00:00+03:00'),
+  ).join(' ');
   assert.match(errors, /en fazla 9 karakter/);
   assert.match(errors, /Müşteri adresi zorunludur/);
   assert.match(errors, /grand_total tutarsız/);
