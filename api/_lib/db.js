@@ -11,14 +11,18 @@ function normalizeConnectionString(raw) {
 }
 
 function resolveDbConfig() {
-  const connectionString = normalizeConnectionString(
+  let connectionString = normalizeConnectionString(
     process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.NEON_DATABASE_URL,
   );
   if (connectionString) {
     let sslMode = process.env.PGSSLMODE || '';
+    let parsedConnectionUrl = null;
     try {
       const parsed = new URL(connectionString);
-      sslMode = parsed.searchParams.get('sslmode') || sslMode;
+      parsedConnectionUrl = parsed;
+      if (!sslMode) {
+        sslMode = parsed.searchParams.get('sslmode') || '';
+      }
     } catch (_) {
       // ignore URL parse errors and fall back to PGSSLMODE
     }
@@ -26,6 +30,11 @@ function resolveDbConfig() {
     const normalized = String(sslMode || '').toLowerCase();
     const ssl =
       normalized === 'disable' || normalized === 'false' ? false : { rejectUnauthorized: false };
+    if (ssl === false && parsedConnectionUrl) {
+      parsedConnectionUrl.searchParams.delete('sslmode');
+      parsedConnectionUrl.searchParams.delete('ssl');
+      connectionString = parsedConnectionUrl.toString();
+    }
 
     return {
       connectionString,

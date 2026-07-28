@@ -10,6 +10,7 @@ const {
   createUuidV7,
   validateInvoiceForEInvoice,
   buildPayload,
+  urlsForEnvironment,
 } = require('../api/e-invoice').testUtils;
 
 test('10 haneli VKN değerinden yalnızca ilk sıfırı kaldırır', () => {
@@ -28,6 +29,19 @@ test('CRM içinde VKN 10 hane saklanır', () => {
   assert.equal(normalizeStoredVkn('620009058'), '0620009058');
   assert.equal(requireStoredVkn('0007033259'), '0007033259');
   assert.throws(() => requireStoredVkn('7033259'), /10 haneli/);
+});
+
+test('test ve canlı ortam URL adreslerini dokümana göre seçer', () => {
+  assert.deepEqual(urlsForEnvironment('test'), {
+    apiBaseUrl: 'https://test-efatura.maliye.gov.ct.tr/api',
+    tokenUrl:
+      'https://keycloak.maliye.gov.ct.tr/realms/test/protocol/openid-connect/token',
+  });
+  assert.deepEqual(urlsForEnvironment('production'), {
+    apiBaseUrl: 'https://efatura.maliye.gov.ct.tr/api',
+    tokenUrl:
+      'https://keycloak.maliye.gov.ct.tr/realms/production/protocol/openid-connect/token',
+  });
 });
 
 test('ayraçları temizledikten sonra VKN değerini normalize eder', () => {
@@ -145,6 +159,8 @@ test('özel matrah ve irsaliye alanlarını Maliye payloadına ekler', () => {
   const built = buildPayload({ settings: validSettings(), invoice });
   const sentInvoice = built.payload.faturalar[0];
   assert.equal(sentInvoice.tedarikci.vkn, '620009058');
+  assert.equal(sentInvoice.tedarikci.belgeNo, '620009058');
+  assert.equal(sentInvoice.tedarikci.belgeTipi, 'VERGI_SICILNO');
   assert.equal(sentInvoice.musteri.vkn, '007033259');
   assert.equal(sentInvoice.irsaliyeNo, 'IRS-1');
   assert.match(sentInvoice.irsaliyeTarihi, /^2026-07-28T/);

@@ -99,7 +99,7 @@ const _defaultSettings = <String, dynamic>{
   'environment': 'test',
   'api_base_url': 'https://test-efatura.maliye.gov.ct.tr/api',
   'token_url':
-      'https://keycloak.maliye.gov.ct.tr/realms/vergi-stage/protocol/openid-connect/token',
+      'https://keycloak.maliye.gov.ct.tr/realms/test/protocol/openid-connect/token',
   'client_id': 'efatura-frontend',
   'seller_vkn': '0620009058',
   'seller_title': 'MICROVISE INNOVATION LTD',
@@ -115,6 +115,19 @@ const _defaultSettings = <String, dynamic>{
   'akinsoft_mssql_port': '1433',
   'akinsoft_database_year': '2026',
   'akinsoft_database_pattern': 'WOLVOX8_MICO_{year}_WOLVOX',
+};
+
+const _environmentEndpoints = <String, Map<String, String>>{
+  'test': {
+    'api_base_url': 'https://test-efatura.maliye.gov.ct.tr/api',
+    'token_url':
+        'https://keycloak.maliye.gov.ct.tr/realms/test/protocol/openid-connect/token',
+  },
+  'production': {
+    'api_base_url': 'https://efatura.maliye.gov.ct.tr/api',
+    'token_url':
+        'https://keycloak.maliye.gov.ct.tr/realms/production/protocol/openid-connect/token',
+  },
 };
 
 class EInvoiceScreen extends ConsumerWidget {
@@ -294,6 +307,13 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
   Widget build(BuildContext context) {
     final invoicesAsync = ref.watch(invoicesProvider(_filter));
     final customersAsync = ref.watch(customersLookupProvider);
+    final eInvoiceSettings =
+        ref.watch(eInvoiceSettingsProvider).value ?? const {};
+    final isProduction =
+        (eInvoiceSettings['environment'] ?? 'test').toString() == 'production';
+    final apiSendLabel = isProduction
+        ? 'Canlı API’ye Gönder'
+        : 'Test API’ye Gönder';
 
     if (invoicesAsync.hasValue) {
       _lastInvoices = invoicesAsync.value ?? const [];
@@ -715,7 +735,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                               Icons.cloud_upload_rounded,
                                               size: 18,
                                             ),
-                                      label: const Text('Test API’ye Gönder'),
+                                      label: Text(apiSendLabel),
                                     ),
                                     const Gap(8),
                                     FilledButton.icon(
@@ -1031,6 +1051,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     List<Invoice> visibleInvoices, {
     required bool send,
   }) async {
+    final settings = ref.read(eInvoiceSettingsProvider).value ?? const {};
+    final isProduction =
+        (settings['environment'] ?? 'test').toString() == 'production';
     final selected = visibleInvoices
         .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
         .toList(growable: false);
@@ -1040,9 +1063,14 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         ? await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              title: const Text('Seçilenleri test API’ye gönder'),
+              title: Text(
+                isProduction
+                    ? 'Seçilenleri canlı API’ye gönder'
+                    : 'Seçilenleri test API’ye gönder',
+              ),
               content: Text(
-                '${selected.length} fatura için payload hazırlanıp test API’ye gönderilsin mi?',
+                '${selected.length} fatura için payload hazırlanıp '
+                '${isProduction ? 'canlı' : 'test'} API’ye gönderilsin mi?',
               ),
               actions: [
                 TextButton(
@@ -1671,6 +1699,11 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   @override
   Widget build(BuildContext context) {
     final invoice = widget.invoice;
+    final settings = ref.watch(eInvoiceSettingsProvider).value ?? const {};
+    final sendTooltip =
+        (settings['environment'] ?? 'test').toString() == 'production'
+        ? 'Canlı API’ye gönder'
+        : 'Test API’ye gönder';
     final money = NumberFormat.currency(
       locale: 'tr_TR',
       symbol: invoice.currency == 'TRY' ? '₺' : '${invoice.currency} ',
@@ -1678,7 +1711,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     );
 
     if (MediaQuery.sizeOf(context).width < 900) {
-      return _buildCompactRow(context, invoice, money);
+      return _buildCompactRow(context, invoice, money, sendTooltip);
     }
 
     return Container(
@@ -1824,7 +1857,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   onPressed: _busy ? null : () => _prepare(send: false),
                 ),
                 _InvoiceIconAction(
-                  tooltip: 'Test API’ye gönder',
+                  tooltip: sendTooltip,
                   icon: _busy
                       ? Icons.hourglass_empty_rounded
                       : Icons.cloud_upload_rounded,
@@ -1848,6 +1881,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     BuildContext context,
     Invoice invoice,
     NumberFormat money,
+    String sendTooltip,
   ) {
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
@@ -1984,7 +2018,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 ),
                 const Gap(4),
                 _InvoiceIconAction(
-                  tooltip: 'Test API’ye gönder',
+                  tooltip: sendTooltip,
                   icon: _busy
                       ? Icons.hourglass_empty_rounded
                       : Icons.cloud_upload_rounded,
@@ -3606,6 +3640,16 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
   TextEditingController _c(String key) =>
       _controllers.putIfAbsent(key, TextEditingController.new);
 
+  void _selectEnvironment(String value) {
+    final environment = value == 'production' ? 'production' : 'test';
+    final endpoints = _environmentEndpoints[environment]!;
+    setState(() {
+      _environment = environment;
+      _c('api_base_url').text = endpoints['api_base_url']!;
+      _c('token_url').text = endpoints['token_url']!;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final settingsAsync = ref.watch(eInvoiceSettingsProvider);
@@ -3678,8 +3722,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                               child: Text('Canlı'),
                             ),
                           ],
-                          onChanged: (v) =>
-                              setState(() => _environment = v ?? 'test'),
+                          onChanged: (v) => _selectEnvironment(v ?? 'test'),
                           decoration: const InputDecoration(labelText: 'Ortam'),
                         ),
                       ),
@@ -3986,6 +4029,9 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
     setState(() => _saving = true);
     final existing = await _loadLocalEInvoiceSettings();
     final settings = <String, dynamic>{'environment': _environment};
+    final environmentEndpoints = _environmentEndpoints[_environment]!;
+    _c('api_base_url').text = environmentEndpoints['api_base_url']!;
+    _c('token_url').text = environmentEndpoints['token_url']!;
     for (final key in _settingKeys) {
       final text = _c(key).text.trim();
       if (text.isEmpty && _secretSettingKeys.contains(key)) {

@@ -34,7 +34,7 @@ async function ensureEInvoiceSchema() {
       id uuid primary key default gen_random_uuid(),
       environment text not null default 'test',
       api_base_url text not null default 'https://test-efatura.maliye.gov.ct.tr/api',
-      token_url text not null default 'https://keycloak.maliye.gov.ct.tr/realms/vergi-stage/protocol/openid-connect/token',
+      token_url text not null default 'https://keycloak.maliye.gov.ct.tr/realms/test/protocol/openid-connect/token',
       client_id text not null default 'efatura-frontend',
       username text,
       password text,
@@ -98,7 +98,7 @@ async function ensureEInvoiceSchema() {
     select
       'test',
       'https://test-efatura.maliye.gov.ct.tr/api',
-      'https://keycloak.maliye.gov.ct.tr/realms/vergi-stage/protocol/openid-connect/token',
+      'https://keycloak.maliye.gov.ct.tr/realms/test/protocol/openid-connect/token',
       'efatura-frontend',
       '0620009058',
       'MICROVISE INNOVATION LTD',
@@ -139,6 +139,23 @@ async function ensureEInvoiceSchema() {
 function cleanText(value) {
   const text = String(value ?? '').trim();
   return text.length ? text : null;
+}
+
+const environmentUrls = {
+  test: {
+    apiBaseUrl: 'https://test-efatura.maliye.gov.ct.tr/api',
+    tokenUrl:
+      'https://keycloak.maliye.gov.ct.tr/realms/test/protocol/openid-connect/token',
+  },
+  production: {
+    apiBaseUrl: 'https://efatura.maliye.gov.ct.tr/api',
+    tokenUrl:
+      'https://keycloak.maliye.gov.ct.tr/realms/production/protocol/openid-connect/token',
+  },
+};
+
+function urlsForEnvironment(environment) {
+  return environmentUrls[environment === 'production' ? 'production' : 'test'];
 }
 
 function normalizeDigits(value) {
@@ -334,6 +351,7 @@ function validateInvoiceForEInvoice(settings, invoice) {
 }
 
 function partyFromSettings(settings) {
+  const apiVkn = requireApiVkn(settings.seller_vkn, 'Satıcı VKN');
   return {
     ulkeKodu: cleanText(settings.seller_country_code) || 'XCT',
     ulke: cleanText(settings.seller_country) || 'Kuzey Kıbrıs Türk Cumhuriyeti',
@@ -344,7 +362,9 @@ function partyFromSettings(settings) {
     email: cleanText(settings.seller_email),
     webSitesi: cleanText(settings.seller_website),
     unvan: cleanText(settings.seller_title),
-    vkn: requireApiVkn(settings.seller_vkn, 'Satıcı VKN'),
+    vkn: apiVkn,
+    belgeNo: apiVkn,
+    belgeTipi: 'VERGI_SICILNO',
   };
 }
 
@@ -528,7 +548,8 @@ async function tokenFor(settings) {
   params.set('username', settings.username);
   params.set('password', settings.password);
 
-  const response = await fetch(settings.token_url, {
+  const urls = urlsForEnvironment(settings.environment);
+  const response = await fetch(urls.tokenUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: params.toString(),
@@ -594,7 +615,7 @@ async function apiGet({ base, path, token }) {
 }
 
 async function validatePayloadAgainstApi({ settings, payload, token }) {
-  const base = String(settings.api_base_url || '').replace(/\/+$/, '');
+  const base = urlsForEnvironment(settings.environment).apiBaseUrl;
   const vkn = encodeURIComponent(requireApiVkn(settings.seller_vkn, 'Satıcı VKN'));
   const [invoiceTypesRaw, currenciesRaw, taxesRaw, unitsRaw, branchesRaw] =
     await Promise.all([
@@ -655,10 +676,41 @@ async function validatePayloadAgainstApi({ settings, payload, token }) {
   if (errors.length) throw new Error(errors.join(' '));
 }
 
+async function applyRegisteredSupplierIdentity({ settings, payload, token }) {
+  const base = urlsForEnvironment(settings.environment).apiBaseUrl;
+  const sellerVkn = requireApiVkn(settings.seller_vkn, 'Satıcı VKN');
+  const registeredRaw = await apiGet({
+    base,
+    path: `/mukellefler/${encodeURIComponent(sellerVkn)}`,
+    token,
+  });
+  const registered =
+    registeredRaw?.data && typeof registeredRaw.data === 'object'
+      ? registeredRaw.data
+      : registeredRaw;
+  const registeredTitle =
+    cleanText(registered?.unvan) ||
+    cleanText(registered?.ticariUnvan) ||
+    cleanText(settings.seller_title);
+  const registeredDocumentNumber =
+    cleanText(registered?.belgeNo) || sellerVkn;
+  const registeredDocumentType =
+    cleanText(registered?.belgeTipi) || 'VERGI_SICILNO';
+
+  for (const invoice of payload.faturalar || []) {
+    const supplier = invoice?.tedarikci;
+    if (!supplier || normalizeApiVkn(supplier.vkn) !== sellerVkn) continue;
+    supplier.unvan = registeredTitle;
+    supplier.belgeNo = registeredDocumentNumber;
+    supplier.belgeTipi = registeredDocumentType;
+  }
+}
+
 async function sendToMaliye({ settings, payload }) {
   const token = await tokenFor(settings);
   const vkn = encodeURIComponent(requireApiVkn(settings.seller_vkn, 'Satıcı VKN'));
-  const base = String(settings.api_base_url || '').replace(/\/+$/, '');
+  const base = urlsForEnvironment(settings.environment).apiBaseUrl;
+  await applyRegisteredSupplierIdentity({ settings, payload, token });
   await validatePayloadAgainstApi({ settings, payload, token });
   const response = await fetch(`${base}/mukellefler/${vkn}/faturalar`, {
     method: 'POST',
@@ -756,6 +808,12 @@ async function handler(req, res) {
           return badRequest(req, res, error.message);
         }
       }
+      const selectedEnvironment =
+        picked.environment === 'production' ? 'production' : 'test';
+      const selectedUrls = urlsForEnvironment(selectedEnvironment);
+      picked.environment = selectedEnvironment;
+      picked.api_base_url = selectedUrls.apiBaseUrl;
+      picked.token_url = selectedUrls.tokenUrl;
       picked.updated_at = new Date().toISOString();
       if (user.auth_user_id) picked.created_by = user.auth_user_id;
 
@@ -881,4 +939,6 @@ module.exports.testUtils = {
   validateInvoiceForEInvoice,
   buildPayload,
   validatePayloadAgainstApi,
+  urlsForEnvironment,
+  applyRegisteredSupplierIdentity,
 };

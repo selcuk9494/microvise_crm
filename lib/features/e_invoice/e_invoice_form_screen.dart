@@ -108,6 +108,11 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
     final customersAsync = ref.watch(customersLookupProvider);
     final productsAsync = ref.watch(productsProvider(null));
     final taxRatesAsync = ref.watch(taxRatesProvider);
+    final eInvoiceSettings =
+        ref.watch(eInvoiceSettingsProvider).value ?? const {};
+    final isProduction =
+        (eInvoiceSettings['environment'] ?? 'test').toString() == 'production';
+    final apiEnvironmentLabel = isProduction ? 'canlı' : 'test';
     final compactAppBar = MediaQuery.sizeOf(context).width < 430;
     final title =
         '${_isEditing ? 'Düzenle - ' : ''}${_isSales ? 'Satış E-Faturası' : 'Alış Faturası'}';
@@ -246,6 +251,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                   setState(() => _sendAfterSave = value),
               onSaveDraft: () => _save(status: 'draft'),
               onSaveOpen: () => _save(status: 'open'),
+              apiEnvironmentLabel: apiEnvironmentLabel,
             );
 
             if (wide) {
@@ -471,7 +477,9 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
       if (!mounted) return;
       _showMessage(
         _sendAfterSave && _isSales && status != 'draft'
-            ? 'Fatura kaydedildi ve test API’ye gönderildi.'
+            ? 'Fatura kaydedildi ve '
+                  '${(ref.read(eInvoiceSettingsProvider).value?['environment'] ?? 'test') == 'production' ? 'canlı' : 'test'} '
+                  'API’ye gönderildi.'
             : 'Fatura kaydedildi.',
       );
       Navigator.of(context).pop();
@@ -2195,6 +2203,7 @@ class _SummaryPanel extends StatelessWidget {
     required this.onSendAfterSaveChanged,
     required this.onSaveDraft,
     required this.onSaveOpen,
+    required this.apiEnvironmentLabel,
   });
 
   final double subtotal;
@@ -2208,6 +2217,7 @@ class _SummaryPanel extends StatelessWidget {
   final ValueChanged<bool> onSendAfterSaveChanged;
   final VoidCallback onSaveDraft;
   final VoidCallback onSaveOpen;
+  final String apiEnvironmentLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -2237,7 +2247,7 @@ class _SummaryPanel extends StatelessWidget {
             SwitchListTile(
               value: sendAfterSave,
               onChanged: saving ? null : onSendAfterSaveChanged,
-              title: const Text('Kaydet ve test API’ye gönder'),
+              title: Text('Kaydet ve $apiEnvironmentLabel API’ye gönder'),
               contentPadding: EdgeInsets.zero,
             ),
           const Gap(8),
