@@ -342,7 +342,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         .where(
           (invoice) =>
               _selectedInvoiceIds.contains(invoice.id) &&
-              !invoice.isEInvoiceSent,
+              invoice.canSendEInvoiceTo(isProduction ? 'production' : 'test'),
         )
         .length;
     final visibleItems = items.take(_visibleInvoiceLimit).toList();
@@ -1070,7 +1070,11 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         .toList(growable: false);
     final selected = send
         ? allSelected
-              .where((invoice) => !invoice.isEInvoiceSent)
+              .where(
+                (invoice) => invoice.canSendEInvoiceTo(
+                  isProduction ? 'production' : 'test',
+                ),
+              )
               .toList(growable: false)
         : allSelected;
     final skippedSent = allSelected.length - selected.length;
@@ -1763,9 +1767,16 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     final invoice = widget.invoice;
     final settings = ref.watch(eInvoiceSettingsProvider).value ?? const {};
     final alreadySent = invoice.isEInvoiceSent;
-    final sendTooltip = alreadySent
-        ? 'Bu fatura başarıyla gönderildi'
-        : (settings['environment'] ?? 'test').toString() == 'production'
+    final environment = (settings['environment'] ?? 'test').toString();
+    final canSend = invoice.canSendEInvoiceTo(environment);
+    final sendTooltip =
+        alreadySent &&
+            invoice.eInvoiceEnvironment == 'test' &&
+            environment == 'production'
+        ? 'Testte gönderildi; canlı API’ye gönder'
+        : alreadySent
+        ? 'Bu fatura bu ortamda başarıyla gönderildi'
+        : environment == 'production'
         ? 'Canlı API’ye gönder'
         : 'Test API’ye gönder';
     final money = NumberFormat.currency(
@@ -1775,7 +1786,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     );
 
     if (MediaQuery.sizeOf(context).width < 900) {
-      return _buildCompactRow(context, invoice, money, sendTooltip);
+      return _buildCompactRow(context, invoice, money, sendTooltip, canSend);
     }
 
     return Container(
@@ -1939,7 +1950,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   icon: _busy
                       ? Icons.hourglass_empty_rounded
                       : Icons.cloud_upload_rounded,
-                  onPressed: _busy || alreadySent
+                  onPressed: _busy || !canSend
                       ? null
                       : () => _prepare(send: true),
                   primary: true,
@@ -1962,6 +1973,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     Invoice invoice,
     NumberFormat money,
     String sendTooltip,
+    bool canSend,
   ) {
     final alreadySent = invoice.isEInvoiceSent;
     return Container(
@@ -2117,7 +2129,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   icon: _busy
                       ? Icons.hourglass_empty_rounded
                       : Icons.cloud_upload_rounded,
-                  onPressed: _busy || alreadySent
+                  onPressed: _busy || !canSend
                       ? null
                       : () => _prepare(send: true),
                   primary: true,

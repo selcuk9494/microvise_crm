@@ -137,6 +137,23 @@ async function ensureEInvoiceSchema() {
       add column if not exists tax_exemption_description text
   `);
   await query(`
+    create table if not exists public.e_invoice_transmissions (
+      id uuid primary key default gen_random_uuid(),
+      invoice_id uuid not null references public.invoices(id) on delete cascade,
+      environment text not null,
+      e_invoice_number text,
+      e_invoice_uuid uuid,
+      payload jsonb,
+      response jsonb,
+      official_data jsonb,
+      official_ubl text,
+      sent_at timestamptz,
+      archived_at timestamptz,
+      created_at timestamptz not null default now(),
+      unique (invoice_id, environment, e_invoice_uuid)
+    )
+  `);
+  await query(`
     update public.e_invoice_settings
     set seller_vkn = '0' || seller_vkn, updated_at = now()
     where seller_vkn ~ '^[0-9]{9}$'
@@ -604,6 +621,40 @@ function buildPayload({ settings, invoice }) {
   return { payload, number, uuid };
 }
 
+function canSendInvoiceToEnvironment(invoice, environment) {
+  if (invoice.e_invoice_status !== 'sent') return true;
+  return (
+    invoice.e_invoice_environment === 'test' &&
+    environment === 'production'
+  );
+}
+
+async function preserveTransmission(invoice) {
+  if (!invoice.e_invoice_uuid || !invoice.e_invoice_environment) return;
+  await query(
+    `
+      insert into public.e_invoice_transmissions (
+        invoice_id, environment, e_invoice_number, e_invoice_uuid,
+        payload, response, official_data, official_ubl, sent_at, archived_at
+      )
+      values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, $9, $10)
+      on conflict (invoice_id, environment, e_invoice_uuid) do nothing
+    `,
+    [
+      invoice.id,
+      invoice.e_invoice_environment,
+      invoice.e_invoice_number,
+      invoice.e_invoice_uuid,
+      JSON.stringify(invoice.e_invoice_payload || null),
+      JSON.stringify(invoice.e_invoice_response || null),
+      JSON.stringify(invoice.e_invoice_official_data || null),
+      invoice.e_invoice_official_ubl,
+      invoice.e_invoice_sent_at,
+      invoice.e_invoice_archived_at,
+    ],
+  );
+}
+
 async function tokenFor(settings) {
   if (!settings.username || !settings.password) {
     throw new Error('E-fatura test kullanıcısı ve şifresi girilmemiş.');
@@ -1021,7 +1072,11 @@ async function handler(req, res) {
       const settings = await getSettings();
       const invoice = await fetchInvoice(invoiceId);
       if (!invoice) return badRequest(req, res, 'Fatura bulunamadı.');
-      if (invoice.e_invoice_status === 'sent') {
+      const testToProduction =
+        invoice.e_invoice_status === 'sent' &&
+        invoice.e_invoice_environment === 'test' &&
+        settings.environment === 'production';
+      if (!canSendInvoiceToEnvironment(invoice, settings.environment)) {
         return badRequest(
           req,
           res,
@@ -1037,9 +1092,22 @@ async function handler(req, res) {
       if (validationErrors.length) {
         return badRequest(req, res, validationErrors.join(' '));
       }
-      const built = buildPayload({ settings, invoice });
+      const payloadInvoice = testToProduction
+        ? { ...invoice, e_invoice_number: null, e_invoice_uuid: null }
+        : invoice;
+      const built = buildPayload({ settings, invoice: payloadInvoice });
 
       if (action === 'prepare') {
+        if (testToProduction) {
+          return ok(req, res, {
+            ok: true,
+            mode: 'prepare',
+            promotion: 'test_to_production',
+            invoiceNumber: built.number,
+            uuid: built.uuid,
+            payload: built.payload,
+          });
+        }
         const prepared = await query(
           `
             update public.invoices
@@ -1074,6 +1142,7 @@ async function handler(req, res) {
         });
       }
 
+      if (testToProduction) await preserveTransmission(invoice);
       const claimed = await query(
         `
           update public.invoices
@@ -1082,11 +1151,31 @@ async function handler(req, res) {
               e_invoice_status = 'prepared',
               e_invoice_environment = $4,
               e_invoice_payload = $5::jsonb,
+              e_invoice_official_data = case
+                when e_invoice_environment = 'test' and $4 = 'production' then null
+                else e_invoice_official_data
+              end,
+              e_invoice_official_ubl = case
+                when e_invoice_environment = 'test' and $4 = 'production' then null
+                else e_invoice_official_ubl
+              end,
+              e_invoice_archived_at = case
+                when e_invoice_environment = 'test' and $4 = 'production' then null
+                else e_invoice_archived_at
+              end,
+              e_invoice_archive_error = null,
               e_invoice_error = null,
               e_invoice_sending_at = now(),
               updated_at = now()
           where id = $1
-            and e_invoice_status is distinct from 'sent'
+            and (
+              e_invoice_status is distinct from 'sent'
+              or (
+                e_invoice_status = 'sent'
+                and e_invoice_environment = 'test'
+                and $4 = 'production'
+              )
+            )
             and (
               e_invoice_sending_at is null
               or e_invoice_sending_at < now() - interval '10 minutes'
@@ -1148,22 +1237,56 @@ async function handler(req, res) {
           archive,
         });
       } catch (error) {
-        await query(
-          `
-            update public.invoices
-            set e_invoice_status = 'failed',
-                e_invoice_response = $2::jsonb,
-                e_invoice_error = $3,
-                e_invoice_sending_at = null,
-                updated_at = now()
-            where id = $1
-          `,
-          [
-            invoiceId,
-            JSON.stringify(error.response || { error: error.message }),
-            error.message,
-          ],
-        );
+        if (testToProduction) {
+          await query(
+            `
+              update public.invoices
+              set e_invoice_number = $2,
+                  e_invoice_uuid = $3,
+                  e_invoice_status = 'sent',
+                  e_invoice_environment = 'test',
+                  e_invoice_payload = $4::jsonb,
+                  e_invoice_response = $5::jsonb,
+                  e_invoice_official_data = $6::jsonb,
+                  e_invoice_official_ubl = $7,
+                  e_invoice_archived_at = $8,
+                  e_invoice_sent_at = $9,
+                  e_invoice_error = $10,
+                  e_invoice_sending_at = null,
+                  updated_at = now()
+              where id = $1
+            `,
+            [
+              invoiceId,
+              invoice.e_invoice_number,
+              invoice.e_invoice_uuid,
+              JSON.stringify(invoice.e_invoice_payload || null),
+              JSON.stringify(invoice.e_invoice_response || null),
+              JSON.stringify(invoice.e_invoice_official_data || null),
+              invoice.e_invoice_official_ubl,
+              invoice.e_invoice_archived_at,
+              invoice.e_invoice_sent_at,
+              `Canlı gönderim başarısız: ${error.message}`,
+            ],
+          );
+        } else {
+          await query(
+            `
+              update public.invoices
+              set e_invoice_status = 'failed',
+                  e_invoice_response = $2::jsonb,
+                  e_invoice_error = $3,
+                  e_invoice_sending_at = null,
+                  updated_at = now()
+              where id = $1
+            `,
+            [
+              invoiceId,
+              JSON.stringify(error.response || { error: error.message }),
+              error.message,
+            ],
+          );
+        }
         throw error;
       }
     }
@@ -1183,6 +1306,7 @@ module.exports.testUtils = {
   invoiceNumber,
   createUuidV7,
   validateInvoiceForEInvoice,
+  canSendInvoiceToEnvironment,
   buildPayload,
   assertSuccessfulMaliyeResponse,
   validatePayloadAgainstApi,

@@ -9,6 +9,7 @@ const {
   invoiceNumber,
   createUuidV7,
   validateInvoiceForEInvoice,
+  canSendInvoiceToEnvironment,
   buildPayload,
   assertSuccessfulMaliyeResponse,
   urlsForEnvironment,
@@ -150,6 +151,25 @@ test('14 günlük faturaya izin verir, 15 günlük faturayı gönderimden önce 
   assert.match(
     validateInvoiceForEInvoice(validSettings(), fifteenDaysOld, now).join(' '),
     /15 gün önce.*en fazla 14 günlük/,
+  );
+});
+
+test('testte gönderilen faturayı yalnızca canlıya göndermeye izin verir', () => {
+  const testSent = {
+    e_invoice_status: 'sent',
+    e_invoice_environment: 'test',
+  };
+  const productionSent = {
+    e_invoice_status: 'sent',
+    e_invoice_environment: 'production',
+  };
+
+  assert.equal(canSendInvoiceToEnvironment(testSent, 'test'), false);
+  assert.equal(canSendInvoiceToEnvironment(testSent, 'production'), true);
+  assert.equal(canSendInvoiceToEnvironment(productionSent, 'production'), false);
+  assert.equal(
+    canSendInvoiceToEnvironment({ e_invoice_status: 'not_sent' }, 'test'),
+    true,
   );
 });
 
