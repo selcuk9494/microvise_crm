@@ -12,6 +12,7 @@ const {
   canSendInvoiceToEnvironment,
   buildPayload,
   assertSuccessfulMaliyeResponse,
+  validateRegisteredBranch,
   urlsForEnvironment,
 } = require('../api/e-invoice').testUtils;
 
@@ -290,5 +291,27 @@ test('Maliye kayıt bazında reddettiği faturayı başarılı saymaz', () => {
       ozet: { toplamKayit: 1, basariliKayit: 1, basarisizKayit: 0 },
       sonuclar: [{ basarili: true }],
     }),
+  );
+});
+
+test('canlı ortamda hatalı şube kodunda kayıtlı kodları yönlendirici hatada gösterir', () => {
+  assert.throws(
+    () =>
+      validateRegisteredBranch(
+        { environment: 'production', seller_branch_code: '1' },
+        new Set(['MERKEZ', 'KASA1']),
+      ),
+    /canlı.*1.*KASA1, MERKEZ.*E-Fatura > Ayarlar/s,
+  );
+});
+
+test('Maliye sisteminde aktif şube yoksa gönderimden önce açıklayıcı hata verir', () => {
+  assert.throws(
+    () =>
+      validateRegisteredBranch(
+        { environment: 'production', seller_branch_code: '1' },
+        new Set(),
+      ),
+    /aktif şube bulunamadı.*şube oluşturun/s,
   );
 });

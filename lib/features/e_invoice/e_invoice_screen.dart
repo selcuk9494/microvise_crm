@@ -3915,7 +3915,14 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                       const Gap(10),
                       Expanded(child: _field('seller_vkn', 'Satıcı VKN')),
                       const Gap(10),
-                      Expanded(child: _field('seller_branch_code', 'Şube Kod')),
+                      Expanded(
+                        child: _field(
+                          'seller_branch_code',
+                          'Şube Kod',
+                          hintText:
+                              'Maliye ortamında kayıtlı kod (örn. MERKEZ)',
+                        ),
+                      ),
                     ],
                   ),
                   const Gap(10),

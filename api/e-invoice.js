@@ -751,6 +751,27 @@ function valuesFromRows(rows, keys) {
   );
 }
 
+function validateRegisteredBranch(settings, branches) {
+  const configured = cleanText(settings.seller_branch_code).toUpperCase();
+  const environmentLabel =
+    settings.environment === 'production' ? 'canlı' : 'test';
+  const registered = [...branches].sort();
+
+  if (!registered.length) {
+    throw new Error(
+      `Maliye ${environmentLabel} sisteminde bu VKN için aktif şube bulunamadı. ` +
+        'Önce Maliye e-Fatura sisteminde bir şube oluşturun, ardından E-Fatura > Ayarlar bölümündeki Şube Kod alanını güncelleyin.',
+    );
+  }
+  if (!registered.includes(configured)) {
+    throw new Error(
+      `Şube kodu Maliye ${environmentLabel} sisteminde kayıtlı değil: ${cleanText(settings.seller_branch_code)}. ` +
+        `Kayıtlı şube kodları: ${registered.join(', ')}. ` +
+        'E-Fatura > Ayarlar bölümündeki Şube Kod alanını kayıtlı kodlardan biriyle güncelleyin.',
+    );
+  }
+}
+
 async function apiGet({ base, path, token }) {
   const response = await fetch(`${base}${path}`, {
     headers: {
@@ -880,6 +901,7 @@ async function validatePayloadAgainstApi({ settings, payload, token }) {
     'kod',
     'code',
   ]);
+  validateRegisteredBranch(settings, branches);
   const errors = [];
   for (const invoice of payload.faturalar || []) {
     if (invoiceTypes.size && !invoiceTypes.has(String(invoice.faturaTuru).toUpperCase())) {
@@ -887,9 +909,6 @@ async function validatePayloadAgainstApi({ settings, payload, token }) {
     }
     if (currencies.size && !currencies.has(String(invoice.paraBirimi).toUpperCase())) {
       errors.push(`Para birimi Maliye kod listesinde yok: ${invoice.paraBirimi}.`);
-    }
-    if (branches.size && !branches.has(String(invoice.subeKod).toUpperCase())) {
-      errors.push(`Şube kodu Maliye sisteminde kayıtlı değil: ${invoice.subeKod}.`);
     }
     for (const item of invoice.malHizmetler || []) {
       if (units.size && !units.has(String(item.birimTurKod).toUpperCase())) {
@@ -1353,6 +1372,7 @@ module.exports.testUtils = {
   buildPayload,
   assertSuccessfulMaliyeResponse,
   validatePayloadAgainstApi,
+  validateRegisteredBranch,
   urlsForEnvironment,
   applyRegisteredSupplierIdentity,
 };
