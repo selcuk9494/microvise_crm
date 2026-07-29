@@ -2279,15 +2279,20 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
 
     if (invoice.isEInvoiceSent) {
       final apiClient = ref.read(apiClientProvider);
-      if (invoice.eInvoiceArchivedAt == null && apiClient != null) {
+      if (apiClient != null) {
         try {
-          await apiClient.postJson(
+          final archive = await apiClient.postJson(
             '/e-invoice',
             body: {'action': 'archive', 'invoiceId': invoice.id},
           );
           ref.invalidate(invoicesProvider);
+          final pdfUrl = archive['pdfUrl']?.toString().trim() ?? '';
+          if (pdfUrl.isNotEmpty) {
+            final opened = await openExternalUrl(pdfUrl);
+            if (!mounted || opened) return;
+          }
         } catch (_) {
-          // Resmî sayfa yine açılır; arşivleme daha sonra tekrar denenebilir.
+          // PDF arşivi kullanılamazsa resmî Maliye sayfasına geri dönülür.
         }
       }
       final officialUrl = buildOfficialEInvoiceUrl(

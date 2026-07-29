@@ -15,6 +15,7 @@ const {
   validateRegisteredBranch,
   urlsForEnvironment,
 } = require('../api/e-invoice').testUtils;
+const { buildEInvoiceArchivePdf } = require('../api/_lib/e_invoice_pdf');
 
 test('10 haneli VKN değerinden yalnızca ilk sıfırı kaldırır', () => {
   assert.equal(normalizeApiVkn('0007033259'), '007033259');
@@ -313,5 +314,26 @@ test('Maliye sisteminde aktif şube yoksa gönderimden önce açıklayıcı hata
         new Set(),
       ),
     /aktif şube bulunamadı.*şube oluşturun/s,
+  );
+});
+
+test('Maliye arşiv verisinden Türkçe karakterli tek sayfa A4 PDF üretir', async () => {
+  const invoice = validInvoice();
+  invoice.e_invoice_number = '620009058-2026-1-00000000001';
+  invoice.customer.name = 'BÜLENT MAYIN';
+
+  const pdf = await buildEInvoiceArchivePdf({
+    invoice,
+    settings: validSettings(),
+    officialData: {},
+    verificationCode: '019faa9a-a367-74d5-a443-77eb762bca98',
+    environment: 'production',
+  });
+
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  assert.ok(pdf.length > 5000);
+  assert.equal(
+    (pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length,
+    1,
   );
 });

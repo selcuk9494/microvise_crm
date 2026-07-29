@@ -2,6 +2,7 @@ const crypto = require('crypto');
 
 const { getAuthenticatedUser, hasPageAccess } = require('./_lib/auth');
 const { query } = require('./_lib/db');
+const { buildEInvoiceArchivePdf } = require('./_lib/e_invoice_pdf');
 const {
   handleCors,
   ok,
@@ -122,6 +123,10 @@ async function ensureEInvoiceSchema() {
       add column if not exists e_invoice_response jsonb,
       add column if not exists e_invoice_official_data jsonb,
       add column if not exists e_invoice_official_ubl text,
+      add column if not exists e_invoice_pdf_bucket text,
+      add column if not exists e_invoice_pdf_path text,
+      add column if not exists e_invoice_pdf_sha256 text,
+      add column if not exists e_invoice_pdf_created_at timestamptz,
       add column if not exists e_invoice_archived_at timestamptz,
       add column if not exists e_invoice_archive_error text,
       add column if not exists e_invoice_error text,
@@ -830,6 +835,75 @@ async function fetchOfficialInvoiceArchive({ settings, verificationCode, token }
   return { data, ubl };
 }
 
+const eInvoicePdfBucket = 'service-images';
+
+function supabaseStorageConfig() {
+  const url = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+  const key = String(
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '',
+  ).trim();
+  if (!url || !key) {
+    throw new Error('SUPABASE_URL ve SUPABASE_SERVICE_ROLE_KEY zorunludur.');
+  }
+  return { url, key };
+}
+
+function storageHeaders(key) {
+  return {
+    apikey: key,
+    authorization: key.startsWith('sb_') ? key : `Bearer ${key}`,
+  };
+}
+
+async function uploadEInvoicePdf({ invoiceId, verificationCode, pdf }) {
+  const { url, key } = supabaseStorageConfig();
+  const safeCode = String(verificationCode).replace(/[^a-zA-Z0-9-]/g, '');
+  const objectPath = `e-invoices/${invoiceId}/${safeCode}.pdf`;
+  const uploadUrl = `${url}/storage/v1/object/${eInvoicePdfBucket}/${objectPath}`;
+  const response = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      ...storageHeaders(key),
+      'content-type': 'application/pdf',
+      'cache-control': '31536000',
+      'x-upsert': 'true',
+    },
+    body: pdf,
+  });
+  if (!response.ok) {
+    throw new Error(
+      `E-fatura PDF yüklenemedi: ${response.status} ${await response.text()}`,
+    );
+  }
+  return {
+    bucket: eInvoicePdfBucket,
+    path: objectPath,
+    sha256: crypto.createHash('sha256').update(pdf).digest('hex'),
+  };
+}
+
+async function createEInvoicePdfSignedUrl(bucket, objectPath) {
+  const { url, key } = supabaseStorageConfig();
+  const response = await fetch(
+    `${url}/storage/v1/object/sign/${bucket}/${objectPath}`,
+    {
+      method: 'POST',
+      headers: {
+        ...storageHeaders(key),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ expiresIn: 900 }),
+    },
+  );
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.signedURL) {
+    throw new Error(
+      `E-fatura PDF bağlantısı oluşturulamadı: ${response.status}`,
+    );
+  }
+  return `${url}/storage/v1${result.signedURL}`;
+}
+
 async function archiveOfficialInvoice({ invoiceId, settings, verificationCode, token }) {
   try {
     const archive = await fetchOfficialInvoiceArchive({
@@ -837,19 +911,47 @@ async function archiveOfficialInvoice({ invoiceId, settings, verificationCode, t
       verificationCode,
       token: token || (await tokenFor(settings)),
     });
+    const invoice = await fetchInvoice(invoiceId);
+    const pdf = await buildEInvoiceArchivePdf({
+      invoice,
+      settings,
+      officialData: archive.data,
+      verificationCode,
+      environment: settings.environment,
+    });
+    const storedPdf = await uploadEInvoicePdf({
+      invoiceId,
+      verificationCode,
+      pdf,
+    });
     await query(
       `
         update public.invoices
         set e_invoice_official_data = $2::jsonb,
             e_invoice_official_ubl = $3,
+            e_invoice_pdf_bucket = $4,
+            e_invoice_pdf_path = $5,
+            e_invoice_pdf_sha256 = $6,
+            e_invoice_pdf_created_at = now(),
             e_invoice_archived_at = now(),
             e_invoice_archive_error = null,
             updated_at = now()
         where id = $1
       `,
-      [invoiceId, JSON.stringify(archive.data), archive.ubl],
+      [
+        invoiceId,
+        JSON.stringify(archive.data),
+        archive.ubl,
+        storedPdf.bucket,
+        storedPdf.path,
+        storedPdf.sha256,
+      ],
     );
-    return { archived: true, archivedAt: new Date().toISOString() };
+    const pdfUrl = await createEInvoicePdfSignedUrl(
+      storedPdf.bucket,
+      storedPdf.path,
+    );
+    return { archived: true, archivedAt: new Date().toISOString(), pdfUrl };
   } catch (error) {
     await query(
       `
@@ -1105,13 +1207,20 @@ async function handler(req, res) {
       }
       if (
         invoice.e_invoice_official_data &&
-        cleanText(invoice.e_invoice_official_ubl)
+        cleanText(invoice.e_invoice_official_ubl) &&
+        cleanText(invoice.e_invoice_pdf_bucket) &&
+        cleanText(invoice.e_invoice_pdf_path)
       ) {
+        const pdfUrl = await createEInvoicePdfSignedUrl(
+          invoice.e_invoice_pdf_bucket,
+          invoice.e_invoice_pdf_path,
+        );
         return ok(req, res, {
           ok: true,
           archived: true,
           alreadyArchived: true,
           archivedAt: invoice.e_invoice_archived_at,
+          pdfUrl,
         });
       }
       const currentSettings = await getSettings();
@@ -1220,6 +1329,22 @@ async function handler(req, res) {
               e_invoice_official_ubl = case
                 when e_invoice_environment = 'test' and $4 = 'production' then null
                 else e_invoice_official_ubl
+              end,
+              e_invoice_pdf_bucket = case
+                when e_invoice_environment = 'test' and $4 = 'production' then null
+                else e_invoice_pdf_bucket
+              end,
+              e_invoice_pdf_path = case
+                when e_invoice_environment = 'test' and $4 = 'production' then null
+                else e_invoice_pdf_path
+              end,
+              e_invoice_pdf_sha256 = case
+                when e_invoice_environment = 'test' and $4 = 'production' then null
+                else e_invoice_pdf_sha256
+              end,
+              e_invoice_pdf_created_at = case
+                when e_invoice_environment = 'test' and $4 = 'production' then null
+                else e_invoice_pdf_created_at
               end,
               e_invoice_archived_at = case
                 when e_invoice_environment = 'test' and $4 = 'production' then null
