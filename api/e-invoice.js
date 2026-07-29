@@ -1206,6 +1206,7 @@ async function handler(req, res) {
         return badRequest(req, res, 'Yalnızca gönderilmiş e-fatura arşivlenebilir.');
       }
       if (
+        body.force !== true &&
         invoice.e_invoice_official_data &&
         cleanText(invoice.e_invoice_official_ubl) &&
         cleanText(invoice.e_invoice_pdf_bucket) &&

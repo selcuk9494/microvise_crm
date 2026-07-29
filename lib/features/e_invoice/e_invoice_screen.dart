@@ -1926,11 +1926,17 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 ),
                 _InvoiceIconAction(
                   tooltip: alreadySent
-                      ? 'Maliye nüshasını görüntüle / PDF'
+                      ? 'Maliye nüshasını görüntüle'
                       : 'PDF / Yazdır',
                   icon: Icons.picture_as_pdf_rounded,
                   onPressed: _busy ? null : _print,
                 ),
+                if (alreadySent)
+                  _InvoiceIconAction(
+                    tooltip: 'Maliye verisinden PDF oluştur',
+                    icon: Icons.download_rounded,
+                    onPressed: _busy ? null : _printOfficialPdf,
+                  ),
                 if (alreadySent)
                   _InvoiceIconAction(
                     tooltip: 'Veritabanı yedeği / PDF',
@@ -2100,12 +2106,18 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 const Gap(4),
                 _InvoiceIconAction(
                   tooltip: alreadySent
-                      ? 'Maliye nüshasını görüntüle / PDF'
+                      ? 'Maliye nüshasını görüntüle'
                       : 'PDF / Yazdır',
                   icon: Icons.picture_as_pdf_rounded,
                   onPressed: _busy ? null : _print,
                 ),
                 if (alreadySent) ...[
+                  const Gap(4),
+                  _InvoiceIconAction(
+                    tooltip: 'Maliye verisinden PDF oluştur',
+                    icon: Icons.download_rounded,
+                    onPressed: _busy ? null : _printOfficialPdf,
+                  ),
                   const Gap(4),
                   _InvoiceIconAction(
                     tooltip: 'Veritabanı yedeği / PDF',
@@ -2278,23 +2290,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     if (invoice == null) return;
 
     if (invoice.isEInvoiceSent) {
-      final apiClient = ref.read(apiClientProvider);
-      if (apiClient != null) {
-        try {
-          final archive = await apiClient.postJson(
-            '/e-invoice',
-            body: {'action': 'archive', 'invoiceId': invoice.id},
-          );
-          ref.invalidate(invoicesProvider);
-          final pdfUrl = archive['pdfUrl']?.toString().trim() ?? '';
-          if (pdfUrl.isNotEmpty) {
-            final opened = await openExternalUrl(pdfUrl);
-            if (!mounted || opened) return;
-          }
-        } catch (_) {
-          // PDF arşivi kullanılamazsa resmî Maliye sayfasına geri dönülür.
-        }
-      }
       final officialUrl = buildOfficialEInvoiceUrl(
         verificationCode: invoice.eInvoiceUuid,
         environment: invoice.eInvoiceEnvironment ?? 'test',
@@ -2321,6 +2316,52 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     }
 
     await _printInvoiceCopy(invoice);
+  }
+
+  Future<void> _printOfficialPdf() async {
+    final invoice = await _loadInvoiceDetail();
+    if (invoice == null) return;
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('PDF oluşturmak için sunucu bağlantısı gerekli.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      final archive = await apiClient.postJson(
+        '/e-invoice',
+        body: {'action': 'archive', 'invoiceId': invoice.id, 'force': true},
+      );
+      ref.invalidate(invoicesProvider);
+      final pdfUrl = archive['pdfUrl']?.toString().trim() ?? '';
+      if (pdfUrl.isEmpty) {
+        throw StateError(
+          archive['error']?.toString().trim().isNotEmpty == true
+              ? archive['error'].toString()
+              : 'PDF bağlantısı oluşturulamadı.',
+        );
+      }
+      final opened = await openExternalUrl(pdfUrl);
+      if (!mounted || opened) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Oluşturulan PDF bu platformda açılamadı.'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Maliye verisinden PDF oluşturulamadı: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<Invoice?> _loadInvoiceDetail() async {
