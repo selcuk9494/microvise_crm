@@ -22,6 +22,7 @@ final invoicesProvider = FutureProvider.autoDispose
             'startDate': filter.startDate!.toIso8601String().substring(0, 10),
           if (filter.endDate != null)
             'endDate': filter.endDate!.toIso8601String().substring(0, 10),
+          'activeFilter': filter.activeFilter,
         },
       );
       return ((response['items'] as List?) ?? const [])
@@ -182,6 +183,8 @@ final customerOpenInvoicesProvider = FutureProvider.autoDispose
 
 // Filter sınıfları
 class InvoiceFilter {
+  /// `active` | `passive` | `all`
+  final String activeFilter;
   final String? invoiceType;
   final String? status;
   final String? eInvoiceStatus;
@@ -190,6 +193,7 @@ class InvoiceFilter {
   final DateTime? endDate;
 
   const InvoiceFilter({
+    this.activeFilter = 'active',
     this.invoiceType,
     this.status,
     this.eInvoiceStatus,
@@ -199,6 +203,7 @@ class InvoiceFilter {
   });
 
   InvoiceFilter copyWith({
+    String? activeFilter,
     String? invoiceType,
     String? status,
     String? eInvoiceStatus,
@@ -209,16 +214,19 @@ class InvoiceFilter {
     bool clearStatus = false,
     bool clearEInvoiceStatus = false,
     bool clearCustomerId = false,
+    bool clearStartDate = false,
+    bool clearEndDate = false,
   }) {
     return InvoiceFilter(
+      activeFilter: activeFilter ?? this.activeFilter,
       invoiceType: clearInvoiceType ? null : (invoiceType ?? this.invoiceType),
       status: clearStatus ? null : (status ?? this.status),
       eInvoiceStatus: clearEInvoiceStatus
           ? null
           : (eInvoiceStatus ?? this.eInvoiceStatus),
       customerId: clearCustomerId ? null : (customerId ?? this.customerId),
-      startDate: startDate ?? this.startDate,
-      endDate: endDate ?? this.endDate,
+      startDate: clearStartDate ? null : (startDate ?? this.startDate),
+      endDate: clearEndDate ? null : (endDate ?? this.endDate),
     );
   }
 }

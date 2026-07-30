@@ -159,7 +159,7 @@ function sourceInvoice(officialData, payloadInvoice) {
   return { ...payloadInvoice, ...normalized };
 }
 
-const COMPANY_LOGO_MAX = { width: 180, height: 80 };
+const COMPANY_LOGO_MAX = { width: 78, height: 28 };
 
 function resolveCompanyLogoPath(settings) {
   const candidates = [
@@ -346,6 +346,7 @@ async function buildEInvoiceArchivePdf({
     .fontSize(12)
     .fillColor(COLORS.text)
     .text('K.K.T.C. Maliye Bakanlığı', 89, 33);
+  const maliyeTitleWidth = doc.widthOfString('K.K.T.C. Maliye Bakanlığı');
   doc.font('NotoSansBold').fontSize(16.5).fillColor(COLORS.red).text('e-FATURA', 89, 53);
   doc
     .font('NotoSans')
@@ -357,14 +358,13 @@ async function buildEInvoiceArchivePdf({
       )}`,
       89,
       81,
-      { width: 370, ellipsis: true },
+      { width: 250, ellipsis: true },
     );
-  doc.image(qr, RIGHT - 79, 26, { width: 79, height: 79 });
 
-  // Firma logosu yalnızca tanımlıysa, Tedarikçi Bilgileri kutusunun üstüne
-  // eklenir. Logo yoksa Maliye yerleşimi birebir korunur.
+  // Firma logosu yalnızca tanımlıysa üst başlıkta, Maliye başlığının hemen
+  // yanında dikey ortalanır. Logo yoksa Maliye yerleşimi birebir korunur.
+  const qrLeft = RIGHT - 79;
   const companyLogoPath = resolveCompanyLogoPath(settings);
-  let boxTop = 118;
   if (companyLogoPath) {
     const companyLogo = doc.openImage(companyLogoPath);
     const scale = Math.min(
@@ -373,13 +373,17 @@ async function buildEInvoiceArchivePdf({
     );
     const logoWidth = companyLogo.width * scale;
     const logoHeight = companyLogo.height * scale;
-    const logoTop = 112;
-    doc.image(companyLogoPath, LEFT, logoTop, {
+    const besideMaliye = 89 + maliyeTitleWidth + 14;
+    const logoLeft = Math.min(besideMaliye, qrLeft - logoWidth - 16);
+    const logoTop = 30 + Math.max(0, (49 - logoHeight) / 2);
+    doc.image(companyLogoPath, logoLeft, logoTop, {
       width: logoWidth,
       height: logoHeight,
     });
-    boxTop = logoTop + logoHeight + 10;
   }
+  doc.image(qr, qrLeft, 26, { width: 79, height: 79 });
+
+  const boxTop = 118;
 
   const boxWidth = (WIDTH - 12) / 2;
   const boxHeight = Math.max(

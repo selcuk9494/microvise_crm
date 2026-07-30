@@ -1331,8 +1331,45 @@ class _InvoiceFiltersCard extends StatelessWidget {
               ),
             ),
             SizedBox(
+              width: compact ? double.infinity : 160,
+              child: DropdownButtonFormField<String>(
+                key: ValueKey('active-${filter.activeFilter}'),
+                initialValue: filter.activeFilter,
+                isExpanded: true,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'active',
+                    child: Text('Aktif', overflow: TextOverflow.ellipsis),
+                  ),
+                  DropdownMenuItem(
+                    value: 'passive',
+                    child: Text('Pasif', overflow: TextOverflow.ellipsis),
+                  ),
+                  DropdownMenuItem(
+                    value: 'all',
+                    child: Text('Tümü', overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+                onChanged: (value) {
+                  final next = (value ?? 'active').trim();
+                  onChanged(
+                    filter.copyWith(
+                      activeFilter: next,
+                      // Pasif listede durum filtresi çoğu kaydı gizler.
+                      clearStatus: next == 'passive',
+                    ),
+                  );
+                },
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.visibility_rounded),
+                  labelText: 'Aktiflik',
+                ),
+              ),
+            ),
+            SizedBox(
               width: compact ? double.infinity : 190,
               child: DropdownButtonFormField<String>(
+                key: ValueKey('status-${filter.status ?? ''}'),
                 initialValue: filter.status ?? '',
                 isExpanded: true,
                 items: const [
@@ -1369,13 +1406,9 @@ class _InvoiceFiltersCard extends StatelessWidget {
                   ),
                 ],
                 onChanged: (value) => onChanged(
-                  InvoiceFilter(
-                    invoiceType: filter.invoiceType,
+                  filter.copyWith(
                     status: (value ?? '').isEmpty ? null : value,
-                    eInvoiceStatus: filter.eInvoiceStatus,
-                    customerId: filter.customerId,
-                    startDate: filter.startDate,
-                    endDate: filter.endDate,
+                    clearStatus: (value ?? '').isEmpty,
                   ),
                 ),
                 decoration: const InputDecoration(
@@ -1467,11 +1500,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
     );
     if (picked == null) return;
     onChanged(
-      InvoiceFilter(
-        invoiceType: filter.invoiceType,
-        status: filter.status,
-        eInvoiceStatus: filter.eInvoiceStatus,
-        customerId: filter.customerId,
+      filter.copyWith(
         startDate: isStart ? picked : filter.startDate,
         endDate: isStart ? filter.endDate : picked,
       ),
@@ -1764,6 +1793,85 @@ class _EInvoiceRow extends ConsumerStatefulWidget {
 class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   bool _busy = false;
 
+  List<Widget> _buildInvoiceActions({
+    required String sendTooltip,
+    required bool canSend,
+    bool withGaps = false,
+  }) {
+    final invoice = widget.invoice;
+    final alreadySent = invoice.isEInvoiceSent;
+    final actions = <Widget>[
+      _InvoiceIconAction(
+        tooltip: 'Düzenle',
+        icon: Icons.edit_rounded,
+        onPressed: _busy ? null : _edit,
+      ),
+      _InvoiceIconAction(
+        tooltip: invoice.isActive ? 'Pasife al' : 'Tekrar aktifleştir',
+        icon: invoice.isActive
+            ? Icons.visibility_off_rounded
+            : Icons.visibility_rounded,
+        tone: invoice.isActive
+            ? _InvoiceActionTone.warning
+            : _InvoiceActionTone.success,
+        onPressed: _busy ? null : _toggleActive,
+      ),
+      _InvoiceIconAction(
+        tooltip: 'Kalıcı sil',
+        icon: Icons.delete_outline_rounded,
+        tone: _InvoiceActionTone.danger,
+        onPressed: _busy ? null : _delete,
+      ),
+      if (alreadySent) ...[
+        _InvoiceIconAction(
+          tooltip: 'PDF oluştur / aç',
+          icon: Icons.picture_as_pdf_rounded,
+          tone: _InvoiceActionTone.danger,
+          onPressed: _busy ? null : _printOfficialPdf,
+        ),
+        _InvoiceIconAction(
+          tooltip: 'Maliye sayfasını aç',
+          icon: Icons.account_balance_rounded,
+          tone: _InvoiceActionTone.info,
+          onPressed: _busy ? null : _openMaliyeLink,
+        ),
+      ] else
+        _InvoiceIconAction(
+          tooltip: 'PDF yazdır',
+          icon: Icons.print_rounded,
+          onPressed: _busy ? null : _print,
+        ),
+      _InvoiceIconAction(
+        tooltip: 'Cari ekstre PDF',
+        icon: Icons.receipt_long_rounded,
+        onPressed: _busy ? null : _statement,
+      ),
+      _InvoiceIconAction(
+        tooltip: 'Gönderim verisini hazırla',
+        icon: Icons.code_rounded,
+        onPressed: _busy ? null : () => _prepare(send: false),
+      ),
+      _InvoiceIconAction(
+        tooltip: sendTooltip,
+        icon: _busy ? Icons.hourglass_top_rounded : Icons.send_rounded,
+        tone: _InvoiceActionTone.primary,
+        onPressed: _busy || !canSend ? null : () => _prepare(send: true),
+      ),
+      _InvoiceIconAction(
+        tooltip: 'Fatura özetini kopyala',
+        icon: Icons.content_copy_rounded,
+        onPressed: _busy ? null : _copyPreview,
+      ),
+    ];
+    if (!withGaps) return actions;
+    final spaced = <Widget>[];
+    for (var i = 0; i < actions.length; i++) {
+      if (i > 0) spaced.add(const Gap(4));
+      spaced.add(actions[i]);
+    }
+    return spaced;
+  }
+
   @override
   Widget build(BuildContext context) {
     final invoice = widget.invoice;
@@ -1901,72 +2009,15 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             ),
           ),
           SizedBox(
-            width: 340,
+            width: 360,
             child: Wrap(
               alignment: WrapAlignment.end,
               spacing: 4,
               runSpacing: 4,
-              children: [
-                _InvoiceIconAction(
-                  tooltip: 'Düzenle',
-                  icon: Icons.edit_rounded,
-                  onPressed: _busy ? null : _edit,
-                ),
-                _InvoiceIconAction(
-                  tooltip: invoice.isActive ? 'Pasife al' : 'Aktifleştir',
-                  icon: invoice.isActive
-                      ? Icons.archive_outlined
-                      : Icons.restore_rounded,
-                  onPressed: _busy ? null : _toggleActive,
-                ),
-                _InvoiceIconAction(
-                  tooltip: 'Kalıcı sil',
-                  icon: Icons.delete_forever_rounded,
-                  onPressed: _busy ? null : _delete,
-                ),
-                if (alreadySent) ...[
-                  _InvoiceIconAction(
-                    tooltip: 'Oluşturulan PDF',
-                    icon: Icons.picture_as_pdf_rounded,
-                    onPressed: _busy ? null : _printOfficialPdf,
-                  ),
-                  _InvoiceIconAction(
-                    tooltip: 'Maliye orijinal link',
-                    icon: Icons.open_in_new_rounded,
-                    onPressed: _busy ? null : _openMaliyeLink,
-                  ),
-                ] else
-                  _InvoiceIconAction(
-                    tooltip: 'PDF / Yazdır',
-                    icon: Icons.picture_as_pdf_rounded,
-                    onPressed: _busy ? null : _print,
-                  ),
-                _InvoiceIconAction(
-                  tooltip: 'Ekstre PDF',
-                  icon: Icons.description_rounded,
-                  onPressed: _busy ? null : _statement,
-                ),
-                _InvoiceIconAction(
-                  tooltip: 'Payload hazırla',
-                  icon: Icons.data_object_rounded,
-                  onPressed: _busy ? null : () => _prepare(send: false),
-                ),
-                _InvoiceIconAction(
-                  tooltip: sendTooltip,
-                  icon: _busy
-                      ? Icons.hourglass_empty_rounded
-                      : Icons.cloud_upload_rounded,
-                  onPressed: _busy || !canSend
-                      ? null
-                      : () => _prepare(send: true),
-                  primary: true,
-                ),
-                _InvoiceIconAction(
-                  tooltip: 'Özet kopyala',
-                  icon: Icons.copy_rounded,
-                  onPressed: _busy ? null : _copyPreview,
-                ),
-              ],
+              children: _buildInvoiceActions(
+                sendTooltip: sendTooltip,
+                canSend: canSend,
+              ),
             ),
           ),
         ],
@@ -1981,7 +2032,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     String sendTooltip,
     bool canSend,
   ) {
-    final alreadySent = invoice.isEInvoiceSent;
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
       decoration: const BoxDecoration(
@@ -2081,76 +2131,11 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: [
-                _InvoiceIconAction(
-                  tooltip: 'Düzenle',
-                  icon: Icons.edit_rounded,
-                  onPressed: _busy ? null : _edit,
-                ),
-                const Gap(4),
-                _InvoiceIconAction(
-                  tooltip: invoice.isActive ? 'Pasife al' : 'Aktifleştir',
-                  icon: invoice.isActive
-                      ? Icons.archive_outlined
-                      : Icons.restore_rounded,
-                  onPressed: _busy ? null : _toggleActive,
-                ),
-                const Gap(4),
-                _InvoiceIconAction(
-                  tooltip: 'Kalıcı sil',
-                  icon: Icons.delete_forever_rounded,
-                  onPressed: _busy ? null : _delete,
-                ),
-                const Gap(4),
-                if (alreadySent) ...[
-                  _InvoiceIconAction(
-                    tooltip: 'Oluşturulan PDF',
-                    icon: Icons.picture_as_pdf_rounded,
-                    onPressed: _busy ? null : _printOfficialPdf,
-                  ),
-                  const Gap(4),
-                  _InvoiceIconAction(
-                    tooltip: 'Maliye orijinal link',
-                    icon: Icons.open_in_new_rounded,
-                    onPressed: _busy ? null : _openMaliyeLink,
-                  ),
-                ] else ...[
-                  _InvoiceIconAction(
-                    tooltip: 'PDF / Yazdır',
-                    icon: Icons.picture_as_pdf_rounded,
-                    onPressed: _busy ? null : _print,
-                  ),
-                ],
-                const Gap(4),
-                _InvoiceIconAction(
-                  tooltip: 'Ekstre PDF',
-                  icon: Icons.description_rounded,
-                  onPressed: _busy ? null : _statement,
-                ),
-                const Gap(4),
-                _InvoiceIconAction(
-                  tooltip: 'Payload hazırla',
-                  icon: Icons.data_object_rounded,
-                  onPressed: _busy ? null : () => _prepare(send: false),
-                ),
-                const Gap(4),
-                _InvoiceIconAction(
-                  tooltip: sendTooltip,
-                  icon: _busy
-                      ? Icons.hourglass_empty_rounded
-                      : Icons.cloud_upload_rounded,
-                  onPressed: _busy || !canSend
-                      ? null
-                      : () => _prepare(send: true),
-                  primary: true,
-                ),
-                const Gap(4),
-                _InvoiceIconAction(
-                  tooltip: 'Özet kopyala',
-                  icon: Icons.copy_rounded,
-                  onPressed: _busy ? null : _copyPreview,
-                ),
-              ],
+              children: _buildInvoiceActions(
+                sendTooltip: sendTooltip,
+                canSend: canSend,
+                withGaps: true,
+              ),
             ),
           ),
         ],
@@ -2204,6 +2189,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   Future<void> _toggleActive() async {
     final apiClient = ref.read(apiClientProvider);
     if (apiClient == null) return;
+    final nextActive = !widget.invoice.isActive;
     setState(() => _busy = true);
     try {
       await apiClient.postJson(
@@ -2214,11 +2200,21 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           'filters': [
             {'col': 'id', 'op': 'eq', 'value': widget.invoice.id},
           ],
-          'values': {'is_active': !widget.invoice.isActive},
+          'values': {'is_active': nextActive},
         },
       );
       ref.invalidate(invoicesProvider);
       ref.invalidate(accountBalancesProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            nextActive
+                ? '${widget.invoice.invoiceNumber} aktifleştirildi.'
+                : '${widget.invoice.invoiceNumber} pasife alındı.',
+          ),
+        ),
+      );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -2572,37 +2568,83 @@ class _InvoiceIconAction extends StatelessWidget {
     required this.tooltip,
     required this.icon,
     required this.onPressed,
-    this.primary = false,
+    this.tone = _InvoiceActionTone.neutral,
   });
 
   final String tooltip;
   final IconData icon;
   final VoidCallback? onPressed;
-  final bool primary;
+  final _InvoiceActionTone tone;
 
   @override
   Widget build(BuildContext context) {
+    final colors = _toneColors(tone);
+    final enabled = onPressed != null;
     return Tooltip(
       message: tooltip,
+      waitDuration: const Duration(milliseconds: 250),
       child: IconButton(
         visualDensity: VisualDensity.compact,
-        constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+        constraints: const BoxConstraints.tightFor(width: 36, height: 36),
         style: IconButton.styleFrom(
-          backgroundColor: primary ? AppTheme.primary : AppTheme.surfaceMuted,
-          foregroundColor: primary ? Colors.white : AppTheme.text,
+          backgroundColor: enabled
+              ? colors.background
+              : AppTheme.surfaceMuted,
+          foregroundColor: enabled ? colors.foreground : AppTheme.textMuted,
+          disabledBackgroundColor: AppTheme.surfaceMuted,
+          disabledForegroundColor: AppTheme.textMuted,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppTheme.radiusSm),
             side: BorderSide(
-              color: primary ? AppTheme.primary : AppTheme.border,
+              color: enabled ? colors.border : AppTheme.border,
             ),
           ),
         ),
         onPressed: onPressed,
-        icon: Icon(icon, size: 17),
+        icon: Icon(icon, size: 18),
       ),
     );
   }
+
+  static ({Color background, Color foreground, Color border}) _toneColors(
+    _InvoiceActionTone tone,
+  ) {
+    return switch (tone) {
+      _InvoiceActionTone.primary => (
+        background: AppTheme.primary,
+        foreground: Colors.white,
+        border: AppTheme.primary,
+      ),
+      _InvoiceActionTone.success => (
+        background: const Color(0xFFECFDF5),
+        foreground: const Color(0xFF047857),
+        border: const Color(0xFFA7F3D0),
+      ),
+      _InvoiceActionTone.warning => (
+        background: const Color(0xFFFFFBEB),
+        foreground: const Color(0xFFB45309),
+        border: const Color(0xFFFDE68A),
+      ),
+      _InvoiceActionTone.danger => (
+        background: const Color(0xFFFFF1F2),
+        foreground: AppTheme.error,
+        border: const Color(0xFFFECDD3),
+      ),
+      _InvoiceActionTone.info => (
+        background: AppTheme.primarySoft,
+        foreground: AppTheme.primaryDark,
+        border: const Color(0xFFBFDBFE),
+      ),
+      _InvoiceActionTone.neutral => (
+        background: AppTheme.surfaceMuted,
+        foreground: AppTheme.textSoft,
+        border: AppTheme.border,
+      ),
+    };
+  }
 }
+
+enum _InvoiceActionTone { neutral, primary, success, warning, danger, info }
 
 class _ProductsTab extends ConsumerStatefulWidget {
   const _ProductsTab({required this.moneyTry});
@@ -3926,6 +3968,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
           for (final key in _settingKeys) {
             _c(key).text = (settings[key] ?? '').toString();
           }
+          _hydrateBankFields(_c('seller_bank_details').text);
           _hydrated = true;
         }
 
@@ -4009,10 +4052,56 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                   const Gap(10),
                   _field('seller_address_line1', 'Adres Satırı 1'),
                   const Gap(10),
-                  _field(
-                    'seller_bank_details',
+                  Text(
                     'Faturada Gösterilecek Banka Hesapları',
-                    maxLines: 6,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: AppTheme.textSoft,
+                    ),
+                  ),
+                  const Gap(8),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final narrow = constraints.maxWidth < 720;
+                      final bankName = _field('bank_name', 'Banka');
+                      final accountName = _field(
+                        'bank_account_name',
+                        'Hesap Sahibi',
+                      );
+                      final ibanTl = _field('bank_iban_tl', 'TL IBAN');
+                      final ibanUsd = _field('bank_iban_usd', 'USD IBAN');
+                      if (narrow) {
+                        return Column(
+                          children: [
+                            bankName,
+                            const Gap(10),
+                            accountName,
+                            const Gap(10),
+                            ibanTl,
+                            const Gap(10),
+                            ibanUsd,
+                          ],
+                        );
+                      }
+                      return Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(child: bankName),
+                              const Gap(10),
+                              Expanded(child: accountName),
+                            ],
+                          ),
+                          const Gap(10),
+                          Row(
+                            children: [
+                              Expanded(child: ibanTl),
+                              const Gap(10),
+                              Expanded(child: ibanUsd),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   const Gap(10),
                   Row(
@@ -4310,6 +4399,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
     final environmentEndpoints = _environmentEndpoints[_environment]!;
     _c('api_base_url').text = environmentEndpoints['api_base_url']!;
     _c('token_url').text = environmentEndpoints['token_url']!;
+    _c('seller_bank_details').text = _composeBankDetails();
     for (final key in _settingKeys) {
       final text = _c(key).text.trim();
       if (text.isEmpty && _secretSettingKeys.contains(key)) {
@@ -4363,6 +4453,73 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  void _hydrateBankFields(String raw) {
+    final parsed = _parseBankDetails(raw);
+    _c('bank_name').text = parsed.bankName;
+    _c('bank_account_name').text = parsed.accountName;
+    _c('bank_iban_tl').text = parsed.ibanTl;
+    _c('bank_iban_usd').text = parsed.ibanUsd;
+  }
+
+  String _composeBankDetails() {
+    final bankName = _c('bank_name').text.trim();
+    final accountName = _c('bank_account_name').text.trim();
+    final ibanTl = _c('bank_iban_tl').text.trim();
+    final ibanUsd = _c('bank_iban_usd').text.trim();
+    final lines = <String>[
+      if (bankName.isNotEmpty ||
+          accountName.isNotEmpty ||
+          ibanTl.isNotEmpty ||
+          ibanUsd.isNotEmpty)
+        'Banka Hesap Bilgileri',
+      if (bankName.isNotEmpty) bankName,
+      if (accountName.isNotEmpty) accountName,
+      if (ibanTl.isNotEmpty) 'TL IBAN: $ibanTl',
+      if (ibanUsd.isNotEmpty) 'USD IBAN: $ibanUsd',
+    ];
+    return lines.join('\n');
+  }
+
+  ({String bankName, String accountName, String ibanTl, String ibanUsd})
+  _parseBankDetails(String raw) {
+    final lines = raw
+        .split(RegExp(r'\r?\n'))
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+
+    var ibanTl = '';
+    var ibanUsd = '';
+    final others = <String>[];
+    for (final line in lines) {
+      final tlMatch = RegExp(
+        r'^TL\s*IBAN\s*:\s*(.+)$',
+        caseSensitive: false,
+      ).firstMatch(line);
+      if (tlMatch != null) {
+        ibanTl = tlMatch.group(1)!.trim();
+        continue;
+      }
+      final usdMatch = RegExp(
+        r'^USD\s*IBAN\s*:\s*(.+)$',
+        caseSensitive: false,
+      ).firstMatch(line);
+      if (usdMatch != null) {
+        ibanUsd = usdMatch.group(1)!.trim();
+        continue;
+      }
+      if (line.toLowerCase() == 'banka hesap bilgileri') continue;
+      others.add(line);
+    }
+
+    return (
+      bankName: others.isNotEmpty ? others.first : '',
+      accountName: others.length > 1 ? others[1] : '',
+      ibanTl: ibanTl,
+      ibanUsd: ibanUsd,
+    );
   }
 
   Future<void> _saveAkinsoftEnvSettings(Map<String, dynamic> settings) async {

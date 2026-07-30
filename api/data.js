@@ -1711,11 +1711,22 @@ module.exports = async (req, res) => {
         const startDate = String(req.query.startDate || '').trim();
         const endDate = String(req.query.endDate || '').trim();
         const includePassive = parseBoolean(req.query.includePassive, false);
+        const activeFilterRaw = String(req.query.activeFilter || '')
+          .trim()
+          .toLowerCase();
+        const activeFilter = ['active', 'passive', 'all'].includes(activeFilterRaw)
+          ? activeFilterRaw
+          : includePassive
+            ? 'all'
+            : 'active';
 
         const values = [];
         let whereSql = 'where true';
-        if (!includePassive) {
+        if (activeFilter === 'active') {
           values.push(true);
+          whereSql += ` and i.is_active = $${values.length}`;
+        } else if (activeFilter === 'passive') {
+          values.push(false);
           whereSql += ` and i.is_active = $${values.length}`;
         }
         if (invoiceType) {
