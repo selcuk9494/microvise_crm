@@ -440,6 +440,10 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             });
           },
           onRefresh: () => ref.invalidate(invoicesProvider(_filter)),
+          onPullErp: _bulkDeleting || _bulkProcessing
+              ? null
+              : _pullAkinsoftData,
+          pullingErp: _pullingAkinsoft,
         ),
         const Gap(12),
         if (items.isEmpty)
@@ -450,7 +454,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                 children: [
                   const Expanded(
                     child: Text(
-                      'Henüz fatura yok. Yeni Fatura veya ERP’den Veri Çek ile başlayın.',
+                      'Henüz fatura yok. Yeni Fatura veya ERP’den Faturaları Çek ile başlayın.',
                     ),
                   ),
                   OutlinedButton.icon(
@@ -462,7 +466,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.cloud_download_rounded, size: 18),
-                    label: const Text('ERP’den Veri Çek'),
+                    label: const Text('ERP’den Faturaları Çek'),
                   ),
                 ],
               ),
@@ -535,28 +539,6 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                               scrollDirection: Axis.horizontal,
                               child: Row(
                                 children: [
-                                  OutlinedButton.icon(
-                                    onPressed:
-                                        _pullingAkinsoft ||
-                                            _bulkDeleting ||
-                                            _bulkProcessing
-                                        ? null
-                                        : _pullAkinsoftData,
-                                    icon: _pullingAkinsoft
-                                        ? const SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          )
-                                        : const Icon(
-                                            Icons.cloud_download_rounded,
-                                            size: 18,
-                                          ),
-                                    label: const Text('ERP'),
-                                  ),
-                                  const Gap(8),
                                   OutlinedButton.icon(
                                     onPressed:
                                         selectedSendableCount == 0 ||
@@ -767,28 +749,6 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                         size: 18,
                                       ),
                                       label: const Text('Ekstre PDF'),
-                                    ),
-                                    const Gap(8),
-                                    OutlinedButton.icon(
-                                      onPressed:
-                                          _pullingAkinsoft ||
-                                              _bulkDeleting ||
-                                              _bulkProcessing
-                                          ? null
-                                          : _pullAkinsoftData,
-                                      icon: _pullingAkinsoft
-                                          ? const SizedBox(
-                                              width: 16,
-                                              height: 16,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            )
-                                          : const Icon(
-                                              Icons.cloud_download_rounded,
-                                              size: 18,
-                                            ),
-                                      label: const Text('ERP’den Veri Çek'),
                                     ),
                                     const Gap(8),
                                     OutlinedButton.icon(
@@ -1765,12 +1725,16 @@ class _InvoiceFiltersCard extends StatelessWidget {
     required this.customersAsync,
     required this.onChanged,
     required this.onRefresh,
+    required this.onPullErp,
+    required this.pullingErp,
   });
 
   final InvoiceFilter filter;
   final AsyncValue<List<Customer>> customersAsync;
   final ValueChanged<InvoiceFilter> onChanged;
   final VoidCallback onRefresh;
+  final VoidCallback? onPullErp;
+  final bool pullingErp;
 
   @override
   Widget build(BuildContext context) {
@@ -2041,7 +2005,44 @@ class _InvoiceFiltersCard extends StatelessWidget {
               label: const Text('Temizle'),
             ),
           ];
-          return Wrap(spacing: 10, runSpacing: 10, children: fields);
+          final pullButton = FilledButton.tonalIcon(
+            onPressed: pullingErp ? null : onPullErp,
+            icon: pullingErp
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.cloud_download_rounded, size: 18),
+            label: Text(
+              pullingErp ? 'Faturalar çekiliyor…' : 'ERP’den Faturaları Çek',
+            ),
+          );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (compact)
+                pullButton
+              else
+                Row(
+                  children: [
+                    pullButton,
+                    const Gap(12),
+                    Expanded(
+                      child: Text(
+                        'Akınsoft’a eklenen yeni faturaları ve durum '
+                        'güncellemelerini getirir.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.textSoft,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              const Gap(12),
+              Wrap(spacing: 10, runSpacing: 10, children: fields),
+            ],
+          );
         },
       ),
     );

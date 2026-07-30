@@ -4,6 +4,7 @@ const path = require('path');
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
 
+const MODULE_ROOT = path.resolve(__dirname, '../..');
 const PAGE = { width: 595.28, height: 841.89 };
 // Maliye çıktısındaki yaklaşık 16 mm yatay kenar boşlukları.
 const LEFT = 48;
@@ -353,17 +354,27 @@ const DESCRIPTION = {
   width: 340,
 };
 
+function resolveAssetPath(...parts) {
+  const relative = path.join(...parts);
+  const candidates = [
+    path.resolve(MODULE_ROOT, relative),
+    path.resolve(process.cwd(), relative),
+    path.resolve(__dirname, relative),
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
 function resolveCompanyLogoPath(settings) {
   const candidates = [
     text(settings?.seller_logo_path, ''),
     text(settings?.seller_logo, ''),
-    path.resolve(process.cwd(), 'assets/images/company_logo.png'),
+    resolveAssetPath('assets/images/company_logo.png'),
   ].filter(Boolean);
   for (const candidate of candidates) {
     const resolved = path.isAbsolute(candidate)
       ? candidate
-      : path.resolve(process.cwd(), candidate);
-    if (fs.existsSync(resolved)) return resolved;
+      : resolveAssetPath(candidate) || path.resolve(process.cwd(), candidate);
+    if (resolved && fs.existsSync(resolved)) return resolved;
   }
   return null;
 }
@@ -502,29 +513,32 @@ async function buildEInvoiceArchivePdf({
     doc.on('error', reject);
   });
 
-  // Maliye görselindeki Inter yüzü; yoksa NotoSans, en sonda Helvetica.
+  // Helvetica/WinAnsi Türkçe karakterleri bozar; yalnızca gömülü TTF kullan.
+  // Noto Sans (statik) öncelikli; Inter yedek. Vercel'de process.cwd() altında
+  // assets olmayabilir, bu yüzden __dirname üzerinden de aranır.
   const fontSets = [
-    {
-      Invoice: 'assets/fonts/inter/Inter-Regular.ttf',
-      InvoiceBold: 'assets/fonts/inter/Inter-Bold.ttf',
-      InvoiceItalic: 'assets/fonts/inter/Inter-Italic.ttf',
-    },
     {
       Invoice: 'assets/fonts/noto_sans/NotoSans-Regular.ttf',
       InvoiceBold: 'assets/fonts/noto_sans/NotoSans-Bold.ttf',
       InvoiceItalic: 'assets/fonts/noto_sans/NotoSans-Italic.ttf',
     },
+    {
+      Invoice: 'assets/fonts/inter/Inter-Regular.ttf',
+      InvoiceBold: 'assets/fonts/inter/Inter-Bold.ttf',
+      InvoiceItalic: 'assets/fonts/inter/Inter-Italic.ttf',
+    },
   ];
-  const fallbacks = {
-    Invoice: 'Helvetica',
-    InvoiceBold: 'Helvetica-Bold',
-    InvoiceItalic: 'Helvetica-Oblique',
-  };
-  for (const [name, fallback] of Object.entries(fallbacks)) {
+  for (const name of ['Invoice', 'InvoiceBold', 'InvoiceItalic']) {
     const found = fontSets
-      .map((set) => path.resolve(process.cwd(), set[name]))
-      .find((absolute) => fs.existsSync(absolute));
-    doc.registerFont(name, found || fallback);
+      .map((set) => resolveAssetPath(set[name]))
+      .find(Boolean);
+    if (!found) {
+      throw new Error(
+        `PDF fontu bulunamadı (${name}). ` +
+          'assets/fonts/noto_sans veya assets/fonts/inter dosyaları deploy paketinde olmalı.',
+      );
+    }
+    doc.registerFont(name, found);
   }
   doc.rect(0, 0, PAGE.width, PAGE.height).fill('#ffffff');
 
@@ -576,8 +590,8 @@ async function buildEInvoiceArchivePdf({
       align: 'center',
     });
 
-  const logoPath = path.resolve(process.cwd(), 'assets/images/kktc_maliye_logo.png');
-  if (fs.existsSync(logoPath)) {
+  const logoPath = resolveAssetPath('assets/images/kktc_maliye_logo.png');
+  if (logoPath) {
     doc.image(logoPath, LEFT, 57, { width: 42, height: 47 });
   }
   doc

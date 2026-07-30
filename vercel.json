@@ -2,6 +2,11 @@
   "version": 2,
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "build/web",
+  "functions": {
+    "api/**/*.js": {
+      "includeFiles": "assets/**"
+    }
+  },
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]

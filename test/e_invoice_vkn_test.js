@@ -536,7 +536,35 @@ test('Maliye arşiv verisinden Türkçe karakterli tek sayfa A4 PDF üretir', as
   const pdf = await buildEInvoiceArchivePdf({
     invoice,
     settings: validSettings(),
-    officialData: {},
+    officialData: {
+      fatura: {
+        faturaNo: '620009058-2026-1-00000000001',
+        faturaTarihi: '2026-07-28T00:00:00Z',
+        paraBirimi: 'TRY',
+        tedarikci: {
+          unvan: 'MICROVISE INNOVATION LİMİTED',
+          adresSatir1: 'ATATÜRK CAD YENİŞEHİR',
+          sehir: 'Lefkoşa',
+          ulke: 'Kuzey Kıbrıs Türk Cumhuriyeti',
+          vkn: '620009058',
+          belgeNo: 'MŞ19660',
+          belgeTipi: 'VERGI_SICILNO',
+        },
+        musteri: {
+          unvan: 'BÜLENT MAYIN',
+          adresSatir1: 'GİRNE',
+          sehir: 'Girne',
+          ulke: 'Kuzey Kıbrıs Türk Cumhuriyeti',
+          belgeNo: '123',
+          belgeTipi: 'VKN',
+        },
+        malHizmetler: [],
+        araToplam: 0,
+        iskontoToplami: 0,
+        kdvToplami: 0,
+        genelToplam: 0,
+      },
+    },
     verificationCode: '019faa9a-a367-74d5-a443-77eb762bca98',
     environment: 'production',
   });
@@ -546,6 +574,13 @@ test('Maliye arşiv verisinden Türkçe karakterli tek sayfa A4 PDF üretir', as
   assert.equal(
     (pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length,
     1,
+  );
+  const asLatin = pdf.toString('latin1');
+  // Helvetica/WinAnsi Türkçe'yi bozar; gömülü TTF (Noto/Inter) zorunlu.
+  assert.equal(/\/BaseFont\s*\/Helvetica\b/.test(asLatin), false);
+  assert.ok(
+    /NotoSans|Inter/.test(asLatin),
+    'PDF içinde NotoSans veya Inter fontu gömülü olmalı',
   );
 });
 
