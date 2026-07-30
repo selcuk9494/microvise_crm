@@ -1924,24 +1924,22 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   icon: Icons.delete_forever_rounded,
                   onPressed: _busy ? null : _delete,
                 ),
-                _InvoiceIconAction(
-                  tooltip: alreadySent
-                      ? 'Maliye nüshasını görüntüle'
-                      : 'PDF / Yazdır',
-                  icon: Icons.picture_as_pdf_rounded,
-                  onPressed: _busy ? null : _print,
-                ),
-                if (alreadySent)
+                if (alreadySent) ...[
                   _InvoiceIconAction(
-                    tooltip: 'Maliye verisinden PDF oluştur',
-                    icon: Icons.download_rounded,
+                    tooltip: 'Oluşturulan PDF',
+                    icon: Icons.picture_as_pdf_rounded,
                     onPressed: _busy ? null : _printOfficialPdf,
                   ),
-                if (alreadySent)
                   _InvoiceIconAction(
-                    tooltip: 'Veritabanı yedeği / PDF',
-                    icon: Icons.offline_pin_rounded,
-                    onPressed: _busy ? null : _printDatabaseCopy,
+                    tooltip: 'Maliye orijinal link',
+                    icon: Icons.open_in_new_rounded,
+                    onPressed: _busy ? null : _openMaliyeLink,
+                  ),
+                ] else
+                  _InvoiceIconAction(
+                    tooltip: 'PDF / Yazdır',
+                    icon: Icons.picture_as_pdf_rounded,
+                    onPressed: _busy ? null : _print,
                   ),
                 _InvoiceIconAction(
                   tooltip: 'Ekstre PDF',
@@ -2104,25 +2102,23 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   onPressed: _busy ? null : _delete,
                 ),
                 const Gap(4),
-                _InvoiceIconAction(
-                  tooltip: alreadySent
-                      ? 'Maliye nüshasını görüntüle'
-                      : 'PDF / Yazdır',
-                  icon: Icons.picture_as_pdf_rounded,
-                  onPressed: _busy ? null : _print,
-                ),
                 if (alreadySent) ...[
-                  const Gap(4),
                   _InvoiceIconAction(
-                    tooltip: 'Maliye verisinden PDF oluştur',
-                    icon: Icons.download_rounded,
+                    tooltip: 'Oluşturulan PDF',
+                    icon: Icons.picture_as_pdf_rounded,
                     onPressed: _busy ? null : _printOfficialPdf,
                   ),
                   const Gap(4),
                   _InvoiceIconAction(
-                    tooltip: 'Veritabanı yedeği / PDF',
-                    icon: Icons.offline_pin_rounded,
-                    onPressed: _busy ? null : _printDatabaseCopy,
+                    tooltip: 'Maliye orijinal link',
+                    icon: Icons.open_in_new_rounded,
+                    onPressed: _busy ? null : _openMaliyeLink,
+                  ),
+                ] else ...[
+                  _InvoiceIconAction(
+                    tooltip: 'PDF / Yazdır',
+                    icon: Icons.picture_as_pdf_rounded,
+                    onPressed: _busy ? null : _print,
                   ),
                 ],
                 const Gap(4),
@@ -2288,34 +2284,81 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   Future<void> _print() async {
     final invoice = await _loadInvoiceDetail();
     if (invoice == null) return;
-
-    if (invoice.isEInvoiceSent) {
-      final officialUrl = buildOfficialEInvoiceUrl(
-        verificationCode: invoice.eInvoiceUuid,
-        environment: invoice.eInvoiceEnvironment ?? 'test',
-      );
-      if (officialUrl == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Maliye doğrulama kodu bulunamadı. Fatura detayını yenileyin.',
-            ),
-          ),
-        );
-        return;
-      }
-      final opened = await openExternalUrl(officialUrl);
-      if (!mounted || opened) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Maliye fatura sayfası bu platformda açılamadı.'),
-        ),
-      );
-      return;
-    }
-
     await _printInvoiceCopy(invoice);
+  }
+
+  Future<void> _openMaliyeLink() async {
+    if (await _openOfficialInvoicePage(widget.invoice)) return;
+
+    final invoice = await _loadInvoiceDetail();
+    if (invoice == null) return;
+    if (await _openOfficialInvoicePage(invoice)) return;
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Maliye doğrulama kodu bulunamadı. Fatura detayını yenileyin.',
+        ),
+      ),
+    );
+  }
+
+  /// Tarayıcılar açılır pencereyi yalnızca kullanıcı hareketiyle aynı çağrı
+  /// yığınında açar; bu yüzden ağ isteği beklenmeden çağrılmalıdır.
+  Future<bool> _openOfficialInvoicePage(Invoice invoice) async {
+    final officialUrl = buildOfficialEInvoiceUrl(
+      verificationCode: invoice.eInvoiceUuid,
+      environment: invoice.eInvoiceEnvironment ?? 'test',
+    );
+    if (officialUrl == null) return false;
+
+    final opened = await openExternalUrl(officialUrl);
+    if (!opened) {
+      await _showLinkFallbackDialog('Maliye Fatura Sayfası', officialUrl);
+    }
+    return true;
+  }
+
+  Future<void> _showLinkFallbackDialog(String title, String url) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Bağlantı otomatik açılamadı. Aşağıdaki adresi açabilir veya '
+                'kopyalayıp tarayıcınıza yapıştırabilirsiniz.',
+              ),
+              const Gap(12),
+              SelectableText(
+                url,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Clipboard.setData(ClipboardData(text: url)),
+            child: const Text('Kopyala'),
+          ),
+          FilledButton(
+            onPressed: () {
+              unawaited(openExternalUrl(url));
+              Navigator.of(context).pop();
+            },
+            child: const Text('Aç'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _printOfficialPdf() async {
@@ -2349,15 +2392,11 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       }
       final opened = await openExternalUrl(pdfUrl);
       if (!mounted || opened) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Oluşturulan PDF bu platformda açılamadı.'),
-        ),
-      );
+      await _showLinkFallbackDialog('Oluşturulan PDF', pdfUrl);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Maliye verisinden PDF oluşturulamadı: $error')),
+        SnackBar(content: Text('Oluşturulan PDF açılamadı: $error')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -2385,12 +2424,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       }
     }
     return invoice;
-  }
-
-  Future<void> _printDatabaseCopy() async {
-    final invoice = await _loadInvoiceDetail();
-    if (invoice == null) return;
-    await _printInvoiceCopy(invoice);
   }
 
   Future<void> _printInvoiceCopy(Invoice invoice) async {

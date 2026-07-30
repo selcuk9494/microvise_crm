@@ -4,13 +4,20 @@ const path = require('path');
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
 
+const PAGE = { width: 595.28, height: 841.89 };
+const LEFT = 34;
+const RIGHT = 561;
+const WIDTH = RIGHT - LEFT;
+const FOOTER_RULE_Y = 762;
+
 const COLORS = {
-  text: '#111827',
-  muted: '#4b5563',
-  subtle: '#6b7280',
-  border: '#d9e1e8',
-  band: '#f7f9fb',
-  red: '#d92d20',
+  text: '#1f242c',
+  label: '#6b7075',
+  footer: '#9aa0a8',
+  border: '#eaebef',
+  grid: '#ebebeb',
+  headerFill: '#fafbfd',
+  red: '#d32f3c',
 };
 
 function text(value, fallback = '-') {
@@ -19,12 +26,12 @@ function text(value, fallback = '-') {
 }
 
 function money(value, currency) {
-  const numericValue = Number(value || 0);
-  const amount = Math.abs(numericValue).toLocaleString('tr-TR', {
+  const numeric = Number(value || 0);
+  const amount = Math.abs(numeric).toLocaleString('tr-TR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  const sign = numericValue < 0 ? '-' : '';
+  const sign = numeric < 0 ? '-' : '';
   const symbol = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' }[
     String(currency || '').toUpperCase()
   ];
@@ -50,63 +57,6 @@ function formatDate(value, includeTime = true) {
   return `${values.day}.${values.month}.${values.year}${
     includeTime ? ` ${values.hour}:${values.minute}` : ''
   }`;
-}
-
-function partyLines(party) {
-  const cityCountry = [party?.sehir || party?.city, party?.ulke || party?.country]
-    .map((value) => text(value, ''))
-    .filter(Boolean)
-    .join(', ');
-  const documentNumber = party?.belgeNo || party?.documentNumber;
-  const documentType = party?.belgeTipi || party?.documentType;
-  const lines = [
-    text(party?.unvan || party?.name),
-    text(party?.adresSatir1 || party?.adres || party?.address),
-    text(party?.adresSatir2 || party?.addressLine2, ''),
-    cityCountry,
-    `Tel: ${text(party?.telefon || party?.phone)}`,
-    `E-posta: ${text(party?.email)}`,
-    `Web: ${text(party?.webSitesi || party?.website)}`,
-  ];
-  if (party?.vkn || party?.tax_number) {
-    lines.push(`VKN: ${text(party?.vkn || party?.tax_number)}`);
-  }
-  if (documentType || documentNumber) {
-    lines.push(`${text(documentType, 'Belge No')}: ${text(documentNumber)}`);
-  }
-  return lines.filter(Boolean);
-}
-
-function drawParty(doc, title, party, x, y, width, height) {
-  doc.lineWidth(0.7).roundedRect(x, y, width, height, 5).stroke(COLORS.border);
-  doc.font('NotoSans').fontSize(9.3).fillColor(COLORS.text).text(title, x + 10, y + 10);
-  doc
-    .moveTo(x + 10, y + 31)
-    .lineTo(x + width - 10, y + 31)
-    .strokeColor('#e8edf2')
-    .stroke();
-  doc
-    .font('NotoSans')
-    .fontSize(7.2)
-    .fillColor(COLORS.text)
-    .text(partyLines(party).join('\n'), x + 10, y + 42, {
-      width: width - 20,
-      height: height - 50,
-      lineGap: 1.8,
-      ellipsis: true,
-    });
-}
-
-function drawMeta(doc, label, value, x, y, width) {
-  doc
-    .font('NotoSans')
-    .fontSize(6.4)
-    .fillColor(COLORS.subtle)
-    .text(label, x, y, { width });
-  doc
-    .fontSize(7.5)
-    .fillColor(COLORS.text)
-    .text(text(value), x, y + 15, { width, ellipsis: true });
 }
 
 function unitName(value) {
@@ -153,11 +103,10 @@ function integerWords(value) {
 
 function amountInWords(value, currency) {
   const amount = Math.abs(Number(value) || 0);
-  const whole = Math.floor(amount);
+  let whole = Math.floor(amount);
   let fraction = Math.round((amount - whole) * 100);
-  let normalizedWhole = whole;
   if (fraction === 100) {
-    normalizedWhole += 1;
+    whole += 1;
     fraction = 0;
   }
   const labels =
@@ -167,9 +116,34 @@ function amountInWords(value, currency) {
       EUR: ['EURO', 'CENT'],
       GBP: ['İNGİLİZ STERLİNİ', 'PENİ'],
     }[String(currency || '').toUpperCase()] || [text(currency, 'PARA'), ''];
-  return `#${integerWords(normalizedWhole)} ${labels[0]}${
+  return `#${integerWords(whole)} ${labels[0]}${
     fraction ? ` ${integerWords(fraction)} ${labels[1]}` : ''
   }#`;
+}
+
+function partyLines(party) {
+  const cityCountry = [party?.sehir || party?.city, party?.ulke || party?.country]
+    .map((value) => text(value, ''))
+    .filter(Boolean)
+    .join(', ');
+  const documentNumber = party?.belgeNo || party?.documentNumber;
+  const documentType = party?.belgeTipi || party?.documentType;
+  const lines = [
+    text(party?.unvan || party?.name),
+    text(party?.adresSatir1 || party?.adres || party?.address),
+    text(party?.adresSatir2 || party?.addressLine2, ''),
+    cityCountry,
+    `Tel: ${text(party?.telefon || party?.phone)}`,
+    `E-posta: ${text(party?.email)}`,
+    `Web: ${text(party?.webSitesi || party?.website)}`,
+  ];
+  if (party?.vkn || party?.tax_number) {
+    lines.push(`VKN: ${text(party?.vkn || party?.tax_number)}`);
+  }
+  if (documentType || documentNumber) {
+    lines.push(`${text(documentType, 'Belge No')}: ${text(documentNumber)}`);
+  }
+  return lines.filter(Boolean).join('\n');
 }
 
 function sourceInvoice(officialData, payloadInvoice) {
@@ -181,8 +155,97 @@ function sourceInvoice(officialData, payloadInvoice) {
     officialData?.data ||
     officialData ||
     {};
-  const normalizedOfficial = Array.isArray(official) ? official[0] || {} : official;
-  return { ...payloadInvoice, ...normalizedOfficial };
+  const normalized = Array.isArray(official) ? official[0] || {} : official;
+  return { ...payloadInvoice, ...normalized };
+}
+
+function drawParty(doc, title, party, x, y, width, height) {
+  doc.lineWidth(0.8).roundedRect(x, y, width, height, 6).stroke(COLORS.border);
+  doc
+    .font('NotoSansBold')
+    .fontSize(11)
+    .fillColor(COLORS.text)
+    .text(title, x + 12, y + 12);
+  doc
+    .font('NotoSans')
+    .fontSize(8)
+    .fillColor(COLORS.text)
+    .text(partyLines(party), x + 12, y + 38, {
+      width: width - 24,
+      height: height - 46,
+      lineGap: 4.6,
+      ellipsis: true,
+    });
+}
+
+function partyHeight(doc, party, width) {
+  doc.font('NotoSans').fontSize(8);
+  return (
+    38 +
+    doc.heightOfString(partyLines(party), { width: width - 24, lineGap: 4.6 }) +
+    10
+  );
+}
+
+function drawMeta(doc, label, value, x, y, width) {
+  doc
+    .font('NotoSans')
+    .fontSize(6.8)
+    .fillColor(COLORS.label)
+    .text(label, x, y + 13, { width, ellipsis: true });
+  doc
+    .font('NotoSansBold')
+    .fontSize(8.4)
+    .fillColor(COLORS.text)
+    .text(text(value), x, y + 27, { width, ellipsis: true });
+}
+
+const TABLE_COLUMNS = [34, 115, 196, 270, 342, 393, 434, 481, 561];
+const TABLE_HEADERS = [
+  'Mal/Hizmet',
+  'Açıklama',
+  'Miktar',
+  'Birim Fiyat',
+  'İndirim',
+  'KDV (%)',
+  'KDV Tutarı',
+  'Toplam',
+];
+
+function columnBox(index) {
+  const x = TABLE_COLUMNS[index] + 6;
+  return { x, width: TABLE_COLUMNS[index + 1] - TABLE_COLUMNS[index] - 12 };
+}
+
+function drawGrid(doc, y, height) {
+  doc.lineWidth(0.6).strokeColor(COLORS.grid);
+  doc.rect(LEFT, y, WIDTH, height).stroke();
+  for (let index = 1; index < TABLE_COLUMNS.length - 1; index += 1) {
+    doc.moveTo(TABLE_COLUMNS[index], y).lineTo(TABLE_COLUMNS[index], y + height).stroke();
+  }
+}
+
+function rowHeight(doc, values, font, size) {
+  doc.font(font).fontSize(size);
+  const tallest = values.reduce((max, value, index) => {
+    const box = columnBox(index);
+    return Math.max(max, doc.heightOfString(value, { width: box.width, lineGap: 2 }));
+  }, 0);
+  return tallest + 16;
+}
+
+function drawRow(doc, values, y, height, font, size) {
+  drawGrid(doc, y, height);
+  doc.font(font).fontSize(size).fillColor(COLORS.text);
+  values.forEach((value, index) => {
+    const box = columnBox(index);
+    const textHeight = doc.heightOfString(value, { width: box.width, lineGap: 2 });
+    doc.text(value, box.x, y + (height - textHeight) / 2, {
+      width: box.width,
+      lineGap: 2,
+      align: index < 2 ? 'left' : 'right',
+    });
+  });
 }
 
 async function buildEInvoiceArchivePdf({
@@ -208,27 +271,17 @@ async function buildEInvoiceArchivePdf({
     doc.on('error', reject);
   });
 
-  const fontPath = path.resolve(
-    process.cwd(),
-    'assets/fonts/noto_sans/NotoSans-Regular.ttf',
-  );
-  if (fs.existsSync(fontPath)) {
-    doc.registerFont('NotoSans', fontPath);
-    const italicPath = path.resolve(
-      process.cwd(),
-      'assets/fonts/noto_sans/NotoSans-Italic.ttf',
-    );
-    doc.registerFont(
-      'NotoSansItalic',
-      fs.existsSync(italicPath) ? italicPath : fontPath,
-    );
-    doc.font('NotoSans');
-  } else {
-    doc.registerFont('NotoSans', 'Helvetica');
-    doc.registerFont('NotoSansItalic', 'Helvetica-Oblique');
-    doc.font('Helvetica');
+  const fontDir = path.resolve(process.cwd(), 'assets/fonts/noto_sans');
+  const fontFiles = {
+    NotoSans: ['NotoSans-Regular.ttf', 'Helvetica'],
+    NotoSansBold: ['NotoSans-Bold.ttf', 'Helvetica-Bold'],
+    NotoSansItalic: ['NotoSans-Italic.ttf', 'Helvetica-Oblique'],
+  };
+  for (const [name, [file, fallback]] of Object.entries(fontFiles)) {
+    const filePath = path.join(fontDir, file);
+    doc.registerFont(name, fs.existsSync(filePath) ? filePath : fallback);
   }
-  doc.rect(0, 0, 595.28, 841.89).fill('#ffffff');
+  doc.rect(0, 0, PAGE.width, PAGE.height).fill('#ffffff');
 
   const payloadInvoice = invoice.e_invoice_payload?.faturalar?.[0] || {};
   const source = sourceInvoice(officialData, payloadInvoice);
@@ -251,16 +304,12 @@ async function buildEInvoiceArchivePdf({
     (Array.isArray(invoice.items)
       ? invoice.items.map((item) => ({
           adi: item.description,
+          aciklama: item.description,
           birimMiktari: item.quantity,
           birimTurKod: item.unit,
           fiyat: item.unit_price,
-          aciklama: item.description,
-          iskontoVeEkUcretler: [
-            { indirimMi: true, tutar: item.discount_amount || 0 },
-          ],
-          vergiler: [
-            { vergiOrani: item.tax_rate, vergiTutari: item.tax_amount || 0 },
-          ],
+          iskontoVeEkUcretler: [{ indirimMi: true, tutar: item.discount_amount || 0 }],
+          vergiler: [{ vergiOrani: item.tax_rate, vergiTutari: item.tax_amount || 0 }],
         }))
       : []);
   const currency = source.paraBirimi || invoice.currency;
@@ -269,78 +318,101 @@ async function buildEInvoiceArchivePdf({
       ? 'efatura.maliye.gov.ct.tr'
       : 'test-efatura.maliye.gov.ct.tr'
   }/dogrula/?code=${encodeURIComponent(verificationCode)}`;
-  const qr = await QRCode.toBuffer(officialUrl, { margin: 0, width: 220 });
+  const qr = await QRCode.toBuffer(officialUrl, { margin: 0, width: 260 });
 
   const logoPath = path.resolve(process.cwd(), 'assets/images/kktc_maliye_logo.png');
-  if (fs.existsSync(logoPath)) doc.image(logoPath, 34, 28, { width: 45, height: 62 });
-  doc.font('NotoSans').fontSize(11.5).fillColor(COLORS.text).text(
-    'K.K.T.C. Maliye Bakanlığı',
-    86,
-    29,
-  );
-  doc.fontSize(16).fillColor(COLORS.red).text('e-FATURA', 86, 49);
+  if (fs.existsSync(logoPath)) {
+    doc.image(logoPath, LEFT, 30, { width: 44, height: 49 });
+  }
   doc
-    .fontSize(7.5)
-    .fillColor(COLORS.muted)
+    .font('NotoSansBold')
+    .fontSize(12)
+    .fillColor(COLORS.text)
+    .text('K.K.T.C. Maliye Bakanlığı', 89, 33);
+  doc.font('NotoSansBold').fontSize(16.5).fillColor(COLORS.red).text('e-FATURA', 89, 53);
+  doc
+    .font('NotoSans')
+    .fontSize(9.4)
+    .fillColor(COLORS.label)
     .text(
-      `Fatura No: ${text(source.faturaNo || invoice.e_invoice_number || invoice.invoice_number)}`,
-      86,
-      74,
-      { width: 390 },
-    )
-  doc.image(qr, 501, 25, { width: 60 });
+      `Fatura No: ${text(
+        source.faturaNo || invoice.e_invoice_number || invoice.invoice_number,
+      )}`,
+      89,
+      81,
+      { width: 370, ellipsis: true },
+    );
+  doc.image(qr, RIGHT - 79, 26, { width: 79, height: 79 });
 
-  drawParty(doc, 'Tedarikçi Bilgileri', supplier, 34, 112, 252, 178);
-  drawParty(doc, 'Müşteri Bilgileri', customer, 309, 112, 252, 178);
+  const boxWidth = (WIDTH - 12) / 2;
+  const boxTop = 118;
+  const boxHeight = Math.max(
+    170,
+    partyHeight(doc, supplier, boxWidth),
+    partyHeight(doc, customer, boxWidth),
+  );
+  drawParty(doc, 'Tedarikçi Bilgileri', supplier, LEFT, boxTop, boxWidth, boxHeight);
+  drawParty(
+    doc,
+    'Müşteri Bilgileri',
+    customer,
+    LEFT + boxWidth + 12,
+    boxTop,
+    boxWidth,
+    boxHeight,
+  );
 
-  doc.roundedRect(34, 309, 527, 45, 5).fillAndStroke(COLORS.band, COLORS.border);
-  drawMeta(doc, 'FATURA TARİHİ', formatDate(source.faturaTarihi || invoice.invoice_date), 45, 319, 112);
-  drawMeta(doc, 'İRSALİYE NO', source.irsaliyeNo || invoice.irsaliye_no, 165, 319, 102);
+  const metaTop = boxTop + boxHeight + 12;
+  const metaHeight = 44;
+  doc
+    .lineWidth(0.8)
+    .roundedRect(LEFT, metaTop, WIDTH, metaHeight, 6)
+    .fillAndStroke('#ffffff', COLORS.border);
+  drawMeta(
+    doc,
+    'FATURA TARİHİ',
+    formatDate(source.faturaTarihi || invoice.invoice_date),
+    52,
+    metaTop,
+    112,
+  );
+  drawMeta(doc, 'İRSALİYE NO', source.irsaliyeNo || invoice.irsaliye_no, 171, metaTop, 126);
   drawMeta(
     doc,
     'İRSALİYE TARİHİ',
     source.irsaliyeTarihi || invoice.irsaliye_tarihi
       ? formatDate(source.irsaliyeTarihi || invoice.irsaliye_tarihi, false)
       : '-',
-    284,
-    319,
-    105,
+    305,
+    metaTop,
+    118,
   );
-  drawMeta(doc, 'PARA BİRİMİ', currency, 431, 319, 105);
+  drawMeta(doc, 'PARA BİRİMİ', currency, 430, metaTop, 118);
+
+  const listTop = metaTop + metaHeight + 18;
   doc
-    .moveTo(34, 374)
-    .lineTo(561, 374)
-    .strokeColor('#e8edf2')
-    .stroke();
-  doc.font('NotoSans').fontSize(10).fillColor(COLORS.text).text('Mal/Hizmet Listesi', 34, 391);
+    .font('NotoSansBold')
+    .fontSize(11)
+    .fillColor(COLORS.text)
+    .text('Mal/Hizmet Listesi', LEFT, listTop);
 
-  const columns = [34, 115, 194, 263, 330, 382, 430, 487, 561];
-  let y = 414;
-  doc.rect(34, y, 527, 31).fill('#fafbfd');
-  const headers = [
-    'Mal/Hizmet',
-    'Açıklama',
-    'Miktar',
-    'Birim Fiyat',
-    'İndirim',
-    'KDV (%)',
-    'KDV Tutarı',
-    'Toplam',
-  ];
-  headers.forEach((header, index) => {
-    doc
-      .font('NotoSans')
-      .fontSize(5.8)
-      .fillColor(COLORS.text)
-      .text(header, columns[index] + 3, y + 10, {
-        width: columns[index + 1] - columns[index] - 6,
-        align: index === 0 ? 'left' : 'right',
-      });
+  let y = listTop + 22;
+  const headerHeight = 30;
+  doc.rect(LEFT, y, WIDTH, headerHeight).fill(COLORS.headerFill);
+  drawGrid(doc, y, headerHeight);
+  doc.font('NotoSansBold').fontSize(7.2).fillColor(COLORS.text);
+  TABLE_HEADERS.forEach((header, index) => {
+    const box = columnBox(index);
+    const height = doc.heightOfString(header, { width: box.width, lineGap: 2 });
+    doc.text(header, box.x, y + (headerHeight - height) / 2, {
+      width: box.width,
+      lineGap: 2,
+      align: index < 2 ? 'left' : 'right',
+    });
   });
-  y += 31;
+  y += headerHeight;
 
-  const maxRows = 5;
-  items.slice(0, maxRows).forEach((item) => {
+  const rows = items.map((item) => {
     const qty = Number(item.birimMiktari ?? item.quantity ?? 0);
     const price = Number(item.fiyat ?? item.unit_price ?? 0);
     const discount = Number(
@@ -350,111 +422,125 @@ async function buildEInvoiceArchivePdf({
     );
     const tax = Number(item.vergiler?.[0]?.vergiTutari ?? item.tax_amount ?? 0);
     const total = Number(item.toplam ?? item.tutar ?? qty * price - discount + tax);
-    const values = [
+    return [
       text(item.adi || item.description),
       text(item.aciklama || item.description),
       `${qty.toLocaleString('tr-TR')}\n${unitName(item.birimTurKod || item.unit)}`,
       money(price, currency),
       discount ? `-${money(discount, currency)}` : '-',
-      `%${Number(item.vergiler?.[0]?.vergiOrani ?? item.tax_rate ?? 0)}`,
+      `${Number(item.vergiler?.[0]?.vergiOrani ?? item.tax_rate ?? 0)}%`,
       money(tax, currency),
       money(total, currency),
     ];
-    const rowHeight = 38;
-    doc.rect(34, y, 527, rowHeight).stroke('#e5e7eb');
-    values.forEach((value, index) => {
-      doc
-        .font('NotoSans')
-        .fontSize(5.6)
-        .fillColor(COLORS.text)
-        .text(value, columns[index] + 3, y + 9, {
-          width: columns[index + 1] - columns[index] - 6,
-          height: rowHeight - 12,
-          ellipsis: true,
-          align: index < 2 ? 'left' : 'right',
-        });
-    });
-    y += rowHeight;
   });
-  if (items.length > maxRows) {
-    doc
-      .font('NotoSansItalic')
-      .fontSize(6)
-      .fillColor(COLORS.subtle)
-      .text(`+ ${items.length - maxRows} kalem UBL/XML kaydında yer almaktadır.`, 37, y + 4);
-    y += 16;
-  }
-
-  const totals = [
-    ['Ara Toplam', source.faturaToplami ?? invoice.subtotal],
-    ['İndirim Toplamı', -(Number(source.iskontoToplami ?? invoice.discount_total) || 0)],
-    ['KDV Toplamı', source.kdvToplami ?? invoice.tax_total],
-    ['Ödenecek Toplam', source.odenecekToplam ?? invoice.grand_total],
-  ];
-  y += 18;
-  const totalsStartY = y;
-  totals.forEach(([label, value], index) => {
-    doc
-      .font('NotoSans')
-      .fontSize(index === totals.length - 1 ? 8.8 : 7)
-      .fillColor(COLORS.text)
-      .text(label, 320, y, { width: 120, align: 'left' })
-      .text(money(value, currency), 455, y, { width: 106, align: 'right' });
-    if (index === totals.length - 2) {
-      doc.moveTo(320, y + 14).lineTo(561, y + 14).strokeColor(COLORS.border).stroke();
-    }
-    y += index === totals.length - 1 ? 22 : 17;
-  });
-  const payable = source.odenecekToplam ?? invoice.grand_total;
-  doc
-    .font('NotoSansItalic')
-    .fontSize(5.8)
-    .fillColor(COLORS.subtle)
-    .text(`Yalnız: ${amountInWords(payable, currency)}`, 250, y - 2, {
-      width: 311,
-      align: 'right',
-    });
 
   const description = text(source.aciklama, '');
-  if (description) {
-    const compactDescription = y + 30 > 675;
-    const descriptionY = compactDescription ? totalsStartY : Math.max(y + 30, 650);
-    const descriptionWidth = compactDescription ? 255 : 527;
+  doc.font('NotoSans').fontSize(7.6);
+  const descriptionHeight = description
+    ? 22 + doc.heightOfString(description, { width: 400, lineGap: 4 })
+    : 0;
+  // Toplamlar, açıklama ve alt bilgi bloklarının tek sayfaya sığması için
+  // tabloya ayrılabilecek en alt sınır.
+  const tableLimit = FOOTER_RULE_Y - 14 - 121 - descriptionHeight;
+  let rendered = 0;
+  for (const values of rows) {
+    const height = rowHeight(doc, values, 'NotoSans', 7.4);
+    if (rendered > 0 && y + height > tableLimit) break;
+    drawRow(doc, values, y, height, 'NotoSans', 7.4);
+    y += height;
+    rendered += 1;
+  }
+  if (rendered < rows.length) {
+    doc
+      .font('NotoSansItalic')
+      .fontSize(6.6)
+      .fillColor(COLORS.label)
+      .text(`+ ${rows.length - rendered} kalem UBL/XML kaydında yer almaktadır.`, LEFT + 4, y + 5);
+    y += 18;
+  }
+
+  const discountTotal = Number(source.iskontoToplami ?? invoice.discount_total) || 0;
+  const totals = [
+    ['Ara Toplam:', money(source.faturaToplami ?? invoice.subtotal, currency)],
+    ['İndirim Toplamı:', `-${money(discountTotal, currency)}`],
+    ['KDV Toplamı:', money(source.kdvToplami ?? invoice.tax_total, currency)],
+  ];
+  y += 16;
+  const totalsLeft = 253.5;
+  totals.forEach(([label, value]) => {
     doc
       .font('NotoSans')
-      .fontSize(9)
+      .fontSize(8)
       .fillColor(COLORS.text)
-      .text('Açıklama', 34, descriptionY);
+      .text(label, totalsLeft, y, { width: 160 })
+      .text(value, 401, y, { width: RIGHT - 401, align: 'right' });
+    y += 16.5;
+  });
+  doc
+    .lineWidth(0.8)
+    .moveTo(totalsLeft, y + 3)
+    .lineTo(RIGHT, y + 3)
+    .strokeColor(COLORS.border)
+    .stroke();
+  y += 13;
+  const payable = source.odenecekToplam ?? invoice.grand_total;
+  doc
+    .font('NotoSansBold')
+    .fontSize(10.5)
+    .fillColor(COLORS.text)
+    .text('Ödenecek Toplam:', totalsLeft, y, { width: 170 })
+    .text(money(payable, currency), 401, y, { width: RIGHT - 401, align: 'right' });
+  y += 20;
+  doc
+    .font('NotoSansItalic')
+    .fontSize(6.8)
+    .fillColor(COLORS.label)
+    .text(`Yalnız: ${amountInWords(payable, currency)}`, 220, y, {
+      width: RIGHT - 220,
+      align: 'right',
+    });
+  y += 22;
+
+  if (description) {
+    doc.font('NotoSansBold').fontSize(10).fillColor(COLORS.text).text('Açıklama', LEFT, y);
     doc
-      .fontSize(6.5)
+      .font('NotoSans')
+      .fontSize(7.6)
       .fillColor(COLORS.text)
-      .text(description, 34, descriptionY + 22, {
-        width: descriptionWidth,
-        height: compactDescription ? 75 : 60,
-        lineGap: 1.5,
+      .text(description, LEFT, y + 22, {
+        width: 400,
+        height: Math.max(0, FOOTER_RULE_Y - 12 - (y + 22)),
+        lineGap: 4,
         ellipsis: true,
       });
   }
-  const createdAt = formatDate(new Date().toISOString());
-  doc.moveTo(34, 760).lineTo(561, 760).strokeColor('#e8edf2').stroke();
+
+  doc
+    .lineWidth(0.8)
+    .moveTo(LEFT, FOOTER_RULE_Y)
+    .lineTo(RIGHT, FOOTER_RULE_Y)
+    .strokeColor(COLORS.border)
+    .stroke();
   doc
     .font('NotoSans')
-    .fontSize(5.8)
-    .fillColor(COLORS.subtle)
+    .fontSize(7)
+    .fillColor(COLORS.footer)
     .text(
       'Bu fatura elektronik ortamda oluşturulmuş olup, yasal geçerliliği bulunmaktadır.',
-      34,
-      770,
-      { width: 527, align: 'center' },
+      LEFT,
+      FOOTER_RULE_Y + 12,
+      { width: WIDTH, align: 'center' },
     )
-    .text(`Doğrulama Kodu: ${verificationCode}`, 34, 783, {
-      width: 527,
+    .text(`Doğrulama Kodu: ${verificationCode}`, LEFT, FOOTER_RULE_Y + 25, {
+      width: WIDTH,
       align: 'center',
     })
-    .text(`Oluşturma Tarihi: ${createdAt}`, 34, 796, {
-      width: 527,
-      align: 'center',
-    });
+    .text(
+      `Oluşturma Tarihi: ${formatDate(new Date().toISOString())}`,
+      LEFT,
+      FOOTER_RULE_Y + 38,
+      { width: WIDTH, align: 'center' },
+    );
 
   doc.end();
   return completed;
