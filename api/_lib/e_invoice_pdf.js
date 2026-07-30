@@ -159,7 +159,7 @@ function sourceInvoice(officialData, payloadInvoice) {
   return { ...payloadInvoice, ...normalized };
 }
 
-const COMPANY_LOGO_MAX = { width: 180, height: 62 };
+const COMPANY_LOGO_MAX = { width: 165, height: 57 };
 
 function resolveCompanyLogoPath(settings) {
   const candidates = [
@@ -379,7 +379,7 @@ async function buildEInvoiceArchivePdf({
       )}`,
       LEFT,
       88,
-      { width: WIDTH, align: 'center', ellipsis: true },
+      { width: WIDTH, align: 'left', ellipsis: true },
     );
 
   const boxTop = 118;
