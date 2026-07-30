@@ -22,6 +22,7 @@ import '../invoices/invoice_providers.dart';
 import '../invoices/invoice_statement_share.dart';
 import 'e_invoice_form_screen.dart';
 import 'e_invoice_official_url.dart';
+import 'e_invoice_pdf_share.dart';
 import 'e_invoice_print.dart';
 
 final eInvoiceSettingsProvider =
@@ -365,6 +366,23 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     final bulkManualCount = bulkManualUndo
         ? selectedManualCount
         : selectedMarkableCount;
+    final selectedErpPushCount = items
+        .where(
+          (invoice) =>
+              _selectedInvoiceIds.contains(invoice.id) &&
+              invoice.isEInvoiceSent &&
+              (invoice.eInvoiceEnvironment == null ||
+                  invoice.eInvoiceEnvironment == 'production') &&
+              (invoice.eInvoiceNumber?.trim().isNotEmpty ?? false),
+        )
+        .length;
+    final selectedSentCount = items
+        .where(
+          (invoice) =>
+              _selectedInvoiceIds.contains(invoice.id) &&
+              invoice.isEInvoiceSent,
+        )
+        .length;
     final visibleItems = items.take(_visibleInvoiceLimit).toList();
     final hasHiddenItems = visibleItems.length < items.length;
     final sales = items.where((e) => e.invoiceType == 'sales').length;
@@ -590,6 +608,37 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                   const Gap(8),
                                   OutlinedButton.icon(
                                     onPressed:
+                                        selectedErpPushCount == 0 ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing ||
+                                            _pullingAkinsoft
+                                        ? null
+                                        : () => _pushSelectedInvoiceNumbers(
+                                            items,
+                                          ),
+                                    icon: const Icon(
+                                      Icons.sync_alt_rounded,
+                                      size: 18,
+                                    ),
+                                    label: const Text('ERP No'),
+                                  ),
+                                  const Gap(8),
+                                  OutlinedButton.icon(
+                                    onPressed:
+                                        selectedSentCount == 0 ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing
+                                        ? null
+                                        : () => _downloadSelectedPdfs(items),
+                                    icon: const Icon(
+                                      Icons.picture_as_pdf_rounded,
+                                      size: 18,
+                                    ),
+                                    label: const Text('PDF'),
+                                  ),
+                                  const Gap(8),
+                                  OutlinedButton.icon(
+                                    onPressed:
                                         _selectedInvoiceIds.isEmpty ||
                                             _bulkDeleting ||
                                             _bulkProcessing
@@ -763,6 +812,45 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                             ? 'Manuel İşareti Geri Al'
                                             : 'Manuel Kesildi',
                                       ),
+                                    ),
+                                    const Gap(8),
+                                    OutlinedButton.icon(
+                                      onPressed:
+                                          selectedErpPushCount == 0 ||
+                                              _bulkDeleting ||
+                                              _bulkProcessing ||
+                                              _pullingAkinsoft
+                                          ? null
+                                          : () => _pushSelectedInvoiceNumbers(
+                                              items,
+                                            ),
+                                      icon: const Icon(
+                                        Icons.sync_alt_rounded,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Akınsoft No Güncelle'),
+                                    ),
+                                    const Gap(8),
+                                    OutlinedButton.icon(
+                                      onPressed:
+                                          selectedSentCount == 0 ||
+                                              _bulkDeleting ||
+                                              _bulkProcessing
+                                          ? null
+                                          : () => _downloadSelectedPdfs(items),
+                                      icon: _bulkProcessing
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : const Icon(
+                                              Icons.picture_as_pdf_rounded,
+                                              size: 18,
+                                            ),
+                                      label: const Text('Toplu PDF'),
                                     ),
                                     const Gap(8),
                                     OutlinedButton.icon(
@@ -996,6 +1084,218 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       ).showSnackBar(SnackBar(content: Text('Toplu silme başarısız: $error')));
     } finally {
       if (mounted) setState(() => _bulkDeleting = false);
+    }
+  }
+
+  Future<void> _downloadSelectedPdfs(List<Invoice> visibleInvoices) async {
+    final selected = visibleInvoices
+        .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
+        .where((invoice) => invoice.isEInvoiceSent)
+        .toList(growable: false);
+    if (selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('PDF için gönderilmiş e-fatura seçin.'),
+        ),
+      );
+      return;
+    }
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+
+    setState(() => _bulkProcessing = true);
+    final failures = <String>[];
+    final downloads = <EInvoicePdfDownload>[];
+    try {
+      for (final invoice in selected) {
+        try {
+          final archive = await apiClient.postJson(
+            '/e-invoice',
+            body: {
+              'action': 'archive',
+              'invoiceId': invoice.id,
+              'force': true,
+            },
+          );
+          final pdfUrl = archive['pdfUrl']?.toString().trim() ?? '';
+          if (pdfUrl.isEmpty) {
+            failures.add(
+              '${invoice.invoiceNumber}: '
+              '${archive['error']?.toString() ?? 'PDF bağlantısı yok.'}',
+            );
+            continue;
+          }
+          final number = (invoice.eInvoiceNumber?.trim().isNotEmpty ?? false)
+              ? invoice.eInvoiceNumber!.trim()
+              : invoice.invoiceNumber.trim();
+          final customer = (invoice.customerName ?? '').trim();
+          downloads.add(
+            EInvoicePdfDownload(
+              url: pdfUrl,
+              fileName: customer.isEmpty
+                  ? '$number.pdf'
+                  : '${number}_$customer.pdf',
+            ),
+          );
+        } catch (error) {
+          failures.add('${invoice.invoiceNumber}: $error');
+        }
+      }
+
+      if (downloads.isEmpty) {
+        throw StateError(
+          failures.isEmpty ? 'PDF oluşturulamadı.' : failures.join('\n'),
+        );
+      }
+
+      final shared = await shareEInvoicePdfBundle(
+        files: downloads,
+        shareText: '${downloads.length} e-fatura PDF',
+      );
+      if (!shared) {
+        for (final item in downloads) {
+          await openExternalUrl(item.url);
+        }
+      }
+
+      ref.invalidate(invoicesProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            failures.isEmpty
+                ? '${downloads.length} PDF hazırlandı.'
+                : '${downloads.length} PDF hazırlandı, ${failures.length} fatura atlandı.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Toplu PDF başarısız: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _bulkProcessing = false);
+    }
+  }
+
+  Future<void> _pushSelectedInvoiceNumbers(List<Invoice> visibleInvoices) async {
+    final selected = visibleInvoices
+        .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
+        .where((invoice) => invoice.isEInvoiceSent)
+        .where(
+          (invoice) => invoice.eInvoiceNumber?.trim().isNotEmpty ?? false,
+        )
+        .toList(growable: false);
+    if (selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Akınsoft’a aktarılacak gönderilmiş e-fatura seçilmedi.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Akınsoft fatura no güncelle'),
+        content: Text(
+          '${selected.length} faturanın CRM ve Akınsoft fatura numarası '
+          'Maliye e-fatura numarasına güncellensin mi?\n\n'
+          'Örnek: SF03393 → ${selected.first.eInvoiceNumber}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Güncelle'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _bulkProcessing = true);
+    try {
+      final settings = await ref.read(eInvoiceSettingsProvider.future);
+      final response = await http
+          .post(
+            _akinsoftUri('push-invoice-numbers'),
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+            body: jsonEncode({
+              ...settings,
+              'invoiceIds': selected.map((invoice) => invoice.id).toList(),
+            }),
+          )
+          .timeout(const Duration(minutes: 5));
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) {
+        throw Exception('Beklenmeyen Akınsoft yanıtı.');
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(decoded['error'] ?? 'Akınsoft güncelleme başarısız.');
+      }
+      _selectedInvoiceIds.clear();
+      ref.invalidate(invoicesProvider);
+      if (!mounted) return;
+      final success = decoded['success'] ?? 0;
+      final failed = decoded['failed'] ?? 0;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Akınsoft No Güncelleme'),
+          content: SizedBox(
+            width: 640,
+            height: MediaQuery.sizeOf(context).height * 0.5,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Başarılı: $success • Hatalı: $failed'),
+                const Gap(12),
+                Expanded(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceMuted,
+                      border: Border.all(color: AppTheme.border),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                    ),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(12),
+                      child: SelectableText(
+                        const JsonEncoder.withIndent('  ').convert(decoded),
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Tamam'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Akınsoft no güncelleme başarısız: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _bulkProcessing = false);
     }
   }
 
@@ -2112,6 +2412,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               : _InvoiceActionTone.success,
           onPressed: _busy ? null : _toggleActive,
         ),
+        if (!invoice.isActive)
+          _InvoiceLabeledAction(
+            label: 'Sil',
+            tooltip: 'Kalıcı sil',
+            icon: Icons.delete_forever_rounded,
+            tone: _InvoiceActionTone.danger,
+            onPressed: _busy ? null : _delete,
+          ),
         _InvoiceLabeledAction(
           label: 'Düzenle',
           tooltip: 'Düzenle',
@@ -2194,6 +2502,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             : _InvoiceActionTone.success,
         onPressed: _busy ? null : _toggleActive,
       ),
+      if (!invoice.isActive)
+        _InvoiceIconAction(
+          tooltip: 'Kalıcı sil',
+          icon: Icons.delete_forever_rounded,
+          tone: _InvoiceActionTone.danger,
+          onPressed: _busy ? null : _delete,
+        ),
       if (!alreadySent)
         _InvoiceIconAction(
           tooltip: isManual
@@ -2611,6 +2926,72 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     }
   }
 
+  Future<void> _delete() async {
+    if (widget.invoice.isActive) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Faturayı kalıcı sil'),
+        content: Text(
+          '${widget.invoice.invoiceNumber} numaralı pasif fatura ve kalemleri '
+          'kalıcı olarak silinsin mi? Bu işlem geri alınamaz.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Kalıcı Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    setState(() => _busy = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'deleteWhere',
+          'table': 'invoice_items',
+          'filters': [
+            {'col': 'invoice_id', 'op': 'eq', 'value': widget.invoice.id},
+          ],
+        },
+      );
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'deleteWhere',
+          'table': 'invoices',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': widget.invoice.id},
+          ],
+        },
+      );
+      ref.invalidate(invoicesProvider);
+      ref.invalidate(accountBalancesProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${widget.invoice.invoiceNumber} kalıcı olarak silindi.'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Fatura silinemedi: $error')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _toggleManual() async {
     if (widget.invoice.isEInvoiceSent) return;
     final marking = !widget.invoice.isEInvoiceManual;
@@ -2786,7 +3167,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               : 'PDF bağlantısı oluşturulamadı.',
         );
       }
-      final opened = await openExternalUrl(pdfUrl);
+      final opened = await _shareOrOpenPdf(invoice, pdfUrl);
       if (!mounted || opened) return;
       await _showLinkFallbackDialog('Oluşturulan PDF', pdfUrl);
     } catch (error) {
@@ -2797,6 +3178,31 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Mobilde imzalı URL yerine PDF dosyasını paylaşır; paylaşım metninde
+  /// fatura numarası ve müşteri adı görünür.
+  Future<bool> _shareOrOpenPdf(Invoice invoice, String pdfUrl) async {
+    final number =
+        (invoice.eInvoiceNumber?.trim().isNotEmpty ?? false)
+        ? invoice.eInvoiceNumber!.trim()
+        : invoice.invoiceNumber.trim();
+    final customer = (invoice.customerName ?? '').trim();
+    final shareText = customer.isEmpty ? number : '$number - $customer';
+    final fileName = customer.isEmpty ? '$number.pdf' : '${number}_$customer.pdf';
+
+    try {
+      if (await shareEInvoicePdf(
+        url: pdfUrl,
+        fileName: fileName,
+        shareText: shareText,
+      )) {
+        return true;
+      }
+    } catch (_) {
+      // Paylaşım başarısızsa bağlantıyı açmaya geri düşülür.
+    }
+    return openExternalUrl(pdfUrl);
   }
 
   Future<Invoice?> _loadInvoiceDetail() async {

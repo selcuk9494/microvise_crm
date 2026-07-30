@@ -15,6 +15,10 @@ const {
   validateRegisteredBranch,
   urlsForEnvironment,
   archiveAfterSuccessfulSend,
+  officialNumberFromResponse,
+  isNumberAlreadyUsedError,
+  serialFromNumber,
+  invoiceNumberPrefix,
 } = require('../api/e-invoice').testUtils;
 const { buildEInvoiceArchivePdf } = require('../api/_lib/e_invoice_pdf');
 
@@ -78,6 +82,67 @@ test('önceden hazırlanmış 10 haneli VKN içeren fatura numarasını düzelti
     1,
   );
   assert.equal(number, '007033259-2026-1-00000000001');
+});
+
+test('Maliye yanıtından resmi fatura numarasını alır', () => {
+  assert.equal(
+    officialNumberFromResponse(
+      {
+        sonuclar: [
+          {
+            basarili: true,
+            faturaNo: '620009058-2026-1-000000000017',
+          },
+        ],
+      },
+      'fallback',
+    ),
+    '620009058-2026-1-000000000017',
+  );
+  assert.equal(
+    officialNumberFromResponse({ sonuclar: [{ basarili: false }] }, 'fallback'),
+    'fallback',
+  );
+});
+
+test('Maliye "zaten kullanılmakta" yanıtını numara çakışması olarak tanır', () => {
+  assert.equal(
+    isNumberAlreadyUsedError({
+      message:
+        "Fatura numarası '620009058-2026-1-00000000010' zaten kullanılmakta.",
+    }),
+    true,
+  );
+  assert.equal(
+    isNumberAlreadyUsedError({
+      message: 'Gönderim başarısız.',
+      response: {
+        sonuclar: [
+          {
+            basarili: false,
+            hataMesaji:
+              "Fatura numarası '620009058-2026-1-00000000017' zaten kullanılmakta.",
+          },
+        ],
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    isNumberAlreadyUsedError({ message: 'Şube kodu geçersiz.' }),
+    false,
+  );
+});
+
+test('fatura numarasından sıra numarasını çözer', () => {
+  const settings = { seller_vkn: '620009058', seller_branch_code: '1' };
+  const invoice = { invoice_date: '2026-07-28', invoice_type: 'sales' };
+  const prefix = invoiceNumberPrefix(settings, invoice);
+
+  assert.equal(prefix, '620009058-2026-1-');
+  assert.equal(serialFromNumber('620009058-2026-1-00000000010', prefix), 10);
+  assert.equal(serialFromNumber('620009058-2025-1-00000000010', prefix), null);
+  assert.equal(serialFromNumber(null, prefix), null);
 });
 
 test('doğrulama kodu UUIDv7 üretir', () => {

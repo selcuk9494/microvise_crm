@@ -38,6 +38,7 @@ class Invoice {
   final String? eInvoiceEnvironment;
   final DateTime? eInvoiceArchivedAt;
   final DateTime? eInvoiceSentAt;
+  final String? erpInvoiceNumber;
   final String? serviceRecordId;
   final String? workOrderId;
   final bool isActive;
@@ -70,6 +71,7 @@ class Invoice {
     this.eInvoiceEnvironment,
     this.eInvoiceArchivedAt,
     this.eInvoiceSentAt,
+    this.erpInvoiceNumber,
     this.serviceRecordId,
     this.workOrderId,
     this.isActive = true,
@@ -142,6 +144,7 @@ class Invoice {
       eInvoiceSentAt: json['e_invoice_sent_at'] != null
           ? parseAppDateTime(json['e_invoice_sent_at'].toString())
           : null,
+      erpInvoiceNumber: json['erp_invoice_number']?.toString(),
       serviceRecordId: json['service_record_id']?.toString(),
       workOrderId: json['work_order_id']?.toString(),
       isActive: json['is_active'] as bool? ?? true,

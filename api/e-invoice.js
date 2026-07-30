@@ -133,7 +133,9 @@ async function ensureEInvoiceSchema() {
       add column if not exists e_invoice_sent_at timestamptz,
       add column if not exists e_invoice_sending_at timestamptz,
       add column if not exists irsaliye_no text,
-      add column if not exists irsaliye_tarihi date
+      add column if not exists irsaliye_tarihi date,
+      add column if not exists erp_invoice_number text,
+      add column if not exists erp_invoice_number_synced_at timestamptz
   `);
   await query(`
     alter table public.invoice_items
@@ -550,6 +552,181 @@ function invoiceNumber(settings, invoice, serial) {
   return `${vkn}-${year}-${branch}-${String(serial).padStart(11, '0')}`;
 }
 
+function invoiceNumberPrefix(settings, invoice) {
+  const year = new Date(invoice.invoice_date || Date.now()).getFullYear();
+  const vkn = requireApiVkn(settings.seller_vkn, 'Satıcı VKN');
+  const branch = cleanText(settings.seller_branch_code) || '1';
+  return `${vkn}-${year}-${branch}-`;
+}
+
+function isNumberAlreadyUsedError(error) {
+  const haystack = [
+    error?.message,
+    JSON.stringify(error?.response || ''),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLocaleLowerCase('tr-TR');
+  return (
+    haystack.includes('zaten kullanılmakta') ||
+    haystack.includes('zaten kullanilmakta') ||
+    haystack.includes('zaten kullanılmış') ||
+    haystack.includes('daha önce kullanılmış')
+  );
+}
+
+function officialNumberFromResponse(response, fallback) {
+  const items = Array.isArray(response?.sonuclar) ? response.sonuclar : [];
+  for (const item of items) {
+    if (item?.basarili === false) continue;
+    const number = cleanText(item?.faturaNo);
+    if (number) return number;
+  }
+  return cleanText(fallback);
+}
+
+// Canlı gönderim başarılı olunca CRM fatura numarasını Maliye numarasına çeker.
+// ERP'deki eski numara erp_invoice_number alanında saklanır (Akınsoft yazımı için).
+async function applyOfficialInvoiceNumber({
+  invoiceId,
+  officialNumber,
+  currentInvoiceNumber,
+  erpInvoiceNumber,
+  environment,
+}) {
+  if (String(environment || '') !== 'production') {
+    return { renamed: false, reason: 'not_production' };
+  }
+  const official = cleanText(officialNumber);
+  if (!official) return { renamed: false, reason: 'missing_number' };
+
+  const current = cleanText(currentInvoiceNumber);
+  const preservedErp =
+    cleanText(erpInvoiceNumber) ||
+    (current && current !== official ? current : null);
+
+  if (current === official) {
+    if (preservedErp && !cleanText(erpInvoiceNumber)) {
+      await query(
+        `
+          update public.invoices
+          set erp_invoice_number = coalesce(erp_invoice_number, $2),
+              updated_at = now()
+          where id = $1
+        `,
+        [invoiceId, preservedErp],
+      );
+    }
+    return {
+      renamed: false,
+      reason: 'already_official',
+      invoiceNumber: official,
+      erpInvoiceNumber: preservedErp,
+    };
+  }
+
+  const conflict = await query(
+    `
+      select id
+      from public.invoices
+      where invoice_number = $1
+        and id is distinct from $2
+      limit 1
+    `,
+    [official, invoiceId],
+  );
+  if (conflict.rows.length) {
+    if (preservedErp) {
+      await query(
+        `
+          update public.invoices
+          set erp_invoice_number = coalesce(erp_invoice_number, $2),
+              updated_at = now()
+          where id = $1
+        `,
+        [invoiceId, preservedErp],
+      );
+    }
+    return {
+      renamed: false,
+      reason: 'conflict',
+      invoiceNumber: current,
+      erpInvoiceNumber: preservedErp,
+      officialNumber: official,
+    };
+  }
+
+  await query(
+    `
+      update public.invoices
+      set invoice_number = $2,
+          erp_invoice_number = coalesce(nullif(trim(erp_invoice_number), ''), $3),
+          updated_at = now()
+      where id = $1
+    `,
+    [invoiceId, official, preservedErp],
+  );
+  return {
+    renamed: true,
+    from: current,
+    to: official,
+    erpInvoiceNumber: preservedErp,
+    invoiceNumber: official,
+  };
+}
+
+// Sayaç yalnızca başarılı gönderimden sonra ilerlediği için hazırlanmış ya da
+// hatalı kalan faturalar aynı numarayı tutabiliyor. Numarayı gönderim anında
+// yerelde kullanılmış olanları atlayarak seçiyoruz.
+async function reservedInvoiceNumbers(prefix, excludeInvoiceId) {
+  const result = await query(
+    `
+      select e_invoice_number
+      from public.invoices
+      where e_invoice_number like $1
+        and id is distinct from $2
+        and e_invoice_status in ('sent', 'prepared')
+    `,
+    [`${prefix}%`, excludeInvoiceId || null],
+  );
+  return new Set(
+    result.rows
+      .map((row) => cleanText(row.e_invoice_number))
+      .filter(Boolean),
+  );
+}
+
+function serialFromNumber(number, prefix) {
+  if (!number || !String(number).startsWith(prefix)) return null;
+  const parsed = Number.parseInt(String(number).slice(prefix.length), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function resolveInvoiceNumber({ settings, invoice, invoiceId, skip }) {
+  const prefix = invoiceNumberPrefix(settings, invoice);
+  const taken = await reservedInvoiceNumbers(prefix, invoiceId);
+  for (const value of skip || []) {
+    const cleaned = cleanText(value);
+    if (cleaned) taken.add(cleaned);
+  }
+
+  const stored = cleanText(invoice.e_invoice_number);
+  if (stored) {
+    const normalized = invoiceNumber(settings, invoice, 0);
+    if (!taken.has(normalized)) {
+      return { number: normalized, serial: serialFromNumber(normalized, prefix) };
+    }
+  }
+
+  let serial = nextNumber(settings, invoice.invoice_type);
+  let candidate = `${prefix}${String(serial).padStart(11, '0')}`;
+  while (taken.has(candidate)) {
+    serial += 1;
+    candidate = `${prefix}${String(serial).padStart(11, '0')}`;
+  }
+  return { number: candidate, serial };
+}
+
 async function getSettings() {
   await ensureEInvoiceSchema();
   const result = await query(
@@ -582,9 +759,10 @@ async function fetchInvoice(invoiceId) {
   return result.rows[0] || null;
 }
 
-function buildPayload({ settings, invoice }) {
+function buildPayload({ settings, invoice, number: numberOverride }) {
   const serial = nextNumber(settings, invoice.invoice_type);
-  const number = invoiceNumber(settings, invoice, serial);
+  const number =
+    cleanText(numberOverride) || invoiceNumber(settings, invoice, serial);
   const uuid = invoice.e_invoice_uuid || createUuidV7();
   const seller = partyFromSettings(settings);
   const customer = partyFromCustomer(invoice.customer || {});
@@ -1403,7 +1581,16 @@ async function handler(req, res) {
       const payloadInvoice = testToProduction
         ? { ...invoice, e_invoice_number: null, e_invoice_uuid: null }
         : invoice;
-      const built = buildPayload({ settings, invoice: payloadInvoice });
+      const reserved = await resolveInvoiceNumber({
+        settings,
+        invoice: payloadInvoice,
+        invoiceId,
+      });
+      let built = buildPayload({
+        settings,
+        invoice: payloadInvoice,
+        number: reserved.number,
+      });
 
       if (action === 'prepare') {
         if (testToProduction) {
@@ -1523,28 +1710,75 @@ async function handler(req, res) {
       }
 
       try {
-        const sent = await sendToMaliye({ settings, payload: built.payload });
+        // Maliye numarayı kullanılmış sayarsa bir sonraki boş numarayla yeniden dener.
+        const collided = [];
+        let sent = null;
+        for (let attempt = 0; ; attempt += 1) {
+          try {
+            sent = await sendToMaliye({ settings, payload: built.payload });
+            break;
+          } catch (sendError) {
+            if (attempt >= 4 || !isNumberAlreadyUsedError(sendError)) throw sendError;
+            collided.push(built.number);
+            const retry = await resolveInvoiceNumber({
+              settings,
+              invoice: payloadInvoice,
+              invoiceId,
+              skip: collided,
+            });
+            if (retry.number === built.number) throw sendError;
+            built = buildPayload({
+              settings,
+              invoice: { ...payloadInvoice, e_invoice_number: null },
+              number: retry.number,
+            });
+            built.uuid = payloadInvoice.e_invoice_uuid || built.uuid;
+            await query(
+              `
+                update public.invoices
+                set e_invoice_number = $2,
+                    e_invoice_payload = $3::jsonb,
+                    updated_at = now()
+                where id = $1
+              `,
+              [invoiceId, built.number, JSON.stringify(built.payload)],
+            );
+          }
+        }
         const response = sent.response;
+        const officialNumber = officialNumberFromResponse(response, built.number);
         await query(
           `
             update public.invoices
             set e_invoice_status = 'sent',
-                e_invoice_response = $2::jsonb,
+                e_invoice_number = $2,
+                e_invoice_response = $3::jsonb,
                 e_invoice_error = null,
                 e_invoice_sent_at = now(),
                 e_invoice_sending_at = null,
                 updated_at = now()
             where id = $1
           `,
-          [invoiceId, JSON.stringify(response)],
+          [invoiceId, officialNumber, JSON.stringify(response)],
         );
+        const renamed = await applyOfficialInvoiceNumber({
+          invoiceId,
+          officialNumber,
+          currentInvoiceNumber: invoice.invoice_number,
+          erpInvoiceNumber: invoice.erp_invoice_number,
+          environment: settings.environment,
+        });
         const nextColumn =
           invoice.invoice_type === 'purchase'
             ? 'next_purchase_number'
             : 'next_sales_number';
+        const usedSerial = serialFromNumber(
+          officialNumber,
+          invoiceNumberPrefix(settings, payloadInvoice),
+        );
         await query(
-          `update public.e_invoice_settings set ${nextColumn} = ${nextColumn} + 1, last_sync_at = now(), updated_at = now() where id = $1`,
-          [settings.id],
+          `update public.e_invoice_settings set ${nextColumn} = greatest(${nextColumn} + 1, $2::bigint), last_sync_at = now(), updated_at = now() where id = $1`,
+          [settings.id, usedSerial ? usedSerial + 1 : 1],
         );
         const archive = await archiveAfterSuccessfulSend({
           invoiceId,
@@ -1555,7 +1789,10 @@ async function handler(req, res) {
         return ok(req, res, {
           ok: true,
           mode: 'send',
-          invoiceNumber: built.number,
+          invoiceNumber: officialNumber,
+          localInvoiceNumber: renamed.invoiceNumber || invoice.invoice_number,
+          erpInvoiceNumber: renamed.erpInvoiceNumber || invoice.erp_invoice_number,
+          renamed,
           uuid: built.uuid,
           response,
           archive,
@@ -1638,4 +1875,9 @@ module.exports.testUtils = {
   urlsForEnvironment,
   applyRegisteredSupplierIdentity,
   archiveAfterSuccessfulSend,
+  isNumberAlreadyUsedError,
+  serialFromNumber,
+  invoiceNumberPrefix,
+  officialNumberFromResponse,
+  applyOfficialInvoiceNumber,
 };
