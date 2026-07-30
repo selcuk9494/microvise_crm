@@ -5,18 +5,19 @@ const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
 
 const PAGE = { width: 595.28, height: 841.89 };
-const LEFT = 34;
-const RIGHT = 561;
+// Maliye çıktısındaki yaklaşık 16 mm yatay kenar boşlukları.
+const LEFT = 48;
+const RIGHT = 548;
 const WIDTH = RIGHT - LEFT;
-const FOOTER_RULE_Y = 762;
+const FOOTER_RULE_Y = 697;
 
 const COLORS = {
   text: '#1f242c',
   label: '#6b7075',
   footer: '#9aa0a8',
-  border: '#eaebef',
-  grid: '#ebebeb',
-  headerFill: '#fafbfd',
+  border: '#dfe2e6',
+  grid: '#cfd3d8',
+  headerFill: '#f4f5f7',
   red: '#d32f3c',
 };
 
@@ -194,6 +195,25 @@ function money(value, currency) {
     : `${sign}${amount} ${text(currency, '')}`.trim();
 }
 
+function documentTypeLabel(value) {
+  const code = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+  return (
+    {
+      VERGI_SICILNO: 'Vergi Sicil Numarası',
+      VERGISICILNO: 'Vergi Sicil Numarası',
+      YABANCI_KIMLIKNO: 'Yabancı Kimlik Numarası',
+      YABANCIKIMLIKNO: 'Yabancı Kimlik Numarası',
+      KIMLIKNO: 'Kimlik Numarası',
+      TCKN: 'T.C. Kimlik Numarası',
+      PASAPORTNO: 'Pasaport Numarası',
+      VKN: 'VKN',
+    }[code] || text(value, 'Belge No')
+  );
+}
+
 function formatDate(value, includeTime = true) {
   if (!value) return '-';
   const date = new Date(value);
@@ -266,7 +286,7 @@ function amountInWords(value, currency) {
   const labels =
     {
       TRY: ['TÜRK LİRASI', 'KURUŞ'],
-      USD: ['AMERİKAN DOLARI', 'SENT'],
+      USD: ['ABD DOLARI', 'SENT'],
       EUR: ['EURO', 'CENT'],
       GBP: ['İNGİLİZ STERLİNİ', 'PENİ'],
     }[String(currency || '').toUpperCase()] || [text(currency, 'PARA'), ''];
@@ -276,17 +296,23 @@ function amountInWords(value, currency) {
 }
 
 function partyLines(party) {
-  const cityCountry = [party?.sehir || party?.city, party?.ulke || party?.country]
+  const addressParts = [
+    party?.adresSatir1 || party?.adres || party?.address,
+    party?.adresSatir2 || party?.addressLine2,
+    [party?.sehir || party?.city, party?.ulke || party?.country]
+      .map((value) => text(value, ''))
+      .filter(Boolean)
+      .join(', '),
+  ]
     .map((value) => text(value, ''))
-    .filter(Boolean)
-    .join(', ');
+    .filter(Boolean);
+  // Maliye çıktısı adresi tek satırda birleştirir.
+  const address = addressParts.join(' ');
   const documentNumber = party?.belgeNo || party?.documentNumber;
   const documentType = party?.belgeTipi || party?.documentType;
   const lines = [
     text(party?.unvan || party?.name),
-    text(party?.adresSatir1 || party?.adres || party?.address),
-    text(party?.adresSatir2 || party?.addressLine2, ''),
-    cityCountry,
+    address,
     `Tel: ${text(party?.telefon || party?.phone)}`,
     `E-posta: ${text(party?.email)}`,
     `Web: ${text(party?.webSitesi || party?.website)}`,
@@ -295,7 +321,9 @@ function partyLines(party) {
     lines.push(`VKN: ${text(party?.vkn || party?.tax_number)}`);
   }
   if (documentType || documentNumber) {
-    lines.push(`${text(documentType, 'Belge No')}: ${text(documentNumber)}`);
+    lines.push(
+      `${documentTypeLabel(documentType)}: ${text(documentNumber)}`,
+    );
   }
   return lines.filter(Boolean).join('\n');
 }
@@ -313,7 +341,7 @@ function sourceInvoice(officialData, payloadInvoice) {
   return { ...payloadInvoice, ...normalized };
 }
 
-const COMPANY_LOGO_MAX = { width: 150, height: 52 };
+const COMPANY_LOGO_MAX = { width: 132, height: 46 };
 
 // Açıklama bloğu (banka bilgileri) ölçüleri; hem yer hesabında hem çizimde
 // kullanılır ki tek sayfaya sığma sınırı doğru kalsın.
@@ -343,45 +371,59 @@ function resolveCompanyLogoPath(settings) {
 function drawParty(doc, title, party, x, y, width, height) {
   doc.lineWidth(0.8).roundedRect(x, y, width, height, 6).stroke(COLORS.border);
   doc
-    .font('NotoSansBold')
-    .fontSize(11)
+    .font('InvoiceBold')
+    .fontSize(10)
     .fillColor(COLORS.text)
-    .text(title, x + 12, y + 12);
+    .text(title, x + 7, y + 8);
   doc
-    .font('NotoSans')
-    .fontSize(8)
+    .lineWidth(0.7)
+    .moveTo(x + 7, y + 25)
+    .lineTo(x + width - 7, y + 25)
+    .strokeColor(COLORS.border)
+    .stroke();
+  const body = partyLines(party);
+  const bodyWidth = width - 14;
+  const bodyHeight = height - 36;
+  let bodyFontSize = 7.1;
+  while (bodyFontSize > 5.8) {
+    doc.font('Invoice').fontSize(bodyFontSize);
+    if (
+      doc.heightOfString(body, {
+        width: bodyWidth,
+        lineGap: 0.7,
+      }) <= bodyHeight
+    ) {
+      break;
+    }
+    bodyFontSize -= 0.2;
+  }
+  doc
+    .font('Invoice')
+    .fontSize(bodyFontSize)
     .fillColor(COLORS.text)
-    .text(partyLines(party), x + 12, y + 38, {
-      width: width - 24,
-      height: height - 46,
-      lineGap: 4.6,
+    .text(body, x + 7, y + 31, {
+      width: bodyWidth,
+      height: bodyHeight,
+      lineGap: 0.7,
       ellipsis: true,
     });
 }
 
-function partyHeight(doc, party, width) {
-  doc.font('NotoSans').fontSize(8);
-  return (
-    38 +
-    doc.heightOfString(partyLines(party), { width: width - 24, lineGap: 4.6 }) +
-    10
-  );
-}
-
-function drawMeta(doc, label, value, x, y, width) {
+function drawMeta(doc, label, value, x, y, width, row = 0) {
+  const rowTop = y + row * (79 / 2);
   doc
-    .font('NotoSans')
-    .fontSize(6.8)
+    .font('Invoice')
+    .fontSize(6.5)
     .fillColor(COLORS.label)
-    .text(label, x, y + 13, { width, ellipsis: true });
+    .text(label, x, rowTop + 9, { width, ellipsis: true });
   doc
-    .font('NotoSansBold')
-    .fontSize(8.4)
+    .font('InvoiceBold')
+    .fontSize(8.1)
     .fillColor(COLORS.text)
-    .text(text(value), x, y + 27, { width, ellipsis: true });
+    .text(text(value), x, rowTop + 22, { width, ellipsis: true });
 }
 
-const TABLE_COLUMNS = [34, 115, 196, 270, 342, 393, 434, 481, 561];
+const TABLE_COLUMNS = [48, 160, 272, 336, 384, 421, 458, 504, 548];
 const TABLE_HEADERS = [
   'Mal/Hizmet',
   'Açıklama',
@@ -394,8 +436,8 @@ const TABLE_HEADERS = [
 ];
 
 function columnBox(index) {
-  const x = TABLE_COLUMNS[index] + 6;
-  return { x, width: TABLE_COLUMNS[index + 1] - TABLE_COLUMNS[index] - 12 };
+  const x = TABLE_COLUMNS[index] + 3;
+  return { x, width: TABLE_COLUMNS[index + 1] - TABLE_COLUMNS[index] - 6 };
 }
 
 function drawGrid(doc, y, height) {
@@ -410,9 +452,12 @@ function rowHeight(doc, values, font, size) {
   doc.font(font).fontSize(size);
   const tallest = values.reduce((max, value, index) => {
     const box = columnBox(index);
-    return Math.max(max, doc.heightOfString(value, { width: box.width, lineGap: 2 }));
+    return Math.max(
+      max,
+      doc.heightOfString(value, { width: box.width, lineGap: 1.2 }),
+    );
   }, 0);
-  return tallest + 16;
+  return tallest + 10;
 }
 
 function drawRow(doc, values, y, height, font, size) {
@@ -420,10 +465,13 @@ function drawRow(doc, values, y, height, font, size) {
   doc.font(font).fontSize(size).fillColor(COLORS.text);
   values.forEach((value, index) => {
     const box = columnBox(index);
-    const textHeight = doc.heightOfString(value, { width: box.width, lineGap: 2 });
+    const textHeight = doc.heightOfString(value, {
+      width: box.width,
+      lineGap: 1.2,
+    });
     doc.text(value, box.x, y + (height - textHeight) / 2, {
       width: box.width,
-      lineGap: 2,
+      lineGap: 1.2,
       align: index < 2 ? 'left' : 'right',
     });
   });
@@ -438,7 +486,9 @@ async function buildEInvoiceArchivePdf({
 }) {
   const doc = new PDFDocument({
     size: 'A4',
-    margins: { top: 30, right: 34, bottom: 30, left: 34 },
+    // Tüm öğeler Maliye şablonuna göre mutlak koordinatla çiziliyor.
+    // Alt doğrulama URL'sinin otomatik yeni sayfa açmaması için margin yok.
+    margins: { top: 0, right: 0, bottom: 0, left: 0 },
     info: {
       Title: text(invoice.e_invoice_number || invoice.invoice_number, 'E-Fatura'),
       Author: text(settings.seller_title, 'Microvise CRM'),
@@ -452,15 +502,29 @@ async function buildEInvoiceArchivePdf({
     doc.on('error', reject);
   });
 
-  const fontDir = path.resolve(process.cwd(), 'assets/fonts/noto_sans');
-  const fontFiles = {
-    NotoSans: ['NotoSans-Regular.ttf', 'Helvetica'],
-    NotoSansBold: ['NotoSans-Bold.ttf', 'Helvetica-Bold'],
-    NotoSansItalic: ['NotoSans-Italic.ttf', 'Helvetica-Oblique'],
+  // Maliye görselindeki Inter yüzü; yoksa NotoSans, en sonda Helvetica.
+  const fontSets = [
+    {
+      Invoice: 'assets/fonts/inter/Inter-Regular.ttf',
+      InvoiceBold: 'assets/fonts/inter/Inter-Bold.ttf',
+      InvoiceItalic: 'assets/fonts/inter/Inter-Italic.ttf',
+    },
+    {
+      Invoice: 'assets/fonts/noto_sans/NotoSans-Regular.ttf',
+      InvoiceBold: 'assets/fonts/noto_sans/NotoSans-Bold.ttf',
+      InvoiceItalic: 'assets/fonts/noto_sans/NotoSans-Italic.ttf',
+    },
+  ];
+  const fallbacks = {
+    Invoice: 'Helvetica',
+    InvoiceBold: 'Helvetica-Bold',
+    InvoiceItalic: 'Helvetica-Oblique',
   };
-  for (const [name, [file, fallback]] of Object.entries(fontFiles)) {
-    const filePath = path.join(fontDir, file);
-    doc.registerFont(name, fs.existsSync(filePath) ? filePath : fallback);
+  for (const [name, fallback] of Object.entries(fallbacks)) {
+    const found = fontSets
+      .map((set) => path.resolve(process.cwd(), set[name]))
+      .find((absolute) => fs.existsSync(absolute));
+    doc.registerFont(name, found || fallback);
   }
   doc.rect(0, 0, PAGE.width, PAGE.height).fill('#ffffff');
 
@@ -499,32 +563,49 @@ async function buildEInvoiceArchivePdf({
       : 'test-efatura.maliye.gov.ct.tr'
   }/dogrula/?code=${encodeURIComponent(verificationCode)}`;
   const qr = await QRCode.toBuffer(officialUrl, { margin: 0, width: 260 });
+  const createdAt = new Date().toISOString();
+
+  // Maliye PDF görüntüleyicisindeki resmi üst bilgi.
+  doc
+    .font('Invoice')
+    .fontSize(6.2)
+    .fillColor(COLORS.text)
+    .text(formatDate(createdAt), 22, 18, { width: 100 })
+    .text('KKTC E-Fatura Sistemi', 225, 18, {
+      width: 145,
+      align: 'center',
+    });
 
   const logoPath = path.resolve(process.cwd(), 'assets/images/kktc_maliye_logo.png');
   if (fs.existsSync(logoPath)) {
-    doc.image(logoPath, LEFT, 30, { width: 44, height: 49 });
+    doc.image(logoPath, LEFT, 57, { width: 42, height: 47 });
   }
   doc
-    .font('NotoSansBold')
-    .fontSize(12)
+    .font('InvoiceBold')
+    .fontSize(11.5)
     .fillColor(COLORS.text)
-    .text('K.K.T.C. Maliye Bakanlığı', 89, 33);
-  doc.font('NotoSansBold').fontSize(16.5).fillColor(COLORS.red).text('e-FATURA', 89, 53);
+    .text('K.K.T.C. Maliye Bakanlığı', 96, 57);
+  doc
+    .font('InvoiceBold')
+    .fontSize(15.5)
+    .fillColor(COLORS.red)
+    .text('e-FATURA', 96, 76);
 
   // Firma logosu yalnızca tanımlıysa, Maliye başlığı ile QR arasında kalan
   // boşluğa ortalanır. Logo yoksa Maliye yerleşimi birebir korunur.
-  const qrLeft = RIGHT - 79;
+  const qrSize = 48;
+  const qrLeft = RIGHT - qrSize;
   const companyLogoPath = resolveCompanyLogoPath(settings);
   if (companyLogoPath) {
     const companyLogo = doc.openImage(companyLogoPath);
     const titleRight =
-      89 +
+      96 +
       doc
-        .font('NotoSansBold')
-        .fontSize(12)
+        .font('InvoiceBold')
+        .fontSize(11.5)
         .widthOfString('K.K.T.C. Maliye Bakanlığı');
-    const zoneLeft = titleRight + 14;
-    const zoneRight = qrLeft - 14;
+    const zoneLeft = titleRight + 12;
+    const zoneRight = qrLeft - 16;
     const scale = Math.min(
       COMPANY_LOGO_MAX.width / companyLogo.width,
       COMPANY_LOGO_MAX.height / companyLogo.height,
@@ -533,85 +614,117 @@ async function buildEInvoiceArchivePdf({
     const logoWidth = companyLogo.width * scale;
     const logoHeight = companyLogo.height * scale;
     const logoLeft = (zoneLeft + zoneRight) / 2 - logoWidth / 2;
-    const logoTop = 26 + Math.max(0, (56 - logoHeight) / 2);
+    const logoTop = 55 + Math.max(0, (49 - logoHeight) / 2);
     doc.image(companyLogoPath, logoLeft, logoTop, {
       width: logoWidth,
       height: logoHeight,
     });
   }
-  doc.image(qr, qrLeft, 26, { width: 79, height: 79 });
+  doc.image(qr, qrLeft, 56, { width: qrSize, height: qrSize });
 
   doc
-    .font('NotoSans')
-    .fontSize(9.4)
+    .font('Invoice')
+    .fontSize(9)
     .fillColor(COLORS.label)
     .text(
       `Fatura No: ${text(
         source.faturaNo || invoice.e_invoice_number || invoice.invoice_number,
       )}`,
-      LEFT,
-      88,
-      { width: WIDTH, align: 'left', ellipsis: true },
+      96,
+      96,
+      { width: 310, align: 'left', ellipsis: true },
     );
 
-  const boxTop = 118;
+  const boxTop = 114;
 
-  const boxWidth = (WIDTH - 12) / 2;
-  const boxHeight = Math.max(
-    170,
-    partyHeight(doc, supplier, boxWidth),
-    partyHeight(doc, customer, boxWidth),
-  );
+  const boxWidth = (WIDTH - 16) / 2;
+  // Maliye şablonunda taraf kutuları sabit yükseklikte; uzun metin kutu içinde
+  // ellipsis ile sınırlandırılır ve takip eden blokları aşağı itmez.
+  const boxHeight = 124;
   drawParty(doc, 'Tedarikçi Bilgileri', supplier, LEFT, boxTop, boxWidth, boxHeight);
   drawParty(
     doc,
     'Müşteri Bilgileri',
     customer,
-    LEFT + boxWidth + 12,
+    LEFT + boxWidth + 16,
     boxTop,
     boxWidth,
     boxHeight,
   );
 
   const metaTop = boxTop + boxHeight + 12;
-  const metaHeight = 44;
+  const metaHeight = 79;
+  const metaMidX = LEFT + WIDTH / 2;
+  const metaMidY = metaTop + metaHeight / 2;
   doc
     .lineWidth(0.8)
     .roundedRect(LEFT, metaTop, WIDTH, metaHeight, 6)
     .fillAndStroke('#ffffff', COLORS.border);
+  // Maliye meta kutusu 2x2 ızgara: dikey + yatay orta çizgiler.
+  doc
+    .lineWidth(0.7)
+    .strokeColor(COLORS.border)
+    .moveTo(metaMidX, metaTop)
+    .lineTo(metaMidX, metaTop + metaHeight)
+    .stroke()
+    .moveTo(LEFT, metaMidY)
+    .lineTo(RIGHT, metaMidY)
+    .stroke();
   drawMeta(
     doc,
     'FATURA TARİHİ',
     formatDate(source.faturaTarihi || invoice.invoice_date),
-    52,
+    LEFT + 10,
     metaTop,
-    112,
+    metaMidX - LEFT - 20,
   );
-  drawMeta(doc, 'İRSALİYE NO', source.irsaliyeNo || invoice.irsaliye_no, 171, metaTop, 126);
+  drawMeta(
+    doc,
+    'İRSALİYE NO',
+    source.irsaliyeNo || invoice.irsaliye_no,
+    metaMidX + 10,
+    metaTop,
+    RIGHT - metaMidX - 20,
+  );
   drawMeta(
     doc,
     'İRSALİYE TARİHİ',
     source.irsaliyeTarihi || invoice.irsaliye_tarihi
       ? formatDate(source.irsaliyeTarihi || invoice.irsaliye_tarihi, false)
       : '-',
-    305,
+    LEFT + 10,
     metaTop,
-    118,
+    metaMidX - LEFT - 20,
+    1,
   );
-  drawMeta(doc, 'PARA BİRİMİ', currency, 430, metaTop, 118);
+  drawMeta(
+    doc,
+    'PARA BİRİMİ',
+    currency,
+    metaMidX + 10,
+    metaTop,
+    RIGHT - metaMidX - 20,
+    1,
+  );
 
-  const listTop = metaTop + metaHeight + 18;
+  const listTop = metaTop + metaHeight + 14;
   doc
-    .font('NotoSansBold')
-    .fontSize(11)
+    .lineWidth(0.7)
+    .moveTo(LEFT, listTop)
+    .lineTo(RIGHT, listTop)
+    .strokeColor(COLORS.border)
+    .stroke();
+  doc
+    .font('InvoiceBold')
+    .fontSize(10.5)
     .fillColor(COLORS.text)
-    .text('Mal/Hizmet Listesi', LEFT, listTop);
+    .text('Mal/Hizmet Listesi', LEFT, listTop + 12);
 
-  let y = listTop + 22;
-  const headerHeight = 30;
+  let y = listTop + 31;
+  const headerHeight = 32;
   doc.rect(LEFT, y, WIDTH, headerHeight).fill(COLORS.headerFill);
   drawGrid(doc, y, headerHeight);
-  doc.font('NotoSansBold').fontSize(7.2).fillColor(COLORS.text);
+  doc.font('InvoiceBold').fontSize(7.4).fillColor(COLORS.text);
   TABLE_HEADERS.forEach((header, index) => {
     const box = columnBox(index);
     const height = doc.heightOfString(header, { width: box.width, lineGap: 2 });
@@ -668,7 +781,7 @@ async function buildEInvoiceArchivePdf({
   const bankDescription = bankLines.join('\n').trim();
   const resolvedPo = (poNumber || poFromDescription).trim();
   const description = bankDescription;
-  doc.font('NotoSans').fontSize(DESCRIPTION.fontSize);
+  doc.font('Invoice').fontSize(DESCRIPTION.fontSize);
   const poBlockHeight = resolvedPo
     ? DESCRIPTION.fontSize + DESCRIPTION.lineGap + 2
     : 0;
@@ -687,15 +800,15 @@ async function buildEInvoiceArchivePdf({
   const tableLimit = FOOTER_RULE_Y - 14 - 121 - descriptionHeight;
   let rendered = 0;
   for (const values of rows) {
-    const height = rowHeight(doc, values, 'NotoSans', 7.4);
+    const height = rowHeight(doc, values, 'Invoice', 7.4);
     if (rendered > 0 && y + height > tableLimit) break;
-    drawRow(doc, values, y, height, 'NotoSans', 7.4);
+    drawRow(doc, values, y, height, 'Invoice', 7.4);
     y += height;
     rendered += 1;
   }
   if (rendered < rows.length) {
     doc
-      .font('NotoSansItalic')
+      .font('InvoiceItalic')
       .fontSize(6.6)
       .fillColor(COLORS.label)
       .text(`+ ${rows.length - rendered} kalem UBL/XML kaydında yer almaktadır.`, LEFT + 4, y + 5);
@@ -709,14 +822,18 @@ async function buildEInvoiceArchivePdf({
     ['KDV Toplamı:', money(source.kdvToplami ?? invoice.tax_total, currency)],
   ];
   y += 16;
-  const totalsLeft = 253.5;
+  const totalsLeft = 306;
   totals.forEach(([label, value]) => {
     doc
-      .font('NotoSans')
+      .font('Invoice')
       .fontSize(8)
       .fillColor(COLORS.text)
-      .text(label, totalsLeft, y, { width: 160 })
-      .text(value, 401, y, { width: RIGHT - 401, align: 'right' });
+      .text(label, totalsLeft, y, { width: 130 });
+    doc
+      .font('InvoiceBold')
+      .fontSize(8)
+      .fillColor(COLORS.text)
+      .text(value, 438, y, { width: RIGHT - 438, align: 'right' });
     y += 16.5;
   });
   doc
@@ -728,32 +845,35 @@ async function buildEInvoiceArchivePdf({
   y += 13;
   const payable = source.odenecekToplam ?? invoice.grand_total;
   doc
-    .font('NotoSansBold')
+    .font('InvoiceBold')
     .fontSize(10.5)
     .fillColor(COLORS.text)
-    .text('Ödenecek Toplam:', totalsLeft, y, { width: 170 })
-    .text(money(payable, currency), 401, y, { width: RIGHT - 401, align: 'right' });
+    .text('Ödenecek Toplam:', totalsLeft, y, { width: 150 })
+    .text(money(payable, currency), 438, y, {
+      width: RIGHT - 438,
+      align: 'right',
+    });
   y += 20;
   doc
-    .font('NotoSansItalic')
+    .font('InvoiceItalic')
     .fontSize(6.8)
     .fillColor(COLORS.label)
-    .text(`Yalnız: ${amountInWords(payable, currency)}`, 220, y, {
-      width: RIGHT - 220,
+    .text(`Yalnız: ${amountInWords(payable, currency)}`, 350, y, {
+      width: RIGHT - 350,
       align: 'right',
     });
   y += 22;
 
   if (description || resolvedPo) {
     doc
-      .font('NotoSansBold')
+      .font('InvoiceBold')
       .fontSize(DESCRIPTION.titleFontSize)
       .fillColor(COLORS.text)
       .text('Açıklama', LEFT, y);
     let textY = y + DESCRIPTION.top;
     if (description) {
       doc
-        .font('NotoSans')
+        .font('Invoice')
         .fontSize(DESCRIPTION.fontSize)
         .fillColor(COLORS.text)
         .text(description, LEFT, textY, {
@@ -764,7 +884,7 @@ async function buildEInvoiceArchivePdf({
     }
     if (resolvedPo) {
       doc
-        .font('NotoSansBold')
+        .font('InvoiceBold')
         .fontSize(DESCRIPTION.fontSize)
         .fillColor(COLORS.text)
         .text(resolvedPo, LEFT, textY, {
@@ -780,7 +900,7 @@ async function buildEInvoiceArchivePdf({
     .strokeColor(COLORS.border)
     .stroke();
   doc
-    .font('NotoSans')
+    .font('Invoice')
     .fontSize(7)
     .fillColor(COLORS.footer)
     .text(
@@ -794,11 +914,25 @@ async function buildEInvoiceArchivePdf({
       align: 'center',
     })
     .text(
-      `Oluşturma Tarihi: ${formatDate(new Date().toISOString())}`,
+      `Oluşturma Tarihi: ${formatDate(createdAt)}`,
       LEFT,
       FOOTER_RULE_Y + 38,
       { width: WIDTH, align: 'center' },
     );
+
+  // Maliye çıktısındaki sayfa altı doğrulama adresi ve sayfa numarası.
+  doc
+    .font('Invoice')
+    .fontSize(5.8)
+    .fillColor(COLORS.text)
+    .text(officialUrl, 22, PAGE.height - 22, {
+      width: 430,
+      ellipsis: true,
+    })
+    .text('1/1', RIGHT - 25, PAGE.height - 22, {
+      width: 25,
+      align: 'right',
+    });
 
   doc.end();
   return completed;
