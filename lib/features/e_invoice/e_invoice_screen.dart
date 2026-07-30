@@ -1312,7 +1312,48 @@ class _InvoiceFiltersCard extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 1050;
+          final activeChips = Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final option in const [
+                ('active', 'Aktif'),
+                ('passive', 'Pasif'),
+                ('all', 'Tümü'),
+              ])
+                FilterChip(
+                  label: Text(option.$2),
+                  selected: filter.activeFilter == option.$1,
+                  onSelected: (_) {
+                    onChanged(
+                      filter.copyWith(
+                        activeFilter: option.$1,
+                        clearStatus: option.$1 == 'passive',
+                      ),
+                    );
+                  },
+                ),
+            ],
+          );
           final fields = <Widget>[
+            if (compact) ...[
+              SizedBox(
+                width: double.infinity,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Aktiflik',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: AppTheme.textSoft,
+                      ),
+                    ),
+                    const Gap(6),
+                    activeChips,
+                  ],
+                ),
+              ),
+            ],
             SizedBox(
               width: compact ? double.infinity : 280,
               child: customersAsync.when(
@@ -1330,42 +1371,42 @@ class _InvoiceFiltersCard extends StatelessWidget {
                 error: (_, _) => const Text('Cari listesi alınamadı.'),
               ),
             ),
-            SizedBox(
-              width: compact ? double.infinity : 160,
-              child: DropdownButtonFormField<String>(
-                key: ValueKey('active-${filter.activeFilter}'),
-                initialValue: filter.activeFilter,
-                isExpanded: true,
-                items: const [
-                  DropdownMenuItem(
-                    value: 'active',
-                    child: Text('Aktif', overflow: TextOverflow.ellipsis),
-                  ),
-                  DropdownMenuItem(
-                    value: 'passive',
-                    child: Text('Pasif', overflow: TextOverflow.ellipsis),
-                  ),
-                  DropdownMenuItem(
-                    value: 'all',
-                    child: Text('Tümü', overflow: TextOverflow.ellipsis),
-                  ),
-                ],
-                onChanged: (value) {
-                  final next = (value ?? 'active').trim();
-                  onChanged(
-                    filter.copyWith(
-                      activeFilter: next,
-                      // Pasif listede durum filtresi çoğu kaydı gizler.
-                      clearStatus: next == 'passive',
+            if (!compact)
+              SizedBox(
+                width: 160,
+                child: DropdownButtonFormField<String>(
+                  key: ValueKey('active-${filter.activeFilter}'),
+                  initialValue: filter.activeFilter,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'active',
+                      child: Text('Aktif', overflow: TextOverflow.ellipsis),
                     ),
-                  );
-                },
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.visibility_rounded),
-                  labelText: 'Aktiflik',
+                    DropdownMenuItem(
+                      value: 'passive',
+                      child: Text('Pasif', overflow: TextOverflow.ellipsis),
+                    ),
+                    DropdownMenuItem(
+                      value: 'all',
+                      child: Text('Tümü', overflow: TextOverflow.ellipsis),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    final next = (value ?? 'active').trim();
+                    onChanged(
+                      filter.copyWith(
+                        activeFilter: next,
+                        clearStatus: next == 'passive',
+                      ),
+                    );
+                  },
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.visibility_rounded),
+                    labelText: 'Aktiflik',
+                  ),
                 ),
               ),
-            ),
             SizedBox(
               width: compact ? double.infinity : 190,
               child: DropdownButtonFormField<String>(
@@ -1797,9 +1838,112 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     required String sendTooltip,
     required bool canSend,
     bool withGaps = false,
+    bool mobile = false,
   }) {
     final invoice = widget.invoice;
     final alreadySent = invoice.isEInvoiceSent;
+
+    if (mobile) {
+      final actions = <Widget>[
+        if (alreadySent) ...[
+          _InvoiceLabeledAction(
+            label: 'PDF',
+            tooltip: 'PDF oluştur / aç',
+            icon: Icons.picture_as_pdf_rounded,
+            tone: _InvoiceActionTone.danger,
+            onPressed: _busy ? null : _printOfficialPdf,
+          ),
+          _InvoiceLabeledAction(
+            label: 'Maliye',
+            tooltip: 'Maliye sayfasını aç',
+            icon: Icons.account_balance_rounded,
+            tone: _InvoiceActionTone.info,
+            onPressed: _busy ? null : _openMaliyeLink,
+          ),
+        ] else
+          _InvoiceLabeledAction(
+            label: 'Yazdır',
+            tooltip: 'PDF yazdır',
+            icon: Icons.print_rounded,
+            onPressed: _busy ? null : _print,
+          ),
+        _InvoiceLabeledAction(
+          label: invoice.isActive ? 'Pasif' : 'Aktif',
+          tooltip: invoice.isActive ? 'Pasife al' : 'Tekrar aktifleştir',
+          icon: invoice.isActive
+              ? Icons.visibility_off_rounded
+              : Icons.visibility_rounded,
+          tone: invoice.isActive
+              ? _InvoiceActionTone.warning
+              : _InvoiceActionTone.success,
+          onPressed: _busy ? null : _toggleActive,
+        ),
+        _InvoiceLabeledAction(
+          label: 'Düzenle',
+          tooltip: 'Düzenle',
+          icon: Icons.edit_rounded,
+          onPressed: _busy ? null : _edit,
+        ),
+        _InvoiceLabeledAction(
+          label: 'Gönder',
+          tooltip: sendTooltip,
+          icon: _busy ? Icons.hourglass_top_rounded : Icons.send_rounded,
+          tone: _InvoiceActionTone.primary,
+          onPressed: _busy || !canSend ? null : () => _prepare(send: true),
+        ),
+        PopupMenuButton<String>(
+          tooltip: 'Diğer işlemler',
+          enabled: !_busy,
+          padding: EdgeInsets.zero,
+          onSelected: (value) {
+            switch (value) {
+              case 'statement':
+                _statement();
+              case 'payload':
+                _prepare(send: false);
+              case 'copy':
+                _copyPreview();
+            }
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: 'statement',
+              child: Text('Cari ekstre PDF'),
+            ),
+            PopupMenuItem(
+              value: 'payload',
+              child: Text('Gönderim verisini hazırla'),
+            ),
+            PopupMenuItem(
+              value: 'copy',
+              child: Text('Fatura özetini kopyala'),
+            ),
+          ],
+          child: Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceMuted,
+              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+              border: Border.all(color: AppTheme.border),
+            ),
+            child: const Icon(
+              Icons.more_horiz_rounded,
+              size: 20,
+              color: AppTheme.textSoft,
+            ),
+          ),
+        ),
+      ];
+      final spaced = <Widget>[];
+      for (var i = 0; i < actions.length; i++) {
+        if (i > 0) spaced.add(const Gap(6));
+        spaced.add(actions[i]);
+      }
+      return spaced;
+    }
+
     final actions = <Widget>[
       _InvoiceIconAction(
         tooltip: 'Düzenle',
@@ -1815,12 +1959,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             ? _InvoiceActionTone.warning
             : _InvoiceActionTone.success,
         onPressed: _busy ? null : _toggleActive,
-      ),
-      _InvoiceIconAction(
-        tooltip: 'Kalıcı sil',
-        icon: Icons.delete_outline_rounded,
-        tone: _InvoiceActionTone.danger,
-        onPressed: _busy ? null : _delete,
       ),
       if (alreadySent) ...[
         _InvoiceIconAction(
@@ -2134,7 +2272,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               children: _buildInvoiceActions(
                 sendTooltip: sendTooltip,
                 canSend: canSend,
-                withGaps: true,
+                mobile: true,
               ),
             ),
           ),
@@ -2220,58 +2358,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Fatura güncellenemedi: $error')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Faturayı sil'),
-        content: Text(
-          '${widget.invoice.invoiceNumber} numaralı fatura ve kalemleri kalıcı olarak silinsin mi?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Vazgeç'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Sil'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    final apiClient = ref.read(apiClientProvider);
-    if (apiClient == null) return;
-    setState(() => _busy = true);
-    try {
-      await apiClient.postJson(
-        '/mutate',
-        body: {
-          'op': 'deleteWhere',
-          'table': 'invoice_items',
-          'filters': [
-            {'col': 'invoice_id', 'op': 'eq', 'value': widget.invoice.id},
-          ],
-        },
-      );
-      await apiClient.postJson(
-        '/mutate',
-        body: {'op': 'delete', 'table': 'invoices', 'id': widget.invoice.id},
-      );
-      ref.invalidate(invoicesProvider);
-      ref.invalidate(accountBalancesProvider);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Fatura silinemedi: $error')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -2560,6 +2646,67 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       'cancelled' => AppBadgeTone.neutral,
       _ => AppBadgeTone.neutral,
     };
+  }
+}
+
+class _InvoiceLabeledAction extends StatelessWidget {
+  const _InvoiceLabeledAction({
+    required this.label,
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    this.tone = _InvoiceActionTone.neutral,
+  });
+
+  final String label;
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final _InvoiceActionTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = _InvoiceIconAction._toneColors(tone);
+    final enabled = onPressed != null;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: enabled ? colors.background : AppTheme.surfaceMuted,
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 58, minHeight: 44),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+              border: Border.all(
+                color: enabled ? colors.border : AppTheme.border,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 18,
+                  color: enabled ? colors.foreground : AppTheme.textMuted,
+                ),
+                const Gap(2),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: enabled ? colors.foreground : AppTheme.textMuted,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
