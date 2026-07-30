@@ -345,6 +345,26 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               invoice.canSendEInvoiceTo(isProduction ? 'production' : 'test'),
         )
         .length;
+    final selectedMarkableCount = items
+        .where(
+          (invoice) =>
+              _selectedInvoiceIds.contains(invoice.id) &&
+              !invoice.isEInvoiceSent &&
+              !invoice.isEInvoiceManual,
+        )
+        .length;
+    final selectedManualCount = items
+        .where(
+          (invoice) =>
+              _selectedInvoiceIds.contains(invoice.id) &&
+              invoice.isEInvoiceManual,
+        )
+        .length;
+    final bulkManualUndo =
+        selectedMarkableCount == 0 && selectedManualCount > 0;
+    final bulkManualCount = bulkManualUndo
+        ? selectedManualCount
+        : selectedMarkableCount;
     final visibleItems = items.take(_visibleInvoiceLimit).toList();
     final hasHiddenItems = visibleItems.length < items.length;
     final sales = items.where((e) => e.invoiceType == 'sales').length;
@@ -549,6 +569,27 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                   const Gap(8),
                                   OutlinedButton.icon(
                                     onPressed:
+                                        bulkManualCount == 0 ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing
+                                        ? null
+                                        : () => _bulkMarkManual(
+                                            items,
+                                            manual: !bulkManualUndo,
+                                          ),
+                                    icon: Icon(
+                                      bulkManualUndo
+                                          ? Icons.undo_rounded
+                                          : Icons.fact_check_rounded,
+                                      size: 18,
+                                    ),
+                                    label: Text(
+                                      bulkManualUndo ? 'Geri Al' : 'Manuel',
+                                    ),
+                                  ),
+                                  const Gap(8),
+                                  OutlinedButton.icon(
+                                    onPressed:
                                         _selectedInvoiceIds.isEmpty ||
                                             _bulkDeleting ||
                                             _bulkProcessing
@@ -699,6 +740,29 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                               size: 18,
                                             ),
                                       label: const Text('ERP’den Veri Çek'),
+                                    ),
+                                    const Gap(8),
+                                    OutlinedButton.icon(
+                                      onPressed:
+                                          bulkManualCount == 0 ||
+                                              _bulkDeleting ||
+                                              _bulkProcessing
+                                          ? null
+                                          : () => _bulkMarkManual(
+                                              items,
+                                              manual: !bulkManualUndo,
+                                            ),
+                                      icon: Icon(
+                                        bulkManualUndo
+                                            ? Icons.undo_rounded
+                                            : Icons.fact_check_rounded,
+                                        size: 18,
+                                      ),
+                                      label: Text(
+                                        bulkManualUndo
+                                            ? 'Manuel İşareti Geri Al'
+                                            : 'Manuel Kesildi',
+                                      ),
                                     ),
                                     const Gap(8),
                                     OutlinedButton.icon(
@@ -935,6 +999,91 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     }
   }
 
+  Future<void> _bulkMarkManual(
+    List<Invoice> visibleInvoices, {
+    required bool manual,
+  }) async {
+    final selected = visibleInvoices
+        .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
+        .where((invoice) => !invoice.isEInvoiceSent)
+        .where((invoice) => invoice.isEInvoiceManual != manual)
+        .toList(growable: false);
+    if (selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            manual
+                ? 'İşaretlenecek uygun fatura yok. Maliye’ye gönderilmiş faturalar manuel yapılamaz.'
+                : 'Geri alınacak manuel fatura seçilmedi.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          manual ? 'Manuel Kesildi' : 'Manuel işareti geri al',
+        ),
+        content: Text(
+          manual
+              ? '${selected.length} fatura başka sistemden kesilmiş olarak işaretlensin mi? Bu faturalar Maliye API’sine gönderilmez.'
+              : '${selected.length} faturanın manuel kesildi işareti geri alınsın mı?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(manual ? 'İşaretle' : 'Geri al'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    final ids = selected.map((invoice) => invoice.id).toList(growable: false);
+    setState(() => _bulkProcessing = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'invoices',
+          'filters': [
+            {'col': 'id', 'op': 'in', 'value': ids},
+          ],
+          'values': {'e_invoice_status': manual ? 'manual' : 'not_sent'},
+        },
+      );
+      _selectedInvoiceIds.clear();
+      ref.invalidate(invoicesProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            manual
+                ? '${ids.length} fatura Manuel Kesildi olarak işaretlendi.'
+                : '${ids.length} faturanın manuel işareti geri alındı.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Manuel işaretleme başarısız: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _bulkProcessing = false);
+    }
+  }
+
   Future<void> _exportSelectedStatement(List<Invoice> visibleInvoices) async {
     final selected = visibleInvoices
         .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
@@ -1077,8 +1226,33 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               )
               .toList(growable: false)
         : allSelected;
-    final skippedSent = allSelected.length - selected.length;
-    if (selected.isEmpty) return;
+    final skippedManual = send
+        ? allSelected.where((invoice) => invoice.isEInvoiceManual).length
+        : 0;
+    final skippedSent = send
+        ? allSelected.length - selected.length - skippedManual
+        : allSelected.length - selected.length;
+    if (selected.isEmpty) {
+      if (!send) return;
+      final parts = <String>[];
+      if (skippedManual > 0) {
+        parts.add('$skippedManual manuel kesildi');
+      }
+      if (skippedSent > 0) {
+        parts.add('$skippedSent daha önce gönderilmiş');
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            parts.isEmpty
+                ? 'Gönderilecek fatura seçilmedi.'
+                : 'Gönderilecek uygun fatura yok (${parts.join(', ')}).',
+          ),
+        ),
+      );
+      return;
+    }
 
     final confirmed = send
         ? await showDialog<bool>(
@@ -1092,7 +1266,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               content: Text(
                 '${selected.length} fatura için payload hazırlanıp '
                 '${isProduction ? 'canlı' : 'test'} API’ye gönderilsin mi?'
-                '${skippedSent > 0 ? '\n\nDaha önce gönderilmiş $skippedSent fatura atlanacak.' : ''}',
+                '${skippedSent > 0 ? '\n\nDaha önce gönderilmiş $skippedSent fatura atlanacak.' : ''}'
+                '${skippedManual > 0 ? '\n\nManuel kesildi işaretli $skippedManual fatura atlanacak (API’ye gönderilmez).' : ''}',
               ),
               actions: [
                 TextButton(
@@ -1158,6 +1333,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                 Text('Başarılı: $success • Hatalı: $failed'),
                 if (skippedSent > 0)
                   Text('Atlanan (önceden gönderilmiş): $skippedSent'),
+                if (skippedManual > 0)
+                  Text('Atlanan (manuel kesildi): $skippedManual'),
                 const Gap(12),
                 Expanded(
                   child: DecoratedBox(
