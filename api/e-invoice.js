@@ -446,12 +446,8 @@ function validateInvoiceForEInvoice(settings, invoice, now = new Date()) {
       errors.push(`${prefix} özel matrahta vergi oranı ve tutarı 0 olmalıdır.`);
     }
     subtotal += Number.isFinite(base) ? base : 0;
-    discountTotal += Number.isFinite(discount) ? discount : 0;
-    taxTotal += specialMatrah
-      ? 0
-      : item.tax_amount == null
-        ? round2((base - discount) * (taxRate / 100))
-        : Number(item.tax_amount);
+    discountTotal += Number.isFinite(discount) ? round2(discount) : 0;
+    taxTotal += lineTaxAmount(item);
   }
   const expected = {
     subtotal: round2(subtotal),
@@ -759,6 +755,19 @@ async function fetchInvoice(invoiceId) {
   return result.rows[0] || null;
 }
 
+function lineTaxAmount(item) {
+  const qty = Number(item.quantity || 0);
+  const price = Number(item.unit_price || 0);
+  const base = qty * price;
+  const discount = round2(Number(item.discount_amount || 0));
+  const taxRate = Number(item.tax_rate || 0);
+  if (item.special_matrah === true) return 0;
+  if (item.tax_amount == null) {
+    return round2((base - discount) * (taxRate / 100));
+  }
+  return round2(item.tax_amount);
+}
+
 function buildPayload({ settings, invoice, number: numberOverride }) {
   const serial = nextNumber(settings, invoice.invoice_type);
   const number =
@@ -769,19 +778,21 @@ function buildPayload({ settings, invoice, number: numberOverride }) {
   const isPurchase = invoice.invoice_type === 'purchase';
   const items = Array.isArray(invoice.items) ? invoice.items : [];
 
+  let faturaToplami = 0;
+  let iskontoToplami = 0;
+  let kdvToplami = 0;
+
   const malHizmetler = items.map((item) => {
     const qty = Number(item.quantity || 0);
     const price = Number(item.unit_price || 0);
     const base = qty * price;
-    const discount = Number(item.discount_amount || 0);
+    const discount = round2(Number(item.discount_amount || 0));
     const taxRate = Number(item.tax_rate || 0);
     const specialMatrah = item.special_matrah === true;
-    const taxAmount = specialMatrah
-      ? 0
-      :
-      item.tax_amount == null
-        ? round2((base - discount) * (taxRate / 100))
-        : round2(item.tax_amount);
+    const taxAmount = lineTaxAmount(item);
+    faturaToplami += base;
+    iskontoToplami += discount;
+    kdvToplami += taxAmount;
     return {
       adi: cleanText(item.description) || 'Mal/Hizmet',
       birimMiktari: qty,
@@ -794,7 +805,7 @@ function buildPayload({ settings, invoice, number: numberOverride }) {
           ? [
               {
                 indirimMi: true,
-                tutar: round2(discount),
+                tutar: discount,
                 neden: 'Satır indirimi',
                 oran: Number(item.discount_rate || 0),
               },
@@ -817,6 +828,11 @@ function buildPayload({ settings, invoice, number: numberOverride }) {
     };
   });
 
+  faturaToplami = round2(faturaToplami);
+  iskontoToplami = round2(iskontoToplami);
+  kdvToplami = round2(kdvToplami);
+  const vergiDahilToplam = round2(faturaToplami - iskontoToplami + kdvToplami);
+
   const payload = {
     faturalar: [
       {
@@ -829,11 +845,13 @@ function buildPayload({ settings, invoice, number: numberOverride }) {
         faturaTuru: isPurchase ? 'ALIS' : 'SATIS',
         aciklama: invoiceDescription(settings),
         kur: Number(invoice.exchange_rate || 1),
-        faturaToplami: round2(invoice.subtotal),
-        iskontoToplami: round2(invoice.discount_total),
-        kdvToplami: round2(invoice.tax_total),
-        vergiDahilToplam: round2(invoice.grand_total),
-        odenecekToplam: round2(invoice.grand_total),
+        // Header totals must match sum of rounded line taxes; stored invoice
+        // totals can drift by 0.01 when the UI summed unrounded KDV first.
+        faturaToplami,
+        iskontoToplami,
+        kdvToplami,
+        vergiDahilToplam,
+        odenecekToplam: vergiDahilToplam,
         irsaliyeNo: cleanText(invoice.irsaliye_no),
         irsaliyeTarihi: invoice.irsaliye_tarihi
           ? isoWithOffset(invoice.irsaliye_tarihi)

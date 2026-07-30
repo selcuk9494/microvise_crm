@@ -2341,11 +2341,12 @@ class _EInvoiceItemDraft {
   String get description => descriptionController.text.trim();
   double get quantity => _parseDecimal(quantityController.text);
   double get unitPrice => _parseDecimal(priceController.text);
-  double get subtotal => quantity * unitPrice;
-  double get discountAmount => subtotal * (discountRate / 100);
-  double get taxAmount =>
-      specialMatrah ? 0 : (subtotal - discountAmount) * (taxRate / 100);
-  double get lineTotal => subtotal - discountAmount + taxAmount;
+  double get subtotal => _round2(quantity * unitPrice);
+  double get discountAmount => _round2(subtotal * (discountRate / 100));
+  double get taxAmount => specialMatrah
+      ? 0
+      : _round2((subtotal - discountAmount) * (taxRate / 100));
+  double get lineTotal => _round2(subtotal - discountAmount + taxAmount);
 
   void dispose() {
     descriptionController.dispose();
@@ -2376,6 +2377,8 @@ double _taxInitialValue(double value, List<double> rates) {
   if (rates.contains(normalized)) return normalized;
   return normalized;
 }
+
+double _round2(double value) => (value * 100).roundToDouble() / 100;
 
 double _normalizeRate(double value) => (value * 100).roundToDouble() / 100;
 

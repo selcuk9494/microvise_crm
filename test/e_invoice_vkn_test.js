@@ -301,6 +301,62 @@ test('özel matrah ve irsaliye alanlarını Maliye payloadına ekler', () => {
   });
 });
 
+test('satır KDV yuvarlaması ile özet toplamını tutarlı üretir', () => {
+  // Unrounded per-line KDV sum is 22.452 → stored tax_total 22.45 / grand 448.99,
+  // but rounded line taxes are 16.67+4.29+1.50 = 22.46 → grand 449.00.
+  const invoice = {
+    ...validInvoice(),
+    currency: 'USD',
+    subtotal: 426.54,
+    discount_total: 0,
+    tax_total: 22.45,
+    grand_total: 448.99,
+    items: [
+      {
+        description: 'WORLDLINE A910SF ÖKC',
+        quantity: 1,
+        unit: 'Adet',
+        unit_price: 333.33,
+        tax_rate: 5,
+        tax_amount: 16.6665,
+        discount_amount: 0,
+      },
+      {
+        description: 'B910 SF İLETİŞİM ŞARJ ÜNİTESİ',
+        quantity: 1,
+        unit: 'Adet',
+        unit_price: 85.71,
+        tax_rate: 5,
+        tax_amount: 4.2855,
+        discount_amount: 0,
+      },
+      {
+        description: 'GPRS DATA 2026 YILI (6 AY)',
+        quantity: 1,
+        unit: 'Adet',
+        unit_price: 7.5,
+        tax_rate: 20,
+        tax_amount: 1.5,
+        discount_amount: 0,
+      },
+    ],
+  };
+
+  const built = buildPayload({ settings: validSettings(), invoice });
+  const sent = built.payload.faturalar[0];
+  const lineTaxes = sent.malHizmetler.map((item) => item.vergiler[0].vergiTutari);
+
+  assert.deepEqual(lineTaxes, [16.67, 4.29, 1.5]);
+  assert.equal(sent.faturaToplami, 426.54);
+  assert.equal(sent.kdvToplami, 22.46);
+  assert.equal(sent.vergiDahilToplam, 449);
+  assert.equal(sent.odenecekToplam, 449);
+  assert.equal(
+    sent.kdvToplami,
+    Math.round(lineTaxes.reduce((sum, value) => sum + value, 0) * 100) / 100,
+  );
+});
+
 test('Türkiye firmasının 10 haneli VKN değerini yabancı belge olarak korur', () => {
   const invoice = validInvoice();
   invoice.customer = {
