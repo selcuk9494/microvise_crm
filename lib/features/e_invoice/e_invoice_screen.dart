@@ -1335,6 +1335,30 @@ class _InvoiceFiltersCard extends StatelessWidget {
                 ),
             ],
           );
+          final eInvoiceChips = Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final option in const [
+                ('', 'E-Fatura: Tümü'),
+                ('not_sent', 'Gönderilmedi'),
+                ('sent', 'Gönderildi'),
+                ('manual', 'Manuel'),
+              ])
+                FilterChip(
+                  label: Text(option.$2),
+                  selected: (filter.eInvoiceStatus ?? '') == option.$1,
+                  onSelected: (_) {
+                    onChanged(
+                      filter.copyWith(
+                        eInvoiceStatus: option.$1.isEmpty ? null : option.$1,
+                        clearEInvoiceStatus: option.$1.isEmpty,
+                      ),
+                    );
+                  },
+                ),
+            ],
+          );
           final fields = <Widget>[
             if (compact) ...[
               SizedBox(
@@ -1350,6 +1374,15 @@ class _InvoiceFiltersCard extends StatelessWidget {
                     ),
                     const Gap(6),
                     activeChips,
+                    const Gap(12),
+                    Text(
+                      'E-Fatura',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: AppTheme.textSoft,
+                      ),
+                    ),
+                    const Gap(6),
+                    eInvoiceChips,
                   ],
                 ),
               ),
@@ -1458,46 +1491,55 @@ class _InvoiceFiltersCard extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(
-              width: compact ? double.infinity : 210,
-              child: DropdownButtonFormField<String>(
-                initialValue: filter.eInvoiceStatus ?? '',
-                isExpanded: true,
-                items: const [
-                  DropdownMenuItem(
-                    value: '',
-                    child: Text(
-                      'E-Fatura: Tümü',
-                      overflow: TextOverflow.ellipsis,
+            if (!compact)
+              SizedBox(
+                width: 210,
+                child: DropdownButtonFormField<String>(
+                  key: ValueKey('einv-${filter.eInvoiceStatus ?? ''}'),
+                  initialValue: filter.eInvoiceStatus ?? '',
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(
+                      value: '',
+                      child: Text(
+                        'E-Fatura: Tümü',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: 'sent',
+                      child: Text(
+                        'Gönderilenler',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: 'manual',
+                      child: Text(
+                        'Manuel kesilenler',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: 'not_sent',
+                      child: Text(
+                        'Gönderilmeyenler',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) => onChanged(
+                    filter.copyWith(
+                      eInvoiceStatus: (value ?? '').isEmpty ? null : value,
+                      clearEInvoiceStatus: (value ?? '').isEmpty,
                     ),
                   ),
-                  DropdownMenuItem(
-                    value: 'sent',
-                    child: Text(
-                      'Gönderilenler',
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.cloud_done_rounded),
+                    labelText: 'E-Fatura Gönderimi',
                   ),
-                  DropdownMenuItem(
-                    value: 'not_sent',
-                    child: Text(
-                      'Gönderilmeyenler',
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-                onChanged: (value) => onChanged(
-                  filter.copyWith(
-                    eInvoiceStatus: (value ?? '').isEmpty ? null : value,
-                    clearEInvoiceStatus: (value ?? '').isEmpty,
-                  ),
-                ),
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.cloud_done_rounded),
-                  labelText: 'E-Fatura Gönderimi',
                 ),
               ),
-            ),
             SizedBox(
               width: compact ? double.infinity : 170,
               child: OutlinedButton.icon(
@@ -1842,9 +1884,24 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   }) {
     final invoice = widget.invoice;
     final alreadySent = invoice.isEInvoiceSent;
+    final isManual = invoice.isEInvoiceManual;
 
     if (mobile) {
       final actions = <Widget>[
+        if (!alreadySent)
+          _InvoiceLabeledAction(
+            label: isManual ? 'Geri al' : 'Manuel',
+            tooltip: isManual
+                ? 'Manuel fatura işaretini geri al'
+                : 'Manuel fatura kesildi olarak işaretle',
+            icon: isManual
+                ? Icons.undo_rounded
+                : Icons.fact_check_rounded,
+            tone: isManual
+                ? _InvoiceActionTone.info
+                : _InvoiceActionTone.warning,
+            onPressed: _busy ? null : _toggleManual,
+          ),
         if (alreadySent) ...[
           _InvoiceLabeledAction(
             label: 'PDF',
@@ -1960,6 +2017,19 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             : _InvoiceActionTone.success,
         onPressed: _busy ? null : _toggleActive,
       ),
+      if (!alreadySent)
+        _InvoiceIconAction(
+          tooltip: isManual
+              ? 'Manuel fatura işaretini geri al'
+              : 'Manuel fatura kesildi olarak işaretle',
+          icon: isManual
+              ? Icons.undo_rounded
+              : Icons.fact_check_rounded,
+          tone: isManual
+              ? _InvoiceActionTone.info
+              : _InvoiceActionTone.warning,
+          onPressed: _busy ? null : _toggleManual,
+        ),
       if (alreadySent) ...[
         _InvoiceIconAction(
           tooltip: 'PDF oluştur / aç',
@@ -2017,10 +2087,11 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     final alreadySent = invoice.isEInvoiceSent;
     final environment = (settings['environment'] ?? 'test').toString();
     final canSend = invoice.canSendEInvoiceTo(environment);
-    final sendTooltip =
-        alreadySent &&
-            invoice.eInvoiceEnvironment == 'test' &&
-            environment == 'production'
+    final sendTooltip = invoice.isEInvoiceManual
+        ? 'Manuel fatura olarak işaretli; API gönderimi kapalı'
+        : alreadySent &&
+              invoice.eInvoiceEnvironment == 'test' &&
+              environment == 'production'
         ? 'Testte gönderildi; canlı API’ye gönder'
         : alreadySent
         ? 'Bu fatura bu ortamda başarıyla gönderildi'
@@ -2363,6 +2434,72 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     }
   }
 
+  Future<void> _toggleManual() async {
+    if (widget.invoice.isEInvoiceSent) return;
+    final marking = !widget.invoice.isEInvoiceManual;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          marking ? 'Manuel fatura kesildi' : 'Manuel işareti geri al',
+        ),
+        content: Text(
+          marking
+              ? '${widget.invoice.invoiceNumber} numaralı fatura başka sistemden kesilmiş olarak işaretlensin mi? Bu işlem sonrası API gönderimi kapanır.'
+              : '${widget.invoice.invoiceNumber} numaralı faturanın manuel kesildi işareti geri alınsın mı? Fatura tekrar API’ye gönderilebilir hale gelir.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(marking ? 'İşaretle' : 'Geri al'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    setState(() => _busy = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'invoices',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': widget.invoice.id},
+          ],
+          'values': {
+            'e_invoice_status': marking ? 'manual' : 'not_sent',
+          },
+        },
+      );
+      ref.invalidate(invoicesProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            marking
+                ? '${widget.invoice.invoiceNumber} manuel fatura olarak işaretlendi.'
+                : '${widget.invoice.invoiceNumber} manuel işareti geri alındı.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Manuel durum güncellenemedi: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _print() async {
     final invoice = await _loadInvoiceDetail();
     if (invoice == null) return;
@@ -2631,6 +2768,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   String _eInvoiceStatusLabel(String status) {
     return switch (status) {
       'sent' => 'E-Fatura Gönderildi',
+      'manual' => 'Manuel Kesildi',
       'prepared' => 'E-Fatura Hazır',
       'failed' => 'E-Fatura Hatalı',
       'cancelled' => 'E-Fatura İptal',
@@ -2641,6 +2779,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   AppBadgeTone _eInvoiceStatusTone(String status) {
     return switch (status) {
       'sent' => AppBadgeTone.success,
+      'manual' => AppBadgeTone.warning,
       'prepared' => AppBadgeTone.warning,
       'failed' => AppBadgeTone.error,
       'cancelled' => AppBadgeTone.neutral,

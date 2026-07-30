@@ -670,6 +670,7 @@ function buildPayload({ settings, invoice }) {
 }
 
 function canSendInvoiceToEnvironment(invoice, environment) {
+  if (invoice.e_invoice_status === 'manual') return false;
   if (invoice.e_invoice_status !== 'sent') return true;
   return (
     invoice.e_invoice_environment === 'test' &&
@@ -855,10 +856,50 @@ function storageHeaders(key) {
   };
 }
 
-async function uploadEInvoicePdf({ invoiceId, verificationCode, pdf }) {
+function safePdfFilenamePart(value, fallback = 'fatura') {
+  const cleaned = String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ı/g, 'i')
+    .replace(/İ/g, 'I')
+    .replace(/ğ/g, 'g')
+    .replace(/Ğ/g, 'G')
+    .replace(/ü/g, 'u')
+    .replace(/Ü/g, 'U')
+    .replace(/ş/g, 's')
+    .replace(/Ş/g, 'S')
+    .replace(/ö/g, 'o')
+    .replace(/Ö/g, 'O')
+    .replace(/ç/g, 'c')
+    .replace(/Ç/g, 'C')
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 80);
+  return cleaned || fallback;
+}
+
+function buildEInvoicePdfFileName(invoice) {
+  const invoiceNumber = safePdfFilenamePart(
+    invoice?.e_invoice_number || invoice?.invoice_number,
+    'fatura',
+  );
+  const customerName = safePdfFilenamePart(
+    invoice?.customer_name ||
+      invoice?.customer?.name ||
+      invoice?.customers?.name,
+    'cari',
+  );
+  return `${invoiceNumber}_${customerName}.pdf`;
+}
+
+async function uploadEInvoicePdf({ invoiceId, invoice, verificationCode, pdf }) {
   const { url, key } = supabaseStorageConfig();
-  const safeCode = String(verificationCode).replace(/[^a-zA-Z0-9-]/g, '');
-  const objectPath = `e-invoices/${invoiceId}/${safeCode}.pdf`;
+  const fileName = buildEInvoicePdfFileName(invoice);
+  const safeCode = String(verificationCode || '')
+    .replace(/[^a-zA-Z0-9-]/g, '')
+    .slice(0, 36);
+  const objectPath = `e-invoices/${invoiceId}/${fileName}`;
   const uploadUrl = `${url}/storage/v1/object/${eInvoicePdfBucket}/${objectPath}`;
   const response = await fetch(uploadUrl, {
     method: 'POST',
@@ -867,22 +908,46 @@ async function uploadEInvoicePdf({ invoiceId, verificationCode, pdf }) {
       'content-type': 'application/pdf',
       'cache-control': '31536000',
       'x-upsert': 'true',
+      'x-content-disposition': `attachment; filename="${fileName}"`,
     },
     body: pdf,
   });
   if (!response.ok) {
-    throw new Error(
-      `E-fatura PDF yüklenemedi: ${response.status} ${await response.text()}`,
-    );
+    // Eski UUID yollarıyla çakışmayı önlemek için kodlu yola düş.
+    const fallbackPath = `e-invoices/${invoiceId}/${safeCode || 'e-fatura'}_${fileName}`;
+    const fallbackUrl = `${url}/storage/v1/object/${eInvoicePdfBucket}/${fallbackPath}`;
+    const fallback = await fetch(fallbackUrl, {
+      method: 'POST',
+      headers: {
+        ...storageHeaders(key),
+        'content-type': 'application/pdf',
+        'cache-control': '31536000',
+        'x-upsert': 'true',
+        'x-content-disposition': `attachment; filename="${fileName}"`,
+      },
+      body: pdf,
+    });
+    if (!fallback.ok) {
+      throw new Error(
+        `E-fatura PDF yüklenemedi: ${response.status} ${await response.text()}`,
+      );
+    }
+    return {
+      bucket: eInvoicePdfBucket,
+      path: fallbackPath,
+      fileName,
+      sha256: crypto.createHash('sha256').update(pdf).digest('hex'),
+    };
   }
   return {
     bucket: eInvoicePdfBucket,
     path: objectPath,
+    fileName,
     sha256: crypto.createHash('sha256').update(pdf).digest('hex'),
   };
 }
 
-async function createEInvoicePdfSignedUrl(bucket, objectPath) {
+async function createEInvoicePdfSignedUrl(bucket, objectPath, downloadName) {
   const { url, key } = supabaseStorageConfig();
   const response = await fetch(
     `${url}/storage/v1/object/sign/${bucket}/${objectPath}`,
@@ -892,7 +957,10 @@ async function createEInvoicePdfSignedUrl(bucket, objectPath) {
         ...storageHeaders(key),
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ expiresIn: 900 }),
+      body: JSON.stringify({
+        expiresIn: 900,
+        ...(downloadName ? { download: downloadName } : {}),
+      }),
     },
   );
   const result = await response.json().catch(() => ({}));
@@ -901,7 +969,11 @@ async function createEInvoicePdfSignedUrl(bucket, objectPath) {
       `E-fatura PDF bağlantısı oluşturulamadı: ${response.status}`,
     );
   }
-  return `${url}/storage/v1${result.signedURL}`;
+  let signed = `${url}/storage/v1${result.signedURL}`;
+  if (downloadName && !/[?&]download=/.test(signed)) {
+    signed += `${signed.includes('?') ? '&' : '?'}download=${encodeURIComponent(downloadName)}`;
+  }
+  return signed;
 }
 
 async function archiveOfficialInvoice({ invoiceId, settings, verificationCode, token }) {
@@ -921,6 +993,7 @@ async function archiveOfficialInvoice({ invoiceId, settings, verificationCode, t
     });
     const storedPdf = await uploadEInvoicePdf({
       invoiceId,
+      invoice,
       verificationCode,
       pdf,
     });
@@ -952,6 +1025,7 @@ async function archiveOfficialInvoice({ invoiceId, settings, verificationCode, t
       pdfUrl = await createEInvoicePdfSignedUrl(
         storedPdf.bucket,
         storedPdf.path,
+        storedPdf.fileName,
       );
     } catch (_) {
       // Depolama tamamlandı; imzalı URL yanıt için isteğe bağlıdır.
@@ -960,6 +1034,7 @@ async function archiveOfficialInvoice({ invoiceId, settings, verificationCode, t
       archived: true,
       archivedAt: new Date().toISOString(),
       pdfUrl,
+      pdfFileName: storedPdf.fileName,
       bucket: storedPdf.bucket,
       path: storedPdf.path,
     };
@@ -1263,9 +1338,11 @@ async function handler(req, res) {
         cleanText(invoice.e_invoice_pdf_bucket) &&
         cleanText(invoice.e_invoice_pdf_path)
       ) {
+        const pdfFileName = buildEInvoicePdfFileName(invoice);
         const pdfUrl = await createEInvoicePdfSignedUrl(
           invoice.e_invoice_pdf_bucket,
           invoice.e_invoice_pdf_path,
+          pdfFileName,
         );
         return ok(req, res, {
           ok: true,
@@ -1273,6 +1350,7 @@ async function handler(req, res) {
           alreadyArchived: true,
           archivedAt: invoice.e_invoice_archived_at,
           pdfUrl,
+          pdfFileName,
         });
       }
       const currentSettings = await getSettings();
@@ -1300,6 +1378,13 @@ async function handler(req, res) {
         invoice.e_invoice_environment === 'test' &&
         settings.environment === 'production';
       if (!canSendInvoiceToEnvironment(invoice, settings.environment)) {
+        if (invoice.e_invoice_status === 'manual') {
+          return badRequest(
+            req,
+            res,
+            'Bu fatura manuel kesildi olarak işaretli. API’ye gönderilmez.',
+          );
+        }
         return badRequest(
           req,
           res,

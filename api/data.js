@@ -1748,8 +1748,10 @@ module.exports = async (req, res) => {
         }
         if (eInvoiceStatus === 'sent') {
           whereSql += ` and i.e_invoice_status = 'sent'`;
+        } else if (eInvoiceStatus === 'manual') {
+          whereSql += ` and i.e_invoice_status = 'manual'`;
         } else if (eInvoiceStatus === 'not_sent') {
-          whereSql += ` and coalesce(i.e_invoice_status, 'not_sent') <> 'sent'`;
+          whereSql += ` and coalesce(i.e_invoice_status, 'not_sent') not in ('sent', 'manual')`;
         }
         if (customerId) {
           values.push(customerId);

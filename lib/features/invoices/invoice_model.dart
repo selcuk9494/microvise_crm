@@ -82,9 +82,13 @@ class Invoice {
   bool get isPaid => status == 'paid';
   bool get isOpen => status == 'open' || status == 'partial';
   bool get isEInvoiceSent => eInvoiceStatus == 'sent';
+  bool get isEInvoiceManual => eInvoiceStatus == 'manual';
+  bool get isEInvoiceClosed => isEInvoiceSent || isEInvoiceManual;
   bool canSendEInvoiceTo(String environment) =>
-      !isEInvoiceSent ||
-      (eInvoiceEnvironment == 'test' && environment == 'production');
+      !isEInvoiceClosed ||
+      (eInvoiceStatus == 'sent' &&
+          eInvoiceEnvironment == 'test' &&
+          environment == 'production');
 
   factory Invoice.fromJson(Map<String, dynamic> json) {
     return Invoice(

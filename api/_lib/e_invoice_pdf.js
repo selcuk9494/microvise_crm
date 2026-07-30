@@ -159,7 +159,7 @@ function sourceInvoice(officialData, payloadInvoice) {
   return { ...payloadInvoice, ...normalized };
 }
 
-const COMPANY_LOGO_MAX = { width: 78, height: 28 };
+const COMPANY_LOGO_MAX = { width: 180, height: 62 };
 
 function resolveCompanyLogoPath(settings) {
   const candidates = [
@@ -346,23 +346,10 @@ async function buildEInvoiceArchivePdf({
     .fontSize(12)
     .fillColor(COLORS.text)
     .text('K.K.T.C. Maliye Bakanlığı', 89, 33);
-  const maliyeTitleWidth = doc.widthOfString('K.K.T.C. Maliye Bakanlığı');
   doc.font('NotoSansBold').fontSize(16.5).fillColor(COLORS.red).text('e-FATURA', 89, 53);
-  doc
-    .font('NotoSans')
-    .fontSize(9.4)
-    .fillColor(COLORS.label)
-    .text(
-      `Fatura No: ${text(
-        source.faturaNo || invoice.e_invoice_number || invoice.invoice_number,
-      )}`,
-      89,
-      81,
-      { width: 250, ellipsis: true },
-    );
 
-  // Firma logosu yalnızca tanımlıysa üst başlıkta, Maliye başlığının hemen
-  // yanında dikey ortalanır. Logo yoksa Maliye yerleşimi birebir korunur.
+  // Firma logosu yalnızca tanımlıysa üst başlıkta ortalanır.
+  // Logo yoksa Maliye yerleşimi birebir korunur.
   const qrLeft = RIGHT - 79;
   const companyLogoPath = resolveCompanyLogoPath(settings);
   if (companyLogoPath) {
@@ -373,15 +360,27 @@ async function buildEInvoiceArchivePdf({
     );
     const logoWidth = companyLogo.width * scale;
     const logoHeight = companyLogo.height * scale;
-    const besideMaliye = 89 + maliyeTitleWidth + 14;
-    const logoLeft = Math.min(besideMaliye, qrLeft - logoWidth - 16);
-    const logoTop = 30 + Math.max(0, (49 - logoHeight) / 2);
+    const logoLeft = (LEFT + RIGHT) / 2 - logoWidth / 2;
+    const logoTop = 26 + Math.max(0, (56 - logoHeight) / 2);
     doc.image(companyLogoPath, logoLeft, logoTop, {
       width: logoWidth,
       height: logoHeight,
     });
   }
   doc.image(qr, qrLeft, 26, { width: 79, height: 79 });
+
+  doc
+    .font('NotoSans')
+    .fontSize(9.4)
+    .fillColor(COLORS.label)
+    .text(
+      `Fatura No: ${text(
+        source.faturaNo || invoice.e_invoice_number || invoice.invoice_number,
+      )}`,
+      LEFT,
+      88,
+      { width: WIDTH, align: 'center', ellipsis: true },
+    );
 
   const boxTop = 118;
 
