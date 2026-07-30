@@ -1094,9 +1094,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         .toList(growable: false);
     if (selected.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('PDF için gönderilmiş e-fatura seçin.'),
-        ),
+        const SnackBar(content: Text('PDF için gönderilmiş e-fatura seçin.')),
       );
       return;
     }
@@ -1112,11 +1110,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         try {
           final archive = await apiClient.postJson(
             '/e-invoice',
-            body: {
-              'action': 'archive',
-              'invoiceId': invoice.id,
-              'force': true,
-            },
+            body: {'action': 'archive', 'invoiceId': invoice.id, 'force': true},
           );
           final pdfUrl = archive['pdfUrl']?.toString().trim() ?? '';
           if (pdfUrl.isEmpty) {
@@ -1127,7 +1121,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             continue;
           }
           final number = (invoice.eInvoiceNumber?.trim().isNotEmpty ?? false)
-              ? invoice.eInvoiceNumber!.trim()
+              ? _localEInvoiceNumber(invoice.eInvoiceNumber!)
               : invoice.invoiceNumber.trim();
           final customer = (invoice.customerName ?? '').trim();
           downloads.add(
@@ -1172,15 +1166,17 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Toplu PDF başarısız: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Toplu PDF başarısız: $error')));
     } finally {
       if (mounted) setState(() => _bulkProcessing = false);
     }
   }
 
-  Future<void> _pushSelectedInvoiceNumbers(List<Invoice> visibleInvoices) async {
+  Future<void> _pushSelectedInvoiceNumbers(
+    List<Invoice> visibleInvoices,
+  ) async {
     final selected = visibleInvoices
         .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
         .where((invoice) => invoice.isEInvoiceSent)
@@ -1189,9 +1185,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               invoice.eInvoiceEnvironment == null ||
               invoice.eInvoiceEnvironment == 'production',
         )
-        .where(
-          (invoice) => invoice.eInvoiceNumber?.trim().isNotEmpty ?? false,
-        )
+        .where((invoice) => invoice.eInvoiceNumber?.trim().isNotEmpty ?? false)
         .toList(growable: false);
     if (selected.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1211,7 +1205,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         content: Text(
           '${selected.length} faturanın CRM ve Akınsoft fatura numarası '
           'Maliye e-fatura numarasına güncellensin mi?\n\n'
-          'Örnek: SF03393 → ${selected.first.eInvoiceNumber}',
+          'Örnek: SF03393 → ${_localEInvoiceNumber(selected.first.eInvoiceNumber!)}',
         ),
         actions: [
           TextButton(
@@ -1329,9 +1323,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(
-          manual ? 'Manuel Kesildi' : 'Manuel işareti geri al',
-        ),
+        title: Text(manual ? 'Manuel Kesildi' : 'Manuel işareti geri al'),
         content: Text(
           manual
               ? '${selected.length} fatura başka sistemden kesilmiş olarak işaretlensin mi? Bu faturalar Maliye API’sine gönderilmez.'
@@ -2322,6 +2314,10 @@ String _safeFilePart(String value) {
   return safe.isEmpty ? 'ekstre' : safe;
 }
 
+String _localEInvoiceNumber(String value) {
+  return value.trim().replaceFirst(RegExp(r'^\d{9}-'), '');
+}
+
 class _InvoiceHeaderText extends StatelessWidget {
   const _InvoiceHeaderText(this.label, {this.alignEnd = false});
 
@@ -2376,9 +2372,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             tooltip: isManual
                 ? 'Manuel fatura işaretini geri al'
                 : 'Manuel fatura kesildi olarak işaretle',
-            icon: isManual
-                ? Icons.undo_rounded
-                : Icons.fact_check_rounded,
+            icon: isManual ? Icons.undo_rounded : Icons.fact_check_rounded,
             tone: isManual
                 ? _InvoiceActionTone.info
                 : _InvoiceActionTone.warning,
@@ -2453,18 +2447,12 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             }
           },
           itemBuilder: (context) => const [
-            PopupMenuItem(
-              value: 'statement',
-              child: Text('Cari ekstre PDF'),
-            ),
+            PopupMenuItem(value: 'statement', child: Text('Cari ekstre PDF')),
             PopupMenuItem(
               value: 'payload',
               child: Text('Gönderim verisini hazırla'),
             ),
-            PopupMenuItem(
-              value: 'copy',
-              child: Text('Fatura özetini kopyala'),
-            ),
+            PopupMenuItem(value: 'copy', child: Text('Fatura özetini kopyala')),
           ],
           child: Container(
             width: 40,
@@ -2519,12 +2507,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           tooltip: isManual
               ? 'Manuel fatura işaretini geri al'
               : 'Manuel fatura kesildi olarak işaretle',
-          icon: isManual
-              ? Icons.undo_rounded
-              : Icons.fact_check_rounded,
-          tone: isManual
-              ? _InvoiceActionTone.info
-              : _InvoiceActionTone.warning,
+          icon: isManual ? Icons.undo_rounded : Icons.fact_check_rounded,
+          tone: isManual ? _InvoiceActionTone.info : _InvoiceActionTone.warning,
           onPressed: _busy ? null : _toggleManual,
         ),
       if (alreadySent) ...[
@@ -2984,7 +2968,9 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${widget.invoice.invoiceNumber} kalıcı olarak silindi.'),
+          content: Text(
+            '${widget.invoice.invoiceNumber} kalıcı olarak silindi.',
+          ),
         ),
       );
     } catch (error) {
@@ -3037,9 +3023,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           'filters': [
             {'col': 'id', 'op': 'eq', 'value': widget.invoice.id},
           ],
-          'values': {
-            'e_invoice_status': marking ? 'manual' : 'not_sent',
-          },
+          'values': {'e_invoice_status': marking ? 'manual' : 'not_sent'},
         },
       );
       ref.invalidate(invoicesProvider);
@@ -3188,13 +3172,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   /// Mobilde imzalı URL yerine PDF dosyasını paylaşır; paylaşım metninde
   /// fatura numarası ve müşteri adı görünür.
   Future<bool> _shareOrOpenPdf(Invoice invoice, String pdfUrl) async {
-    final number =
-        (invoice.eInvoiceNumber?.trim().isNotEmpty ?? false)
-        ? invoice.eInvoiceNumber!.trim()
+    final number = (invoice.eInvoiceNumber?.trim().isNotEmpty ?? false)
+        ? _localEInvoiceNumber(invoice.eInvoiceNumber!)
         : invoice.invoiceNumber.trim();
     final customer = (invoice.customerName ?? '').trim();
     final shareText = customer.isEmpty ? number : '$number - $customer';
-    final fileName = customer.isEmpty ? '$number.pdf' : '${number}_$customer.pdf';
+    final fileName = customer.isEmpty
+        ? '$number.pdf'
+        : '${number}_$customer.pdf';
 
     try {
       if (await shareEInvoicePdf(
@@ -3461,17 +3446,13 @@ class _InvoiceIconAction extends StatelessWidget {
         visualDensity: VisualDensity.compact,
         constraints: const BoxConstraints.tightFor(width: 36, height: 36),
         style: IconButton.styleFrom(
-          backgroundColor: enabled
-              ? colors.background
-              : AppTheme.surfaceMuted,
+          backgroundColor: enabled ? colors.background : AppTheme.surfaceMuted,
           foregroundColor: enabled ? colors.foreground : AppTheme.textMuted,
           disabledBackgroundColor: AppTheme.surfaceMuted,
           disabledForegroundColor: AppTheme.textMuted,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-            side: BorderSide(
-              color: enabled ? colors.border : AppTheme.border,
-            ),
+            side: BorderSide(color: enabled ? colors.border : AppTheme.border),
           ),
         ),
         onPressed: onPressed,
@@ -4928,9 +4909,9 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                   const Gap(10),
                   Text(
                     'Faturada Gösterilecek Banka Hesapları',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: AppTheme.textSoft,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelLarge?.copyWith(color: AppTheme.textSoft),
                   ),
                   const Gap(8),
                   LayoutBuilder(

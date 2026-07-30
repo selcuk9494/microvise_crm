@@ -1772,7 +1772,22 @@ module.exports = async (req, res) => {
               select i.*
               from public.invoices i
               ${whereSql}
-              order by i.invoice_date desc
+              order by
+                i.invoice_date desc,
+                nullif(
+                  regexp_replace(
+                    regexp_replace(
+                      coalesce(i.e_invoice_number, i.invoice_number, ''),
+                      '^.*-',
+                      ''
+                    ),
+                    '[^0-9]',
+                    '',
+                    'g'
+                  ),
+                  ''
+                )::numeric desc nulls last,
+                i.created_at desc
               limit 800
             ),
             item_totals as (
@@ -1851,7 +1866,22 @@ module.exports = async (req, res) => {
             from filtered_invoices fi
             left join public.customers c on c.id = fi.customer_id
             left join item_totals on item_totals.invoice_id = fi.id
-            order by fi.invoice_date desc
+            order by
+              fi.invoice_date desc,
+              nullif(
+                regexp_replace(
+                  regexp_replace(
+                    coalesce(fi.e_invoice_number, fi.invoice_number, ''),
+                    '^.*-',
+                    ''
+                  ),
+                  '[^0-9]',
+                  '',
+                  'g'
+                ),
+                ''
+              )::numeric desc nulls last,
+              fi.created_at desc
           `,
           values,
         );

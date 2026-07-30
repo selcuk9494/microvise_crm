@@ -12,6 +12,12 @@ double? _jsonNullableDouble(dynamic value) {
   return double.tryParse(text.replaceAll(',', '.'));
 }
 
+String _localInvoiceNumber(dynamic value) {
+  final text = (value?.toString() ?? '').trim();
+  if (text.isEmpty) return '';
+  return text.replaceFirst(RegExp(r'^\d{9}-'), '');
+}
+
 // Fatura Modelleri
 class Invoice {
   final String id;
@@ -95,7 +101,7 @@ class Invoice {
   factory Invoice.fromJson(Map<String, dynamic> json) {
     return Invoice(
       id: json['id'].toString(),
-      invoiceNumber: json['invoice_number']?.toString() ?? '',
+      invoiceNumber: _localInvoiceNumber(json['invoice_number']),
       invoiceType: json['invoice_type']?.toString() ?? 'sales',
       customerId: json['customer_id'].toString(),
       customerName:
@@ -135,7 +141,9 @@ class Invoice {
           'open',
       notes: json['notes']?.toString(),
       eInvoiceStatus: json['e_invoice_status']?.toString() ?? 'not_sent',
-      eInvoiceNumber: json['e_invoice_number']?.toString(),
+      eInvoiceNumber: json['e_invoice_number'] == null
+          ? null
+          : _localInvoiceNumber(json['e_invoice_number']),
       eInvoiceUuid: json['e_invoice_uuid']?.toString(),
       eInvoiceEnvironment: json['e_invoice_environment']?.toString(),
       eInvoiceArchivedAt: json['e_invoice_archived_at'] != null

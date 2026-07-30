@@ -16,6 +16,7 @@ const {
   urlsForEnvironment,
   archiveAfterSuccessfulSend,
   officialNumberFromResponse,
+  localInvoiceNumber,
   isNumberAlreadyUsedError,
   serialFromNumber,
   invoiceNumberPrefix,
@@ -103,6 +104,14 @@ test('Maliye yanıtından resmi fatura numarasını alır', () => {
     officialNumberFromResponse({ sonuclar: [{ basarili: false }] }, 'fallback'),
     'fallback',
   );
+});
+
+test('yerel kullanımda resmi fatura numarasından VKN önekini kaldırır', () => {
+  assert.equal(
+    localInvoiceNumber('620009058-2026-1-00000000010'),
+    '2026-1-00000000010',
+  );
+  assert.equal(localInvoiceNumber('SF03395'), 'SF03395');
 });
 
 test('Maliye "zaten kullanılmakta" yanıtını numara çakışması olarak tanır', () => {

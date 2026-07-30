@@ -640,6 +640,10 @@ function textOrNull(value) {
   return text.length ? text : null;
 }
 
+function localEInvoiceNumber(value) {
+  return String(value ?? '').trim().replace(/^\d{9}-/, '');
+}
+
 function taxNumberOrNull(value) {
   const digits = String(value ?? '').replace(/[^0-9]/g, '');
   return digits.length ? digits : null;
@@ -3355,23 +3359,28 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
         continue;
       }
 
-      const eInvoiceNumber = textOrNull(row.e_invoice_number);
+      const officialEInvoiceNumber = textOrNull(row.e_invoice_number);
+      const eInvoiceNumber = localEInvoiceNumber(officialEInvoiceNumber);
       const invoiceNumber = textOrNull(row.invoice_number);
       const erpNumber =
         textOrNull(row.erp_invoice_number) ||
         textOrNull(row.akinsoft_source_code) ||
-        (invoiceNumber && invoiceNumber !== eInvoiceNumber ? invoiceNumber : null);
+        (invoiceNumber &&
+        localEInvoiceNumber(invoiceNumber) !== eInvoiceNumber
+          ? invoiceNumber
+          : null);
       const base = {
         invoiceId: row.id,
         invoiceNumber,
         erpInvoiceNumber: erpNumber,
         eInvoiceNumber,
+        officialEInvoiceNumber,
         environment: row.e_invoice_environment,
         status: row.e_invoice_status,
       };
 
       try {
-        if (row.e_invoice_status !== 'sent' || !eInvoiceNumber) {
+        if (row.e_invoice_status !== 'sent' || !officialEInvoiceNumber) {
           items.push({
             ...base,
             ok: false,

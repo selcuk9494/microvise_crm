@@ -581,6 +581,10 @@ function officialNumberFromResponse(response, fallback) {
   return cleanText(fallback);
 }
 
+function localInvoiceNumber(number) {
+  return cleanText(number).replace(/^\d{9}-/, '');
+}
+
 // Canlı gönderim başarılı olunca CRM fatura numarasını Maliye numarasına çeker.
 // ERP'deki eski numara erp_invoice_number alanında saklanır (Akınsoft yazımı için).
 async function applyOfficialInvoiceNumber({
@@ -595,13 +599,14 @@ async function applyOfficialInvoiceNumber({
   }
   const official = cleanText(officialNumber);
   if (!official) return { renamed: false, reason: 'missing_number' };
+  const localOfficial = localInvoiceNumber(official);
 
   const current = cleanText(currentInvoiceNumber);
   const preservedErp =
     cleanText(erpInvoiceNumber) ||
-    (current && current !== official ? current : null);
+    (current && current !== official && current !== localOfficial ? current : null);
 
-  if (current === official) {
+  if (current === localOfficial) {
     if (preservedErp && !cleanText(erpInvoiceNumber)) {
       await query(
         `
@@ -616,7 +621,7 @@ async function applyOfficialInvoiceNumber({
     return {
       renamed: false,
       reason: 'already_official',
-      invoiceNumber: official,
+      invoiceNumber: localOfficial,
       erpInvoiceNumber: preservedErp,
     };
   }
@@ -629,7 +634,7 @@ async function applyOfficialInvoiceNumber({
         and id is distinct from $2
       limit 1
     `,
-    [official, invoiceId],
+    [localOfficial, invoiceId],
   );
   if (conflict.rows.length) {
     if (preservedErp) {
@@ -648,7 +653,7 @@ async function applyOfficialInvoiceNumber({
       reason: 'conflict',
       invoiceNumber: current,
       erpInvoiceNumber: preservedErp,
-      officialNumber: official,
+      officialNumber: localOfficial,
     };
   }
 
@@ -660,14 +665,14 @@ async function applyOfficialInvoiceNumber({
           updated_at = now()
       where id = $1
     `,
-    [invoiceId, official, preservedErp],
+    [invoiceId, localOfficial, preservedErp],
   );
   return {
     renamed: true,
     from: current,
-    to: official,
+    to: localOfficial,
     erpInvoiceNumber: preservedErp,
-    invoiceNumber: official,
+    invoiceNumber: localOfficial,
   };
 }
 
@@ -1085,7 +1090,7 @@ function safePdfFilenamePart(value, fallback = 'fatura') {
 
 function buildEInvoicePdfFileName(invoice) {
   const invoiceNumber = safePdfFilenamePart(
-    invoice?.e_invoice_number || invoice?.invoice_number,
+    localInvoiceNumber(invoice?.e_invoice_number || invoice?.invoice_number),
     'fatura',
   );
   const customerName = safePdfFilenamePart(
@@ -1905,5 +1910,6 @@ module.exports.testUtils = {
   serialFromNumber,
   invoiceNumberPrefix,
   officialNumberFromResponse,
+  localInvoiceNumber,
   applyOfficialInvoiceNumber,
 };
