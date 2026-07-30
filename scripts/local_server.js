@@ -3179,21 +3179,41 @@ function getApiHandler(urlPath) {
   return require(handlerPath);
 }
 
+async function readAkinsoftInvoiceNumberBySourceId(pool, sql, sourceId) {
+  const id = textOrNull(sourceId);
+  if (!id) return null;
+  const result = await pool
+    .request()
+    .input('sourceId', sql.NVarChar(64), id)
+    .query(`
+      select top 1 FATURA_NO as invoiceNumber
+      from dbo.FATURA
+      where cast(BLKODU as nvarchar(64)) = @sourceId
+    `);
+  return textOrNull(result.recordset?.[0]?.invoiceNumber);
+}
+
 async function writeAkinsoftInvoiceNumber(pool, sql, item) {
-  const oldNumber = textOrNull(item.oldNumber);
   const newNumber = textOrNull(item.newNumber);
   const sourceId = textOrNull(item.sourceId);
+  let oldNumber = textOrNull(item.oldNumber);
   if (!newNumber) {
     return { ok: false, reason: 'Yeni fatura numarası yok.' };
   }
+
+  // BLKODU biliniyorsa Akınsoft’taki güncel numarayı esas al.
+  if (sourceId) {
+    const current = await readAkinsoftInvoiceNumberBySourceId(pool, sql, sourceId);
+    if (current) oldNumber = current;
+  }
+
   if (oldNumber && oldNumber === newNumber) {
-    return { ok: true, skipped: true, reason: 'Numara zaten aynı.' };
+    return { ok: true, skipped: true, reason: 'Numara zaten aynı.', oldNumber };
   }
 
   const existing = await pool
     .request()
     .input('newNumber', sql.NVarChar(64), newNumber)
-    .input('oldNumber', sql.NVarChar(64), oldNumber)
     .input('sourceId', sql.NVarChar(64), sourceId)
     .query(`
       select top 1
@@ -3205,15 +3225,12 @@ async function writeAkinsoftInvoiceNumber(pool, sql, item) {
           @sourceId is null
           or cast(BLKODU as nvarchar(64)) <> @sourceId
         )
-        and (
-          @oldNumber is null
-          or FATURA_NO <> @oldNumber
-        )
     `);
   if (existing.recordset?.length) {
     return {
       ok: false,
       reason: `Akınsoft’ta ${newNumber} numarası başka bir faturada kullanılıyor.`,
+      oldNumber,
     };
   }
 
@@ -3248,10 +3265,11 @@ async function writeAkinsoftInvoiceNumber(pool, sql, item) {
       reason: oldNumber
         ? `Akınsoft’ta ${oldNumber} numaralı fatura bulunamadı.`
         : 'Akınsoft fatura eşlemesi (BLKODU) bulunamadı.',
+      oldNumber,
     };
   }
 
-  if (oldNumber) {
+  if (oldNumber && oldNumber !== newNumber) {
     await pool
       .request()
       .input('oldNumber', sql.NVarChar(64), oldNumber)
@@ -3263,7 +3281,7 @@ async function writeAkinsoftInvoiceNumber(pool, sql, item) {
       `);
   }
 
-  return { ok: true, updated };
+  return { ok: true, updated, oldNumber };
 }
 
 async function handleAkinsoftPushInvoiceNumbers(req, res) {
@@ -3320,10 +3338,23 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
 
   const sql = require('mssql');
   const { config } = buildAkinsoftSqlConfig(body.settings || body);
+  // Toplu güncellemede satır başına birkaç sorgu olduğu için süreyi uzat.
+  config.requestTimeout = Math.max(Number(config.requestTimeout || 0), 180000);
   const pool = await connectAkinsoftPool(config);
   const items = [];
+  const byId = new Map(result.rows.map((row) => [String(row.id), row]));
   try {
-    for (const row of result.rows) {
+    for (const invoiceId of invoiceIds) {
+      const row = byId.get(String(invoiceId));
+      if (!row) {
+        items.push({
+          invoiceId,
+          ok: false,
+          reason: 'Fatura CRM’de bulunamadı.',
+        });
+        continue;
+      }
+
       const eInvoiceNumber = textOrNull(row.e_invoice_number);
       const invoiceNumber = textOrNull(row.invoice_number);
       const erpNumber =
@@ -3339,104 +3370,125 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
         status: row.e_invoice_status,
       };
 
-      if (row.e_invoice_status !== 'sent' || !eInvoiceNumber) {
-        items.push({
-          ...base,
-          ok: false,
-          reason: 'Yalnızca gönderilmiş e-faturalar güncellenir.',
-        });
-        continue;
-      }
-      if (
-        textOrNull(row.e_invoice_environment) &&
-        textOrNull(row.e_invoice_environment) !== 'production'
-      ) {
-        items.push({
-          ...base,
-          ok: false,
-          reason: 'Yalnızca canlı ortamda gönderilmiş faturalar Akınsoft’a yazılır.',
-        });
-        continue;
-      }
-
-      // CRM tarafında fatura numarasını Maliye numarasına çek.
-      let renamed = false;
-      if (invoiceNumber !== eInvoiceNumber) {
-        const conflict = await query(
-          `
-            select id
-            from public.invoices
-            where invoice_number = $1
-              and id is distinct from $2
-            limit 1
-          `,
-          [eInvoiceNumber, row.id],
-        );
-        if (conflict.rows.length) {
+      try {
+        if (row.e_invoice_status !== 'sent' || !eInvoiceNumber) {
           items.push({
             ...base,
             ok: false,
-            reason: `CRM’de ${eInvoiceNumber} başka bir faturada kullanılıyor.`,
+            reason: 'Yalnızca gönderilmiş e-faturalar güncellenir.',
           });
           continue;
         }
-        await query(
-          `
-            update public.invoices
-            set invoice_number = $2,
-                erp_invoice_number = coalesce(nullif(trim(erp_invoice_number), ''), $3),
-                updated_at = now()
-            where id = $1
-          `,
-          [row.id, eInvoiceNumber, erpNumber],
-        );
-        renamed = true;
-      } else if (erpNumber && !textOrNull(row.erp_invoice_number)) {
-        await query(
-          `
-            update public.invoices
-            set erp_invoice_number = $2,
-                updated_at = now()
-            where id = $1
-          `,
-          [row.id, erpNumber],
-        );
-      }
-
-      const write = await writeAkinsoftInvoiceNumber(pool, sql, {
-        oldNumber: erpNumber,
-        newNumber: eInvoiceNumber,
-        sourceId: row.akinsoft_source_id,
-      });
-      if (write.ok) {
-        await query(
-          `
-            update public.invoices
-            set erp_invoice_number_synced_at = now(),
-                updated_at = now()
-            where id = $1
-          `,
-          [row.id],
-        );
-        if (row.akinsoft_source_id) {
-          await upsertAkinsoftSyncMap(query, {
-            sourceType: 'invoice',
-            sourceId: row.akinsoft_source_id,
-            sourceCode: eInvoiceNumber,
-            sourceName: null,
-            localTable: 'invoices',
-            localId: row.id,
+        if (
+          textOrNull(row.e_invoice_environment) &&
+          textOrNull(row.e_invoice_environment) !== 'production'
+        ) {
+          items.push({
+            ...base,
+            ok: false,
+            reason: 'Yalnızca canlı ortamda gönderilmiş faturalar Akınsoft’a yazılır.',
           });
+          continue;
         }
+
+        // CRM tarafında fatura numarasını Maliye numarasına çek.
+        let renamed = false;
+        if (invoiceNumber !== eInvoiceNumber) {
+          const conflict = await query(
+            `
+              select id
+              from public.invoices
+              where invoice_number = $1
+                and id is distinct from $2
+              limit 1
+            `,
+            [eInvoiceNumber, row.id],
+          );
+          if (conflict.rows.length) {
+            items.push({
+              ...base,
+              ok: false,
+              reason: `CRM’de ${eInvoiceNumber} başka bir faturada kullanılıyor.`,
+            });
+            continue;
+          }
+          await query(
+            `
+              update public.invoices
+              set invoice_number = $2,
+                  erp_invoice_number = coalesce(nullif(trim(erp_invoice_number), ''), $3),
+                  updated_at = now()
+              where id = $1
+            `,
+            [row.id, eInvoiceNumber, erpNumber],
+          );
+          renamed = true;
+        } else if (erpNumber && !textOrNull(row.erp_invoice_number)) {
+          await query(
+            `
+              update public.invoices
+              set erp_invoice_number = $2,
+                  updated_at = now()
+              where id = $1
+            `,
+            [row.id, erpNumber],
+          );
+        }
+
+        const write = await writeAkinsoftInvoiceNumber(pool, sql, {
+          oldNumber: erpNumber,
+          newNumber: eInvoiceNumber,
+          sourceId: row.akinsoft_source_id,
+        });
+        if (write.ok) {
+          if (write.oldNumber && !textOrNull(row.erp_invoice_number)) {
+            await query(
+              `
+                update public.invoices
+                set erp_invoice_number = coalesce(nullif(trim(erp_invoice_number), ''), $2),
+                    updated_at = now()
+                where id = $1
+              `,
+              [row.id, write.oldNumber],
+            );
+          }
+          await query(
+            `
+              update public.invoices
+              set erp_invoice_number_synced_at = now(),
+                  updated_at = now()
+              where id = $1
+            `,
+            [row.id],
+          );
+          if (row.akinsoft_source_id) {
+            await upsertAkinsoftSyncMap(query, {
+              sourceType: 'invoice',
+              sourceId: row.akinsoft_source_id,
+              sourceCode: eInvoiceNumber,
+              sourceName: null,
+              localTable: 'invoices',
+              localId: row.id,
+            });
+          }
+        }
+        items.push({
+          ...base,
+          invoiceNumber: eInvoiceNumber,
+          erpInvoiceNumber: write.oldNumber || erpNumber,
+          renamed,
+          ok: write.ok === true,
+          skipped: write.skipped === true,
+          reason: write.reason || null,
+        });
+      } catch (error) {
+        // Bir faturadaki hata tüm toplu işlemi düşürmesin.
+        items.push({
+          ...base,
+          ok: false,
+          reason: error?.message || String(error),
+        });
       }
-      items.push({
-        ...base,
-        invoiceNumber: eInvoiceNumber,
-        renamed,
-        ok: write.ok === true,
-        skipped: write.skipped === true,
-        reason: write.reason || null,
-      });
     }
   } finally {
     await pool.close();

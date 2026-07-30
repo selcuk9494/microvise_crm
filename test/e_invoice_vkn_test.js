@@ -307,6 +307,7 @@ test('satır KDV yuvarlaması ile özet toplamını tutarlı üretir', () => {
   const invoice = {
     ...validInvoice(),
     currency: 'USD',
+    exchange_rate: 42.5,
     subtotal: 426.54,
     discount_total: 0,
     tax_total: 22.45,
@@ -351,6 +352,9 @@ test('satır KDV yuvarlaması ile özet toplamını tutarlı üretir', () => {
   assert.equal(sent.kdvToplami, 22.46);
   assert.equal(sent.vergiDahilToplam, 449);
   assert.equal(sent.odenecekToplam, 449);
+  // USD faturalarda gerçek kur 0,01 TL sapması yarattığı için payload kur=1 gider.
+  assert.equal(sent.kur, 1);
+  assert.equal(sent.paraBirimi, 'USD');
   assert.equal(
     sent.kdvToplami,
     Math.round(lineTaxes.reduce((sum, value) => sum + value, 0) * 100) / 100,

@@ -1185,6 +1185,11 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
         .where((invoice) => invoice.isEInvoiceSent)
         .where(
+          (invoice) =>
+              invoice.eInvoiceEnvironment == null ||
+              invoice.eInvoiceEnvironment == 'production',
+        )
+        .where(
           (invoice) => invoice.eInvoiceNumber?.trim().isNotEmpty ?? false,
         )
         .toList(growable: false);
@@ -1192,7 +1197,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Akınsoft’a aktarılacak gönderilmiş e-fatura seçilmedi.',
+            'Akınsoft’a aktarılacak canlı gönderilmiş e-fatura seçilmedi.',
           ),
         ),
       );
@@ -1234,7 +1239,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               'invoiceIds': selected.map((invoice) => invoice.id).toList(),
             }),
           )
-          .timeout(const Duration(minutes: 5));
+          .timeout(const Duration(minutes: 15));
       final decoded = jsonDecode(response.body);
       if (decoded is! Map) {
         throw Exception('Beklenmeyen Akınsoft yanıtı.');

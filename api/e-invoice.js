@@ -768,6 +768,14 @@ function lineTaxAmount(item) {
   return round2(item.tax_amount);
 }
 
+// Maliye bazı kurlarda satır bazlı TL çevirisi ile başlık toplamını
+// karşılaştırıyor; 0,01 sapma "Fatura toplamı tutarsız" üretiyor.
+// Bağımsız e-fatura uygulaması gibi payload'da kur=1 gönderilir;
+// CRM'deki exchange_rate yerel muhasebe için saklanmaya devam eder.
+function payloadExchangeRate(_invoice) {
+  return 1;
+}
+
 function buildPayload({ settings, invoice, number: numberOverride }) {
   const serial = nextNumber(settings, invoice.invoice_type);
   const number =
@@ -844,7 +852,7 @@ function buildPayload({ settings, invoice, number: numberOverride }) {
         paraBirimi: invoice.currency || 'TRY',
         faturaTuru: isPurchase ? 'ALIS' : 'SATIS',
         aciklama: invoiceDescription(settings),
-        kur: Number(invoice.exchange_rate || 1),
+        kur: payloadExchangeRate(invoice),
         // Header totals must match sum of rounded line taxes; stored invoice
         // totals can drift by 0.01 when the UI summed unrounded KDV first.
         faturaToplami,
