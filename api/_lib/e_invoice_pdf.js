@@ -25,8 +25,162 @@ function text(value, fallback = '-') {
   return normalized || fallback;
 }
 
+function parseAmount(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  const raw = String(value).trim();
+  if (!raw || raw === '-') return null;
+  // "1.234,56" veya "1234,56" / "1234.56"
+  let normalized = raw.replace(/[^\d,.-]/g, '');
+  if (!normalized) return null;
+  if (normalized.includes(',') && normalized.includes('.')) {
+    normalized = normalized.replace(/\./g, '').replace(',', '.');
+  } else if (normalized.includes(',')) {
+    normalized = normalized.replace(',', '.');
+  }
+  const numeric = Number(normalized);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function firstPositiveAmount(...candidates) {
+  for (const candidate of candidates) {
+    const numeric = parseAmount(candidate);
+    if (numeric != null && numeric !== 0) return numeric;
+  }
+  for (const candidate of candidates) {
+    const numeric = parseAmount(candidate);
+    if (numeric != null) return numeric;
+  }
+  return 0;
+}
+
+function pickUnit(...candidates) {
+  for (const candidate of candidates) {
+    const value = String(candidate ?? '').trim();
+    if (value && value !== '0' && value.toLowerCase() !== 'null') return value;
+  }
+  return null;
+}
+
+function mergeLineItems({ officialItems, payloadItems, localItems }) {
+  const length = Math.max(
+    officialItems.length,
+    payloadItems.length,
+    localItems.length,
+  );
+  const rows = [];
+  for (let index = 0; index < length; index += 1) {
+    const official = officialItems[index] || {};
+    const payload = payloadItems[index] || {};
+    const local = localItems[index] || {};
+    const qty = firstPositiveAmount(
+      official.birimMiktari,
+      official.quantity,
+      payload.birimMiktari,
+      payload.quantity,
+      local.quantity,
+    );
+    const netFromLocal =
+      local.unit_price != null && local.quantity != null
+        ? Number(local.unit_price) * Number(local.quantity)
+        : null;
+    const net = firstPositiveAmount(
+      official.malHizmetTutari,
+      official.netTutar,
+      official.araToplam,
+      payload.malHizmetTutari,
+      payload.netTutar,
+      netFromLocal,
+    );
+    const price = firstPositiveAmount(
+      official.fiyat,
+      official.birimFiyat,
+      official.birimFiyati,
+      official.unit_price,
+      payload.fiyat,
+      payload.birimFiyat,
+      payload.birimFiyati,
+      payload.unit_price,
+      local.unit_price,
+      qty > 0 ? net / qty : null,
+    );
+    const discount = firstPositiveAmount(
+      official.iskontoVeEkUcretler?.find((entry) => entry?.indirimMi !== false)
+        ?.tutar,
+      payload.iskontoVeEkUcretler?.find((entry) => entry?.indirimMi !== false)
+        ?.tutar,
+      official.discount_amount,
+      payload.discount_amount,
+      local.discount_amount,
+      0,
+    );
+    const tax = firstPositiveAmount(
+      official.vergiler?.[0]?.vergiTutari,
+      payload.vergiler?.[0]?.vergiTutari,
+      official.tax_amount,
+      payload.tax_amount,
+      local.tax_amount,
+      0,
+    );
+    const taxRate = firstPositiveAmount(
+      official.vergiler?.[0]?.vergiOrani,
+      payload.vergiler?.[0]?.vergiOrani,
+      official.tax_rate,
+      payload.tax_rate,
+      local.tax_rate,
+      0,
+    );
+    const computedTotal = qty * price - discount + tax;
+    let total = firstPositiveAmount(
+      official.toplam,
+      official.tutar,
+      official.vergiDahilToplam,
+      payload.toplam,
+      payload.tutar,
+      payload.vergiDahilToplam,
+      local.line_total,
+      computedTotal,
+    );
+    if (tax > 0 && Math.abs(total - tax) < 0.005 && computedTotal > tax) {
+      total = computedTotal;
+    }
+    rows.push({
+      adi: text(
+        official.adi ||
+          official.description ||
+          payload.adi ||
+          local.description,
+        'Mal/Hizmet',
+      ),
+      aciklama: text(
+        official.aciklama ||
+          official.description ||
+          payload.aciklama ||
+          local.description,
+        '',
+      ),
+      birimMiktari: qty,
+      birimTurKod: pickUnit(
+        official.birimTurKod,
+        official.unit,
+        payload.birimTurKod,
+        payload.unit,
+        local.unit,
+      ),
+      fiyat: price,
+      discount,
+      tax,
+      taxRate,
+      total: total || computedTotal,
+    });
+  }
+  return rows;
+}
+
 function money(value, currency) {
-  const numeric = Number(value || 0);
+  const numeric = parseAmount(value) ?? 0;
   const amount = Math.abs(numeric).toLocaleString('tr-TR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -316,19 +470,18 @@ async function buildEInvoiceArchivePdf({
     belgeTipi: 'VERGI_SICILNO',
   };
   const customer = source.musteri || invoice.customer || {};
-  const items =
-    source.malHizmetler ||
-    (Array.isArray(invoice.items)
-      ? invoice.items.map((item) => ({
-          adi: item.description,
-          aciklama: item.description,
-          birimMiktari: item.quantity,
-          birimTurKod: item.unit,
-          fiyat: item.unit_price,
-          iskontoVeEkUcretler: [{ indirimMi: true, tutar: item.discount_amount || 0 }],
-          vergiler: [{ vergiOrani: item.tax_rate, vergiTutari: item.tax_amount || 0 }],
-        }))
-      : []);
+  const payloadItems = Array.isArray(payloadInvoice.malHizmetler)
+    ? payloadInvoice.malHizmetler
+    : [];
+  const localItems = Array.isArray(invoice.items) ? invoice.items : [];
+  const officialItems = Array.isArray(source.malHizmetler)
+    ? source.malHizmetler
+    : [];
+  const items = mergeLineItems({
+    officialItems,
+    payloadItems,
+    localItems,
+  });
   const currency = source.paraBirimi || invoice.currency;
   const officialUrl = `https://${
     environment === 'production'
@@ -451,27 +604,18 @@ async function buildEInvoiceArchivePdf({
   });
   y += headerHeight;
 
-  const rows = items.map((item) => {
-    const qty = Number(item.birimMiktari ?? item.quantity ?? 0);
-    const price = Number(item.fiyat ?? item.unit_price ?? 0);
-    const discount = Number(
-      item.iskontoVeEkUcretler?.find((entry) => entry?.indirimMi !== false)?.tutar ??
-        item.discount_amount ??
-        0,
-    );
-    const tax = Number(item.vergiler?.[0]?.vergiTutari ?? item.tax_amount ?? 0);
-    const total = Number(item.toplam ?? item.tutar ?? qty * price - discount + tax);
-    return [
-      text(item.adi || item.description),
-      text(item.aciklama || item.description),
-      `${qty.toLocaleString('tr-TR')}\n${unitName(item.birimTurKod || item.unit)}`,
-      money(price, currency),
-      discount ? `-${money(discount, currency)}` : '-',
-      `${Number(item.vergiler?.[0]?.vergiOrani ?? item.tax_rate ?? 0)}%`,
-      money(tax, currency),
-      money(total, currency),
-    ];
-  });
+  const rows = items.map((item) => [
+    text(item.adi),
+    text(item.aciklama, ''),
+    `${Number(item.birimMiktari || 0).toLocaleString('tr-TR')}\n${unitName(
+      item.birimTurKod,
+    )}`,
+    money(item.fiyat, currency),
+    item.discount ? `-${money(item.discount, currency)}` : '-',
+    `${Number(item.taxRate || 0)}%`,
+    money(item.tax, currency),
+    money(item.total, currency),
+  ]);
 
   const description = text(source.aciklama, '');
   doc.font('NotoSans').fontSize(7.6);
@@ -585,4 +729,9 @@ async function buildEInvoiceArchivePdf({
   return completed;
 }
 
-module.exports = { buildEInvoiceArchivePdf };
+module.exports = {
+  buildEInvoiceArchivePdf,
+  mergeLineItems,
+  parseAmount,
+  firstPositiveAmount,
+};

@@ -383,6 +383,48 @@ test('Maliye sisteminde aktif şube yoksa gönderimden önce açıklayıcı hata
   );
 });
 
+test('Maliye arşivinde birim fiyat 0 ise payload/DB fiyatını kullanır', () => {
+  const { mergeLineItems } = require('../api/_lib/e_invoice_pdf');
+  const rows = mergeLineItems({
+    officialItems: [
+      {
+        adi: 'EKÜ',
+        birimMiktari: 2,
+        birimTurKod: 'C62',
+        fiyat: 0,
+        vergiler: [{ vergiOrani: 16, vergiTutari: 30.35 }],
+        toplam: 30.35,
+      },
+    ],
+    payloadItems: [
+      {
+        adi: 'EKÜ',
+        birimMiktari: 2,
+        birimTurKod: 'C62',
+        fiyat: 94.83,
+        vergiler: [{ vergiOrani: 16, vergiTutari: 30.35 }],
+      },
+    ],
+    localItems: [
+      {
+        description: 'EKÜ',
+        quantity: 2,
+        unit: 'C62',
+        unit_price: 94.83,
+        tax_rate: 16,
+        tax_amount: 30.35,
+        line_total: 220.01,
+      },
+    ],
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].fiyat, 94.83);
+  assert.equal(rows[0].birimMiktari, 2);
+  assert.equal(rows[0].birimTurKod, 'C62');
+  assert.ok(Math.abs(rows[0].total - 220.01) < 0.01);
+});
+
 test('Maliye arşiv verisinden Türkçe karakterli tek sayfa A4 PDF üretir', async () => {
   const invoice = validInvoice();
   invoice.e_invoice_number = '620009058-2026-1-00000000001';
