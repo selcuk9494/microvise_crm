@@ -528,6 +528,68 @@ test('Maliye arşivinde birim fiyat 0 ise payload/DB fiyatını kullanır', () =
   assert.ok(Math.abs(rows[0].total - 220.01) < 0.01);
 });
 
+function officialDataWithItems(items) {
+  return {
+    fatura: {
+      faturaNo: '620009058-2026-1-00000000001',
+      faturaTarihi: '2026-07-28T00:00:00Z',
+      paraBirimi: 'TRY',
+      tedarikci: {
+        unvan: 'MICROVISE INNOVATION LİMİTED',
+        adresSatir1: 'ATATÜRK CAD YENİŞEHİR',
+        sehir: 'Lefkoşa',
+        ulke: 'Kuzey Kıbrıs Türk Cumhuriyeti',
+        vkn: '620009058',
+        belgeNo: 'MŞ19660',
+        belgeTipi: 'VERGI_SICILNO',
+      },
+      musteri: {
+        unvan: 'BÜLENT MAYIN',
+        adresSatir1: 'GİRNE',
+        sehir: 'Girne',
+        ulke: 'Kuzey Kıbrıs Türk Cumhuriyeti',
+        belgeNo: '123',
+        belgeTipi: 'VKN',
+      },
+      malHizmetler: items,
+      araToplam: 0,
+      iskontoToplami: 0,
+      kdvToplami: 0,
+      genelToplam: 0,
+    },
+  };
+}
+
+test('çok kalemli faturada hiçbir kalem kırpılmaz, sayfaya taşar', async () => {
+  const invoice = validInvoice();
+  invoice.e_invoice_number = '620009058-2026-1-00000000016';
+  const items = Array.from({ length: 30 }, (_, index) => ({
+    adi: `KALEM ${index + 1} İLETİŞİM ŞARJ ÜNİTESİ`,
+    aciklama: `KALEM ${index + 1} AÇIKLAMA MÜŞTERİ SATIŞ`,
+    birimMiktari: 1,
+    birimTurKod: 'C62',
+    fiyat: 85.71,
+    vergiler: [{ vergiOrani: 5, vergiTutari: 4.29 }],
+  }));
+
+  const pdf = await buildEInvoiceArchivePdf({
+    invoice,
+    settings: validSettings(),
+    officialData: officialDataWithItems(items),
+    verificationCode: '019faa9a-a367-74d5-a443-77eb762bca98',
+    environment: 'production',
+  });
+
+  const asLatin = pdf.toString('latin1');
+  const pageCount = (asLatin.match(/\/Type\s*\/Page\b/g) || []).length;
+  assert.ok(pageCount > 1, 'kalemler sığmadığında yeni sayfa açılmalı');
+  assert.equal(
+    /kalem UBL\/XML/.test(asLatin),
+    false,
+    'kalemler kırpıldığına dair not bulunmamalı',
+  );
+});
+
 test('Maliye arşiv verisinden Türkçe karakterli tek sayfa A4 PDF üretir', async () => {
   const invoice = validInvoice();
   invoice.e_invoice_number = '620009058-2026-1-00000000001';
@@ -536,46 +598,15 @@ test('Maliye arşiv verisinden Türkçe karakterli tek sayfa A4 PDF üretir', as
   const pdf = await buildEInvoiceArchivePdf({
     invoice,
     settings: validSettings(),
-    officialData: {
-      fatura: {
-        faturaNo: '620009058-2026-1-00000000001',
-        faturaTarihi: '2026-07-28T00:00:00Z',
-        paraBirimi: 'TRY',
-        tedarikci: {
-          unvan: 'MICROVISE INNOVATION LİMİTED',
-          adresSatir1: 'ATATÜRK CAD YENİŞEHİR',
-          sehir: 'Lefkoşa',
-          ulke: 'Kuzey Kıbrıs Türk Cumhuriyeti',
-          vkn: '620009058',
-          belgeNo: 'MŞ19660',
-          belgeTipi: 'VERGI_SICILNO',
-        },
-        musteri: {
-          unvan: 'BÜLENT MAYIN',
-          adresSatir1: 'GİRNE',
-          sehir: 'Girne',
-          ulke: 'Kuzey Kıbrıs Türk Cumhuriyeti',
-          belgeNo: '123',
-          belgeTipi: 'VKN',
-        },
-        malHizmetler: [],
-        araToplam: 0,
-        iskontoToplami: 0,
-        kdvToplami: 0,
-        genelToplam: 0,
-      },
-    },
+    officialData: officialDataWithItems([]),
     verificationCode: '019faa9a-a367-74d5-a443-77eb762bca98',
     environment: 'production',
   });
 
   assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
   assert.ok(pdf.length > 5000);
-  assert.equal(
-    (pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length,
-    1,
-  );
   const asLatin = pdf.toString('latin1');
+  assert.equal((asLatin.match(/\/Type\s*\/Page\b/g) || []).length, 1);
   // Helvetica/WinAnsi Türkçe'yi bozar; gömülü TTF (Noto/Inter) zorunlu.
   assert.equal(/\/BaseFont\s*\/Helvetica\b/.test(asLatin), false);
   assert.ok(

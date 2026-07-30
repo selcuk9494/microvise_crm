@@ -561,10 +561,10 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                         ? null
                                         : () => _exportSelectedStatement(items),
                                     icon: const Icon(
-                                      Icons.description_rounded,
+                                      Icons.receipt_long_rounded,
                                       size: 18,
                                     ),
-                                    label: const Text('Ekstre'),
+                                    label: const Text('Toplu Fatura Ekstresi'),
                                   ),
                                   const Gap(8),
                                   OutlinedButton.icon(
@@ -738,21 +738,6 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                     const Gap(8),
                                     OutlinedButton.icon(
                                       onPressed:
-                                          _selectedInvoiceIds.isEmpty ||
-                                              _bulkDeleting ||
-                                              _bulkProcessing
-                                          ? null
-                                          : () =>
-                                                _exportSelectedStatement(items),
-                                      icon: const Icon(
-                                        Icons.description_rounded,
-                                        size: 18,
-                                      ),
-                                      label: const Text('Ekstre PDF'),
-                                    ),
-                                    const Gap(8),
-                                    OutlinedButton.icon(
-                                      onPressed:
                                           bulkManualCount == 0 ||
                                               _bulkDeleting ||
                                               _bulkProcessing
@@ -811,6 +796,23 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                               size: 18,
                                             ),
                                       label: const Text('Toplu PDF'),
+                                    ),
+                                    const Gap(8),
+                                    FilledButton.tonalIcon(
+                                      onPressed:
+                                          _selectedInvoiceIds.isEmpty ||
+                                              _bulkDeleting ||
+                                              _bulkProcessing
+                                          ? null
+                                          : () =>
+                                                _exportSelectedStatement(items),
+                                      icon: const Icon(
+                                        Icons.receipt_long_rounded,
+                                        size: 18,
+                                      ),
+                                      label: const Text(
+                                        'Toplu Fatura Ekstresi',
+                                      ),
                                     ),
                                     const Gap(8),
                                     OutlinedButton.icon(

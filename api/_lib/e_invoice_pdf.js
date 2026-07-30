@@ -471,6 +471,40 @@ function rowHeight(doc, values, font, size) {
   return tallest + 10;
 }
 
+const TABLE_HEADER_HEIGHT = 32;
+// Toplamlar bloğunun (ara toplam -> "Yalnız" satırı) toplam yüksekliği.
+const TOTALS_BLOCK_HEIGHT = 121;
+// Devam sayfalarında içeriğin başladığı üst sınır.
+const CONTINUATION_TOP = 44;
+
+function drawTopBar(doc, createdAt) {
+  doc
+    .font('Invoice')
+    .fontSize(6.2)
+    .fillColor(COLORS.text)
+    .text(formatDate(createdAt), 22, 18, { width: 100 })
+    .text('KKTC E-Fatura Sistemi', 225, 18, {
+      width: 145,
+      align: 'center',
+    });
+}
+
+function drawTableHeader(doc, y) {
+  doc.rect(LEFT, y, WIDTH, TABLE_HEADER_HEIGHT).fill(COLORS.headerFill);
+  drawGrid(doc, y, TABLE_HEADER_HEIGHT);
+  doc.font('InvoiceBold').fontSize(7.4).fillColor(COLORS.text);
+  TABLE_HEADERS.forEach((header, index) => {
+    const box = columnBox(index);
+    const height = doc.heightOfString(header, { width: box.width, lineGap: 2 });
+    doc.text(header, box.x, y + (TABLE_HEADER_HEIGHT - height) / 2, {
+      width: box.width,
+      lineGap: 2,
+      align: index < 2 ? 'left' : 'right',
+    });
+  });
+  return y + TABLE_HEADER_HEIGHT;
+}
+
 function drawRow(doc, values, y, height, font, size) {
   drawGrid(doc, y, height);
   doc.font(font).fontSize(size).fillColor(COLORS.text);
@@ -500,6 +534,8 @@ async function buildEInvoiceArchivePdf({
     // Tüm öğeler Maliye şablonuna göre mutlak koordinatla çiziliyor.
     // Alt doğrulama URL'sinin otomatik yeni sayfa açmaması için margin yok.
     margins: { top: 0, right: 0, bottom: 0, left: 0 },
+    // Sayfa numarası (n/toplam) ancak tüm sayfalar oluşunca yazılabilir.
+    bufferPages: true,
     info: {
       Title: text(invoice.e_invoice_number || invoice.invoice_number, 'E-Fatura'),
       Author: text(settings.seller_title, 'Microvise CRM'),
@@ -580,15 +616,7 @@ async function buildEInvoiceArchivePdf({
   const createdAt = new Date().toISOString();
 
   // Maliye PDF görüntüleyicisindeki resmi üst bilgi.
-  doc
-    .font('Invoice')
-    .fontSize(6.2)
-    .fillColor(COLORS.text)
-    .text(formatDate(createdAt), 22, 18, { width: 100 })
-    .text('KKTC E-Fatura Sistemi', 225, 18, {
-      width: 145,
-      align: 'center',
-    });
+  drawTopBar(doc, createdAt);
 
   const logoPath = resolveAssetPath('assets/images/kktc_maliye_logo.png');
   if (logoPath) {
@@ -734,21 +762,7 @@ async function buildEInvoiceArchivePdf({
     .fillColor(COLORS.text)
     .text('Mal/Hizmet Listesi', LEFT, listTop + 12);
 
-  let y = listTop + 31;
-  const headerHeight = 32;
-  doc.rect(LEFT, y, WIDTH, headerHeight).fill(COLORS.headerFill);
-  drawGrid(doc, y, headerHeight);
-  doc.font('InvoiceBold').fontSize(7.4).fillColor(COLORS.text);
-  TABLE_HEADERS.forEach((header, index) => {
-    const box = columnBox(index);
-    const height = doc.heightOfString(header, { width: box.width, lineGap: 2 });
-    doc.text(header, box.x, y + (headerHeight - height) / 2, {
-      width: box.width,
-      lineGap: 2,
-      align: index < 2 ? 'left' : 'right',
-    });
-  });
-  y += headerHeight;
+  let y = drawTableHeader(doc, listTop + 31);
 
   const rows = items.map((item) => [
     text(item.adi),
@@ -809,24 +823,35 @@ async function buildEInvoiceArchivePdf({
     : resolvedPo
       ? DESCRIPTION.top + poBlockHeight
       : 0;
-  // Toplamlar, açıklama ve alt bilgi bloklarının tek sayfaya sığması için
-  // tabloya ayrılabilecek en alt sınır.
-  const tableLimit = FOOTER_RULE_Y - 14 - 121 - descriptionHeight;
-  let rendered = 0;
+  // Kalemler hiçbir zaman kırpılmaz; sığmayanlar devam sayfasına taşar.
+  const tableBottom = FOOTER_RULE_Y - 14;
+  const startContinuationPage = (title) => {
+    doc.addPage();
+    doc.rect(0, 0, PAGE.width, PAGE.height).fill('#ffffff');
+    drawTopBar(doc, createdAt);
+    doc
+      .font('InvoiceBold')
+      .fontSize(10.5)
+      .fillColor(COLORS.text)
+      .text(title, LEFT, CONTINUATION_TOP);
+    return CONTINUATION_TOP + 19;
+  };
+
+  let rowsOnPage = 0;
   for (const values of rows) {
     const height = rowHeight(doc, values, 'Invoice', 7.4);
-    if (rendered > 0 && y + height > tableLimit) break;
+    // rowsOnPage kontrolü, tek başına sayfadan uzun satırlarda sonsuz döngüyü önler.
+    if (rowsOnPage > 0 && y + height > tableBottom) {
+      y = drawTableHeader(doc, startContinuationPage('Mal/Hizmet Listesi (devam)'));
+      rowsOnPage = 0;
+    }
     drawRow(doc, values, y, height, 'Invoice', 7.4);
     y += height;
-    rendered += 1;
+    rowsOnPage += 1;
   }
-  if (rendered < rows.length) {
-    doc
-      .font('InvoiceItalic')
-      .fontSize(6.6)
-      .fillColor(COLORS.label)
-      .text(`+ ${rows.length - rendered} kalem UBL/XML kaydında yer almaktadır.`, LEFT + 4, y + 5);
-    y += 18;
+
+  if (y + TOTALS_BLOCK_HEIGHT + descriptionHeight > tableBottom) {
+    y = startContinuationPage('Fatura Toplamları') + 6;
   }
 
   const discountTotal = Number(source.iskontoToplami ?? invoice.discount_total) || 0;
@@ -935,18 +960,22 @@ async function buildEInvoiceArchivePdf({
     );
 
   // Maliye çıktısındaki sayfa altı doğrulama adresi ve sayfa numarası.
-  doc
-    .font('Invoice')
-    .fontSize(5.8)
-    .fillColor(COLORS.text)
-    .text(officialUrl, 22, PAGE.height - 22, {
-      width: 430,
-      ellipsis: true,
-    })
-    .text('1/1', RIGHT - 25, PAGE.height - 22, {
-      width: 25,
-      align: 'right',
-    });
+  const pages = doc.bufferedPageRange();
+  for (let index = 0; index < pages.count; index += 1) {
+    doc.switchToPage(pages.start + index);
+    doc
+      .font('Invoice')
+      .fontSize(5.8)
+      .fillColor(COLORS.text)
+      .text(officialUrl, 22, PAGE.height - 22, {
+        width: 430,
+        ellipsis: true,
+      })
+      .text(`${index + 1}/${pages.count}`, RIGHT - 25, PAGE.height - 22, {
+        width: 25,
+        align: 'right',
+      });
+  }
 
   doc.end();
   return completed;
