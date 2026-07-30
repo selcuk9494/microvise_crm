@@ -1979,6 +1979,116 @@ async function handleAkinsoftPull(req, res) {
   }
 }
 
+// Yalnızca ödeme/durum bilgisini tazeler: yeni fatura, cari, stok ve kalem
+// yazmaz. ERP'de kapanan faturaları hızlıca CRM'e yansıtmak için kullanılır.
+async function syncAkinsoftInvoiceStatuses(query, invoices, reportProgress) {
+  let updated = 0;
+  let unchanged = 0;
+  let notFound = 0;
+  let unreliable = 0;
+  const statusCounts = { paid: 0, partial: 0, open: 0 };
+  const missing = [];
+
+  reportProgress(0, {
+    stage: 'status',
+    stageLabel: 'Fatura durumları güncelleniyor',
+    total: invoices.length,
+  });
+
+  for (let index = 0; index < invoices.length; index += 1) {
+    const invoice = invoices[index];
+    const invoiceNumber = textOrNull(invoice.invoiceNumber);
+    const report = () =>
+      reportProgress(index + 1, {
+        stage: 'status',
+        stageLabel: 'Fatura durumları güncelleniyor',
+        total: invoices.length,
+        invoiceNumber,
+      });
+
+    if (!invoiceNumber) {
+      report();
+      continue;
+    }
+    if (invoice.paymentReliable === false) {
+      unreliable += 1;
+      report();
+      continue;
+    }
+
+    let invoiceId = null;
+    if (invoice.sourceId != null) {
+      const mapped = await findAkinsoftMappedLocalId(
+        query,
+        'invoice',
+        invoice.sourceId,
+      );
+      invoiceId = mapped.rows?.[0]?.id || null;
+    }
+    if (!invoiceId) {
+      const found = await query(
+        `
+          select id
+          from public.invoices
+          where erp_invoice_number = $1
+             or invoice_number = $1
+          order by (erp_invoice_number = $1) desc
+          limit 1
+        `,
+        [invoiceNumber],
+      );
+      invoiceId = found.rows[0]?.id || null;
+    }
+    if (!invoiceId) {
+      notFound += 1;
+      if (missing.length < 50) missing.push(invoiceNumber);
+      report();
+      continue;
+    }
+
+    const status = textOrNull(invoice.status) || 'open';
+    const result = await query(
+      `
+        update public.invoices
+        set paid_amount = $2,
+            status = $3,
+            updated_at = now()
+        where id = $1
+          and (
+            coalesce(paid_amount, 0) is distinct from $2
+            or coalesce(status, '') is distinct from $3
+          )
+        returning id
+      `,
+      [invoiceId, numberOrZero(invoice.paidAmount), status],
+    );
+    if (result.rows.length) {
+      updated += 1;
+      if (statusCounts[status] != null) statusCounts[status] += 1;
+    } else {
+      unchanged += 1;
+    }
+    report();
+  }
+
+  return {
+    statusOnly: true,
+    customers: 0,
+    products: 0,
+    invoices: updated,
+    invoiceItems: 0,
+    statusSync: {
+      checked: invoices.length,
+      updated,
+      unchanged,
+      notFound,
+      unreliable,
+      statusCounts,
+      missingInvoiceNumbers: missing,
+    },
+  };
+}
+
 async function importAkinsoftDataset(data, onProgress) {
   const { query } = require(path.join(rootDir, 'api', '_lib', 'db.js'));
   await ensureAkinsoftSyncMap(query);
@@ -1996,6 +2106,10 @@ async function importAkinsoftDataset(data, onProgress) {
       ...extra,
     });
   };
+  if (data.statusOnly === true) {
+    return syncAkinsoftInvoiceStatuses(query, invoices, reportProgress);
+  }
+
   const selectedCustomerSources = new Set(
     invoices
       .map((invoice) => textOrNull(invoice.customerSourceId))

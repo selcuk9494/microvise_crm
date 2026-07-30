@@ -65,6 +65,7 @@ async function main() {
       discount_total: 0,
       tax_total: 0,
       grand_total: 52260.32,
+      po_number: '4500123456',
       customer: {},
       items: [],
     },
@@ -78,6 +79,33 @@ async function main() {
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, pdf);
   process.stdout.write(`${target}\n`);
+
+  // PO boşken satırın kaybolduğunu doğrulamak için ikinci örnek.
+  if (process.argv.includes('--also-empty-po')) {
+    const emptyPoPdf = await buildEInvoiceArchivePdf({
+      invoice: {
+        e_invoice_number: officialData.fatura.faturaNo,
+        invoice_date: '2026-07-28',
+        currency: 'TRY',
+        subtotal: 52260.32,
+        discount_total: 0,
+        tax_total: 0,
+        grand_total: 52260.32,
+        customer: {},
+        items: [],
+      },
+      settings: { seller_title: 'MICROVISE INNOVATION LİMİTED' },
+      officialData,
+      verificationCode: '019faa0e-cec6-735a-9604-ffbcbd026c3f',
+      environment: 'production',
+    });
+    const emptyTarget = path.resolve(
+      path.dirname(target),
+      'fatura_po_bos.pdf',
+    );
+    fs.writeFileSync(emptyTarget, emptyPoPdf);
+    process.stdout.write(`${emptyTarget}\n`);
+  }
 }
 
 main().catch((error) => {

@@ -408,6 +408,40 @@ test('yalnızca banka hesaplarını fatura açıklamasına ekler', () => {
   assert.equal('logoUrl' in built.payload.faturalar[0], false);
 });
 
+test('PO alanına yazılanı önek eklemeden banka bilgilerinin altına koyar', () => {
+  const settings = {
+    ...validSettings(),
+    seller_bank_details:
+      'Banka Hesap Bilgileri\nTürkiye İş Bankası\nTL IBAN: TR57 0006 4000 0016 8010 3409 94',
+  };
+  const invoice = validInvoice();
+  invoice.po_number = '4500123456';
+
+  const built = buildPayload({ settings, invoice });
+
+  assert.equal(
+    built.payload.faturalar[0].aciklama,
+    'Banka Hesap Bilgileri\nTürkiye İş Bankası\nTL IBAN: TR57 0006 4000 0016 8010 3409 94\n4500123456',
+  );
+});
+
+test('PO numarası boşsa açıklamaya PO satırı eklenmez', () => {
+  const settings = {
+    ...validSettings(),
+    seller_bank_details:
+      'Banka Hesap Bilgileri\nTürkiye İş Bankası\nTL IBAN: TR57 0006 4000 0016 8010 3409 94',
+  };
+  const invoice = validInvoice();
+  invoice.po_number = '   ';
+
+  const built = buildPayload({ settings, invoice });
+
+  assert.equal(
+    built.payload.faturalar[0].aciklama,
+    'Banka Hesap Bilgileri\nTürkiye İş Bankası\nTL IBAN: TR57 0006 4000 0016 8010 3409 94',
+  );
+});
+
 test('Maliye kayıt bazında reddettiği faturayı başarılı saymaz', () => {
   assert.throws(
     () =>

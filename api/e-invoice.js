@@ -134,6 +134,7 @@ async function ensureEInvoiceSchema() {
       add column if not exists e_invoice_sending_at timestamptz,
       add column if not exists irsaliye_no text,
       add column if not exists irsaliye_tarihi date,
+      add column if not exists po_number text,
       add column if not exists erp_invoice_number text,
       add column if not exists erp_invoice_number_synced_at timestamptz
   `);
@@ -190,8 +191,14 @@ function cleanText(value) {
   return text.length ? text : null;
 }
 
-function invoiceDescription(settings) {
-  return cleanText(settings.seller_bank_details);
+function invoiceDescription(settings, invoice) {
+  const bank = cleanText(settings.seller_bank_details);
+  // Alana yazılan değer olduğu gibi eklenir; önek konmaz. Boşsa satır çıkmaz.
+  const po = cleanText(invoice?.po_number);
+  if (!bank && !po) return null;
+  if (!po) return bank;
+  if (!bank) return po;
+  return `${bank}\n${po}`;
 }
 
 const environmentUrls = {
@@ -856,7 +863,7 @@ function buildPayload({ settings, invoice, number: numberOverride }) {
         faturaTarihi: isoWithOffset(invoice.invoice_date),
         paraBirimi: invoice.currency || 'TRY',
         faturaTuru: isPurchase ? 'ALIS' : 'SATIS',
-        aciklama: invoiceDescription(settings),
+        aciklama: invoiceDescription(settings, invoice),
         kur: payloadExchangeRate(invoice),
         // Header totals must match sum of rounded line taxes; stored invoice
         // totals can drift by 0.01 when the UI summed unrounded KDV first.

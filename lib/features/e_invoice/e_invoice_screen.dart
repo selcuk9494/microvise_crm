@@ -2400,17 +2400,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             icon: Icons.print_rounded,
             onPressed: _busy ? null : _print,
           ),
-        _InvoiceLabeledAction(
-          label: invoice.isActive ? 'Pasif' : 'Aktif',
-          tooltip: invoice.isActive ? 'Pasife al' : 'Tekrar aktifleştir',
-          icon: invoice.isActive
-              ? Icons.visibility_off_rounded
-              : Icons.visibility_rounded,
-          tone: invoice.isActive
-              ? _InvoiceActionTone.warning
-              : _InvoiceActionTone.success,
-          onPressed: _busy ? null : _toggleActive,
-        ),
         if (!invoice.isActive)
           _InvoiceLabeledAction(
             label: 'Sil',
@@ -2419,12 +2408,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             tone: _InvoiceActionTone.danger,
             onPressed: _busy ? null : _delete,
           ),
-        _InvoiceLabeledAction(
-          label: 'Düzenle',
-          tooltip: 'Düzenle',
-          icon: Icons.edit_rounded,
-          onPressed: _busy ? null : _edit,
-        ),
         _InvoiceLabeledAction(
           label: 'Gönder',
           tooltip: sendTooltip,
@@ -2470,6 +2453,23 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             ),
           ),
         ),
+        _InvoiceLabeledAction(
+          label: 'Düzenle',
+          tooltip: 'Düzenle',
+          icon: Icons.edit_rounded,
+          onPressed: _busy ? null : _edit,
+        ),
+        _InvoiceLabeledAction(
+          label: invoice.isActive ? 'Pasif' : 'Aktif',
+          tooltip: invoice.isActive ? 'Pasife al' : 'Tekrar aktifleştir',
+          icon: invoice.isActive
+              ? Icons.visibility_off_rounded
+              : Icons.visibility_rounded,
+          tone: invoice.isActive
+              ? _InvoiceActionTone.warning
+              : _InvoiceActionTone.success,
+          onPressed: _busy ? null : _toggleActive,
+        ),
       ];
       final spaced = <Widget>[];
       for (var i = 0; i < actions.length; i++) {
@@ -2480,21 +2480,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     }
 
     final actions = <Widget>[
-      _InvoiceIconAction(
-        tooltip: 'Düzenle',
-        icon: Icons.edit_rounded,
-        onPressed: _busy ? null : _edit,
-      ),
-      _InvoiceIconAction(
-        tooltip: invoice.isActive ? 'Pasife al' : 'Tekrar aktifleştir',
-        icon: invoice.isActive
-            ? Icons.visibility_off_rounded
-            : Icons.visibility_rounded,
-        tone: invoice.isActive
-            ? _InvoiceActionTone.warning
-            : _InvoiceActionTone.success,
-        onPressed: _busy ? null : _toggleActive,
-      ),
       if (!invoice.isActive)
         _InvoiceIconAction(
           tooltip: 'Kalıcı sil',
@@ -2550,6 +2535,21 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         tooltip: 'Fatura özetini kopyala',
         icon: Icons.content_copy_rounded,
         onPressed: _busy ? null : _copyPreview,
+      ),
+      _InvoiceIconAction(
+        tooltip: 'Düzenle',
+        icon: Icons.edit_rounded,
+        onPressed: _busy ? null : _edit,
+      ),
+      _InvoiceIconAction(
+        tooltip: invoice.isActive ? 'Pasife al' : 'Tekrar aktifleştir',
+        icon: invoice.isActive
+            ? Icons.visibility_off_rounded
+            : Icons.visibility_rounded,
+        tone: invoice.isActive
+            ? _InvoiceActionTone.warning
+            : _InvoiceActionTone.success,
+        onPressed: _busy ? null : _toggleActive,
       ),
     ];
     if (!withGaps) return actions;
@@ -4907,55 +4907,97 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                   const Gap(10),
                   _field('seller_address_line1', 'Adres Satırı 1'),
                   const Gap(10),
-                  Text(
-                    'Faturada Gösterilecek Banka Hesapları',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.labelLarge?.copyWith(color: AppTheme.textSoft),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.account_balance_wallet_rounded,
+                        size: 15,
+                        color: AppTheme.textSoft,
+                      ),
+                      const Gap(6),
+                      Text(
+                        'Faturada Gösterilecek Banka Hesapları',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(color: AppTheme.textSoft),
+                      ),
+                    ],
                   ),
-                  const Gap(8),
+                  const Gap(6),
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      final narrow = constraints.maxWidth < 720;
-                      final bankName = _field('bank_name', 'Banka');
+                      final bankName = _field(
+                        'bank_name',
+                        'Banka',
+                        dense: true,
+                      );
                       final accountName = _field(
                         'bank_account_name',
                         'Hesap Sahibi',
+                        dense: true,
                       );
-                      final ibanTl = _field('bank_iban_tl', 'TL IBAN');
-                      final ibanUsd = _field('bank_iban_usd', 'USD IBAN');
-                      if (narrow) {
-                        return Column(
+                      final ibanTl = _field(
+                        'bank_iban_tl',
+                        'TL IBAN',
+                        dense: true,
+                        hintText: 'TR00 0000 0000 0000 0000 0000 00',
+                        inputFormatters: const [_IbanInputFormatter()],
+                      );
+                      final ibanUsd = _field(
+                        'bank_iban_usd',
+                        'USD IBAN',
+                        dense: true,
+                        hintText: 'TR00 0000 0000 0000 0000 0000 00',
+                        inputFormatters: const [_IbanInputFormatter()],
+                      );
+                      // IBAN'lar tek satırda okunaklı kalsın diye geniş
+                      // ekranda dörtlü, orta genişlikte ikişerli dizilir.
+                      final Widget layout;
+                      if (constraints.maxWidth >= 1000) {
+                        layout = Row(
+                          children: [
+                            Expanded(flex: 3, child: bankName),
+                            const Gap(8),
+                            Expanded(flex: 3, child: accountName),
+                            const Gap(8),
+                            Expanded(flex: 4, child: ibanTl),
+                            const Gap(8),
+                            Expanded(flex: 4, child: ibanUsd),
+                          ],
+                        );
+                      } else if (constraints.maxWidth >= 620) {
+                        layout = Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(child: bankName),
+                                const Gap(8),
+                                Expanded(child: accountName),
+                              ],
+                            ),
+                            const Gap(8),
+                            Row(
+                              children: [
+                                Expanded(child: ibanTl),
+                                const Gap(8),
+                                Expanded(child: ibanUsd),
+                              ],
+                            ),
+                          ],
+                        );
+                      } else {
+                        layout = Column(
                           children: [
                             bankName,
-                            const Gap(10),
+                            const Gap(8),
                             accountName,
-                            const Gap(10),
+                            const Gap(8),
                             ibanTl,
-                            const Gap(10),
+                            const Gap(8),
                             ibanUsd,
                           ],
                         );
                       }
-                      return Column(
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(child: bankName),
-                              const Gap(10),
-                              Expanded(child: accountName),
-                            ],
-                          ),
-                          const Gap(10),
-                          Row(
-                            children: [
-                              Expanded(child: ibanTl),
-                              const Gap(10),
-                              Expanded(child: ibanUsd),
-                            ],
-                          ),
-                        ],
-                      );
+                      return layout;
                     },
                   ),
                   const Gap(10),
@@ -5237,12 +5279,25 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
     bool obscureText = false,
     int maxLines = 1,
     String? hintText,
+    bool dense = false,
+    List<TextInputFormatter>? inputFormatters,
   }) {
     return TextField(
       controller: _c(key),
       obscureText: obscureText,
       maxLines: obscureText ? 1 : maxLines,
-      decoration: InputDecoration(labelText: label, hintText: hintText),
+      inputFormatters: inputFormatters,
+      style: dense ? const TextStyle(fontSize: 13) : null,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hintText,
+        isDense: dense,
+        labelStyle: dense ? const TextStyle(fontSize: 13) : null,
+        hintStyle: dense ? const TextStyle(fontSize: 12) : null,
+        contentPadding: dense
+            ? const EdgeInsets.symmetric(horizontal: 10, vertical: 11)
+            : null,
+      ),
     );
   }
 
@@ -5314,15 +5369,15 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
     final parsed = _parseBankDetails(raw);
     _c('bank_name').text = parsed.bankName;
     _c('bank_account_name').text = parsed.accountName;
-    _c('bank_iban_tl').text = parsed.ibanTl;
-    _c('bank_iban_usd').text = parsed.ibanUsd;
+    _c('bank_iban_tl').text = _formatIban(parsed.ibanTl);
+    _c('bank_iban_usd').text = _formatIban(parsed.ibanUsd);
   }
 
   String _composeBankDetails() {
     final bankName = _c('bank_name').text.trim();
     final accountName = _c('bank_account_name').text.trim();
-    final ibanTl = _c('bank_iban_tl').text.trim();
-    final ibanUsd = _c('bank_iban_usd').text.trim();
+    final ibanTl = _formatIban(_c('bank_iban_tl').text);
+    final ibanUsd = _formatIban(_c('bank_iban_usd').text);
     final lines = <String>[
       if (bankName.isNotEmpty ||
           accountName.isNotEmpty ||
@@ -6065,6 +6120,7 @@ class _AkinsoftPullDialog extends ConsumerStatefulWidget {
 
 class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
   bool _importing = false;
+  bool _statusSyncing = false;
   int _importCurrent = 0;
   int _importTotal = 0;
   int _importPercent = 0;
@@ -6115,10 +6171,13 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
             );
             return haystack.contains(customerQuery);
           }).toList();
-    final selectedMatchedCount = invoices
+    final selectedInvoiceRows = invoices
         .where(
           (item) => _selectedInvoices.contains(item['sourceId']?.toString()),
         )
+        .toList();
+    final selectedCount = selectedInvoiceRows.length;
+    final selectedMatchedCount = selectedInvoiceRows
         .where((item) => (item['customerMatch'] as Map?)?['matched'] == true)
         .length;
     final unmatched = invoices
@@ -6323,9 +6382,27 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
               : const Icon(Icons.link_rounded, size: 18),
           label: const Text('Eşleşmeleri Toplu Kaydet'),
         ),
+        Tooltip(
+          message:
+              'Yeni fatura/cari/stok yazmaz; seçili faturaların ödeme ve '
+              'durum bilgisini CRM’de günceller.',
+          child: OutlinedButton.icon(
+            onPressed: _importing || _savingMatches
+                ? null
+                : () => _importData(statusOnly: true),
+            icon: _statusSyncing
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.sync_rounded, size: 18),
+            label: Text('Sadece Durum Güncelle ($selectedCount)'),
+          ),
+        ),
         OutlinedButton.icon(
-          onPressed: _importing || _savingMatches ? null : _importData,
-          icon: _importing
+          onPressed: _importing || _savingMatches ? null : () => _importData(),
+          icon: _importing && !_statusSyncing
               ? const SizedBox(
                   width: 16,
                   height: 16,
@@ -6429,7 +6506,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
     }
   }
 
-  Future<void> _importData() async {
+  Future<void> _importData({bool statusOnly = false}) async {
     final invoices = ((widget.data['invoices'] as List?) ?? const [])
         .whereType<Map>()
         .map((item) => item.cast<String, dynamic>())
@@ -6439,40 +6516,58 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
         .toList();
     if (invoices.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İçe aktarılacak fatura seçilmedi.')),
-      );
-      return;
-    }
-    final unmatchedInvoices = invoices
-        .where(
-          (invoice) => (invoice['customerMatch'] as Map?)?['matched'] != true,
-        )
-        .toList();
-    if (unmatchedInvoices.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${unmatchedInvoices.length} seçili faturanın carisi eşleşmemiş. '
-            'Eşleşmeyen faturalar içe aktarılamaz.',
+            statusOnly
+                ? 'Durumu güncellenecek fatura seçilmedi.'
+                : 'İçe aktarılacak fatura seçilmedi.',
           ),
         ),
       );
       return;
     }
+    // Durum güncellemesi mevcut CRM faturalarını tazelediği için cari
+    // eşleşmesi aranmaz; yalnızca tam aktarımda zorunludur.
+    if (!statusOnly) {
+      final unmatchedInvoices = invoices
+          .where(
+            (invoice) => (invoice['customerMatch'] as Map?)?['matched'] != true,
+          )
+          .toList();
+      if (unmatchedInvoices.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${unmatchedInvoices.length} seçili faturanın carisi eşleşmemiş. '
+              'Eşleşmeyen faturalar içe aktarılamaz.',
+            ),
+          ),
+        );
+        return;
+      }
+    }
     setState(() {
       _importing = true;
+      _statusSyncing = statusOnly;
       _importCurrent = 0;
       _importTotal = invoices.length;
       _importPercent = 0;
-      _importStageLabel = 'Aktarım hazırlanıyor';
+      _importStageLabel = statusOnly
+          ? 'Fatura durumları güncelleniyor'
+          : 'Aktarım hazırlanıyor';
       _importElapsed = '00:00';
       _importInvoiceNumber = null;
     });
     try {
       final payload = Map<String, dynamic>.from(widget.data);
       payload['invoices'] = invoices;
-      payload['customers'] = _relatedCustomers(invoices);
-      payload['products'] = _relatedProducts(invoices);
+      payload['statusOnly'] = statusOnly;
+      payload['customers'] = statusOnly
+          ? const <Map<String, dynamic>>[]
+          : _relatedCustomers(invoices);
+      payload['products'] = statusOnly
+          ? const <Map<String, dynamic>>[]
+          : _relatedProducts(invoices);
       final startedAt = DateTime.now();
       final startResponse = await http
           .post(
@@ -6513,7 +6608,10 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
             _importTotal = (job['total'] as num?)?.toInt() ?? invoices.length;
             _importPercent = (job['percent'] as num?)?.toInt() ?? 0;
             _importStageLabel =
-                job['stageLabel']?.toString() ?? 'Faturalar yazılıyor';
+                job['stageLabel']?.toString() ??
+                (statusOnly
+                    ? 'Fatura durumları güncelleniyor'
+                    : 'Faturalar yazılıyor');
             _importElapsed = _formatDuration(elapsed);
             _importInvoiceNumber = job['currentInvoiceNumber']?.toString();
           });
@@ -6533,32 +6631,55 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
       ref.invalidate(productsProvider(null));
       ref.invalidate(accountBalancesProvider);
       if (!mounted) return;
-      final matches =
-          (summary['customerMatches'] as Map?)?.cast<String, dynamic>() ??
-          const <String, dynamic>{};
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'İçe aktarıldı: ${summary['customers'] ?? 0} cari, '
-            '${summary['products'] ?? 0} stok, '
-            '${summary['invoices'] ?? 0} fatura. '
-            'Cari eşleşme: kaynak ${matches['source'] ?? 0}, '
-            'VKN ${matches['tax'] ?? 0}, kod ${matches['code'] ?? 0}, '
-            'yeni ${matches['created'] ?? 0}.',
+      if (statusOnly) {
+        final statusSummary =
+            (summary['statusSync'] as Map?)?.cast<String, dynamic>() ??
+            const <String, dynamic>{};
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Durum güncellendi: ${statusSummary['updated'] ?? 0} fatura. '
+              'Değişmeyen: ${statusSummary['unchanged'] ?? 0}, '
+              'CRM’de bulunamayan: ${statusSummary['notFound'] ?? 0}, '
+              'ödeme bilgisi okunamayan: ${statusSummary['unreliable'] ?? 0}.',
+            ),
           ),
-        ),
-      );
+        );
+      } else {
+        final matches =
+            (summary['customerMatches'] as Map?)?.cast<String, dynamic>() ??
+            const <String, dynamic>{};
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'İçe aktarıldı: ${summary['customers'] ?? 0} cari, '
+              '${summary['products'] ?? 0} stok, '
+              '${summary['invoices'] ?? 0} fatura. '
+              'Cari eşleşme: kaynak ${matches['source'] ?? 0}, '
+              'VKN ${matches['tax'] ?? 0}, kod ${matches['code'] ?? 0}, '
+              'yeni ${matches['created'] ?? 0}.',
+            ),
+          ),
+        );
+      }
       Navigator.of(context).pop();
     } catch (error) {
       if (!mounted) return;
       final message = error is TimeoutException
-          ? 'İçe aktarma beklenenden uzun sürdü. İşlem sunucuda devam etmiş olabilir; birkaç dakika sonra Yenile ile kontrol edin.'
+          ? 'İşlem beklenenden uzun sürdü. Sunucuda devam etmiş olabilir; birkaç dakika sonra Yenile ile kontrol edin.'
+          : statusOnly
+          ? 'Durumlar güncellenemedi: $error'
           : 'İçe aktarılamadı: $error';
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
-      if (mounted) setState(() => _importing = false);
+      if (mounted) {
+        setState(() {
+          _importing = false;
+          _statusSyncing = false;
+        });
+      }
     }
   }
 
@@ -7366,6 +7487,45 @@ class _AnalysisTableCard extends StatelessWidget {
     return sample.entries
         .map((entry) => '${entry.key}: ${entry.value ?? '-'}')
         .join('\n');
+  }
+}
+
+String _formatIban(String value) {
+  final raw = value.toUpperCase().replaceAll(RegExp('[^A-Z0-9]'), '');
+  if (raw.isEmpty) return '';
+  final buffer = StringBuffer();
+  for (var i = 0; i < raw.length; i++) {
+    if (i > 0 && i % 4 == 0) buffer.write(' ');
+    buffer.write(raw[i]);
+  }
+  return buffer.toString();
+}
+
+/// IBAN girişini büyük harfe çevirip dörtlü gruplara ayırır.
+class _IbanInputFormatter extends TextInputFormatter {
+  const _IbanInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final formatted = _formatIban(newValue.text);
+    final typedBeforeCursor = newValue.text
+        .substring(0, newValue.selection.end.clamp(0, newValue.text.length))
+        .toUpperCase()
+        .replaceAll(RegExp('[^A-Z0-9]'), '')
+        .length;
+    var offset = 0;
+    var seen = 0;
+    while (offset < formatted.length && seen < typedBeforeCursor) {
+      if (formatted[offset] != ' ') seen += 1;
+      offset += 1;
+    }
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: offset),
+    );
   }
 }
 

@@ -34,6 +34,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _notesController = TextEditingController();
   final _irsaliyeNoController = TextEditingController();
+  final _poNumberController = TextEditingController();
   final _exchangeRateController = TextEditingController(text: '1');
   final _items = <_EInvoiceItemDraft>[_EInvoiceItemDraft()];
 
@@ -66,6 +67,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
       _dueDate = invoice.dueDate;
       _irsaliyeNoController.text = invoice.irsaliyeNo ?? '';
       _irsaliyeTarihi = invoice.irsaliyeTarihi;
+      _poNumberController.text = invoice.poNumber ?? '';
       _currency = invoice.currency;
       _exchangeRate = invoice.exchangeRate;
       _exchangeRateController.text = invoice.exchangeRate.toStringAsFixed(
@@ -96,6 +98,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
   void dispose() {
     _notesController.dispose();
     _irsaliyeNoController.dispose();
+    _poNumberController.dispose();
     _exchangeRateController.dispose();
     for (final item in _items) {
       item.dispose();
@@ -214,6 +217,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
               const Gap(12),
               _DispatchCard(
                 numberController: _irsaliyeNoController,
+                poController: _poNumberController,
                 date: _irsaliyeTarihi,
                 invoiceDate: _invoiceDate,
                 onDateChanged: (value) =>
@@ -305,6 +309,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                   const Gap(14),
                   _DispatchCard(
                     numberController: _irsaliyeNoController,
+                    poController: _poNumberController,
                     date: _irsaliyeTarihi,
                     invoiceDate: _invoiceDate,
                     onDateChanged: (value) =>
@@ -412,6 +417,9 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
             'irsaliye_tarihi': _irsaliyeTarihi == null
                 ? null
                 : _dateIso(_irsaliyeTarihi!),
+            'po_number': _poNumberController.text.trim().isEmpty
+                ? null
+                : _poNumberController.text.trim(),
             'created_by': profile?.id,
           },
         },
@@ -1741,6 +1749,7 @@ class _InvoiceInfoCard extends StatelessWidget {
 class _DispatchCard extends StatelessWidget {
   const _DispatchCard({
     required this.numberController,
+    required this.poController,
     required this.date,
     required this.invoiceDate,
     required this.onDateChanged,
@@ -1748,6 +1757,7 @@ class _DispatchCard extends StatelessWidget {
   });
 
   final TextEditingController numberController;
+  final TextEditingController poController;
   final DateTime? date;
   final DateTime invoiceDate;
   final ValueChanged<DateTime> onDateChanged;
@@ -1787,6 +1797,16 @@ class _DispatchCard extends StatelessWidget {
               value: date == null ? 'Seçilmedi' : dateFormat.format(date!),
               initialDate: date ?? invoiceDate,
               onPicked: onDateChanged,
+            ),
+          ),
+          SizedBox(
+            width: 220,
+            child: TextField(
+              controller: poController,
+              decoration: const InputDecoration(
+                labelText: 'PO No',
+                hintText: 'Müşteri sipariş no',
+              ),
             ),
           ),
           if (date != null || numberController.text.trim().isNotEmpty)

@@ -29,6 +29,7 @@ class Invoice {
   final DateTime? dueDate;
   final String? irsaliyeNo;
   final DateTime? irsaliyeTarihi;
+  final String? poNumber;
   final String currency;
   final double exchangeRate;
   final double subtotal;
@@ -62,6 +63,7 @@ class Invoice {
     this.dueDate,
     this.irsaliyeNo,
     this.irsaliyeTarihi,
+    this.poNumber,
     required this.currency,
     this.exchangeRate = 1.0,
     this.subtotal = 0,
@@ -116,6 +118,7 @@ class Invoice {
       irsaliyeTarihi: json['irsaliye_tarihi'] != null
           ? parseAppDateTime(json['irsaliye_tarihi'].toString())
           : null,
+      poNumber: json['po_number']?.toString(),
       currency: json['currency']?.toString() ?? 'TRY',
       exchangeRate: _jsonDouble(json['exchange_rate'], fallback: 1.0),
       subtotal: _jsonDouble(
@@ -177,6 +180,7 @@ class Invoice {
         'irsaliye_no': irsaliyeNo,
       if (irsaliyeTarihi != null)
         'irsaliye_tarihi': irsaliyeTarihi!.toIso8601String().substring(0, 10),
+      if (poNumber != null && poNumber!.isNotEmpty) 'po_number': poNumber,
       'currency': currency,
       'exchange_rate': exchangeRate,
       'status': status,

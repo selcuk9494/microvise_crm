@@ -313,7 +313,17 @@ function sourceInvoice(officialData, payloadInvoice) {
   return { ...payloadInvoice, ...normalized };
 }
 
-const COMPANY_LOGO_MAX = { width: 165, height: 57 };
+const COMPANY_LOGO_MAX = { width: 150, height: 52 };
+
+// Açıklama bloğu (banka bilgileri) ölçüleri; hem yer hesabında hem çizimde
+// kullanılır ki tek sayfaya sığma sınırı doğru kalsın.
+const DESCRIPTION = {
+  titleFontSize: 8.5,
+  fontSize: 6.6,
+  lineGap: 1.6,
+  top: 14,
+  width: 340,
+};
 
 function resolveCompanyLogoPath(settings) {
   const candidates = [
@@ -501,19 +511,28 @@ async function buildEInvoiceArchivePdf({
     .text('K.K.T.C. Maliye Bakanlığı', 89, 33);
   doc.font('NotoSansBold').fontSize(16.5).fillColor(COLORS.red).text('e-FATURA', 89, 53);
 
-  // Firma logosu yalnızca tanımlıysa üst başlıkta ortalanır.
-  // Logo yoksa Maliye yerleşimi birebir korunur.
+  // Firma logosu yalnızca tanımlıysa, Maliye başlığı ile QR arasında kalan
+  // boşluğa ortalanır. Logo yoksa Maliye yerleşimi birebir korunur.
   const qrLeft = RIGHT - 79;
   const companyLogoPath = resolveCompanyLogoPath(settings);
   if (companyLogoPath) {
     const companyLogo = doc.openImage(companyLogoPath);
+    const titleRight =
+      89 +
+      doc
+        .font('NotoSansBold')
+        .fontSize(12)
+        .widthOfString('K.K.T.C. Maliye Bakanlığı');
+    const zoneLeft = titleRight + 14;
+    const zoneRight = qrLeft - 14;
     const scale = Math.min(
       COMPANY_LOGO_MAX.width / companyLogo.width,
       COMPANY_LOGO_MAX.height / companyLogo.height,
+      Math.max(0, zoneRight - zoneLeft) / companyLogo.width,
     );
     const logoWidth = companyLogo.width * scale;
     const logoHeight = companyLogo.height * scale;
-    const logoLeft = (LEFT + RIGHT) / 2 - logoWidth / 2;
+    const logoLeft = (zoneLeft + zoneRight) / 2 - logoWidth / 2;
     const logoTop = 26 + Math.max(0, (56 - logoHeight) / 2);
     doc.image(companyLogoPath, logoLeft, logoTop, {
       width: logoWidth,
@@ -617,11 +636,52 @@ async function buildEInvoiceArchivePdf({
     money(item.total, currency),
   ]);
 
-  const description = text(source.aciklama, '');
-  doc.font('NotoSans').fontSize(7.6);
-  const descriptionHeight = description
-    ? 22 + doc.heightOfString(description, { width: 400, lineGap: 4 })
+  const rawDescription = text(source.aciklama, '');
+  const poNumber = text(
+    invoice.po_number ||
+      source.poNumber ||
+      source.po_number ||
+      '',
+    '',
+  );
+  // PO satırı banka bloğundan ayrılır: banka bilgileri normal, PO koyu basılır.
+  // Değer olduğu gibi yazılır, önek eklenmez; boşsa satır hiç görünmez.
+  const descriptionLines = rawDescription
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd());
+  let poFromDescription = '';
+  const bankLines = [];
+  for (const line of descriptionLines) {
+    // Eski kayıtlarda açıklama "PO: ..." önekiyle saklanmış olabilir.
+    const legacy = line.match(/^\s*PO\s*:\s*(.*?)\s*$/i);
+    if (legacy) {
+      const value = (legacy[1] || '').trim();
+      if (value) poFromDescription = value;
+      continue;
+    }
+    if (poNumber && line.trim() === poNumber.trim()) continue;
+    bankLines.push(line);
+  }
+  while (bankLines.length && !bankLines[bankLines.length - 1].trim()) {
+    bankLines.pop();
+  }
+  const bankDescription = bankLines.join('\n').trim();
+  const resolvedPo = (poNumber || poFromDescription).trim();
+  const description = bankDescription;
+  doc.font('NotoSans').fontSize(DESCRIPTION.fontSize);
+  const poBlockHeight = resolvedPo
+    ? DESCRIPTION.fontSize + DESCRIPTION.lineGap + 2
     : 0;
+  const descriptionHeight = description
+    ? DESCRIPTION.top +
+      doc.heightOfString(description, {
+        width: DESCRIPTION.width,
+        lineGap: DESCRIPTION.lineGap,
+      }) +
+      (resolvedPo ? 4 + poBlockHeight : 0)
+    : resolvedPo
+      ? DESCRIPTION.top + poBlockHeight
+      : 0;
   // Toplamlar, açıklama ve alt bilgi bloklarının tek sayfaya sığması için
   // tabloya ayrılabilecek en alt sınır.
   const tableLimit = FOOTER_RULE_Y - 14 - 121 - descriptionHeight;
@@ -684,18 +744,33 @@ async function buildEInvoiceArchivePdf({
     });
   y += 22;
 
-  if (description) {
-    doc.font('NotoSansBold').fontSize(10).fillColor(COLORS.text).text('Açıklama', LEFT, y);
+  if (description || resolvedPo) {
     doc
-      .font('NotoSans')
-      .fontSize(7.6)
+      .font('NotoSansBold')
+      .fontSize(DESCRIPTION.titleFontSize)
       .fillColor(COLORS.text)
-      .text(description, LEFT, y + 22, {
-        width: 400,
-        height: Math.max(0, FOOTER_RULE_Y - 12 - (y + 22)),
-        lineGap: 4,
-        ellipsis: true,
-      });
+      .text('Açıklama', LEFT, y);
+    let textY = y + DESCRIPTION.top;
+    if (description) {
+      doc
+        .font('NotoSans')
+        .fontSize(DESCRIPTION.fontSize)
+        .fillColor(COLORS.text)
+        .text(description, LEFT, textY, {
+          width: DESCRIPTION.width,
+          lineGap: DESCRIPTION.lineGap,
+        });
+      textY = doc.y + 4;
+    }
+    if (resolvedPo) {
+      doc
+        .font('NotoSansBold')
+        .fontSize(DESCRIPTION.fontSize)
+        .fillColor(COLORS.text)
+        .text(resolvedPo, LEFT, textY, {
+          width: DESCRIPTION.width,
+        });
+    }
   }
 
   doc
