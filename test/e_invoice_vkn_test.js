@@ -14,6 +14,7 @@ const {
   assertSuccessfulMaliyeResponse,
   validateRegisteredBranch,
   urlsForEnvironment,
+  archiveAfterSuccessfulSend,
 } = require('../api/e-invoice').testUtils;
 const { buildEInvoiceArchivePdf } = require('../api/_lib/e_invoice_pdf');
 
@@ -336,4 +337,15 @@ test('Maliye arşiv verisinden Türkçe karakterli tek sayfa A4 PDF üretir', as
     (pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length,
     1,
   );
+});
+
+test('test ortamında gönderim sonrası otomatik PDF arşivini atlar', async () => {
+  const result = await archiveAfterSuccessfulSend({
+    invoiceId: '00000000-0000-7000-8000-000000000001',
+    settings: { environment: 'test' },
+    verificationCode: '019faa9a-a367-74d5-a443-77eb762bca98',
+  });
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, 'test_environment');
+  assert.equal(result.archived, false);
 });

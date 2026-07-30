@@ -947,11 +947,22 @@ async function archiveOfficialInvoice({ invoiceId, settings, verificationCode, t
         storedPdf.sha256,
       ],
     );
-    const pdfUrl = await createEInvoicePdfSignedUrl(
-      storedPdf.bucket,
-      storedPdf.path,
-    );
-    return { archived: true, archivedAt: new Date().toISOString(), pdfUrl };
+    let pdfUrl = null;
+    try {
+      pdfUrl = await createEInvoicePdfSignedUrl(
+        storedPdf.bucket,
+        storedPdf.path,
+      );
+    } catch (_) {
+      // Depolama tamamlandı; imzalı URL yanıt için isteğe bağlıdır.
+    }
+    return {
+      archived: true,
+      archivedAt: new Date().toISOString(),
+      pdfUrl,
+      bucket: storedPdf.bucket,
+      path: storedPdf.path,
+    };
   } catch (error) {
     await query(
       `
@@ -964,6 +975,46 @@ async function archiveOfficialInvoice({ invoiceId, settings, verificationCode, t
     );
     return { archived: false, error: error.message };
   }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function archiveOfficialInvoiceWithRetry(
+  args,
+  { attempts = 4, delayMs = 1200 } = {},
+) {
+  let last = { archived: false, error: 'Arşivleme denemesi yapılmadı.' };
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (attempt > 1) await sleep(delayMs * (attempt - 1));
+    last = await archiveOfficialInvoice(args);
+    if (last.archived) {
+      return { ...last, attempts: attempt };
+    }
+  }
+  return { ...last, attempts };
+}
+
+async function archiveAfterSuccessfulSend({
+  invoiceId,
+  settings,
+  verificationCode,
+  token,
+}) {
+  if (settings.environment !== 'production') {
+    return {
+      archived: false,
+      skipped: true,
+      reason: 'test_environment',
+    };
+  }
+  return archiveOfficialInvoiceWithRetry({
+    invoiceId,
+    settings,
+    verificationCode,
+    token,
+  });
 }
 
 async function validatePayloadAgainstApi({ settings, payload, token }) {
@@ -1410,7 +1461,7 @@ async function handler(req, res) {
           `update public.e_invoice_settings set ${nextColumn} = ${nextColumn} + 1, last_sync_at = now(), updated_at = now() where id = $1`,
           [settings.id],
         );
-        const archive = await archiveOfficialInvoice({
+        const archive = await archiveAfterSuccessfulSend({
           invoiceId,
           settings,
           verificationCode: built.uuid,
@@ -1501,4 +1552,5 @@ module.exports.testUtils = {
   validateRegisteredBranch,
   urlsForEnvironment,
   applyRegisteredSupplierIdentity,
+  archiveAfterSuccessfulSend,
 };

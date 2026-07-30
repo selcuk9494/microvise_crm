@@ -159,6 +159,23 @@ function sourceInvoice(officialData, payloadInvoice) {
   return { ...payloadInvoice, ...normalized };
 }
 
+const COMPANY_LOGO_MAX = { width: 180, height: 80 };
+
+function resolveCompanyLogoPath(settings) {
+  const candidates = [
+    text(settings?.seller_logo_path, ''),
+    text(settings?.seller_logo, ''),
+    path.resolve(process.cwd(), 'assets/images/company_logo.png'),
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    const resolved = path.isAbsolute(candidate)
+      ? candidate
+      : path.resolve(process.cwd(), candidate);
+    if (fs.existsSync(resolved)) return resolved;
+  }
+  return null;
+}
+
 function drawParty(doc, title, party, x, y, width, height) {
   doc.lineWidth(0.8).roundedRect(x, y, width, height, 6).stroke(COLORS.border);
   doc
@@ -344,8 +361,27 @@ async function buildEInvoiceArchivePdf({
     );
   doc.image(qr, RIGHT - 79, 26, { width: 79, height: 79 });
 
+  // Firma logosu yalnızca tanımlıysa, Tedarikçi Bilgileri kutusunun üstüne
+  // eklenir. Logo yoksa Maliye yerleşimi birebir korunur.
+  const companyLogoPath = resolveCompanyLogoPath(settings);
+  let boxTop = 118;
+  if (companyLogoPath) {
+    const companyLogo = doc.openImage(companyLogoPath);
+    const scale = Math.min(
+      COMPANY_LOGO_MAX.width / companyLogo.width,
+      COMPANY_LOGO_MAX.height / companyLogo.height,
+    );
+    const logoWidth = companyLogo.width * scale;
+    const logoHeight = companyLogo.height * scale;
+    const logoTop = 112;
+    doc.image(companyLogoPath, LEFT, logoTop, {
+      width: logoWidth,
+      height: logoHeight,
+    });
+    boxTop = logoTop + logoHeight + 10;
+  }
+
   const boxWidth = (WIDTH - 12) / 2;
-  const boxTop = 118;
   const boxHeight = Math.max(
     170,
     partyHeight(doc, supplier, boxWidth),
