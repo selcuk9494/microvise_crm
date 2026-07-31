@@ -1704,6 +1704,22 @@ module.exports = async (req, res) => {
 
       case 'invoices_list': {
         if (!requireAnyPage(req, user, ['faturalama'], res)) return;
+        await query(`
+          create table if not exists public.akinsoft_sync_map (
+            id uuid primary key default gen_random_uuid(),
+            source_system text not null default 'akinsoft',
+            source_type text not null,
+            source_id text not null,
+            source_code text,
+            source_name text,
+            local_table text not null,
+            local_id uuid not null,
+            matched_manually boolean not null default false,
+            created_at timestamptz not null default now(),
+            updated_at timestamptz not null default now(),
+            unique (source_system, source_type, source_id)
+          )
+        `);
         const invoiceType = String(req.query.invoiceType || '').trim();
         const status = String(req.query.status || '').trim();
         const eInvoiceStatus = String(req.query.eInvoiceStatus || '').trim();
@@ -1862,10 +1878,15 @@ module.exports = async (req, res) => {
                   then 'open'
                 else fi.status
               end as effective_status,
-              json_build_object('name', c.name) as customers
+              json_build_object('name', c.name) as customers,
+              asm.source_id as akinsoft_source_id
             from filtered_invoices fi
             left join public.customers c on c.id = fi.customer_id
             left join item_totals on item_totals.invoice_id = fi.id
+            left join public.akinsoft_sync_map asm
+              on asm.source_system = 'akinsoft'
+             and asm.source_type = 'invoice'
+             and asm.local_id = fi.id
             order by
               fi.invoice_date desc,
               nullif(

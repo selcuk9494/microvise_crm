@@ -1452,6 +1452,19 @@ async function handleAkinsoftPull(req, res) {
         .request()
         .query(`select count_big(1) as total from dbo.STOK`);
       productCount = Number(countResult.recordset[0]?.total || 0);
+      // Fatura kalemlerinden bağımsız: yeni açılan stoklar da gelsin.
+      products = (
+        await pool.request().input('limit', sql.Int, limit).query(`
+          select top (@limit)
+            BLKODU, STOKKODU, STOK_ADI, BIRIMI, KDV_ORANI, OZEL_KODU1,
+            OZEL_KODU2, OZEL_KODU3, ARA_GRUBU, ALT_GRUBU, KAYIT_TARIHI,
+            ACIKLAMA1, ACIKLAMA2
+          from dbo.STOK
+          where coalesce(STOK_ADI, '') <> ''
+             or coalesce(STOKKODU, '') <> ''
+          order by BLKODU desc
+        `)
+      ).recordset.map(mapProductRow);
     }
 
     let invoices = [];
@@ -1585,19 +1598,28 @@ async function handleAkinsoftPull(req, res) {
         ),
       ];
       if (productIds.length && hasStok) {
-        const request = pool.request();
-        productIds.forEach((id, index) => request.input(`pid${index}`, sql.Int, id));
-        const paramList = productIds.map((_, index) => `@pid${index}`).join(',');
-        products = (
-          await request.query(`
-            select
-              BLKODU, STOKKODU, STOK_ADI, BIRIMI, KDV_ORANI, OZEL_KODU1,
-              OZEL_KODU2, OZEL_KODU3, ARA_GRUBU, ALT_GRUBU, KAYIT_TARIHI,
-              ACIKLAMA1, ACIKLAMA2
-            from dbo.STOK
-            where BLKODU in (${paramList})
-          `)
-        ).recordset.map(mapProductRow);
+        const known = new Set(products.map((row) => String(row.sourceId)));
+        const missingIds = productIds.filter((id) => !known.has(String(id)));
+        if (missingIds.length) {
+          const request = pool.request();
+          missingIds.forEach((id, index) =>
+            request.input(`pid${index}`, sql.Int, id),
+          );
+          const paramList = missingIds
+            .map((_, index) => `@pid${index}`)
+            .join(',');
+          const extra = (
+            await request.query(`
+              select
+                BLKODU, STOKKODU, STOK_ADI, BIRIMI, KDV_ORANI, OZEL_KODU1,
+                OZEL_KODU2, OZEL_KODU3, ARA_GRUBU, ALT_GRUBU, KAYIT_TARIHI,
+                ACIKLAMA1, ACIKLAMA2
+              from dbo.STOK
+              where BLKODU in (${paramList})
+            `)
+          ).recordset.map(mapProductRow);
+          products = [...products, ...extra];
+        }
       }
 
       const itemsByInvoice = new Map();
@@ -2137,19 +2159,16 @@ async function importAkinsoftDataset(data, onProgress) {
           selectedCustomerCodes.has(textOrNull(customer.code)),
       )
     : allCustomers;
-  const products = invoices.length
-    ? allProducts.filter(
-        (product) =>
-          selectedProductSources.has(textOrNull(product.sourceId)) ||
-          selectedProductCodes.has(textOrNull(product.code)),
-      )
-    : allProducts;
+  // Stoklar fatura seçiminden bağımsız senkronize edilir (çift yönlü).
+  const products = allProducts;
   const customerIdBySource = new Map();
   const productIdBySource = new Map();
   const productIdByCode = new Map();
 
   let customersImported = 0;
   let productsImported = 0;
+  let productsCreated = 0;
+  let productsUpdated = 0;
   let invoicesImported = 0;
   let invoiceItemsImported = 0;
   let customersMatchedBySource = 0;
@@ -2301,8 +2320,63 @@ async function importAkinsoftDataset(data, onProgress) {
       continue;
     }
     const code = textOrNull(product.code);
+    const sourceId = textOrNull(product.sourceId);
     let id = null;
-    if (code) {
+    let created = false;
+    if (sourceId) {
+      const mapped = await findAkinsoftMappedLocalId(query, 'product', sourceId);
+      id = mapped.rows?.[0]?.id || null;
+      if (!id) {
+        const bySourceCol = await query(
+          `
+            select id
+            from public.products
+            where akinsoft_source_id = $1
+            limit 1
+          `,
+          [sourceId],
+        );
+        id = bySourceCol.rows?.[0]?.id || null;
+      }
+    }
+    if (!id && code) {
+      const byCode = await query(
+        `select id from public.products where code = $1 limit 1`,
+        [code],
+      );
+      id = byCode.rows?.[0]?.id || null;
+    }
+    if (id) {
+      await query(
+        `
+          update public.products
+          set
+            code = coalesce($2, code),
+            name = $3,
+            description = coalesce($4, description),
+            category = coalesce($5, category),
+            unit = coalesce($6, unit),
+            tax_rate = coalesce($7, tax_rate),
+            akinsoft_group = coalesce($8, akinsoft_group),
+            akinsoft_sub_group = coalesce($9, akinsoft_sub_group),
+            akinsoft_source_id = coalesce($10, akinsoft_source_id),
+            is_active = true
+          where id = $1
+        `,
+        [
+          id,
+          code,
+          name,
+          textOrNull(product.description),
+          textOrNull(product.category),
+          textOrNull(product.unit) || 'Adet',
+          numberOrZero(product.taxRate) || 20,
+          textOrNull(product.group),
+          textOrNull(product.subGroup),
+          sourceId,
+        ],
+      );
+    } else if (code) {
       const result = await query(
         `
           insert into public.products (
@@ -2322,7 +2396,7 @@ async function importAkinsoftDataset(data, onProgress) {
             akinsoft_sub_group = excluded.akinsoft_sub_group,
             akinsoft_source_id = excluded.akinsoft_source_id,
             is_active = true
-          returning id
+          returning id, (xmax = 0) as inserted
         `,
         [
           code,
@@ -2336,10 +2410,11 @@ async function importAkinsoftDataset(data, onProgress) {
           textOrNull(product.currency) || 'TRY',
           textOrNull(product.group),
           textOrNull(product.subGroup),
-          textOrNull(product.sourceId),
+          sourceId,
         ],
       );
       id = result.rows[0]?.id;
+      created = result.rows[0]?.inserted === true;
     } else {
       const result = await query(
         `
@@ -2360,22 +2435,25 @@ async function importAkinsoftDataset(data, onProgress) {
           textOrNull(product.currency) || 'TRY',
           textOrNull(product.group),
           textOrNull(product.subGroup),
-          textOrNull(product.sourceId),
+          sourceId,
         ],
       );
       id = result.rows[0]?.id;
+      created = true;
     }
     if (!id) {
       reportProductProgress();
       continue;
     }
+    if (created) productsCreated += 1;
+    else productsUpdated += 1;
     productsImported += 1;
-    if (product.sourceId != null) productIdBySource.set(String(product.sourceId), id);
+    if (sourceId != null) productIdBySource.set(String(sourceId), id);
     if (code) productIdByCode.set(code, id);
     await upsertAkinsoftSyncMap(query, {
       sourceType: 'product',
-      sourceId: product.sourceId,
-      sourceCode: product.code,
+      sourceId: sourceId || code || id,
+      sourceCode: code,
       sourceName: name,
       localTable: 'products',
       localId: id,
@@ -2673,6 +2751,8 @@ async function importAkinsoftDataset(data, onProgress) {
   return {
     customers: customersImported,
     products: productsImported,
+    productsCreated,
+    productsUpdated,
     invoices: invoicesImported,
     invoiceItems: invoiceItemsImported,
     customerMatches: {
@@ -2699,6 +2779,31 @@ async function handleAkinsoftImport(req, res) {
   }
   const body = await readJson(req);
   const summary = await importAkinsoftDataset(body);
+  if (body.statusOnly !== true) {
+    try {
+      const sql = require('mssql');
+      const { config } = buildAkinsoftSqlConfig(body.settings || body);
+      config.requestTimeout = Math.max(Number(config.requestTimeout || 0), 180000);
+      const pool = await connectAkinsoftPool(config);
+      try {
+        const { query } = require(path.join(rootDir, 'api', '_lib', 'db.js'));
+        summary.productsPush = await pushUnmappedCrmProductsToAkinsoft(
+          pool,
+          sql,
+          query,
+        );
+      } finally {
+        await pool.close();
+      }
+    } catch (error) {
+      summary.productsPush = {
+        created: 0,
+        matched: 0,
+        failed: 0,
+        error: error?.message || String(error),
+      };
+    }
+  }
   return send(
     res,
     200,
@@ -2773,7 +2878,38 @@ async function handleAkinsoftImportJob(req, res) {
     job.percent = job.total ? Math.floor((job.current / job.total) * 100) : 0;
     job.updatedAt = new Date().toISOString();
   })
-    .then((summary) => {
+    .then(async (summary) => {
+      if (body.statusOnly !== true) {
+        try {
+          job.stage = 'products_push';
+          job.stageLabel = 'CRM stokları Akınsoft’a yazılıyor';
+          job.updatedAt = new Date().toISOString();
+          const sql = require('mssql');
+          const { config } = buildAkinsoftSqlConfig(body.settings || body);
+          config.requestTimeout = Math.max(
+            Number(config.requestTimeout || 0),
+            180000,
+          );
+          const pool = await connectAkinsoftPool(config);
+          try {
+            const { query } = require(path.join(rootDir, 'api', '_lib', 'db.js'));
+            summary.productsPush = await pushUnmappedCrmProductsToAkinsoft(
+              pool,
+              sql,
+              query,
+            );
+          } finally {
+            await pool.close();
+          }
+        } catch (error) {
+          summary.productsPush = {
+            created: 0,
+            matched: 0,
+            failed: 0,
+            error: error?.message || String(error),
+          };
+        }
+      }
       job.status = 'done';
       job.current = job.total;
       job.percent = 100;
@@ -3402,6 +3538,1165 @@ async function writeAkinsoftInvoiceNumber(pool, sql, item) {
   return { ok: true, updated, oldNumber };
 }
 
+async function findAkinsoftSourceByLocalId(query, sourceType, localId) {
+  const id = textOrNull(localId);
+  if (!id) return null;
+  const result = await query(
+    `
+      select source_id, source_code, source_name, matched_manually
+      from public.akinsoft_sync_map
+      where source_system = 'akinsoft'
+        and source_type = $1
+        and local_id = $2::uuid
+      order by matched_manually desc, updated_at desc
+      limit 1
+    `,
+    [sourceType, id],
+  );
+  return result.rows?.[0] || null;
+}
+
+async function akinsoftColumnIsIdentity(pool, tableName, columnName = 'BLKODU') {
+  const result = await pool.request().query(`
+    select COLUMNPROPERTY(
+      OBJECT_ID(N'dbo.${String(tableName).replace(/'/g, "''")}'),
+      N'${String(columnName).replace(/'/g, "''")}',
+      'IsIdentity'
+    ) as is_identity
+  `);
+  return Number(result.recordset?.[0]?.is_identity) === 1;
+}
+
+async function akinsoftNextBlkoduSafe(pool, tableName) {
+  const safe = String(tableName || '').replace(/[^A-Za-z0-9_]/g, '');
+  if (!safe) throw new Error('Geçersiz tablo adı.');
+  const result = await pool.request().query(`
+    select isnull(max(try_convert(bigint, BLKODU)), 0) + 1 as next_id
+    from dbo.${safe}
+  `);
+  return Number(result.recordset?.[0]?.next_id || 1);
+}
+
+function setFirstColumn(target, columns, names, value) {
+  if (value === undefined) return false;
+  for (const name of names) {
+    const key = String(name).toUpperCase();
+    if (columns.has(key)) {
+      target[key] = value;
+      return true;
+    }
+  }
+  return false;
+}
+
+async function insertAkinsoftRowWithRequest(
+  requestFactory,
+  sql,
+  tableName,
+  columns,
+  values,
+) {
+  const safeTable = String(tableName || '').replace(/[^A-Za-z0-9_]/g, '');
+  const entries = Object.entries(values).filter(
+    ([key, value]) => value !== undefined && columns.has(String(key).toUpperCase()),
+  );
+  if (!entries.length) {
+    throw new Error(`${safeTable} için yazılacak kolon bulunamadı.`);
+  }
+  const request = requestFactory();
+  const colSql = [];
+  const valSql = [];
+  entries.forEach(([key, value], index) => {
+    const col = String(key).toUpperCase();
+    const param = `p${index}`;
+    colSql.push(`[${col}]`);
+    valSql.push(`@${param}`);
+    if (value === null) request.input(param, sql.NVarChar, null);
+    else if (typeof value === 'number') {
+      request.input(
+        param,
+        Number.isInteger(value) ? sql.BigInt : sql.Float,
+        value,
+      );
+    } else if (value instanceof Date) request.input(param, sql.DateTime, value);
+    else if (typeof value === 'boolean') request.input(param, sql.Bit, value);
+    else request.input(param, sql.NVarChar, String(value));
+  });
+  const result = await request.query(`
+    insert into dbo.${safeTable} (${colSql.join(', ')})
+    output inserted.BLKODU as BLKODU
+    values (${valSql.join(', ')})
+  `);
+  return result.recordset?.[0]?.BLKODU == null
+    ? null
+    : String(result.recordset[0].BLKODU);
+}
+
+async function findAkinsoftCariByTaxNumber(pool, sql, taxNumber) {
+  const vkn = taxNumberOrNull(taxNumber);
+  if (!vkn) return null;
+  const result = await pool
+    .request()
+    .input('vkn', sql.NVarChar(32), vkn)
+    .query(`
+      select top 1
+        cast(BLKODU as nvarchar(64)) as sourceId,
+        CARIKODU as sourceCode,
+        coalesce(TICARI_UNVANI, ADI_SOYADI, ADI) as sourceName
+      from dbo.CARI
+      where replace(replace(coalesce(VERGI_NO, ''), ' ', ''), '-', '') = @vkn
+         or coalesce(VERGI_NO, '') = @vkn
+    `);
+  const row = result.recordset?.[0];
+  if (!row?.sourceId) return null;
+  return {
+    sourceId: String(row.sourceId),
+    sourceCode: textOrNull(row.sourceCode),
+    sourceName: textOrNull(row.sourceName),
+    matchedBy: 'vkn',
+  };
+}
+
+async function createAkinsoftCari(pool, sql, query, customer) {
+  const hasCari = await akinsoftTableExists(pool, 'CARI');
+  if (!hasCari) {
+    throw new Error('Akınsoft CARI tablosu bulunamadı.');
+  }
+  const columns = await akinsoftTableColumnSet(pool, 'CARI');
+  const identity = await akinsoftColumnIsIdentity(pool, 'CARI', 'BLKODU');
+  const name =
+    textOrNull(customer.name) ||
+    textOrNull(customer.customer_name) ||
+    'CRM Cari';
+  const taxNumber = taxNumberOrNull(customer.vkn || customer.tax_number);
+  const code =
+    textOrNull(customer.code) ||
+    (taxNumber ? `MV${taxNumber}` : `MV${String(customer.id || '').replace(/-/g, '').slice(0, 10)}`);
+
+  // Aynı cari kodu varsa üzerine yazmak yerine mevcut kaydı kullan.
+  if (code) {
+    const existingCode = await pool
+      .request()
+      .input('code', sql.NVarChar(64), code)
+      .query(`
+        select top 1
+          cast(BLKODU as nvarchar(64)) as sourceId,
+          CARIKODU as sourceCode,
+          coalesce(TICARI_UNVANI, ADI_SOYADI, ADI) as sourceName
+        from dbo.CARI
+        where CARIKODU = @code
+      `);
+    if (existingCode.recordset?.[0]?.sourceId) {
+      const row = existingCode.recordset[0];
+      return {
+        sourceId: String(row.sourceId),
+        sourceCode: textOrNull(row.sourceCode) || code,
+        sourceName: textOrNull(row.sourceName) || name,
+        created: false,
+        matchedBy: 'code',
+      };
+    }
+  }
+
+  const values = {};
+  if (!identity) {
+    values.BLKODU = await akinsoftNextBlkoduSafe(pool, 'CARI');
+  }
+  setFirstColumn(values, columns, ['CARIKODU'], code);
+  setFirstColumn(values, columns, ['TICARI_UNVANI', 'ADI_SOYADI', 'ADI'], name);
+  setFirstColumn(values, columns, ['VERGI_NO'], taxNumber);
+  setFirstColumn(
+    values,
+    columns,
+    ['VERGI_DAIRESI'],
+    textOrNull(customer.tax_office),
+  );
+  setFirstColumn(
+    values,
+    columns,
+    ['TEL1', 'TEL'],
+    textOrNull(customer.phone_1 || customer.phone),
+  );
+  setFirstColumn(
+    values,
+    columns,
+    ['CEP_TEL'],
+    textOrNull(customer.mobile || customer.phone_2),
+  );
+  setFirstColumn(values, columns, ['E_MAIL', 'EMAIL'], textOrNull(customer.email));
+  setFirstColumn(
+    values,
+    columns,
+    ['ADRES', 'ADRES1', 'ADRESI', 'ADRES_1'],
+    textOrNull(customer.address_line1 || customer.address),
+  );
+  setFirstColumn(
+    values,
+    columns,
+    ['IL', 'SEHIR', 'ILI'],
+    textOrNull(customer.city),
+  );
+  setFirstColumn(values, columns, ['ULKE'], textOrNull(customer.country));
+  setFirstColumn(values, columns, ['SILINDI', 'SILINDI_MI', 'DELETED'], 0);
+  setFirstColumn(values, columns, ['AKTIF', 'AKTIF_MI'], 1);
+  setFirstColumn(values, columns, ['KAYIT_TARIHI'], new Date());
+
+  const sourceId = await insertAkinsoftRowWithRequest(
+    () => pool.request(),
+    sql,
+    'CARI',
+    columns,
+    values,
+  );
+  if (!sourceId) {
+    throw new Error('Akınsoft cari kaydı oluşturulamadı.');
+  }
+
+  if (customer.id) {
+    await upsertAkinsoftSyncMap(query, {
+      sourceType: 'customer',
+      sourceId,
+      sourceCode: code,
+      sourceName: name,
+      localTable: 'customers',
+      localId: customer.id,
+    });
+    try {
+      await ensureAkinsoftCustomerMatchTable(pool);
+      await pool
+        .request()
+        .input('sourceId', sql.NVarChar(64), String(sourceId))
+        .input('sourceCode', sql.NVarChar(64), code)
+        .input('sourceName', sql.NVarChar(255), name)
+        .input('localId', sql.NVarChar(64), String(customer.id))
+        .input('localName', sql.NVarChar(255), name)
+        .query(`
+          merge dbo.MICROVISE_CARI_ESLESME as target
+          using (select @sourceId as AKINSOFT_BLKODU) as source
+            on target.AKINSOFT_BLKODU = source.AKINSOFT_BLKODU
+          when matched then update set
+            AKINSOFT_CARIKODU = @sourceCode,
+            AKINSOFT_CARI_ADI = @sourceName,
+            CRM_CUSTOMER_ID = @localId,
+            CRM_CUSTOMER_NAME = @localName,
+            GUNCELLEME_TARIHI = sysdatetime()
+          when not matched then insert (
+            AKINSOFT_BLKODU, AKINSOFT_CARIKODU, AKINSOFT_CARI_ADI,
+            CRM_CUSTOMER_ID, CRM_CUSTOMER_NAME
+          ) values (
+            @sourceId, @sourceCode, @sourceName, @localId, @localName
+          );
+        `);
+      if (taxNumber) {
+        await pool
+          .request()
+          .input('sourceId', sql.NVarChar(64), String(sourceId))
+          .input('localTaxNumber', sql.NVarChar(32), taxNumber)
+          .query(`
+            update dbo.CARI
+            set VERGI_NO = @localTaxNumber
+            where cast(BLKODU as nvarchar(64)) = @sourceId
+              and (
+                VERGI_NO is null
+                or ltrim(rtrim(VERGI_NO)) = ''
+              )
+          `);
+      }
+    } catch (_) {
+      // Yerel eşleşme tablosu opsiyonel.
+    }
+  }
+
+  return {
+    sourceId,
+    sourceCode: code,
+    sourceName: name,
+    created: true,
+    matchedBy: 'created',
+  };
+}
+
+async function createAkinsoftStok(pool, sql, query, product) {
+  const hasStok = await akinsoftTableExists(pool, 'STOK');
+  if (!hasStok) {
+    throw new Error('Akınsoft STOK tablosu bulunamadı.');
+  }
+  const columns = await akinsoftTableColumnSet(pool, 'STOK');
+  const identity = await akinsoftColumnIsIdentity(pool, 'STOK', 'BLKODU');
+  const name = textOrNull(product.name) || 'CRM Stok';
+  const code =
+    textOrNull(product.code) ||
+    `MV${String(product.id || '').replace(/-/g, '').slice(0, 12)}`;
+
+  if (code) {
+    const existing = await pool
+      .request()
+      .input('code', sql.NVarChar(64), code)
+      .query(`
+        select top 1
+          cast(BLKODU as nvarchar(64)) as sourceId,
+          STOKKODU as sourceCode,
+          STOK_ADI as sourceName
+        from dbo.STOK
+        where STOKKODU = @code
+      `);
+    if (existing.recordset?.[0]?.sourceId) {
+      const row = existing.recordset[0];
+      if (product.id) {
+        await upsertAkinsoftSyncMap(query, {
+          sourceType: 'product',
+          sourceId: String(row.sourceId),
+          sourceCode: textOrNull(row.sourceCode) || code,
+          sourceName: textOrNull(row.sourceName) || name,
+          localTable: 'products',
+          localId: product.id,
+        });
+        await query(
+          `
+            update public.products
+            set akinsoft_source_id = $2,
+                code = coalesce(nullif(trim(code), ''), $3)
+            where id = $1::uuid
+          `,
+          [product.id, String(row.sourceId), code],
+        );
+      }
+      return {
+        sourceId: String(row.sourceId),
+        sourceCode: textOrNull(row.sourceCode) || code,
+        sourceName: textOrNull(row.sourceName) || name,
+        created: false,
+        matchedBy: 'code',
+      };
+    }
+  }
+
+  const values = {};
+  if (!identity) {
+    values.BLKODU = await akinsoftNextBlkoduSafe(pool, 'STOK');
+  }
+  setFirstColumn(values, columns, ['STOKKODU'], code);
+  setFirstColumn(values, columns, ['STOK_ADI'], name);
+  setFirstColumn(
+    values,
+    columns,
+    ['ACIKLAMA1', 'ACIKLAMA', 'ACIKLAMA2'],
+    textOrNull(product.description),
+  );
+  setFirstColumn(values, columns, ['BIRIMI'], textOrNull(product.unit) || 'Adet');
+  setFirstColumn(
+    values,
+    columns,
+    ['KDV_ORANI'],
+    numberOrZero(product.tax_rate) || 20,
+  );
+  setFirstColumn(
+    values,
+    columns,
+    ['ARA_GRUBU', 'OZEL_KODU1'],
+    textOrNull(product.akinsoft_group || product.category),
+  );
+  setFirstColumn(
+    values,
+    columns,
+    ['ALT_GRUBU', 'OZEL_KODU2'],
+    textOrNull(product.akinsoft_sub_group),
+  );
+  setFirstColumn(values, columns, ['SILINDI', 'SILINDI_MI', 'DELETED'], 0);
+  setFirstColumn(values, columns, ['AKTIF', 'AKTIF_MI'], 1);
+  setFirstColumn(values, columns, ['KAYIT_TARIHI'], new Date());
+
+  const sourceId = await insertAkinsoftRowWithRequest(
+    () => pool.request(),
+    sql,
+    'STOK',
+    columns,
+    values,
+  );
+  if (!sourceId) {
+    throw new Error('Akınsoft stok kaydı oluşturulamadı.');
+  }
+
+  if (product.id) {
+    await upsertAkinsoftSyncMap(query, {
+      sourceType: 'product',
+      sourceId,
+      sourceCode: code,
+      sourceName: name,
+      localTable: 'products',
+      localId: product.id,
+    });
+    await query(
+      `
+        update public.products
+        set akinsoft_source_id = $2,
+            code = coalesce(nullif(trim(code), ''), $3)
+        where id = $1::uuid
+      `,
+      [product.id, sourceId, code],
+    );
+  }
+
+  return {
+    sourceId,
+    sourceCode: code,
+    sourceName: name,
+    created: true,
+    matchedBy: 'created',
+  };
+}
+
+async function pushUnmappedCrmProductsToAkinsoft(pool, sql, query) {
+  await ensureAkinsoftSyncMap(query);
+  const result = await query(
+    `
+      select
+        p.id,
+        p.code,
+        p.name,
+        p.description,
+        p.unit,
+        p.tax_rate,
+        p.category,
+        p.akinsoft_group,
+        p.akinsoft_sub_group,
+        p.akinsoft_source_id
+      from public.products p
+      left join public.akinsoft_sync_map m
+        on m.source_system = 'akinsoft'
+       and m.source_type = 'product'
+       and m.local_id = p.id
+      where p.is_active = true
+        and coalesce(trim(p.name), '') <> ''
+        and m.id is null
+        and coalesce(nullif(trim(p.akinsoft_source_id), ''), '') = ''
+      order by p.created_at desc
+      limit 2000
+    `,
+  );
+
+  let created = 0;
+  let matched = 0;
+  let failed = 0;
+  const errors = [];
+  for (const product of result.rows) {
+    try {
+      const write = await createAkinsoftStok(pool, sql, query, product);
+      if (write.created) created += 1;
+      else matched += 1;
+    } catch (error) {
+      failed += 1;
+      if (errors.length < 20) {
+        errors.push({
+          productId: product.id,
+          name: product.name,
+          reason: error?.message || String(error),
+        });
+      }
+    }
+  }
+  return { created, matched, failed, errors, scanned: result.rows.length };
+}
+
+async function resolveAkinsoftCustomerForPush(pool, sql, query, invoice) {
+  const mapped = await findAkinsoftSourceByLocalId(
+    query,
+    'customer',
+    invoice.customer_id,
+  );
+  if (mapped?.source_id) {
+    return {
+      sourceId: String(mapped.source_id),
+      sourceCode: textOrNull(mapped.source_code),
+      sourceName: textOrNull(mapped.source_name) || textOrNull(invoice.customer_name),
+      created: false,
+      matchedBy: 'map',
+    };
+  }
+
+  const taxNumber = taxNumberOrNull(invoice.customer_vkn || invoice.vkn);
+  if (taxNumber) {
+    const byVkn = await findAkinsoftCariByTaxNumber(pool, sql, taxNumber);
+    if (byVkn) {
+      if (invoice.customer_id) {
+        await upsertAkinsoftSyncMap(query, {
+          sourceType: 'customer',
+          sourceId: byVkn.sourceId,
+          sourceCode: byVkn.sourceCode,
+          sourceName: byVkn.sourceName,
+          localTable: 'customers',
+          localId: invoice.customer_id,
+        });
+      }
+      return { ...byVkn, created: false };
+    }
+  }
+
+  return createAkinsoftCari(pool, sql, query, {
+    id: invoice.customer_id,
+    name: invoice.customer_name,
+    code: invoice.customer_code,
+    vkn: taxNumber,
+    tax_office: invoice.customer_tax_office,
+    phone_1: invoice.customer_phone,
+    email: invoice.customer_email,
+    address_line1: invoice.customer_address,
+    city: invoice.customer_city,
+    country: invoice.customer_country,
+  });
+}
+
+async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
+  const invoiceId = textOrNull(invoice.id);
+  const invoiceNumber =
+    localEInvoiceNumber(invoice.invoice_number) ||
+    textOrNull(invoice.invoice_number);
+  if (!invoiceId || !invoiceNumber) {
+    return { ok: false, reason: 'Fatura numarası veya id eksik.' };
+  }
+  if (!Array.isArray(invoice.items) || invoice.items.length === 0) {
+    return { ok: false, reason: 'Faturada kalem yok.' };
+  }
+
+  const existingMap = await findAkinsoftSourceByLocalId(query, 'invoice', invoiceId);
+  if (existingMap?.source_id) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'Fatura zaten Akınsoft ile eşleşmiş.',
+      sourceId: String(existingMap.source_id),
+      invoiceNumber,
+    };
+  }
+
+  let customerRef;
+  try {
+    customerRef = await resolveAkinsoftCustomerForPush(pool, sql, query, invoice);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: `Cari çözümlenemedi: ${error?.message || error}`,
+    };
+  }
+  const customerSourceId = Number(customerRef.sourceId);
+  if (!Number.isFinite(customerSourceId)) {
+    return { ok: false, reason: `Geçersiz cari BLKODU: ${customerRef.sourceId}` };
+  }
+  const customerMap = {
+    source_id: customerRef.sourceId,
+    source_code: customerRef.sourceCode,
+    source_name: customerRef.sourceName,
+  };
+
+  const duplicate = await pool
+    .request()
+    .input('invoiceNumber', sql.NVarChar(64), invoiceNumber)
+    .query(`
+      select top 1 cast(BLKODU as nvarchar(64)) as sourceId
+      from dbo.FATURA
+      where FATURA_NO = @invoiceNumber
+    `);
+  if (duplicate.recordset?.length) {
+    return {
+      ok: false,
+      reason: `Akınsoft’ta ${invoiceNumber} numarası zaten var.`,
+      sourceId: duplicate.recordset[0].sourceId,
+    };
+  }
+
+  const hasFatura = await akinsoftTableExists(pool, 'FATURA');
+  const hasFaturaHr = await akinsoftTableExists(pool, 'FATURAHR');
+  if (!hasFatura || !hasFaturaHr) {
+    return { ok: false, reason: 'Akınsoft FATURA / FATURAHR tabloları bulunamadı.' };
+  }
+
+  const faturaColumns = await akinsoftTableColumnSet(pool, 'FATURA');
+  const lineColumns = await akinsoftTableColumnSet(pool, 'FATURAHR');
+  const hasCariHr = await akinsoftTableExists(pool, 'CARIHR');
+  const cariHrColumns = hasCariHr
+    ? await akinsoftTableColumnSet(pool, 'CARIHR')
+    : new Set();
+
+  const currency = normalizeCurrency(invoice.currency);
+  const isTry = currency === 'TRY';
+  const exchangeRate = Math.max(Number(invoice.exchange_rate) || 1, 0.000001);
+  const invoiceDate = invoice.invoice_date
+    ? new Date(`${String(invoice.invoice_date).slice(0, 10)}T12:00:00`)
+    : new Date();
+  const dueDate = invoice.due_date
+    ? new Date(`${String(invoice.due_date).slice(0, 10)}T12:00:00`)
+    : invoiceDate;
+  const isSales = String(invoice.invoice_type || 'sales') !== 'purchase';
+
+  const linePayloads = [];
+  for (const item of invoice.items) {
+    const qty = numberOrZero(item.quantity) || 1;
+    const unitPrice = numberOrZero(item.unit_price);
+    const discount = numberOrZero(item.discount_amount);
+    const net =
+      numberOrZero(item.net_total) ||
+      Math.max(0, qty * unitPrice - discount);
+    const taxRate = numberOrZero(item.tax_rate);
+    const tax =
+      numberOrZero(item.tax_amount) ||
+      (taxRate > 0 ? (net * taxRate) / 100 : 0);
+    const gross = numberOrZero(item.line_total) || net + tax;
+    let productSourceId = null;
+    let productCode = textOrNull(item.product_code);
+    if (item.product_id) {
+      const productMap = await findAkinsoftSourceByLocalId(
+        query,
+        'product',
+        item.product_id,
+      );
+      if (productMap?.source_id) {
+        productSourceId = Number(productMap.source_id);
+        productCode = productCode || textOrNull(productMap.source_code);
+      } else {
+        const productRow = await query(
+          `
+            select code, akinsoft_source_id
+            from public.products
+            where id = $1::uuid
+            limit 1
+          `,
+          [item.product_id],
+        );
+        const prow = productRow.rows?.[0];
+        productCode = productCode || textOrNull(prow?.code);
+        if (prow?.akinsoft_source_id) {
+          productSourceId = Number(prow.akinsoft_source_id);
+        }
+      }
+    }
+    if (!Number.isFinite(productSourceId) && productCode) {
+      const byCode = await pool
+        .request()
+        .input('code', sql.NVarChar(64), productCode)
+        .query(`
+          select top 1 cast(BLKODU as nvarchar(64)) as sourceId, STOKKODU as code
+          from dbo.STOK
+          where STOKKODU = @code
+        `);
+      if (byCode.recordset?.[0]?.sourceId) {
+        productSourceId = Number(byCode.recordset[0].sourceId);
+      }
+    }
+    // Stok eşleşmezse kalem yine yazılır; ürün adı açıklama/STOK_ADI olarak gider.
+    const description =
+      textOrNull(item.description) || productCode || 'Fatura kalemi';
+    linePayloads.push({
+      productSourceId: Number.isFinite(productSourceId) ? productSourceId : null,
+      productCode: Number.isFinite(productSourceId) ? productCode : null,
+      description,
+      asDescriptionOnly: !Number.isFinite(productSourceId),
+      quantity: qty,
+      unit: textOrNull(item.unit) || 'Adet',
+      unitPrice,
+      discount,
+      net,
+      taxRate,
+      tax,
+      gross,
+    });
+  }
+
+  const subtotal =
+    numberOrZero(invoice.subtotal) ||
+    linePayloads.reduce((sum, row) => sum + row.net, 0);
+  const discountTotal =
+    numberOrZero(invoice.discount_total) ||
+    linePayloads.reduce((sum, row) => sum + row.discount, 0);
+  const taxTotal =
+    numberOrZero(invoice.tax_total) ||
+    linePayloads.reduce((sum, row) => sum + row.tax, 0);
+  const grandTotal =
+    numberOrZero(invoice.grand_total) || subtotal - discountTotal + taxTotal;
+  const kpbFactor = isTry ? 1 : exchangeRate;
+  const kpbSubtotal = isTry ? subtotal : subtotal * kpbFactor;
+  const kpbDiscount = isTry ? discountTotal : discountTotal * kpbFactor;
+  const kpbTax = isTry ? taxTotal : taxTotal * kpbFactor;
+  const kpbGrand = isTry ? grandTotal : grandTotal * kpbFactor;
+
+  const faturaIdentity = await akinsoftColumnIsIdentity(pool, 'FATURA', 'BLKODU');
+  const lineIdentity = await akinsoftColumnIsIdentity(pool, 'FATURAHR', 'BLKODU');
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+  try {
+    const txRequest = () => new sql.Request(transaction);
+    const insertWithTx = async (tableName, columns, values) => {
+      const safeTable = String(tableName || '').replace(/[^A-Za-z0-9_]/g, '');
+      const entries = Object.entries(values).filter(
+        ([key, value]) => value !== undefined && columns.has(String(key).toUpperCase()),
+      );
+      const request = txRequest();
+      const colSql = [];
+      const valSql = [];
+      entries.forEach(([key, value], index) => {
+        const col = String(key).toUpperCase();
+        const param = `p${index}`;
+        colSql.push(`[${col}]`);
+        valSql.push(`@${param}`);
+        if (value === null) request.input(param, sql.NVarChar, null);
+        else if (typeof value === 'number') {
+          request.input(
+            param,
+            Number.isInteger(value) ? sql.BigInt : sql.Float,
+            value,
+          );
+        } else if (value instanceof Date) request.input(param, sql.DateTime, value);
+        else if (typeof value === 'boolean') request.input(param, sql.Bit, value);
+        else request.input(param, sql.NVarChar, String(value));
+      });
+      const result = await request.query(`
+        insert into dbo.${safeTable} (${colSql.join(', ')})
+        output inserted.BLKODU as BLKODU
+        values (${valSql.join(', ')})
+      `);
+      return result.recordset?.[0]?.BLKODU == null
+        ? null
+        : String(result.recordset[0].BLKODU);
+    };
+
+    const header = {};
+    if (!faturaIdentity) {
+      header.BLKODU = await akinsoftNextBlkoduSafe(pool, 'FATURA');
+    }
+    setFirstColumn(header, faturaColumns, ['FATURA_NO'], invoiceNumber);
+    setFirstColumn(header, faturaColumns, ['TARIHI'], invoiceDate);
+    setFirstColumn(header, faturaColumns, ['VADESI'], dueDate);
+    setFirstColumn(header, faturaColumns, ['BLCRKODU'], customerSourceId);
+    setFirstColumn(
+      header,
+      faturaColumns,
+      ['CARIKODU'],
+      textOrNull(customerMap.source_code),
+    );
+    setFirstColumn(
+      header,
+      faturaColumns,
+      ['TICARI_UNVANI', 'ADI_SOYADI'],
+      textOrNull(invoice.customer_name) || textOrNull(customerMap.source_name),
+    );
+    setFirstColumn(header, faturaColumns, ['ACIKLAMA'], textOrNull(invoice.notes));
+    setFirstColumn(header, faturaColumns, ['SILINDI', 'SILINDI_MI', 'DELETED'], 0);
+    setFirstColumn(header, faturaColumns, ['IPTAL', 'FATURA_IPTAL', 'IPTAL_MI'], 0);
+    setFirstColumn(header, faturaColumns, ['KAPALI', 'KAPANDI'], 0);
+    setFirstColumn(header, faturaColumns, ['FATURA_DURUMU'], 1);
+    setFirstColumn(
+      header,
+      faturaColumns,
+      ['ALIS_SATIS', 'ALIS_SATIS_M'],
+      isSales ? 1 : 0,
+    );
+    // ALISFATURA genelde "alış faturası mı?" bayrağıdır; satışta 0 olmalı.
+    setFirstColumn(header, faturaColumns, ['ALISFATURA'], isSales ? 0 : 1);
+    setFirstColumn(header, faturaColumns, ['KUR', 'DOVIZ_KURU'], exchangeRate);
+    setFirstColumn(
+      header,
+      faturaColumns,
+      ['DOVIZ_KULLAN', 'DOVIZLI', 'DVZ_KULLAN'],
+      isTry ? 0 : 1,
+    );
+    setFirstColumn(
+      header,
+      faturaColumns,
+      ['DOVIZ_BIRIMI', 'DOVIZ_ADI', 'DVZ_BIRIMI', 'PARA_BIRIMI', 'DOVIZ'],
+      currency,
+    );
+    setFirstColumn(
+      header,
+      faturaColumns,
+      [
+        'KPB_ARA_TOPLAM',
+        'TOPLAM_ARA',
+        'TOPLAM_ARA_KPB',
+        'KPB_ARA_TUTAR',
+        'ARA_TOPLAM',
+      ],
+      kpbSubtotal,
+    );
+    setFirstColumn(
+      header,
+      faturaColumns,
+      ['KPB_IND_TOPLAM', 'KPB_ISKONTO_TOPLAM', 'IND_TOPLAM', 'ISKONTO_TOPLAM'],
+      kpbDiscount,
+    );
+    setFirstColumn(
+      header,
+      faturaColumns,
+      ['KPB_KDV_TOPLAM', 'TOPLAM_KDV', 'TOPLAM_KDV_KPB', 'KDV_TOPLAM'],
+      kpbTax,
+    );
+    setFirstColumn(
+      header,
+      faturaColumns,
+      [
+        'KPB_GENEL_TOPLAM',
+        'TOPLAM_GENEL',
+        'TOPLAM_GENEL_KPB',
+        'GENEL_TOPLAM',
+        'FATURA_TOPLAMI',
+        'KPB_KDV_DAHIL_TOPLAM',
+      ],
+      kpbGrand,
+    );
+    if (!isTry) {
+      setFirstColumn(
+        header,
+        faturaColumns,
+        ['DVZ_ARA_TOPLAM', 'TOPLAM_ARA_DVZ', 'DOVIZ_ARA_TOPLAM'],
+        subtotal,
+      );
+      setFirstColumn(
+        header,
+        faturaColumns,
+        ['DVZ_IND_TOPLAM', 'DVZ_ISKONTO_TOPLAM', 'DOVIZ_ISKONTO_TOPLAM'],
+        discountTotal,
+      );
+      setFirstColumn(
+        header,
+        faturaColumns,
+        ['DVZ_KDV_TOPLAM', 'TOPLAM_KDV_DVZ', 'DOVIZ_KDV_TOPLAM'],
+        taxTotal,
+      );
+      setFirstColumn(
+        header,
+        faturaColumns,
+        ['DVZ_GENEL_TOPLAM', 'TOPLAM_GENEL_DVZ', 'DOVIZ_GENEL_TOPLAM'],
+        grandTotal,
+      );
+    }
+
+    const faturaSourceId = await insertWithTx('FATURA', faturaColumns, header);
+    if (!faturaSourceId) {
+      throw new Error('FATURA kaydı oluşturulamadı (BLKODU alınamadı).');
+    }
+    const faturaBlkodu = Number(faturaSourceId);
+
+    let lineBlkodu = lineIdentity
+      ? null
+      : await akinsoftNextBlkoduSafe(pool, 'FATURAHR');
+    for (const line of linePayloads) {
+      const row = {};
+      if (!lineIdentity) {
+        row.BLKODU = lineBlkodu;
+        lineBlkodu += 1;
+      }
+      setFirstColumn(row, lineColumns, ['BLFTKODU'], faturaBlkodu);
+      if (line.productSourceId != null) {
+        setFirstColumn(row, lineColumns, ['BLSTKODU'], line.productSourceId);
+        setFirstColumn(row, lineColumns, ['STOKKODU'], line.productCode);
+      }
+      // Stok yoksa yalnızca ad/açıklama alanına yazılır.
+      setFirstColumn(row, lineColumns, ['STOK_ADI', 'ACIKLAMA', 'ACIKLAMA1'], line.description);
+      setFirstColumn(row, lineColumns, ['MIKTARI'], line.quantity);
+      setFirstColumn(row, lineColumns, ['BIRIMI'], line.unit);
+      setFirstColumn(row, lineColumns, ['KDV_ORANI'], line.taxRate);
+      const lineKpbNet = isTry ? line.net : line.net * kpbFactor;
+      const lineKpbTax = isTry ? line.tax : line.tax * kpbFactor;
+      const lineKpbGross = isTry ? line.gross : line.gross * kpbFactor;
+      const lineKpbPrice = isTry ? line.unitPrice : line.unitPrice * kpbFactor;
+      setFirstColumn(
+        row,
+        lineColumns,
+        ['KPB_KDV_HARICFY', 'KPB_FIYATI', 'KPB_BIRIM_FIYAT', 'KPB_BF', 'FIYATI'],
+        lineKpbPrice,
+      );
+      setFirstColumn(
+        row,
+        lineColumns,
+        ['KPB_ARA_TUTAR', 'KPB_TOPLAM_TUTAR', 'KPB_TUTAR', 'KPB_KDV_HARIC_TUTAR'],
+        lineKpbNet,
+      );
+      setFirstColumn(
+        row,
+        lineColumns,
+        ['KPB_KDV_TUTARI', 'KPB_KDV', 'KDV_TUTARI'],
+        lineKpbTax,
+      );
+      setFirstColumn(
+        row,
+        lineColumns,
+        ['KPB_KDVLI_TUTAR', 'KPB_KDV_DAHIL_TUTAR'],
+        lineKpbGross,
+      );
+      if (!isTry) {
+        setFirstColumn(
+          row,
+          lineColumns,
+          ['DVZ_KDV_HARICFY', 'DVZ_FIYATI', 'DVZ_BIRIM_FIYAT', 'DVZ_BF'],
+          line.unitPrice,
+        );
+        setFirstColumn(
+          row,
+          lineColumns,
+          ['DVZ_ARA_TUTAR', 'DVZ_TOPLAM_TUTAR', 'DVZ_TUTAR'],
+          line.net,
+        );
+        setFirstColumn(row, lineColumns, ['DVZ_KDV_TUTARI', 'DVZ_KDV'], line.tax);
+        setFirstColumn(
+          row,
+          lineColumns,
+          ['DVZ_KDVLI_TUTAR', 'DVZ_KDV_DAHIL_TUTAR'],
+          line.gross,
+        );
+      }
+      await insertWithTx('FATURAHR', lineColumns, row);
+    }
+
+    let cariHrWritten = false;
+    if (hasCariHr && cariHrColumns.size) {
+      const cariHrIdentity = await akinsoftColumnIsIdentity(
+        pool,
+        'CARIHR',
+        'BLKODU',
+      );
+      const cariRow = {};
+      if (!cariHrIdentity) {
+        cariRow.BLKODU = await akinsoftNextBlkoduSafe(pool, 'CARIHR');
+      }
+      setFirstColumn(cariRow, cariHrColumns, ['BLCRKODU'], customerSourceId);
+      setFirstColumn(cariRow, cariHrColumns, ['EVRAK_NO'], invoiceNumber);
+      setFirstColumn(cariRow, cariHrColumns, ['TARIHI'], invoiceDate);
+      setFirstColumn(cariRow, cariHrColumns, ['VADESI'], dueDate);
+      setFirstColumn(
+        cariRow,
+        cariHrColumns,
+        ['ACIKLAMA'],
+        textOrNull(invoice.notes) || `CRM fatura ${invoiceNumber}`,
+      );
+      // Satışta cari borç (BTUT), alışta alacak (ATUT).
+      if (isSales) {
+        setFirstColumn(cariRow, cariHrColumns, ['KPB_BTUT', 'BTUT'], kpbGrand);
+        setFirstColumn(cariRow, cariHrColumns, ['KPB_ATUT', 'ATUT'], 0);
+        if (!isTry) {
+          setFirstColumn(cariRow, cariHrColumns, ['DVZ_BTUT'], grandTotal);
+          setFirstColumn(cariRow, cariHrColumns, ['DVZ_ATUT'], 0);
+        }
+      } else {
+        setFirstColumn(cariRow, cariHrColumns, ['KPB_ATUT', 'ATUT'], kpbGrand);
+        setFirstColumn(cariRow, cariHrColumns, ['KPB_BTUT', 'BTUT'], 0);
+        if (!isTry) {
+          setFirstColumn(cariRow, cariHrColumns, ['DVZ_ATUT'], grandTotal);
+          setFirstColumn(cariRow, cariHrColumns, ['DVZ_BTUT'], 0);
+        }
+      }
+      setFirstColumn(cariRow, cariHrColumns, ['KUR', 'DOVIZ_KURU'], exchangeRate);
+      await insertWithTx('CARIHR', cariHrColumns, cariRow);
+      cariHrWritten = true;
+    }
+
+    await transaction.commit();
+
+    await upsertAkinsoftSyncMap(query, {
+      sourceType: 'invoice',
+      sourceId: faturaSourceId,
+      sourceCode: invoiceNumber,
+      sourceName: textOrNull(invoice.customer_name),
+      localTable: 'invoices',
+      localId: invoiceId,
+    });
+    await query(
+      `
+        update public.invoices
+        set erp_invoice_number = coalesce(nullif(trim(erp_invoice_number), ''), $2),
+            erp_invoice_number_synced_at = now(),
+            updated_at = now()
+        where id = $1::uuid
+      `,
+      [invoiceId, invoiceNumber],
+    );
+
+    return {
+      ok: true,
+      sourceId: faturaSourceId,
+      invoiceNumber,
+      lineCount: linePayloads.length,
+      descriptionOnlyLines: linePayloads.filter((line) => line.asDescriptionOnly)
+        .length,
+      customerCreated: customerRef.created === true,
+      customerMatchedBy: customerRef.matchedBy || null,
+      cariHrWritten,
+    };
+  } catch (error) {
+    try {
+      await transaction.rollback();
+    } catch (_) {
+      // ignore rollback errors
+    }
+    return { ok: false, reason: error?.message || String(error) };
+  }
+}
+
+async function handleAkinsoftPushInvoices(req, res) {
+  if (req.method !== 'POST') {
+    return send(
+      res,
+      405,
+      { 'Content-Type': 'application/json; charset=utf-8' },
+      JSON.stringify({ ok: false, error: 'POST gerekli.' }),
+    );
+  }
+  const body = await readJson(req);
+  const invoiceIds = Array.isArray(body.invoiceIds)
+    ? body.invoiceIds.map((id) => String(id || '').trim()).filter(Boolean)
+    : [];
+  if (!invoiceIds.length) {
+    return send(
+      res,
+      400,
+      { 'Content-Type': 'application/json; charset=utf-8' },
+      JSON.stringify({ ok: false, error: 'invoiceIds gerekli.' }),
+    );
+  }
+
+  const { query } = require(path.join(rootDir, 'api', '_lib', 'db.js'));
+  await ensureAkinsoftSyncMap(query);
+
+  const headerResult = await query(
+    `
+      select
+        i.id,
+        i.invoice_number,
+        i.invoice_type,
+        i.customer_id,
+        i.invoice_date,
+        i.due_date,
+        i.currency,
+        i.exchange_rate,
+        i.subtotal,
+        i.tax_total,
+        i.discount_total,
+        i.grand_total,
+        i.status,
+        i.notes,
+        i.is_active,
+        c.name as customer_name,
+        c.vkn as customer_vkn,
+        c.tax_office as customer_tax_office,
+        coalesce(c.phone_1, c.phone_2) as customer_phone,
+        c.email as customer_email,
+        c.address as customer_address,
+        c.city as customer_city,
+        c.country as customer_country,
+        m.source_id as akinsoft_source_id
+      from public.invoices i
+      left join public.customers c on c.id = i.customer_id
+      left join public.akinsoft_sync_map m
+        on m.source_system = 'akinsoft'
+       and m.source_type = 'invoice'
+       and m.local_id = i.id
+      where i.id = any($1::uuid[])
+    `,
+    [invoiceIds],
+  );
+  const itemsResult = await query(
+    `
+      select
+        ii.invoice_id,
+        ii.product_id,
+        ii.description,
+        ii.quantity,
+        ii.unit,
+        ii.unit_price,
+        ii.tax_rate,
+        ii.tax_amount,
+        ii.discount_amount,
+        ii.line_total,
+        p.code as product_code
+      from public.invoice_items ii
+      left join public.products p on p.id = ii.product_id
+      where ii.invoice_id = any($1::uuid[])
+      order by ii.sort_order asc
+    `,
+    [invoiceIds],
+  );
+  const itemsByInvoice = new Map();
+  for (const row of itemsResult.rows) {
+    const key = String(row.invoice_id);
+    const list = itemsByInvoice.get(key) || [];
+    list.push(row);
+    itemsByInvoice.set(key, list);
+  }
+
+  const sql = require('mssql');
+  const { config } = buildAkinsoftSqlConfig(body.settings || body);
+  config.requestTimeout = Math.max(Number(config.requestTimeout || 0), 180000);
+  const pool = await connectAkinsoftPool(config);
+  const items = [];
+  const byId = new Map(headerResult.rows.map((row) => [String(row.id), row]));
+  try {
+    for (const invoiceId of invoiceIds) {
+      const row = byId.get(String(invoiceId));
+      if (!row) {
+        items.push({ invoiceId, ok: false, reason: 'Fatura CRM’de bulunamadı.' });
+        continue;
+      }
+      if (row.is_active === false) {
+        items.push({
+          invoiceId,
+          invoiceNumber: row.invoice_number,
+          ok: false,
+          reason: 'Pasif fatura Akınsoft’a gönderilemez.',
+        });
+        continue;
+      }
+      if (String(row.status || '') === 'cancelled') {
+        items.push({
+          invoiceId,
+          invoiceNumber: row.invoice_number,
+          ok: false,
+          reason: 'İptal fatura Akınsoft’a gönderilemez.',
+        });
+        continue;
+      }
+      try {
+        const write = await writeAkinsoftInvoiceCreate(pool, sql, query, {
+          ...row,
+          items: itemsByInvoice.get(String(invoiceId)) || [],
+        });
+        items.push({
+          invoiceId: row.id,
+          invoiceNumber: row.invoice_number,
+          ok: write.ok === true,
+          skipped: write.skipped === true,
+          sourceId: write.sourceId || row.akinsoft_source_id || null,
+          lineCount: write.lineCount || 0,
+          descriptionOnlyLines: write.descriptionOnlyLines || 0,
+          customerCreated: write.customerCreated === true,
+          customerMatchedBy: write.customerMatchedBy || null,
+          cariHrWritten: write.cariHrWritten === true,
+          reason: write.reason || null,
+        });
+      } catch (error) {
+        items.push({
+          invoiceId: row.id,
+          invoiceNumber: row.invoice_number,
+          ok: false,
+          reason: error?.message || String(error),
+        });
+      }
+    }
+  } finally {
+    await pool.close();
+  }
+
+  const success = items.filter((item) => item.ok).length;
+  const failed = items.length - success;
+  return send(
+    res,
+    200,
+    { 'Content-Type': 'application/json; charset=utf-8' },
+    JSON.stringify({
+      ok: failed === 0,
+      success,
+      failed,
+      items,
+    }),
+  );
+}
+
 async function handleAkinsoftPushInvoiceNumbers(req, res) {
   if (req.method !== 'POST') {
     return send(
@@ -3653,6 +4948,7 @@ async function handleAkinsoftRequest(req, res) {
     '/api/akinsoft/bulk-map-customers': handleAkinsoftBulkMapCustomers,
     '/api/akinsoft/duplicate-customers': handleAkinsoftDuplicateCustomers,
     '/api/akinsoft/push-invoice-numbers': handleAkinsoftPushInvoiceNumbers,
+    '/api/akinsoft/push-invoices': handleAkinsoftPushInvoices,
   };
   const handler = routes[pathname];
   if (!handler) {

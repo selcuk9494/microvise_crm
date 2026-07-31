@@ -46,6 +46,7 @@ class Invoice {
   final DateTime? eInvoiceArchivedAt;
   final DateTime? eInvoiceSentAt;
   final String? erpInvoiceNumber;
+  final String? akinsoftSourceId;
   final String? serviceRecordId;
   final String? workOrderId;
   final bool isActive;
@@ -80,6 +81,7 @@ class Invoice {
     this.eInvoiceArchivedAt,
     this.eInvoiceSentAt,
     this.erpInvoiceNumber,
+    this.akinsoftSourceId,
     this.serviceRecordId,
     this.workOrderId,
     this.isActive = true,
@@ -94,6 +96,8 @@ class Invoice {
   bool get isEInvoiceSent => eInvoiceStatus == 'sent';
   bool get isEInvoiceManual => eInvoiceStatus == 'manual';
   bool get isEInvoiceClosed => isEInvoiceSent || isEInvoiceManual;
+  bool get isLinkedToAkinsoft =>
+      (akinsoftSourceId?.trim().isNotEmpty ?? false);
   bool canSendEInvoiceTo(String environment) =>
       !isEInvoiceClosed ||
       (eInvoiceStatus == 'sent' &&
@@ -156,6 +160,7 @@ class Invoice {
           ? parseAppDateTime(json['e_invoice_sent_at'].toString())
           : null,
       erpInvoiceNumber: json['erp_invoice_number']?.toString(),
+      akinsoftSourceId: json['akinsoft_source_id']?.toString(),
       serviceRecordId: json['service_record_id']?.toString(),
       workOrderId: json['work_order_id']?.toString(),
       isActive: json['is_active'] as bool? ?? true,

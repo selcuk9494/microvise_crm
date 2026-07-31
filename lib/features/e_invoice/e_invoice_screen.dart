@@ -383,6 +383,15 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               invoice.isEInvoiceSent,
         )
         .length;
+    final selectedAkinsoftCreateCount = items
+        .where(
+          (invoice) =>
+              _selectedInvoiceIds.contains(invoice.id) &&
+              invoice.isActive &&
+              invoice.status != 'cancelled' &&
+              !invoice.isLinkedToAkinsoft,
+        )
+        .length;
     final visibleItems = items.take(_visibleInvoiceLimit).toList();
     final hasHiddenItems = visibleItems.length < items.length;
     final sales = items.where((e) => e.invoiceType == 'sales').length;
@@ -607,6 +616,23 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                   const Gap(8),
                                   OutlinedButton.icon(
                                     onPressed:
+                                        selectedAkinsoftCreateCount == 0 ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing ||
+                                            _pullingAkinsoft
+                                        ? null
+                                        : () => _pushSelectedInvoicesToAkinsoft(
+                                            items,
+                                          ),
+                                    icon: const Icon(
+                                      Icons.upload_rounded,
+                                      size: 18,
+                                    ),
+                                    label: const Text('ERP’ye Gönder'),
+                                  ),
+                                  const Gap(8),
+                                  OutlinedButton.icon(
+                                    onPressed:
                                         selectedSentCount == 0 ||
                                             _bulkDeleting ||
                                             _bulkProcessing
@@ -616,7 +642,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                       Icons.picture_as_pdf_rounded,
                                       size: 18,
                                     ),
-                                    label: const Text('PDF'),
+                                    label: const Text('Toplu PDF'),
                                   ),
                                   const Gap(8),
                                   OutlinedButton.icon(
@@ -774,6 +800,26 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                         size: 18,
                                       ),
                                       label: const Text('Akınsoft No Güncelle'),
+                                    ),
+                                    const Gap(8),
+                                    OutlinedButton.icon(
+                                      onPressed:
+                                          selectedAkinsoftCreateCount == 0 ||
+                                              _bulkDeleting ||
+                                              _bulkProcessing ||
+                                              _pullingAkinsoft
+                                          ? null
+                                          : () =>
+                                                _pushSelectedInvoicesToAkinsoft(
+                                                  items,
+                                                ),
+                                      icon: const Icon(
+                                        Icons.upload_rounded,
+                                        size: 18,
+                                      ),
+                                      label: const Text(
+                                        'Akınsoft’a Fatura Gönder',
+                                      ),
                                     ),
                                     const Gap(8),
                                     OutlinedButton.icon(
@@ -1131,6 +1177,137 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Toplu PDF başarısız: $error')));
+    } finally {
+      if (mounted) setState(() => _bulkProcessing = false);
+    }
+  }
+
+  Future<void> _pushSelectedInvoicesToAkinsoft(
+    List<Invoice> visibleInvoices, {
+    List<Invoice>? forceSelected,
+  }) async {
+    final selected =
+        (forceSelected ??
+                visibleInvoices
+                    .where(
+                      (invoice) => _selectedInvoiceIds.contains(invoice.id),
+                    )
+                    .toList())
+            .where(
+              (invoice) =>
+                  invoice.isActive &&
+                  invoice.status != 'cancelled' &&
+                  !invoice.isLinkedToAkinsoft,
+            )
+            .toList(growable: false);
+    if (selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Akınsoft’a gönderilecek CRM faturası seçilmedi '
+            '(zaten eşleşmiş veya pasif/iptal olanlar atlanır).',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Akınsoft’a fatura gönder'),
+        content: Text(
+          '${selected.length} fatura Akınsoft’a yeni kayıt olarak yazılsın mı?\n\n'
+          '• Cari yoksa Akınsoft’a otomatik eklenir\n'
+          '• Stok eşleşmezse kalem açıklama olarak yazılır\n\n'
+          'Örnek: ${selected.first.invoiceNumber}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Gönder'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _bulkProcessing = true);
+    try {
+      final settings = await ref.read(eInvoiceSettingsProvider.future);
+      final response = await http
+          .post(
+            _akinsoftUri('push-invoices'),
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+            body: jsonEncode({
+              ...settings,
+              'invoiceIds': selected.map((invoice) => invoice.id).toList(),
+            }),
+          )
+          .timeout(const Duration(minutes: 15));
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) {
+        throw Exception('Beklenmeyen Akınsoft yanıtı.');
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(decoded['error'] ?? 'Akınsoft gönderimi başarısız.');
+      }
+      _selectedInvoiceIds.clear();
+      ref.invalidate(invoicesProvider);
+      if (!mounted) return;
+      final success = decoded['success'] ?? 0;
+      final failed = decoded['failed'] ?? 0;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Akınsoft’a Gönderim'),
+          content: SizedBox(
+            width: 640,
+            height: MediaQuery.sizeOf(context).height * 0.5,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Başarılı: $success • Hatalı: $failed'),
+                const Gap(12),
+                Expanded(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceMuted,
+                      border: Border.all(color: AppTheme.border),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                    ),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(12),
+                      child: SelectableText(
+                        const JsonEncoder.withIndent('  ').convert(decoded),
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Kapat'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Akınsoft’a gönderilemedi: $error')),
+      );
     } finally {
       if (mounted) setState(() => _bulkProcessing = false);
     }
@@ -2418,6 +2595,16 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           tone: _InvoiceActionTone.primary,
           onPressed: _busy || !canSend ? null : () => _prepare(send: true),
         ),
+        if (!invoice.isLinkedToAkinsoft &&
+            invoice.isActive &&
+            invoice.status != 'cancelled')
+          _InvoiceLabeledAction(
+            label: 'ERP',
+            tooltip: 'Akınsoft’a fatura gönder',
+            icon: Icons.upload_rounded,
+            tone: _InvoiceActionTone.success,
+            onPressed: _busy ? null : _pushToAkinsoft,
+          ),
         PopupMenuButton<String>(
           tooltip: 'Diğer işlemler',
           enabled: !_busy,
@@ -2539,6 +2726,15 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         icon: Icons.content_copy_rounded,
         onPressed: _busy ? null : _copyPreview,
       ),
+      if (!invoice.isLinkedToAkinsoft &&
+          invoice.isActive &&
+          invoice.status != 'cancelled')
+        _InvoiceIconAction(
+          tooltip: 'Akınsoft’a fatura gönder',
+          icon: Icons.upload_rounded,
+          tone: _InvoiceActionTone.success,
+          onPressed: _busy ? null : _pushToAkinsoft,
+        ),
       _InvoiceIconAction(
         tooltip: 'Düzenle',
         icon: Icons.edit_rounded,
@@ -3319,6 +3515,84 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Fatura özeti kopyalandı.')));
+  }
+
+  Future<void> _pushToAkinsoft() async {
+    final invoice = widget.invoice;
+    if (invoice.isLinkedToAkinsoft) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bu fatura zaten Akınsoft ile eşleşmiş.')),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Akınsoft’a fatura gönder'),
+        content: Text(
+          '${invoice.invoiceNumber} numaralı fatura Akınsoft’a yeni kayıt '
+          'olarak yazılsın mı?\n\n'
+          'Cari yoksa eklenir; stok eşleşmezse kalem açıklama olarak yazılır.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Gönder'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _busy = true);
+    try {
+      final settings = await ref.read(eInvoiceSettingsProvider.future);
+      final response = await http
+          .post(
+            _akinsoftUri('push-invoices'),
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+            body: jsonEncode({
+              ...settings,
+              'invoiceIds': [invoice.id],
+            }),
+          )
+          .timeout(const Duration(minutes: 5));
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) {
+        throw Exception('Beklenmeyen Akınsoft yanıtı.');
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(decoded['error'] ?? 'Akınsoft gönderimi başarısız.');
+      }
+      ref.invalidate(invoicesProvider);
+      if (!mounted) return;
+      final items = decoded['items'];
+      final first = items is List && items.isNotEmpty ? items.first : null;
+      final ok = first is Map && first['ok'] == true;
+      final reason = first is Map ? first['reason']?.toString() : null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ok
+                ? (reason?.isNotEmpty == true
+                      ? '${invoice.invoiceNumber}: $reason'
+                      : '${invoice.invoiceNumber} Akınsoft’a yazıldı.')
+                : '${invoice.invoiceNumber} gönderilemedi: ${reason ?? 'bilinmeyen hata'}',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Akınsoft’a gönderilemedi: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   String _statusLabel(String status) {
@@ -6570,7 +6844,10 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
           : _relatedCustomers(invoices);
       payload['products'] = statusOnly
           ? const <Map<String, dynamic>>[]
-          : _relatedProducts(invoices);
+          : ((widget.data['products'] as List?) ?? const [])
+                .whereType<Map>()
+                .map((item) => item.cast<String, dynamic>())
+                .toList();
       final startedAt = DateTime.now();
       final startResponse = await http
           .post(
@@ -6652,12 +6929,20 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
         final matches =
             (summary['customerMatches'] as Map?)?.cast<String, dynamic>() ??
             const <String, dynamic>{};
+        final productsPush =
+            (summary['productsPush'] as Map?)?.cast<String, dynamic>() ??
+            const <String, dynamic>{};
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               'İçe aktarıldı: ${summary['customers'] ?? 0} cari, '
-              '${summary['products'] ?? 0} stok, '
+              '${summary['products'] ?? 0} stok'
+              ' (yeni ${summary['productsCreated'] ?? 0} / '
+              'güncel ${summary['productsUpdated'] ?? 0}), '
               '${summary['invoices'] ?? 0} fatura. '
+              'CRM→Akınsoft stok: +${productsPush['created'] ?? 0}'
+              '${(productsPush['matched'] ?? 0) > 0 ? ' / eşleşen ${productsPush['matched']}' : ''}'
+              '${(productsPush['failed'] ?? 0) > 0 ? ' / hata ${productsPush['failed']}' : ''}. '
               'Cari eşleşme: kaynak ${matches['source'] ?? 0}, '
               'VKN ${matches['tax'] ?? 0}, kod ${matches['code'] ?? 0}, '
               'yeni ${matches['created'] ?? 0}.',
@@ -6708,32 +6993,6 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
         .where((item) => item.isNotEmpty)
         .toSet();
     return ((widget.data['customers'] as List?) ?? const [])
-        .whereType<Map>()
-        .map((item) => item.cast<String, dynamic>())
-        .where((item) {
-          final sourceId = item['sourceId']?.toString() ?? '';
-          final code = item['code']?.toString() ?? '';
-          return sourceIds.contains(sourceId) || codes.contains(code);
-        })
-        .toList();
-  }
-
-  List<Map<String, dynamic>> _relatedProducts(
-    List<Map<String, dynamic>> invoices,
-  ) {
-    final sourceIds = <String>{};
-    final codes = <String>{};
-    for (final invoice in invoices) {
-      for (final raw in (invoice['items'] as List? ?? const [])) {
-        if (raw is! Map) continue;
-        final item = raw.cast<String, dynamic>();
-        final sourceId = item['productSourceId']?.toString() ?? '';
-        final code = item['code']?.toString() ?? '';
-        if (sourceId.isNotEmpty) sourceIds.add(sourceId);
-        if (code.isNotEmpty) codes.add(code);
-      }
-    }
-    return ((widget.data['products'] as List?) ?? const [])
         .whereType<Map>()
         .map((item) => item.cast<String, dynamic>())
         .where((item) {

@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
-import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../customers/customer_model.dart';
 import '../customers/customers_providers.dart';
@@ -116,34 +115,35 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
     final isProduction =
         (eInvoiceSettings['environment'] ?? 'test').toString() == 'production';
     final apiEnvironmentLabel = isProduction ? 'canlı' : 'test';
-    final compactAppBar = MediaQuery.sizeOf(context).width < 430;
-    final title =
-        '${_isEditing ? 'Düzenle - ' : ''}${_isSales ? 'Satış E-Faturası' : 'Alış Faturası'}';
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isMobileLayout = screenWidth < 980;
+    final title = isMobileLayout
+        ? (_isEditing
+              ? (_isSales ? 'Faturayı Düzenle' : 'Alış Düzenle')
+              : (_isSales ? 'Yeni Satış' : 'Yeni Alış'))
+        : '${_isEditing ? 'Düzenle - ' : ''}${_isSales ? 'Satış E-Faturası' : 'Alış Faturası'}';
+
+    final summary = _SummaryPanel(
+      subtotal: _subtotal,
+      discountTotal: _discountTotal,
+      taxTotal: _taxTotal,
+      grandTotal: _grandTotal,
+      currency: _currency,
+      sendAfterSave: _sendAfterSave,
+      isSales: _isSales,
+      saving: _saving,
+      onSendAfterSaveChanged: (value) => setState(() => _sendAfterSave = value),
+      onSaveDraft: () => _save(status: 'draft'),
+      onSaveOpen: () => _save(status: 'open'),
+      apiEnvironmentLabel: apiEnvironmentLabel,
+    );
 
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: Text(title),
         actions: [
-          if (compactAppBar) ...[
-            IconButton(
-              tooltip: 'Taslak kaydet',
-              onPressed: _saving ? null : () => _save(status: 'draft'),
-              icon: const Icon(Icons.drafts_rounded),
-            ),
-            IconButton.filled(
-              tooltip: 'Kaydet',
-              onPressed: _saving ? null : () => _save(status: 'open'),
-              icon: _saving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save_rounded),
-            ),
-            const Gap(8),
-          ] else ...[
+          if (!isMobileLayout) ...[
             TextButton(
               onPressed: _saving ? null : () => _save(status: 'draft'),
               child: const Text('Taslak'),
@@ -164,99 +164,25 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
           ],
         ],
       ),
-      body: Form(
-        key: _formKey,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final wide = constraints.maxWidth >= 980;
-            final content = [
-              _HeaderCard(isSales: _isSales),
-              const Gap(12),
-              _PartyCard(
-                customersAsync: customersAsync,
-                selectedCustomerId: _customerId,
-                isSales: _isSales,
-                onChanged: (value) => setState(() => _customerId = value),
-              ),
-              const Gap(12),
-              _InvoiceInfoCard(
-                invoiceDate: _invoiceDate,
-                dueDate: _dueDate,
-                currency: _currency,
-                exchangeRateController: _exchangeRateController,
-                onInvoiceDateChanged: (value) =>
-                    setState(() => _invoiceDate = value),
-                onDueDateChanged: (value) => setState(() => _dueDate = value),
-                onCurrencyChanged: (value) {
-                  setState(() {
-                    _currency = value;
-                    _exchangeRate = value == 'TRY' ? 1 : (_rates[value] ?? 1);
-                    _exchangeRateController.text = _exchangeRate
-                        .toStringAsFixed(value == 'TRY' ? 0 : 4);
-                  });
-                },
-                onExchangeRateChanged: (value) =>
-                    _exchangeRate = _parseDecimal(value),
-              ),
-              const Gap(12),
-              _ItemsCard(
-                items: _items,
-                productsAsync: productsAsync,
-                taxRatesAsync: taxRatesAsync,
-                currency: _currency,
-                isSales: _isSales,
-                onChanged: () => setState(() {}),
-                onAdd: () => setState(() => _items.add(_EInvoiceItemDraft())),
-                onRemove: (index) {
-                  setState(() {
-                    _items[index].dispose();
-                    _items.removeAt(index);
-                  });
-                },
-              ),
-              const Gap(12),
-              _DispatchCard(
-                numberController: _irsaliyeNoController,
-                poController: _poNumberController,
-                date: _irsaliyeTarihi,
-                invoiceDate: _invoiceDate,
-                onDateChanged: (value) =>
-                    setState(() => _irsaliyeTarihi = value),
-                onClear: () => setState(() {
-                  _irsaliyeNoController.clear();
-                  _irsaliyeTarihi = null;
-                }),
-              ),
-              const Gap(12),
-              AppCard(
-                padding: const EdgeInsets.all(16),
-                child: TextField(
-                  controller: _notesController,
-                  minLines: 3,
-                  maxLines: 5,
-                  decoration: const InputDecoration(
-                    labelText: 'Fatura Notu',
-                    hintText: 'Teslimat, ödeme veya açıklama notu',
-                  ),
-                ),
-              ),
-            ];
-
-            final summary = _SummaryPanel(
-              subtotal: _subtotal,
-              discountTotal: _discountTotal,
-              taxTotal: _taxTotal,
+      bottomNavigationBar: isMobileLayout
+          ? _MobileSaveBar(
               grandTotal: _grandTotal,
               currency: _currency,
               sendAfterSave: _sendAfterSave,
               isSales: _isSales,
               saving: _saving,
+              apiEnvironmentLabel: apiEnvironmentLabel,
               onSendAfterSaveChanged: (value) =>
                   setState(() => _sendAfterSave = value),
               onSaveDraft: () => _save(status: 'draft'),
               onSaveOpen: () => _save(status: 'open'),
-              apiEnvironmentLabel: apiEnvironmentLabel,
-            );
+            )
+          : null,
+      body: Form(
+        key: _formKey,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= 980;
 
             if (wide) {
               return ListView(
@@ -345,9 +271,215 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
               );
             }
 
+            final dateFormat = DateFormat('dd.MM.yyyy');
             return ListView(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 120),
-              children: [...content, const Gap(12), summary],
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+              children: [
+                AppCard(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        '1. Cari ve tarih',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const Gap(10),
+                      customersAsync.when(
+                        data: (customers) => _CustomerSelectField(
+                          customers: customers,
+                          selectedCustomerId: _customerId,
+                          label: _isSales ? 'Müşteri' : 'Tedarikçi',
+                          onSearch: () => _pickCustomer(customers),
+                        ),
+                        loading: () => const LinearProgressIndicator(),
+                        error: (_, _) =>
+                            const Text('Cari listesi yüklenemedi.'),
+                      ),
+                      const Gap(10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _DateField(
+                              label: 'Fatura Tarihi',
+                              value: dateFormat.format(_invoiceDate),
+                              initialDate: _invoiceDate,
+                              onPicked: (value) =>
+                                  setState(() => _invoiceDate = value),
+                            ),
+                          ),
+                          const Gap(8),
+                          SizedBox(
+                            width: 108,
+                            child: DropdownButtonFormField<String>(
+                              initialValue: _currency,
+                              isExpanded: true,
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'TRY',
+                                  child: Text('TL'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'USD',
+                                  child: Text('USD'),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                final next = value ?? 'TRY';
+                                setState(() {
+                                  _currency = next;
+                                  _exchangeRate = next == 'TRY'
+                                      ? 1
+                                      : (_rates[next] ?? 1);
+                                  _exchangeRateController.text = _exchangeRate
+                                      .toStringAsFixed(next == 'TRY' ? 0 : 4);
+                                });
+                              },
+                              decoration: const InputDecoration(
+                                labelText: 'Para',
+                                isDense: true,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_currency != 'TRY') ...[
+                        const Gap(8),
+                        TextFormField(
+                          controller: _exchangeRateController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Kur',
+                            isDense: true,
+                          ),
+                          onChanged: (value) =>
+                              _exchangeRate = _parseDecimal(value),
+                          validator: (value) => _parseDecimal(value ?? '') <= 0
+                              ? 'Kur gerekli'
+                              : null,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const Gap(10),
+                _MobileItemsCard(
+                  items: _items,
+                  productsAsync: productsAsync,
+                  taxRatesAsync: taxRatesAsync,
+                  currency: _currency,
+                  isSales: _isSales,
+                  onChanged: () => setState(() {}),
+                  onAddBlank: () =>
+                      setState(() => _items.add(_EInvoiceItemDraft())),
+                  onAddFromStock: (products) => _addProducts(products),
+                  onRemove: (index) {
+                    setState(() {
+                      _items[index].dispose();
+                      _items.removeAt(index);
+                    });
+                  },
+                ),
+                const Gap(10),
+                AppCard(
+                  padding: EdgeInsets.zero,
+                  child: Theme(
+                    data: Theme.of(
+                      context,
+                    ).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                      childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      title: Text(
+                        '3. Ek bilgiler (isteğe bağlı)',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      subtitle: Text(() {
+                        final bits = <String>[
+                          if (_dueDate != null)
+                            'Vade ${dateFormat.format(_dueDate!)}',
+                          if (_irsaliyeNoController.text.trim().isNotEmpty)
+                            'İrsaliye',
+                          if (_poNumberController.text.trim().isNotEmpty) 'PO',
+                          if (_notesController.text.trim().isNotEmpty) 'Not',
+                        ];
+                        return bits.isEmpty
+                            ? 'Vade, irsaliye, PO, not'
+                            : bits.join(' · ');
+                      }(), style: Theme.of(context).textTheme.bodySmall),
+                      children: [
+                        _DateField(
+                          label: 'Vade Tarihi',
+                          value: _dueDate == null
+                              ? 'Seçilmedi'
+                              : dateFormat.format(_dueDate!),
+                          initialDate:
+                              _dueDate ??
+                              _invoiceDate.add(const Duration(days: 30)),
+                          onPicked: (value) => setState(() => _dueDate = value),
+                        ),
+                        const Gap(8),
+                        TextFormField(
+                          controller: _irsaliyeNoController,
+                          decoration: const InputDecoration(
+                            labelText: 'İrsaliye No',
+                            isDense: true,
+                          ),
+                          validator: (value) {
+                            final hasNumber = (value ?? '').trim().isNotEmpty;
+                            if (hasNumber != (_irsaliyeTarihi != null)) {
+                              return 'Numara ve tarih birlikte girilmeli';
+                            }
+                            return null;
+                          },
+                        ),
+                        const Gap(8),
+                        _DateField(
+                          label: 'İrsaliye Tarihi',
+                          value: _irsaliyeTarihi == null
+                              ? 'Seçilmedi'
+                              : dateFormat.format(_irsaliyeTarihi!),
+                          initialDate: _irsaliyeTarihi ?? _invoiceDate,
+                          onPicked: (value) =>
+                              setState(() => _irsaliyeTarihi = value),
+                        ),
+                        const Gap(8),
+                        TextField(
+                          controller: _poNumberController,
+                          decoration: const InputDecoration(
+                            labelText: 'PO No',
+                            isDense: true,
+                          ),
+                        ),
+                        const Gap(8),
+                        TextField(
+                          controller: _notesController,
+                          minLines: 2,
+                          maxLines: 4,
+                          decoration: const InputDecoration(
+                            labelText: 'Not',
+                            isDense: true,
+                          ),
+                        ),
+                        if (_irsaliyeTarihi != null ||
+                            _irsaliyeNoController.text.trim().isNotEmpty)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton(
+                              onPressed: () => setState(() {
+                                _irsaliyeNoController.clear();
+                                _irsaliyeTarihi = null;
+                              }),
+                              child: const Text('İrsaliyeyi temizle'),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             );
           },
         ),
@@ -1549,203 +1681,6 @@ class _ProductPickerDialogState extends State<_ProductPickerDialog> {
   }
 }
 
-class _HeaderCard extends StatelessWidget {
-  const _HeaderCard({required this.isSales});
-
-  final bool isSales;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isSales ? AppTheme.success : AppTheme.warning;
-    return AppCard(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: color.withValues(alpha: 0.12),
-            child: Icon(
-              isSales ? Icons.north_east_rounded : Icons.south_west_rounded,
-              color: color,
-            ),
-          ),
-          const Gap(12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isSales
-                      ? 'Müşteriye satış faturası'
-                      : 'Tedarikçi alış faturası',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                Text(
-                  isSales
-                      ? 'Kalemleri stok/hizmet listesinden seçip e-fatura gönderimine hazırlayın.'
-                      : 'Alış faturası cari borç ve stok maliyet takibi için kaydedilir.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
-          AppBadge(
-            label: isSales ? 'Satış' : 'Alış',
-            tone: isSales ? AppBadgeTone.success : AppBadgeTone.warning,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PartyCard extends StatelessWidget {
-  const _PartyCard({
-    required this.customersAsync,
-    required this.selectedCustomerId,
-    required this.isSales,
-    required this.onChanged,
-  });
-
-  final AsyncValue<List<Customer>> customersAsync;
-  final String? selectedCustomerId;
-  final bool isSales;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Cari Bilgisi', style: Theme.of(context).textTheme.titleSmall),
-          const Gap(12),
-          customersAsync.when(
-            data: (customers) => DropdownButtonFormField<String>(
-              initialValue: selectedCustomerId,
-              isExpanded: true,
-              items: [
-                for (final customer in customers)
-                  DropdownMenuItem(
-                    value: customer.id,
-                    child: Text(
-                      [
-                        customer.name,
-                        if ((customer.vkn ?? '').isNotEmpty)
-                          'VKN ${customer.vkn}',
-                      ].join(' • '),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-              ],
-              onChanged: onChanged,
-              decoration: InputDecoration(
-                labelText: isSales ? 'Müşteri' : 'Tedarikçi / Cari',
-              ),
-              validator: (value) => value == null ? 'Cari seçin' : null,
-            ),
-            loading: () => const LinearProgressIndicator(),
-            error: (_, _) => const Text('Cari listesi yüklenemedi.'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InvoiceInfoCard extends StatelessWidget {
-  const _InvoiceInfoCard({
-    required this.invoiceDate,
-    required this.dueDate,
-    required this.currency,
-    required this.exchangeRateController,
-    required this.onInvoiceDateChanged,
-    required this.onDueDateChanged,
-    required this.onCurrencyChanged,
-    required this.onExchangeRateChanged,
-  });
-
-  final DateTime invoiceDate;
-  final DateTime? dueDate;
-  final String currency;
-  final TextEditingController exchangeRateController;
-  final ValueChanged<DateTime> onInvoiceDateChanged;
-  final ValueChanged<DateTime?> onDueDateChanged;
-  final ValueChanged<String> onCurrencyChanged;
-  final ValueChanged<String> onExchangeRateChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final dateFormat = DateFormat('dd.MM.yyyy');
-    return AppCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Fatura Bilgileri',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-          const Gap(12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              SizedBox(
-                width: 210,
-                child: _DateField(
-                  label: 'Fatura Tarihi',
-                  value: dateFormat.format(invoiceDate),
-                  initialDate: invoiceDate,
-                  onPicked: onInvoiceDateChanged,
-                ),
-              ),
-              SizedBox(
-                width: 210,
-                child: _DateField(
-                  label: 'Vade Tarihi',
-                  value: dueDate == null
-                      ? 'Seçilmedi'
-                      : dateFormat.format(dueDate!),
-                  initialDate:
-                      dueDate ?? invoiceDate.add(const Duration(days: 30)),
-                  onPicked: onDueDateChanged,
-                ),
-              ),
-              SizedBox(
-                width: 180,
-                child: DropdownButtonFormField<String>(
-                  initialValue: currency,
-                  items: const [
-                    DropdownMenuItem(value: 'TRY', child: Text('TL')),
-                    DropdownMenuItem(value: 'USD', child: Text('USD')),
-                  ],
-                  onChanged: (value) => onCurrencyChanged(value ?? 'TRY'),
-                  decoration: const InputDecoration(labelText: 'Para Birimi'),
-                ),
-              ),
-              if (currency != 'TRY')
-                SizedBox(
-                  width: 180,
-                  child: TextFormField(
-                    controller: exchangeRateController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(labelText: 'Kur'),
-                    onChanged: onExchangeRateChanged,
-                    validator: (value) =>
-                        _parseDecimal(value ?? '') <= 0 ? 'Kur gerekli' : null,
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _DispatchCard extends StatelessWidget {
   const _DispatchCard({
     required this.numberController,
@@ -1850,79 +1785,6 @@ class _DateField extends StatelessWidget {
       child: InputDecorator(
         decoration: InputDecoration(labelText: label),
         child: Text(value),
-      ),
-    );
-  }
-}
-
-class _ItemsCard extends StatelessWidget {
-  const _ItemsCard({
-    required this.items,
-    required this.productsAsync,
-    required this.taxRatesAsync,
-    required this.currency,
-    required this.isSales,
-    required this.onChanged,
-    required this.onAdd,
-    required this.onRemove,
-  });
-
-  final List<_EInvoiceItemDraft> items;
-  final AsyncValue<List<Product>> productsAsync;
-  final AsyncValue<List<TaxRate>> taxRatesAsync;
-  final String currency;
-  final bool isSales;
-  final VoidCallback onChanged;
-  final VoidCallback onAdd;
-  final ValueChanged<int> onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Kalemler',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: onAdd,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Kalem Ekle'),
-              ),
-            ],
-          ),
-          const Gap(12),
-          productsAsync.when(
-            data: (products) {
-              final taxRates = _availableTaxRates(taxRatesAsync, items);
-              return Column(
-                children: [
-                  for (var i = 0; i < items.length; i++) ...[
-                    _ItemEditor(
-                      item: items[i],
-                      products: products,
-                      taxRates: taxRates,
-                      currency: currency,
-                      isSales: isSales,
-                      onChanged: onChanged,
-                      onRemove: () => onRemove(i),
-                    ),
-                    if (i != items.length - 1) const Gap(10),
-                  ],
-                ],
-              );
-            },
-            loading: () => const LinearProgressIndicator(),
-            error: (_, _) => const Text('Stok/hizmet listesi yüklenemedi.'),
-          ),
-        ],
       ),
     );
   }
@@ -2061,7 +1923,7 @@ class _ItemEditor extends StatelessWidget {
           },
         );
         final totalField = _LineTotal(
-          label: 'Kalem Toplamı',
+          label: compact ? 'Toplam' : 'Kalem Toplamı',
           value: money.format(item.lineTotal),
           dense: compact,
         );
@@ -2086,34 +1948,67 @@ class _ItemEditor extends StatelessWidget {
             padding: EdgeInsets.all(compact ? 10 : 12),
             child: compact
                 ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(child: productField),
-                          const Gap(6),
                           IconButton(
                             tooltip: 'Kalemi sil',
+                            visualDensity: VisualDensity.compact,
                             onPressed: onRemove,
                             icon: const Icon(Icons.delete_outline_rounded),
                           ),
                         ],
                       ),
                       Gap(fieldGap),
-                      twoUp(quantityField, priceField),
-                      Gap(fieldGap),
-                      twoUp(unitField, taxField),
-                      Gap(fieldGap),
-                      twoUp(discountField, totalField),
-                      SwitchListTile.adaptive(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Özel matrah'),
-                        subtitle: const Text('Muafiyet kodu 101'),
-                        value: item.specialMatrah,
-                        onChanged: (value) {
-                          item.specialMatrah = value;
-                          if (value) item.taxRate = 0;
-                          onChanged();
-                        },
+                      Row(
+                        children: [
+                          Expanded(flex: 2, child: quantityField),
+                          Gap(fieldGap),
+                          Expanded(flex: 3, child: priceField),
+                          Gap(fieldGap),
+                          Expanded(flex: 3, child: totalField),
+                        ],
+                      ),
+                      Theme(
+                        data: Theme.of(
+                          context,
+                        ).copyWith(dividerColor: Colors.transparent),
+                        child: ExpansionTile(
+                          tilePadding: EdgeInsets.zero,
+                          childrenPadding: EdgeInsets.only(top: fieldGap),
+                          visualDensity: VisualDensity.compact,
+                          title: Text(
+                            'KDV / birim / indirim',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(
+                            '${item.unit} · ${_taxLabel(item.taxRate)}'
+                            '${item.discountRate > 0 ? ' · %${item.discountRate.toStringAsFixed(0)} indirim' : ''}'
+                            '${item.specialMatrah ? ' · özel matrah' : ''}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          children: [
+                            twoUp(unitField, taxField),
+                            Gap(fieldGap),
+                            discountField,
+                            SwitchListTile.adaptive(
+                              contentPadding: EdgeInsets.zero,
+                              dense: true,
+                              title: const Text('Özel matrah'),
+                              subtitle: const Text('Muafiyet kodu 101'),
+                              value: item.specialMatrah,
+                              onChanged: (value) {
+                                item.specialMatrah = value;
+                                if (value) item.taxRate = 0;
+                                onChanged();
+                              },
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   )
@@ -2205,6 +2100,203 @@ class _LineTotal extends StatelessWidget {
             style: Theme.of(context).textTheme.labelLarge,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MobileItemsCard extends StatelessWidget {
+  const _MobileItemsCard({
+    required this.items,
+    required this.productsAsync,
+    required this.taxRatesAsync,
+    required this.currency,
+    required this.isSales,
+    required this.onChanged,
+    required this.onAddBlank,
+    required this.onAddFromStock,
+    required this.onRemove,
+  });
+
+  final List<_EInvoiceItemDraft> items;
+  final AsyncValue<List<Product>> productsAsync;
+  final AsyncValue<List<TaxRate>> taxRatesAsync;
+  final String currency;
+  final bool isSales;
+  final VoidCallback onChanged;
+  final VoidCallback onAddBlank;
+  final ValueChanged<List<Product>> onAddFromStock;
+  final ValueChanged<int> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '2. Kalemler',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              Text(
+                '${items.length}',
+                style: Theme.of(
+                  context,
+                ).textTheme.labelLarge?.copyWith(color: AppTheme.textMuted),
+              ),
+            ],
+          ),
+          const Gap(8),
+          productsAsync.when(
+            data: (products) {
+              final taxRates = _availableTaxRates(taxRatesAsync, items);
+              return Column(
+                children: [
+                  for (var i = 0; i < items.length; i++) ...[
+                    _ItemEditor(
+                      item: items[i],
+                      products: products,
+                      taxRates: taxRates,
+                      currency: currency,
+                      isSales: isSales,
+                      onChanged: onChanged,
+                      onRemove: items.length == 1 ? null : () => onRemove(i),
+                    ),
+                    if (i != items.length - 1) const Gap(8),
+                  ],
+                ],
+              );
+            },
+            loading: () => const LinearProgressIndicator(),
+            error: (_, _) => const Text('Stok/hizmet listesi yüklenemedi.'),
+          ),
+          const Gap(10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: productsAsync.asData == null
+                      ? null
+                      : () => onAddFromStock(productsAsync.asData!.value),
+                  icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                  label: const Text('Stoktan'),
+                ),
+              ),
+              const Gap(8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onAddBlank,
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Satır'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileSaveBar extends StatelessWidget {
+  const _MobileSaveBar({
+    required this.grandTotal,
+    required this.currency,
+    required this.sendAfterSave,
+    required this.isSales,
+    required this.saving,
+    required this.apiEnvironmentLabel,
+    required this.onSendAfterSaveChanged,
+    required this.onSaveDraft,
+    required this.onSaveOpen,
+  });
+
+  final double grandTotal;
+  final String currency;
+  final bool sendAfterSave;
+  final bool isSales;
+  final bool saving;
+  final String apiEnvironmentLabel;
+  final ValueChanged<bool> onSendAfterSaveChanged;
+  final VoidCallback onSaveDraft;
+  final VoidCallback onSaveOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final money = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: currency == 'TRY' ? '₺' : '$currency ',
+      decimalDigits: 2,
+    );
+    return Material(
+      elevation: 8,
+      color: AppTheme.surface,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isSales)
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  value: sendAfterSave,
+                  onChanged: saving
+                      ? null
+                      : (value) => onSendAfterSaveChanged(value ?? false),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: Text(
+                    'Kaydettikten sonra $apiEnvironmentLabel API’ye gönder',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Toplam',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: AppTheme.textMuted),
+                        ),
+                        Text(
+                          money.format(grandTotal),
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: saving ? null : onSaveDraft,
+                    child: const Text('Taslak'),
+                  ),
+                  const Gap(4),
+                  FilledButton(
+                    onPressed: saving ? null : onSaveOpen,
+                    child: saving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Kaydet'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
