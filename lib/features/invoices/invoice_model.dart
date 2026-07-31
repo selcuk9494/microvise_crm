@@ -97,7 +97,8 @@ class Invoice {
   bool get isEInvoiceManual => eInvoiceStatus == 'manual';
   bool get isEInvoiceClosed => isEInvoiceSent || isEInvoiceManual;
   bool get isLinkedToAkinsoft =>
-      (akinsoftSourceId?.trim().isNotEmpty ?? false);
+      (akinsoftSourceId?.trim().isNotEmpty ?? false) ||
+      (erpInvoiceNumber?.trim().isNotEmpty ?? false);
   bool canSendEInvoiceTo(String environment) =>
       !isEInvoiceClosed ||
       (eInvoiceStatus == 'sent' &&

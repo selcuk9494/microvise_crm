@@ -656,6 +656,77 @@ function dateOrIso(value) {
   return date.toISOString();
 }
 
+/** mssql DateTime için güvenli tarih; Invalid Date üretmez. */
+function toSqlDate(value, fallback = null) {
+  if (value == null || value === '') return fallback;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return new Date(
+      Date.UTC(
+        value.getUTCFullYear(),
+        value.getUTCMonth(),
+        value.getUTCDate(),
+        12,
+        0,
+        0,
+      ),
+    );
+  }
+  const raw = String(value).trim();
+  const isoDay = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoDay) {
+    const parsed = new Date(`${isoDay[1]}T12:00:00`);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  const dmy = raw.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+  if (dmy) {
+    const day = dmy[1].padStart(2, '0');
+    const month = dmy[2].padStart(2, '0');
+    const parsed = new Date(`${dmy[3]}-${month}-${day}T12:00:00`);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return new Date(
+      Date.UTC(
+        parsed.getUTCFullYear(),
+        parsed.getUTCMonth(),
+        parsed.getUTCDate(),
+        12,
+        0,
+        0,
+      ),
+    );
+  }
+  return fallback;
+}
+
+function bindSqlValue(request, sql, param, value) {
+  if (value === null || value === undefined) {
+    request.input(param, sql.NVarChar, null);
+    return;
+  }
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      throw new Error(`Geçersiz tarih parametresi: ${param}`);
+    }
+    request.input(param, sql.DateTime, value);
+    return;
+  }
+  if (typeof value === 'number') {
+    request.input(
+      param,
+      Number.isInteger(value) ? sql.BigInt : sql.Float,
+      value,
+    );
+    return;
+  }
+  if (typeof value === 'boolean') {
+    request.input(param, sql.Bit, value);
+    return;
+  }
+  request.input(param, sql.NVarChar, String(value));
+}
+
 function pick(row, names, fallback = null) {
   if (!row) return fallback;
   for (const name of names) {
@@ -3757,16 +3828,7 @@ async function insertAkinsoftRowWithRequest(
     const param = `p${index}`;
     colSql.push(`[${col}]`);
     valSql.push(`@${param}`);
-    if (value === null) request.input(param, sql.NVarChar, null);
-    else if (typeof value === 'number') {
-      request.input(
-        param,
-        Number.isInteger(value) ? sql.BigInt : sql.Float,
-        value,
-      );
-    } else if (value instanceof Date) request.input(param, sql.DateTime, value);
-    else if (typeof value === 'boolean') request.input(param, sql.Bit, value);
-    else request.input(param, sql.NVarChar, String(value));
+    bindSqlValue(request, sql, param, value);
   });
   const result = await request.query(`
     insert into dbo.${safeTable} (${colSql.join(', ')})
@@ -4214,7 +4276,9 @@ async function resolveAkinsoftCustomerForPush(pool, sql, query, invoice) {
 
 async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
   const invoiceId = textOrNull(invoice.id);
+  const maliyeNumber = localEInvoiceNumber(invoice.e_invoice_number);
   const invoiceNumber =
+    (String(invoice.e_invoice_status || '') === 'sent' && maliyeNumber) ||
     localEInvoiceNumber(invoice.invoice_number) ||
     textOrNull(invoice.invoice_number);
   if (!invoiceId || !invoiceNumber) {
@@ -4263,10 +4327,31 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
       where FATURA_NO = @invoiceNumber
     `);
   if (duplicate.recordset?.length) {
+    const sourceId = String(duplicate.recordset[0].sourceId);
+    await upsertAkinsoftSyncMap(query, {
+      sourceType: 'invoice',
+      sourceId,
+      sourceCode: invoiceNumber,
+      sourceName: textOrNull(invoice.customer_name),
+      localTable: 'invoices',
+      localId: invoiceId,
+    });
+    await query(
+      `
+        update public.invoices
+        set erp_invoice_number = coalesce(nullif(trim(erp_invoice_number), ''), $2),
+            erp_invoice_number_synced_at = now(),
+            updated_at = now()
+        where id = $1::uuid
+      `,
+      [invoiceId, invoiceNumber],
+    );
     return {
-      ok: false,
-      reason: `Akınsoft’ta ${invoiceNumber} numarası zaten var.`,
-      sourceId: duplicate.recordset[0].sourceId,
+      ok: true,
+      skipped: true,
+      reason: 'Akınsoft’ta aynı numaralı fatura vardı; eşleme güncellendi.',
+      sourceId,
+      invoiceNumber,
     };
   }
 
@@ -4286,12 +4371,9 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
   const currency = normalizeCurrency(invoice.currency);
   const isTry = currency === 'TRY';
   const exchangeRate = Math.max(Number(invoice.exchange_rate) || 1, 0.000001);
-  const invoiceDate = invoice.invoice_date
-    ? new Date(`${String(invoice.invoice_date).slice(0, 10)}T12:00:00`)
-    : new Date();
-  const dueDate = invoice.due_date
-    ? new Date(`${String(invoice.due_date).slice(0, 10)}T12:00:00`)
-    : invoiceDate;
+  const invoiceDate =
+    toSqlDate(invoice.invoice_date, toSqlDate(new Date())) || new Date();
+  const dueDate = toSqlDate(invoice.due_date, invoiceDate);
   const isSales = String(invoice.invoice_type || 'sales') !== 'purchase';
 
   const linePayloads = [];
@@ -4403,16 +4485,7 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
         const param = `p${index}`;
         colSql.push(`[${col}]`);
         valSql.push(`@${param}`);
-        if (value === null) request.input(param, sql.NVarChar, null);
-        else if (typeof value === 'number') {
-          request.input(
-            param,
-            Number.isInteger(value) ? sql.BigInt : sql.Float,
-            value,
-          );
-        } else if (value instanceof Date) request.input(param, sql.DateTime, value);
-        else if (typeof value === 'boolean') request.input(param, sql.Bit, value);
-        else request.input(param, sql.NVarChar, String(value));
+        bindSqlValue(request, sql, param, value);
       });
       const result = await request.query(`
         insert into dbo.${safeTable} (${colSql.join(', ')})
@@ -4430,7 +4503,7 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
     }
     setFirstColumn(header, faturaColumns, ['FATURA_NO'], invoiceNumber);
     setFirstColumn(header, faturaColumns, ['TARIHI'], invoiceDate);
-    setFirstColumn(header, faturaColumns, ['VADESI'], dueDate);
+    if (dueDate) setFirstColumn(header, faturaColumns, ['VADESI'], dueDate);
     setFirstColumn(header, faturaColumns, ['BLCRKODU'], customerSourceId);
     setFirstColumn(
       header,
@@ -4625,7 +4698,7 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
       setFirstColumn(cariRow, cariHrColumns, ['BLCRKODU'], customerSourceId);
       setFirstColumn(cariRow, cariHrColumns, ['EVRAK_NO'], invoiceNumber);
       setFirstColumn(cariRow, cariHrColumns, ['TARIHI'], invoiceDate);
-      setFirstColumn(cariRow, cariHrColumns, ['VADESI'], dueDate);
+      if (dueDate) setFirstColumn(cariRow, cariHrColumns, ['VADESI'], dueDate);
       setFirstColumn(
         cariRow,
         cariHrColumns,
@@ -4738,6 +4811,8 @@ async function handleAkinsoftPushInvoices(req, res) {
         i.status,
         i.notes,
         i.is_active,
+        i.e_invoice_number,
+        i.e_invoice_status,
         c.name as customer_name,
         c.vkn as customer_vkn,
         c.tax_office as customer_tax_office,
@@ -5000,11 +5075,14 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
             `
               update public.invoices
               set invoice_number = $2,
-                  erp_invoice_number = coalesce(nullif(trim(erp_invoice_number), ''), $3),
+                  erp_invoice_number = coalesce(
+                    nullif(trim(erp_invoice_number), ''),
+                    $3
+                  ),
                   updated_at = now()
               where id = $1
             `,
-            [row.id, eInvoiceNumber, erpNumber],
+            [row.id, eInvoiceNumber, erpNumber || invoiceNumber],
           );
           renamed = true;
         } else if (erpNumber && !textOrNull(row.erp_invoice_number)) {
@@ -5020,7 +5098,11 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
         }
 
         const write = await writeAkinsoftInvoiceNumber(pool, sql, {
-          oldNumber: erpNumber,
+          oldNumber:
+            erpNumber ||
+            (invoiceNumber && invoiceNumber !== eInvoiceNumber
+              ? invoiceNumber
+              : null),
           newNumber: eInvoiceNumber,
           sourceId: row.akinsoft_source_id,
         });
