@@ -10,7 +10,7 @@ const PAGE = { width: 595.28, height: 841.89 };
 const LEFT = 48;
 const RIGHT = 548;
 const WIDTH = RIGHT - LEFT;
-const FOOTER_RULE_Y = 697;
+const FOOTER_RULE_Y = 778;
 
 const COLORS = {
   text: '#1f242c',
@@ -234,17 +234,27 @@ function formatDate(value, includeTime = true) {
   }`;
 }
 
-function unitName(value) {
+function unitName(value, { short = false } = {}) {
   const code = String(value || '').toUpperCase();
-  return (
-    {
-      C62: 'ADET(UNIT)',
-      KGM: 'KG(KILOGRAM)',
-      LTR: 'LT(LITRE)',
-      MTR: 'MT(METRE)',
-      HUR: 'SAAT(HOUR)',
-    }[code] || text(value)
-  );
+  const full = {
+    C62: 'ADET(UNIT)',
+    KGM: 'KG(KILOGRAM)',
+    LTR: 'LT(LITRE)',
+    MTR: 'MT(METRE)',
+    HUR: 'SAAT(HOUR)',
+  }[code];
+  if (short) {
+    return (
+      {
+        C62: 'Adet',
+        KGM: 'Kg',
+        LTR: 'Lt',
+        MTR: 'Mt',
+        HUR: 'Saat',
+      }[code] || text(value)
+    );
+  }
+  return full || text(value);
 }
 
 const ONES = ['', 'BİR', 'İKİ', 'ÜÇ', 'DÖRT', 'BEŞ', 'ALTI', 'YEDİ', 'SEKİZ', 'DOKUZ'];
@@ -351,8 +361,24 @@ const DESCRIPTION = {
   fontSize: 6.6,
   lineGap: 1.6,
   top: 14,
-  width: 340,
+  // Toplamlar sağda; açıklama sol sütunda yan yana basılır.
+  width: 250,
 };
+
+function descriptionBlockHeight(doc, description, resolvedPo) {
+  if (!description && !resolvedPo) return 0;
+  const poBlockHeight = resolvedPo
+    ? DESCRIPTION.fontSize + DESCRIPTION.lineGap + 2
+    : 0;
+  doc.font('Invoice').fontSize(DESCRIPTION.fontSize);
+  const bodyHeight = description
+    ? doc.heightOfString(description, {
+        width: DESCRIPTION.width,
+        lineGap: DESCRIPTION.lineGap,
+      }) + (resolvedPo ? 4 + poBlockHeight : 0)
+    : poBlockHeight;
+  return DESCRIPTION.titleFontSize + DESCRIPTION.top + bodyHeight;
+}
 
 function resolveAssetPath(...parts) {
   const relative = path.join(...parts);
@@ -420,18 +446,18 @@ function drawParty(doc, title, party, x, y, width, height) {
     });
 }
 
-function drawMeta(doc, label, value, x, y, width, row = 0) {
-  const rowTop = y + row * (79 / 2);
+function drawMeta(doc, label, value, x, y, width, row = 0, rowHeight = 30) {
+  const rowTop = y + row * rowHeight;
   doc
     .font('Invoice')
-    .fontSize(6.5)
+    .fontSize(6.0)
     .fillColor(COLORS.label)
-    .text(label, x, rowTop + 9, { width, ellipsis: true });
+    .text(label, x, rowTop + 5, { width, ellipsis: true });
   doc
     .font('InvoiceBold')
-    .fontSize(8.1)
+    .fontSize(7.4)
     .fillColor(COLORS.text)
-    .text(text(value), x, rowTop + 22, { width, ellipsis: true });
+    .text(text(value), x, rowTop + 16, { width, ellipsis: true });
 }
 
 const TABLE_COLUMNS = [48, 160, 272, 336, 384, 421, 458, 504, 548];
@@ -465,15 +491,16 @@ function rowHeight(doc, values, font, size) {
     const box = columnBox(index);
     return Math.max(
       max,
-      doc.heightOfString(value, { width: box.width, lineGap: 1.2 }),
+      doc.heightOfString(value, { width: box.width, lineGap: 0.6 }),
     );
   }, 0);
-  return tallest + 10;
+  // Uzun isimler tek satırı şişirmesin; 15 kalem hedefi için tavan.
+  return Math.min(tallest + 3.5, 16.5);
 }
 
-const TABLE_HEADER_HEIGHT = 32;
+const TABLE_HEADER_HEIGHT = 20;
 // Toplamlar bloğunun (ara toplam -> "Yalnız" satırı) toplam yüksekliği.
-const TOTALS_BLOCK_HEIGHT = 121;
+const TOTALS_BLOCK_HEIGHT = 96;
 // Devam sayfalarında içeriğin başladığı üst sınır.
 const CONTINUATION_TOP = 44;
 
@@ -492,13 +519,13 @@ function drawTopBar(doc, createdAt) {
 function drawTableHeader(doc, y) {
   doc.rect(LEFT, y, WIDTH, TABLE_HEADER_HEIGHT).fill(COLORS.headerFill);
   drawGrid(doc, y, TABLE_HEADER_HEIGHT);
-  doc.font('InvoiceBold').fontSize(7.4).fillColor(COLORS.text);
+  doc.font('InvoiceBold').fontSize(6.6).fillColor(COLORS.text);
   TABLE_HEADERS.forEach((header, index) => {
     const box = columnBox(index);
-    const height = doc.heightOfString(header, { width: box.width, lineGap: 2 });
+    const height = doc.heightOfString(header, { width: box.width, lineGap: 0.4 });
     doc.text(header, box.x, y + (TABLE_HEADER_HEIGHT - height) / 2, {
       width: box.width,
-      lineGap: 2,
+      lineGap: 0.4,
       align: index < 2 ? 'left' : 'right',
     });
   });
@@ -510,14 +537,19 @@ function drawRow(doc, values, y, height, font, size) {
   doc.font(font).fontSize(size).fillColor(COLORS.text);
   values.forEach((value, index) => {
     const box = columnBox(index);
-    const textHeight = doc.heightOfString(value, {
-      width: box.width,
-      lineGap: 1.2,
-    });
+    const textHeight = Math.min(
+      height - 2,
+      doc.heightOfString(value, {
+        width: box.width,
+        lineGap: 0.6,
+      }),
+    );
     doc.text(value, box.x, y + (height - textHeight) / 2, {
       width: box.width,
-      lineGap: 1.2,
+      height: height - 2,
+      lineGap: 0.6,
       align: index < 2 ? 'left' : 'right',
+      ellipsis: true,
     });
   });
 }
@@ -666,23 +698,23 @@ async function buildEInvoiceArchivePdf({
 
   doc
     .font('Invoice')
-    .fontSize(9)
+    .fontSize(8.2)
     .fillColor(COLORS.label)
     .text(
       `Fatura No: ${text(
         source.faturaNo || invoice.e_invoice_number || invoice.invoice_number,
       )}`,
       96,
-      96,
+      94,
       { width: 310, align: 'left', ellipsis: true },
     );
 
-  const boxTop = 114;
+  const boxTop = 108;
 
   const boxWidth = (WIDTH - 16) / 2;
   // Maliye şablonunda taraf kutuları sabit yükseklikte; uzun metin kutu içinde
   // ellipsis ile sınırlandırılır ve takip eden blokları aşağı itmez.
-  const boxHeight = 124;
+  const boxHeight = 98;
   drawParty(doc, 'Tedarikçi Bilgileri', supplier, LEFT, boxTop, boxWidth, boxHeight);
   drawParty(
     doc,
@@ -694,8 +726,8 @@ async function buildEInvoiceArchivePdf({
     boxHeight,
   );
 
-  const metaTop = boxTop + boxHeight + 12;
-  const metaHeight = 79;
+  const metaTop = boxTop + boxHeight + 5;
+  const metaHeight = 60;
   const metaMidX = LEFT + WIDTH / 2;
   const metaMidY = metaTop + metaHeight / 2;
   doc
@@ -749,7 +781,7 @@ async function buildEInvoiceArchivePdf({
     1,
   );
 
-  const listTop = metaTop + metaHeight + 14;
+  const listTop = metaTop + metaHeight + 5;
   doc
     .lineWidth(0.7)
     .moveTo(LEFT, listTop)
@@ -758,17 +790,18 @@ async function buildEInvoiceArchivePdf({
     .stroke();
   doc
     .font('InvoiceBold')
-    .fontSize(10.5)
+    .fontSize(9)
     .fillColor(COLORS.text)
-    .text('Mal/Hizmet Listesi', LEFT, listTop + 12);
+    .text('Mal/Hizmet Listesi', LEFT, listTop + 5);
 
-  let y = drawTableHeader(doc, listTop + 31);
+  let y = drawTableHeader(doc, listTop + 18);
 
   const rows = items.map((item) => [
     text(item.adi),
     text(item.aciklama, ''),
-    `${Number(item.birimMiktari || 0).toLocaleString('tr-TR')}\n${unitName(
+    `${Number(item.birimMiktari || 0).toLocaleString('tr-TR')} ${unitName(
       item.birimTurKod,
+      { short: true },
     )}`,
     money(item.fiyat, currency),
     item.discount ? `-${money(item.discount, currency)}` : '-',
@@ -809,20 +842,7 @@ async function buildEInvoiceArchivePdf({
   const bankDescription = bankLines.join('\n').trim();
   const resolvedPo = (poNumber || poFromDescription).trim();
   const description = bankDescription;
-  doc.font('Invoice').fontSize(DESCRIPTION.fontSize);
-  const poBlockHeight = resolvedPo
-    ? DESCRIPTION.fontSize + DESCRIPTION.lineGap + 2
-    : 0;
-  const descriptionHeight = description
-    ? DESCRIPTION.top +
-      doc.heightOfString(description, {
-        width: DESCRIPTION.width,
-        lineGap: DESCRIPTION.lineGap,
-      }) +
-      (resolvedPo ? 4 + poBlockHeight : 0)
-    : resolvedPo
-      ? DESCRIPTION.top + poBlockHeight
-      : 0;
+  const descHeight = descriptionBlockHeight(doc, description, resolvedPo);
   // Kalemler hiçbir zaman kırpılmaz; sığmayanlar devam sayfasına taşar.
   const tableBottom = FOOTER_RULE_Y - 14;
   const startContinuationPage = (title) => {
@@ -839,18 +859,21 @@ async function buildEInvoiceArchivePdf({
 
   let rowsOnPage = 0;
   for (const values of rows) {
-    const height = rowHeight(doc, values, 'Invoice', 7.4);
+    const height = rowHeight(doc, values, 'Invoice', 6.4);
     // rowsOnPage kontrolü, tek başına sayfadan uzun satırlarda sonsuz döngüyü önler.
     if (rowsOnPage > 0 && y + height > tableBottom) {
       y = drawTableHeader(doc, startContinuationPage('Mal/Hizmet Listesi (devam)'));
       rowsOnPage = 0;
     }
-    drawRow(doc, values, y, height, 'Invoice', 7.4);
+    drawRow(doc, values, y, height, 'Invoice', 6.4);
     y += height;
     rowsOnPage += 1;
   }
 
-  if (y + TOTALS_BLOCK_HEIGHT + descriptionHeight > tableBottom) {
+  // Toplamlar sağda, açıklama solda yan yana. Açıklama uzun diye
+  // toplamları 2. sayfaya itme; gerekirse yalnız açıklama taşar.
+  const blockTopGap = 6;
+  if (y + blockTopGap + TOTALS_BLOCK_HEIGHT > tableBottom) {
     y = startContinuationPage('Fatura Toplamları') + 6;
   }
 
@@ -860,56 +883,63 @@ async function buildEInvoiceArchivePdf({
     ['İndirim Toplamı:', `-${money(discountTotal, currency)}`],
     ['KDV Toplamı:', money(source.kdvToplami ?? invoice.tax_total, currency)],
   ];
-  y += 16;
+  y += blockTopGap;
+  const totalsStartY = y;
   const totalsLeft = 306;
   totals.forEach(([label, value]) => {
     doc
       .font('Invoice')
-      .fontSize(8)
+      .fontSize(7.2)
       .fillColor(COLORS.text)
       .text(label, totalsLeft, y, { width: 130 });
     doc
       .font('InvoiceBold')
-      .fontSize(8)
+      .fontSize(7.2)
       .fillColor(COLORS.text)
       .text(value, 438, y, { width: RIGHT - 438, align: 'right' });
-    y += 16.5;
+    y += 12.5;
   });
   doc
     .lineWidth(0.8)
-    .moveTo(totalsLeft, y + 3)
-    .lineTo(RIGHT, y + 3)
+    .moveTo(totalsLeft, y + 2)
+    .lineTo(RIGHT, y + 2)
     .strokeColor(COLORS.border)
     .stroke();
-  y += 13;
+  y += 8;
   const payable = source.odenecekToplam ?? invoice.grand_total;
   doc
     .font('InvoiceBold')
-    .fontSize(10.5)
+    .fontSize(9.2)
     .fillColor(COLORS.text)
     .text('Ödenecek Toplam:', totalsLeft, y, { width: 150 })
     .text(money(payable, currency), 438, y, {
       width: RIGHT - 438,
       align: 'right',
     });
-  y += 20;
+  y += 15;
   doc
     .font('InvoiceItalic')
-    .fontSize(6.8)
+    .fontSize(6.2)
     .fillColor(COLORS.label)
     .text(`Yalnız: ${amountInWords(payable, currency)}`, 350, y, {
       width: RIGHT - 350,
       align: 'right',
     });
-  y += 22;
+  const totalsEndY = y + 12;
 
+  let descriptionEndY = totalsStartY;
   if (description || resolvedPo) {
+    const descriptionFitsHere = totalsStartY + descHeight <= tableBottom;
+    let descY = totalsStartY;
+    if (!descriptionFitsHere) {
+      descY = startContinuationPage('Açıklama');
+    }
     doc
       .font('InvoiceBold')
       .fontSize(DESCRIPTION.titleFontSize)
       .fillColor(COLORS.text)
-      .text('Açıklama', LEFT, y);
-    let textY = y + DESCRIPTION.top;
+      .text('Açıklama', LEFT, descY);
+    let textY = descY + DESCRIPTION.top;
     if (description) {
       doc
         .font('Invoice')
@@ -929,8 +959,12 @@ async function buildEInvoiceArchivePdf({
         .text(resolvedPo, LEFT, textY, {
           width: DESCRIPTION.width,
         });
+      textY = doc.y;
     }
+    descriptionEndY = textY;
   }
+
+  y = Math.max(totalsEndY, descriptionEndY);
 
   doc
     .lineWidth(0.8)
@@ -940,22 +974,22 @@ async function buildEInvoiceArchivePdf({
     .stroke();
   doc
     .font('Invoice')
-    .fontSize(7)
+    .fontSize(6.5)
     .fillColor(COLORS.footer)
     .text(
       'Bu fatura elektronik ortamda oluşturulmuş olup, yasal geçerliliği bulunmaktadır.',
       LEFT,
-      FOOTER_RULE_Y + 12,
+      FOOTER_RULE_Y + 8,
       { width: WIDTH, align: 'center' },
     )
-    .text(`Doğrulama Kodu: ${verificationCode}`, LEFT, FOOTER_RULE_Y + 25, {
+    .text(`Doğrulama Kodu: ${verificationCode}`, LEFT, FOOTER_RULE_Y + 18, {
       width: WIDTH,
       align: 'center',
     })
     .text(
       `Oluşturma Tarihi: ${formatDate(createdAt)}`,
       LEFT,
-      FOOTER_RULE_Y + 38,
+      FOOTER_RULE_Y + 28,
       { width: WIDTH, align: 'center' },
     );
 

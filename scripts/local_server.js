@@ -1043,6 +1043,79 @@ async function akinsoftTableColumnSet(pool, tableName) {
   return new Set(result.recordset.map((row) => String(row.name).toUpperCase()));
 }
 
+function normalizeProductSnapshot(product) {
+  return {
+    code: textOrNull(product.code) || '',
+    name: textOrNull(product.name) || '',
+    description: textOrNull(product.description) || '',
+    category: textOrNull(product.category) || '',
+    unit: textOrNull(product.unit) || 'Adet',
+    taxRate: Number(numberOrZero(product.taxRate ?? product.tax_rate) || 20),
+    group:
+      textOrNull(product.group ?? product.akinsoft_group) ||
+      textOrNull(product.category) ||
+      '',
+    subGroup: textOrNull(product.subGroup ?? product.akinsoft_sub_group) || '',
+  };
+}
+
+function productSnapshotEqual(left, right) {
+  const a = normalizeProductSnapshot(left || {});
+  const b = normalizeProductSnapshot(right || {});
+  return (
+    a.code === b.code &&
+    a.name === b.name &&
+    a.description === b.description &&
+    a.category === b.category &&
+    a.unit === b.unit &&
+    a.taxRate === b.taxRate &&
+    a.group === b.group &&
+    a.subGroup === b.subGroup
+  );
+}
+
+async function loadCrmProductSnapshotsBySource(query) {
+  await ensureAkinsoftSyncMap(query);
+  const mapped = await query(`
+    select
+      m.source_id,
+      m.local_id,
+      p.code,
+      p.name,
+      p.description,
+      p.category,
+      p.unit,
+      p.tax_rate,
+      p.akinsoft_group,
+      p.akinsoft_sub_group,
+      p.akinsoft_source_id
+    from public.akinsoft_sync_map m
+    join public.products p on p.id = m.local_id
+    where m.source_system = 'akinsoft'
+      and m.source_type = 'product'
+  `);
+  const bySourceId = new Map();
+  const byCode = new Map();
+  for (const row of mapped.rows) {
+    const snapshot = {
+      id: row.local_id,
+      code: row.code,
+      name: row.name,
+      description: row.description,
+      category: row.category,
+      unit: row.unit,
+      taxRate: row.tax_rate,
+      group: row.akinsoft_group,
+      subGroup: row.akinsoft_sub_group,
+      akinsoft_source_id: row.akinsoft_source_id,
+      mapped: true,
+    };
+    if (row.source_id != null) bySourceId.set(String(row.source_id), snapshot);
+    if (textOrNull(row.code)) byCode.set(textOrNull(row.code), snapshot);
+  }
+  return { bySourceId, byCode };
+}
+
 function bracketSqlName(name) {
   return `[${escapeSqlName(name)}]`;
 }
@@ -1964,6 +2037,38 @@ async function handleAkinsoftPull(req, res) {
       }));
     }
 
+    let productsUnchanged = 0;
+    try {
+      const { query } = require(path.join(rootDir, 'api', '_lib', 'db.js'));
+      const { bySourceId } = await loadCrmProductSnapshotsBySource(query);
+      const requiredIds = new Set();
+      for (const invoice of invoices) {
+        for (const item of Array.isArray(invoice.items) ? invoice.items : []) {
+          const sourceId = textOrNull(item.productSourceId);
+          if (sourceId) requiredIds.add(sourceId);
+        }
+      }
+      const filtered = [];
+      for (const product of products) {
+        const sourceId = textOrNull(product.sourceId);
+        if (sourceId && requiredIds.has(sourceId)) {
+          filtered.push(product);
+          continue;
+        }
+        const previous = sourceId ? bySourceId.get(sourceId) : null;
+        if (!previous || !productSnapshotEqual(previous, product)) {
+          filtered.push(product);
+          continue;
+        }
+        productsUnchanged += 1;
+      }
+      products = filtered;
+    } catch (error) {
+      warnings.push(
+        `Stok delta filtresi atlandı: ${error?.message || error}`,
+      );
+    }
+
     return send(
       res,
       200,
@@ -1982,6 +2087,8 @@ async function handleAkinsoftPull(req, res) {
         counts: {
           customers: customerCount || customers.length,
           products: productCount || products.length,
+          productsSelected: products.length,
+          productsUnchanged,
           invoices: invoices.length,
           rawInvoices: rawInvoiceCount || invoices.length,
           filteredInvoices: Math.max(0, (rawInvoiceCount || invoices.length) - invoices.length),
@@ -2169,6 +2276,7 @@ async function importAkinsoftDataset(data, onProgress) {
   let productsImported = 0;
   let productsCreated = 0;
   let productsUpdated = 0;
+  let productsSkipped = 0;
   let invoicesImported = 0;
   let invoiceItemsImported = 0;
   let customersMatchedBySource = 0;
@@ -2177,6 +2285,14 @@ async function importAkinsoftDataset(data, onProgress) {
   let customersCreated = 0;
   let invoicesSkippedMissingCustomerMatch = 0;
   const skippedInvoices = [];
+
+  const productSnapshots = await loadCrmProductSnapshotsBySource(query);
+  for (const [sourceId, snapshot] of productSnapshots.bySourceId) {
+    if (snapshot.id) productIdBySource.set(sourceId, snapshot.id);
+  }
+  for (const [code, snapshot] of productSnapshots.byCode) {
+    if (snapshot.id) productIdByCode.set(code, snapshot.id);
+  }
 
   reportProgress(0, {
     stage: 'customers',
@@ -2323,7 +2439,14 @@ async function importAkinsoftDataset(data, onProgress) {
     const sourceId = textOrNull(product.sourceId);
     let id = null;
     let created = false;
-    if (sourceId) {
+    let existingSnapshot =
+      (sourceId && productSnapshots.bySourceId.get(sourceId)) ||
+      (code && productSnapshots.byCode.get(code)) ||
+      null;
+    if (existingSnapshot?.id) {
+      id = existingSnapshot.id;
+    }
+    if (!id && sourceId) {
       const mapped = await findAkinsoftMappedLocalId(query, 'product', sourceId);
       id = mapped.rows?.[0]?.id || null;
       if (!id) {
@@ -2345,6 +2468,13 @@ async function importAkinsoftDataset(data, onProgress) {
         [code],
       );
       id = byCode.rows?.[0]?.id || null;
+    }
+    if (id && existingSnapshot && productSnapshotEqual(existingSnapshot, product)) {
+      productsSkipped += 1;
+      if (sourceId != null) productIdBySource.set(String(sourceId), id);
+      if (code) productIdByCode.set(code, id);
+      reportProductProgress();
+      continue;
     }
     if (id) {
       await query(
@@ -2450,6 +2580,20 @@ async function importAkinsoftDataset(data, onProgress) {
     productsImported += 1;
     if (sourceId != null) productIdBySource.set(String(sourceId), id);
     if (code) productIdByCode.set(code, id);
+    const nextSnapshot = {
+      id,
+      code,
+      name,
+      description: textOrNull(product.description),
+      category: textOrNull(product.category),
+      unit: textOrNull(product.unit) || 'Adet',
+      taxRate: numberOrZero(product.taxRate) || 20,
+      group: textOrNull(product.group),
+      subGroup: textOrNull(product.subGroup),
+      mapped: true,
+    };
+    if (sourceId != null) productSnapshots.bySourceId.set(String(sourceId), nextSnapshot);
+    if (code) productSnapshots.byCode.set(code, nextSnapshot);
     await upsertAkinsoftSyncMap(query, {
       sourceType: 'product',
       sourceId: sourceId || code || id,
@@ -2753,6 +2897,7 @@ async function importAkinsoftDataset(data, onProgress) {
     products: productsImported,
     productsCreated,
     productsUpdated,
+    productsSkipped,
     invoices: invoicesImported,
     invoiceItems: invoiceItemsImported,
     customerMatches: {
@@ -2764,6 +2909,7 @@ async function importAkinsoftDataset(data, onProgress) {
     skipped: {
       missingCustomerMatch: invoicesSkippedMissingCustomerMatch,
       invoices: skippedInvoices,
+      productsUnchanged: productsSkipped,
     },
   };
 }
@@ -3816,13 +3962,15 @@ async function createAkinsoftCari(pool, sql, query, customer) {
   };
 }
 
-async function createAkinsoftStok(pool, sql, query, product) {
-  const hasStok = await akinsoftTableExists(pool, 'STOK');
+async function createAkinsoftStok(pool, sql, query, product, cached = null) {
+  const hasStok = cached?.hasStok ?? (await akinsoftTableExists(pool, 'STOK'));
   if (!hasStok) {
     throw new Error('Akınsoft STOK tablosu bulunamadı.');
   }
-  const columns = await akinsoftTableColumnSet(pool, 'STOK');
-  const identity = await akinsoftColumnIsIdentity(pool, 'STOK', 'BLKODU');
+  const columns =
+    cached?.columns || (await akinsoftTableColumnSet(pool, 'STOK'));
+  const identity =
+    cached?.identity ?? (await akinsoftColumnIsIdentity(pool, 'STOK', 'BLKODU'));
   const name = textOrNull(product.name) || 'CRM Stok';
   const code =
     textOrNull(product.code) ||
@@ -3979,9 +4127,27 @@ async function pushUnmappedCrmProductsToAkinsoft(pool, sql, query) {
   let matched = 0;
   let failed = 0;
   const errors = [];
+  if (!result.rows.length) {
+    return { created, matched, failed, errors, scanned: 0 };
+  }
+  const hasStok = await akinsoftTableExists(pool, 'STOK');
+  if (!hasStok) {
+    return {
+      created: 0,
+      matched: 0,
+      failed: result.rows.length,
+      errors: [{ reason: 'Akınsoft STOK tablosu bulunamadı.' }],
+      scanned: result.rows.length,
+    };
+  }
+  const cached = {
+    hasStok: true,
+    columns: await akinsoftTableColumnSet(pool, 'STOK'),
+    identity: await akinsoftColumnIsIdentity(pool, 'STOK', 'BLKODU'),
+  };
   for (const product of result.rows) {
     try {
-      const write = await createAkinsoftStok(pool, sql, query, product);
+      const write = await createAkinsoftStok(pool, sql, query, product, cached);
       if (write.created) created += 1;
       else matched += 1;
     } catch (error) {

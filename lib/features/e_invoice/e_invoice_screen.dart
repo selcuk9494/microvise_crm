@@ -6485,7 +6485,19 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                   tone: AppBadgeTone.primary,
                 ),
                 AppBadge(
-                  label: '${counts['products'] ?? 0} stok',
+                  label: () {
+                    final selected =
+                        (counts['productsSelected'] as num?)?.toInt() ??
+                        (data['products'] is List
+                            ? (data['products'] as List).length
+                            : (counts['products'] as num?)?.toInt() ?? 0);
+                    final unchanged =
+                        (counts['productsUnchanged'] as num?)?.toInt() ?? 0;
+                    if (unchanged > 0) {
+                      return '$selected stok aktarılacak · $unchanged değişmedi';
+                    }
+                    return '$selected stok';
+                  }(),
                   tone: AppBadgeTone.success,
                 ),
                 AppBadge(
@@ -6938,7 +6950,8 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
               'İçe aktarıldı: ${summary['customers'] ?? 0} cari, '
               '${summary['products'] ?? 0} stok'
               ' (yeni ${summary['productsCreated'] ?? 0} / '
-              'güncel ${summary['productsUpdated'] ?? 0}), '
+              'güncel ${summary['productsUpdated'] ?? 0}'
+              '${(summary['productsSkipped'] ?? 0) > 0 ? ' / atlanan ${summary['productsSkipped']}' : ''}), '
               '${summary['invoices'] ?? 0} fatura. '
               'CRM→Akınsoft stok: +${productsPush['created'] ?? 0}'
               '${(productsPush['matched'] ?? 0) > 0 ? ' / eşleşen ${productsPush['matched']}' : ''}'
