@@ -1344,6 +1344,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         content: Text(
           '${selected.length} faturanın CRM ve Akınsoft fatura numarası '
           'Maliye e-fatura numarasına güncellensin mi?\n\n'
+          'Akınsoft’ta kaydı olmayanlar Maliye numarasıyla yeni oluşturulur.\n\n'
           'Örnek: SF03393 → ${_localEInvoiceNumber(selected.first.eInvoiceNumber!)}',
         ),
         actions: [

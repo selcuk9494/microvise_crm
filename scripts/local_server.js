@@ -2786,6 +2786,10 @@ async function importAkinsoftDataset(data, onProgress) {
             end,
             notes = $13,
             erp_invoice_number = coalesce(erp_invoice_number, $14),
+            e_invoice_status = case
+              when e_invoice_status = 'sent' then e_invoice_status
+              else 'manual'
+            end,
             is_active = true,
             updated_at = now()
           where id = $1
@@ -2813,9 +2817,13 @@ async function importAkinsoftDataset(data, onProgress) {
           insert into public.invoices (
             invoice_number, invoice_type, customer_id, invoice_date, due_date,
             currency, exchange_rate, subtotal, tax_total, discount_total,
-            grand_total, paid_amount, status, notes, is_active, erp_invoice_number
+            grand_total, paid_amount, status, notes, is_active, erp_invoice_number,
+            e_invoice_status
           )
-          values ($1, 'sales', $2, $3, $4, $5, 1, $6, $7, $8, $9, $10, $11, $12, true, $1)
+          values (
+            $1, 'sales', $2, $3, $4, $5, 1, $6, $7, $8, $9, $10, $11, $12, true, $1,
+            'manual'
+          )
           on conflict (invoice_number) do update set
             customer_id = excluded.customer_id,
             invoice_date = excluded.invoice_date,
@@ -2835,6 +2843,10 @@ async function importAkinsoftDataset(data, onProgress) {
             end,
             notes = excluded.notes,
             erp_invoice_number = coalesce(public.invoices.erp_invoice_number, excluded.erp_invoice_number),
+            e_invoice_status = case
+              when public.invoices.e_invoice_status = 'sent' then public.invoices.e_invoice_status
+              else 'manual'
+            end,
             is_active = true,
             updated_at = now()
           returning id
@@ -5050,54 +5062,11 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
           continue;
         }
 
-        // CRM tarafında fatura numarasını Maliye numarasına çek.
+        // Önce Akınsoft’taki numarayı güncellemeyi dene. CRM erp alanı
+        // yalnızca Akınsoft yazımı başarılı olursa set edilir; aksi halde
+        // fatura “bağlı” sanılıp gönder ikonu kaybolur.
         let renamed = false;
-        if (invoiceNumber !== eInvoiceNumber) {
-          const conflict = await query(
-            `
-              select id
-              from public.invoices
-              where invoice_number = $1
-                and id is distinct from $2
-              limit 1
-            `,
-            [eInvoiceNumber, row.id],
-          );
-          if (conflict.rows.length) {
-            items.push({
-              ...base,
-              ok: false,
-              reason: `CRM’de ${eInvoiceNumber} başka bir faturada kullanılıyor.`,
-            });
-            continue;
-          }
-          await query(
-            `
-              update public.invoices
-              set invoice_number = $2,
-                  erp_invoice_number = coalesce(
-                    nullif(trim(erp_invoice_number), ''),
-                    $3
-                  ),
-                  updated_at = now()
-              where id = $1
-            `,
-            [row.id, eInvoiceNumber, erpNumber || invoiceNumber],
-          );
-          renamed = true;
-        } else if (erpNumber && !textOrNull(row.erp_invoice_number)) {
-          await query(
-            `
-              update public.invoices
-              set erp_invoice_number = $2,
-                  updated_at = now()
-              where id = $1
-            `,
-            [row.id, erpNumber],
-          );
-        }
-
-        const write = await writeAkinsoftInvoiceNumber(pool, sql, {
+        let write = await writeAkinsoftInvoiceNumber(pool, sql, {
           oldNumber:
             erpNumber ||
             (invoiceNumber && invoiceNumber !== eInvoiceNumber
@@ -5106,31 +5075,160 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
           newNumber: eInvoiceNumber,
           sourceId: row.akinsoft_source_id,
         });
-        if (write.ok) {
-          if (write.oldNumber && !textOrNull(row.erp_invoice_number)) {
-            await query(
-              `
-                update public.invoices
-                set erp_invoice_number = coalesce(nullif(trim(erp_invoice_number), ''), $2),
-                    updated_at = now()
-                where id = $1
-              `,
-              [row.id, write.oldNumber],
-            );
-          }
-          await query(
+
+        // Akınsoft’ta yoksa (ERP’den gelmemiş CRM faturası) yeni kayıt oluştur.
+        if (
+          !write.ok &&
+          !row.akinsoft_source_id &&
+          /bulunamadı|eşlemesi/i.test(String(write.reason || ''))
+        ) {
+          const full = await query(
             `
-              update public.invoices
-              set erp_invoice_number_synced_at = now(),
-                  updated_at = now()
-              where id = $1
+              select
+                i.id,
+                i.invoice_number,
+                i.invoice_type,
+                i.customer_id,
+                i.invoice_date,
+                i.due_date,
+                i.currency,
+                i.exchange_rate,
+                i.subtotal,
+                i.tax_total,
+                i.discount_total,
+                i.grand_total,
+                i.status,
+                i.notes,
+                i.is_active,
+                i.e_invoice_number,
+                i.e_invoice_status,
+                c.name as customer_name,
+                c.vkn as customer_vkn,
+                c.tax_office as customer_tax_office,
+                coalesce(c.phone_1, c.phone_2) as customer_phone,
+                c.email as customer_email,
+                c.address as customer_address,
+                c.city as customer_city,
+                c.country as customer_country
+              from public.invoices i
+              left join public.customers c on c.id = i.customer_id
+              where i.id = $1::uuid
+              limit 1
             `,
             [row.id],
           );
-          if (row.akinsoft_source_id) {
+          const header = full.rows?.[0];
+          const lineRows = (
+            await query(
+              `
+                select
+                  ii.product_id,
+                  ii.description,
+                  ii.quantity,
+                  ii.unit,
+                  ii.unit_price,
+                  ii.tax_rate,
+                  ii.tax_amount,
+                  ii.discount_amount,
+                  ii.line_total,
+                  p.code as product_code
+                from public.invoice_items ii
+                left join public.products p on p.id = ii.product_id
+                where ii.invoice_id = $1::uuid
+                order by ii.sort_order asc
+              `,
+              [row.id],
+            )
+          ).rows;
+          if (header && lineRows.length) {
+            const created = await writeAkinsoftInvoiceCreate(pool, sql, query, {
+              ...header,
+              // Maliye numarasıyla yazılsın.
+              invoice_number: eInvoiceNumber,
+              e_invoice_number: officialEInvoiceNumber,
+              e_invoice_status: 'sent',
+              items: lineRows,
+            });
+            if (created.ok) {
+              write = {
+                ok: true,
+                skipped: created.skipped === true,
+                reason: created.skipped
+                  ? created.reason
+                  : 'Akınsoft’ta fatura yoktu; Maliye numarasıyla oluşturuldu.',
+                oldNumber: null,
+                sourceId: created.sourceId,
+              };
+              row.akinsoft_source_id = created.sourceId;
+            } else {
+              write = {
+                ok: false,
+                reason:
+                  created.reason ||
+                  'Akınsoft’ta fatura bulunamadı ve oluşturma başarısız.',
+              };
+            }
+          }
+        }
+
+        if (write.ok) {
+          if (invoiceNumber !== eInvoiceNumber) {
+            const conflict = await query(
+              `
+                select id
+                from public.invoices
+                where invoice_number = $1
+                  and id is distinct from $2
+                limit 1
+              `,
+              [eInvoiceNumber, row.id],
+            );
+            if (!conflict.rows.length) {
+              await query(
+                `
+                  update public.invoices
+                  set invoice_number = $2,
+                      updated_at = now()
+                  where id = $1
+                `,
+                [row.id, eInvoiceNumber],
+              );
+              renamed = true;
+            }
+          }
+          const preserveErp =
+            write.oldNumber ||
+            erpNumber ||
+            (invoiceNumber !== eInvoiceNumber ? invoiceNumber : null);
+          if (preserveErp) {
+            await query(
+              `
+                update public.invoices
+                set erp_invoice_number = coalesce(
+                      nullif(trim(erp_invoice_number), ''),
+                      $2
+                    ),
+                    erp_invoice_number_synced_at = now(),
+                    updated_at = now()
+                where id = $1
+              `,
+              [row.id, preserveErp],
+            );
+          } else {
+            await query(
+              `
+                update public.invoices
+                set erp_invoice_number_synced_at = now(),
+                    updated_at = now()
+                where id = $1
+              `,
+              [row.id],
+            );
+          }
+          if (row.akinsoft_source_id || write.sourceId) {
             await upsertAkinsoftSyncMap(query, {
               sourceType: 'invoice',
-              sourceId: row.akinsoft_source_id,
+              sourceId: row.akinsoft_source_id || write.sourceId,
               sourceCode: eInvoiceNumber,
               sourceName: null,
               localTable: 'invoices',
@@ -5138,14 +5236,17 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
             });
           }
         }
+
         items.push({
           ...base,
-          invoiceNumber: eInvoiceNumber,
+          invoiceNumber: write.ok ? eInvoiceNumber : invoiceNumber,
           erpInvoiceNumber: write.oldNumber || erpNumber,
           renamed,
           ok: write.ok === true,
           skipped: write.skipped === true,
+          created: /oluşturuldu/i.test(String(write.reason || '')),
           reason: write.reason || null,
+          sourceId: row.akinsoft_source_id || write.sourceId || null,
         });
       } catch (error) {
         // Bir faturadaki hata tüm toplu işlemi düşürmesin.

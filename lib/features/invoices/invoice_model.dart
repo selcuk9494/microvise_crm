@@ -96,9 +96,16 @@ class Invoice {
   bool get isEInvoiceSent => eInvoiceStatus == 'sent';
   bool get isEInvoiceManual => eInvoiceStatus == 'manual';
   bool get isEInvoiceClosed => isEInvoiceSent || isEInvoiceManual;
-  bool get isLinkedToAkinsoft =>
-      (akinsoftSourceId?.trim().isNotEmpty ?? false) ||
-      (erpInvoiceNumber?.trim().isNotEmpty ?? false);
+  bool get isLinkedToAkinsoft {
+    if (akinsoftSourceId?.trim().isNotEmpty ?? false) return true;
+    if (erpInvoiceNumber?.trim().isNotEmpty ?? false) return true;
+    // Akınsoft’tan çekilmiş eski kayıtlar (eşleme/erp boş olsa bile).
+    final no = invoiceNumber.trim().toUpperCase();
+    return no.startsWith('DA') ||
+        no.startsWith('SF') ||
+        no.startsWith('AKN-') ||
+        no.startsWith('MSF');
+  }
   bool canSendEInvoiceTo(String environment) =>
       !isEInvoiceClosed ||
       (eInvoiceStatus == 'sent' &&
