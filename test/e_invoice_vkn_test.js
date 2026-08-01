@@ -20,6 +20,9 @@ const {
   isNumberAlreadyUsedError,
   serialFromNumber,
   invoiceNumberPrefix,
+  invoiceHasLocalPdfSource,
+  resolveLocalOfficialSource,
+  shouldRefreshOfficialForArchive,
 } = require('../api/e-invoice').testUtils;
 const { buildEInvoiceArchivePdf } = require('../api/_lib/e_invoice_pdf');
 
@@ -714,4 +717,123 @@ test('test ortamında gönderim sonrası otomatik PDF arşivini atlar', async ()
   assert.equal(result.skipped, true);
   assert.equal(result.reason, 'test_environment');
   assert.equal(result.archived, false);
+});
+
+test('PDF açma: force/local kaynak varken Maliye yenilemesi istemez', () => {
+  const withOfficial = {
+    e_invoice_official_data: { faturaNo: 'X' },
+    items: [{ description: 'A' }],
+  };
+  const withPayload = {
+    e_invoice_payload: { faturalar: [{ faturaNo: 'Y' }] },
+  };
+  const crmOnly = { items: [{ description: 'Kalem' }] };
+
+  assert.equal(invoiceHasLocalPdfSource(withOfficial), true);
+  assert.equal(invoiceHasLocalPdfSource(withPayload), true);
+  assert.equal(invoiceHasLocalPdfSource(crmOnly), true);
+  assert.equal(invoiceHasLocalPdfSource({}), false);
+
+  assert.equal(
+    shouldRefreshOfficialForArchive({
+      refreshOfficial: false,
+      invoice: withOfficial,
+      localOnly: false,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldRefreshOfficialForArchive({
+      refreshOfficial: false,
+      invoice: crmOnly,
+      localOnly: true,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldRefreshOfficialForArchive({
+      refreshOfficial: true,
+      invoice: withOfficial,
+      localOnly: true,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldRefreshOfficialForArchive({
+      refreshOfficial: false,
+      invoice: {},
+      localOnly: false,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldRefreshOfficialForArchive({
+      refreshOfficial: false,
+      invoice: {},
+      localOnly: true,
+    }),
+    false,
+  );
+
+  assert.equal(resolveLocalOfficialSource(withPayload).from, 'payload');
+  assert.equal(resolveLocalOfficialSource(crmOnly).from, 'crm');
+});
+
+test('gönderim payloadundan Maliye oturumu olmadan PDF üretir', async () => {
+  const invoice = validInvoice();
+  invoice.e_invoice_number = '620009058-2026-1-00000000099';
+  invoice.e_invoice_payload = {
+    faturalar: [
+      {
+        faturaNo: invoice.e_invoice_number,
+        paraBirimi: 'TRY',
+        faturaToplami: 100,
+        kdvToplami: 0,
+        vergiDahilToplam: 100,
+        odenecekToplam: 100,
+        malHizmetler: [
+          {
+            malHizmet: 'Test kalem',
+            miktar: 1,
+            birimFiyat: 100,
+            malHizmetTutari: 100,
+            kdvOrani: 0,
+            kdvTutari: 0,
+          },
+        ],
+        musteri: { unvan: 'TEST MUSTERI', vkn: '1234567890' },
+      },
+    ],
+  };
+  delete invoice.e_invoice_official_data;
+
+  const source = resolveLocalOfficialSource(invoice);
+  assert.equal(source.from, 'payload');
+
+  const pdf = await buildEInvoiceArchivePdf({
+    invoice,
+    settings: validSettings(),
+    officialData: source.officialData,
+    verificationCode: '019faa9a-a367-74d5-a443-77eb762bca98',
+    environment: 'production',
+  });
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  assert.ok(pdf.length > 3000);
+});
+
+test('yalnızca CRM kalemlerinden Maliye oturumu olmadan PDF üretir', async () => {
+  const invoice = validInvoice();
+  invoice.e_invoice_number = '620009058-2026-1-00000000100';
+  delete invoice.e_invoice_official_data;
+  delete invoice.e_invoice_payload;
+
+  const pdf = await buildEInvoiceArchivePdf({
+    invoice,
+    settings: validSettings(),
+    officialData: null,
+    verificationCode: '019faa9a-a367-74d5-a443-77eb762bca98',
+    environment: 'production',
+  });
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  assert.ok(pdf.length > 3000);
 });

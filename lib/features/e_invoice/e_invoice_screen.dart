@@ -31,20 +31,38 @@ import 'e_invoice_print.dart';
 import 'e_invoice_whatsapp_share.dart';
 
 String _friendlyPdfError(Object error) {
-  final raw = error
-      .toString()
-      .replaceFirst(RegExp(r'^(Bad state: |Exception: |Error: )'), '')
-      .trim();
+  var raw = error.toString().trim();
+  // StateError / Exception sarmalayıcılarını soy; sunucu metnini göster.
+  for (var i = 0; i < 3; i++) {
+    final stripped = raw
+        .replaceFirst(
+          RegExp(r'^(Bad state: |Exception: |Error: |StateError: )'),
+          '',
+        )
+        .trim();
+    if (stripped == raw) break;
+    raw = stripped;
+  }
   if (raw.isEmpty) return 'PDF oluşturulamadı.';
   final lower = raw.toLowerCase();
   if (lower.contains('invalid user credentials') ||
       lower.contains('invalid login credentials') ||
-      lower.contains('invalid_grant')) {
-    return 'E-fatura API oturumu açılamadı. Ayarlardaki kullanıcı/şifreyi '
-        'kontrol edin; arşivlenmiş faturalarda PDF kayıtlı veriden üretilir.';
+      lower.contains('invalid_grant') ||
+      lower.contains('e-fatura api oturumu açılamadı')) {
+    return 'E-fatura API oturumu açılamadı. PDF kayıtlı CRM verisinden '
+        'üretilmeli; uygulamayı güncelleyin veya Ayarlar’daki kullanıcı/şifreyi kontrol edin.';
   }
   return raw;
 }
+
+/// PDF aç/indir: force yalnızca yeniden üretimi ister; Maliye yenilemez.
+Map<String, dynamic> _archivePdfRequestBody(String invoiceId) => {
+      'action': 'archive',
+      'invoiceId': invoiceId,
+      'force': true,
+      'includePdf': true,
+      'refreshOfficial': false,
+    };
 
 final eInvoiceSettingsProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
@@ -1181,12 +1199,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         try {
           final archive = await apiClient.postJson(
             '/e-invoice',
-            body: {
-              'action': 'archive',
-              'invoiceId': invoice.id,
-              'force': true,
-              'includePdf': true,
-            },
+            body: _archivePdfRequestBody(invoice.id),
           );
           final pdfUrl = archive['pdfUrl']?.toString().trim() ?? '';
           final pdfBase64 = archive['pdfBase64']?.toString().trim() ?? '';
@@ -3689,18 +3702,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     try {
       final archive = await apiClient.postJson(
         '/e-invoice',
-        body: {
-          'action': 'archive',
-          'invoiceId': invoice.id,
-          'force': true,
-          'includePdf': true,
-        },
+        body: _archivePdfRequestBody(invoice.id),
       );
       ref.invalidate(invoicesProvider);
       final pdfUrl = archive['pdfUrl']?.toString().trim() ?? '';
       final pdfBase64 = archive['pdfBase64']?.toString().trim() ?? '';
       if (pdfUrl.isEmpty && pdfBase64.isEmpty) {
-        throw StateError(
+        throw Exception(
           archive['error']?.toString().trim().isNotEmpty == true
               ? archive['error'].toString()
               : 'PDF bağlantısı oluşturulamadı.',
@@ -3717,7 +3725,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           await _showLinkFallbackDialog('Oluşturulan PDF', pdfUrl);
           return;
         }
-        throw StateError('PDF paylaşılamadı.');
+        throw Exception('PDF paylaşılamadı.');
       }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('PDF hazır.')),
@@ -3753,18 +3761,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     try {
       final archive = await apiClient.postJson(
         '/e-invoice',
-        body: {
-          'action': 'archive',
-          'invoiceId': invoice.id,
-          'force': true,
-          'includePdf': true,
-        },
+        body: _archivePdfRequestBody(invoice.id),
       );
       ref.invalidate(invoicesProvider);
       final pdfUrl = archive['pdfUrl']?.toString().trim() ?? '';
       final pdfBase64 = archive['pdfBase64']?.toString().trim() ?? '';
       if (pdfUrl.isEmpty && pdfBase64.isEmpty) {
-        throw StateError(
+        throw Exception(
           archive['error']?.toString().trim().isNotEmpty == true
               ? archive['error'].toString()
               : 'PDF bağlantısı oluşturulamadı.',

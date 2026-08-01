@@ -1309,6 +1309,52 @@ function invoiceHasOfficialArchive(invoice) {
   return Boolean(invoice?.e_invoice_official_data);
 }
 
+/** Resmi arşiv, gönderim payload'ı veya CRM kalemleri — Maliye olmadan PDF için yeterli. */
+function invoiceHasLocalPdfSource(invoice) {
+  if (!invoice) return false;
+  if (invoice.e_invoice_official_data) return true;
+  if (invoice.e_invoice_payload) return true;
+  return Array.isArray(invoice.items) && invoice.items.length > 0;
+}
+
+function resolveLocalOfficialSource(invoice) {
+  if (invoice?.e_invoice_official_data) {
+    return {
+      officialData: invoice.e_invoice_official_data,
+      officialUbl: invoice.e_invoice_official_ubl || '',
+      from: 'official',
+    };
+  }
+  if (invoice?.e_invoice_payload) {
+    return {
+      officialData:
+        invoice.e_invoice_payload?.faturalar?.[0] || invoice.e_invoice_payload,
+      officialUbl: cleanText(invoice.e_invoice_official_ubl) || '',
+      from: 'payload',
+    };
+  }
+  return {
+    officialData: null,
+    officialUbl: cleanText(invoice?.e_invoice_official_ubl) || '',
+    from: 'crm',
+  };
+}
+
+/**
+ * force = PDF yeniden üret (Maliye değil).
+ * refreshOfficial yalnızca açıkça true ise veya yerel kaynak yoksa (bulut) true.
+ * Electron/local: asla Keycloak çağırmaz (refreshOfficial açıkça true değilse).
+ */
+function shouldRefreshOfficialForArchive({
+  refreshOfficial,
+  invoice,
+  localOnly,
+}) {
+  if (refreshOfficial === true) return true;
+  if (localOnly) return false;
+  return !invoiceHasLocalPdfSource(invoice);
+}
+
 async function deliverBuiltArchivePdf({
   invoiceId,
   invoice,
@@ -1357,13 +1403,26 @@ async function deliverBuiltArchivePdf({
     } catch (error) {
       storageError = error;
     }
+  } else {
+    // Bulut depolama yok: yine de temp PDF + base64 ile açılabilir olsun.
+    try {
+      localPdfPath = writeLocalEInvoicePdf(pdf, fileName);
+      storedPdf = {
+        bucket: localPdfBucket,
+        path: localPdfPath,
+        fileName,
+        sha256,
+      };
+    } catch (error) {
+      storageError = error;
+    }
   }
 
   await query(
     `
       update public.invoices
-      set e_invoice_official_data = $2::jsonb,
-          e_invoice_official_ubl = $3,
+      set e_invoice_official_data = coalesce($2::jsonb, e_invoice_official_data),
+          e_invoice_official_ubl = coalesce($3, e_invoice_official_ubl),
           e_invoice_pdf_bucket = coalesce($4, e_invoice_pdf_bucket),
           e_invoice_pdf_path = coalesce($5, e_invoice_pdf_path),
           e_invoice_pdf_sha256 = coalesce($6, e_invoice_pdf_sha256),
@@ -1378,8 +1437,8 @@ async function deliverBuiltArchivePdf({
     `,
     [
       invoiceId,
-      JSON.stringify(officialData),
-      officialUbl,
+      officialData == null ? null : JSON.stringify(officialData),
+      officialUbl || null,
       storedPdf?.bucket || null,
       storedPdf?.path || null,
       storedPdf?.sha256 || null,
@@ -1400,8 +1459,12 @@ async function deliverBuiltArchivePdf({
     }
   }
 
+  // Electron ve mobil: bayt yedeği her zaman tercih edilir.
   const shouldIncludePdf =
-    includePdf === true || (!localOnly && !pdfUrl) || Boolean(storageError);
+    includePdf === true ||
+    localOnly ||
+    !pdfUrl ||
+    Boolean(storageError);
   if (!pdfUrl && !shouldIncludePdf) {
     throw new Error(
       localOnly
@@ -1430,7 +1493,7 @@ async function archiveOfficialInvoice({
   settings,
   verificationCode,
   token,
-  refreshOfficial = true,
+  refreshOfficial = false,
   includePdf = false,
   invoice: invoiceHint = null,
 }) {
@@ -1440,13 +1503,20 @@ async function archiveOfficialInvoice({
       throw new Error('Fatura bulunamadı.');
     }
 
-    let officialData = invoice.e_invoice_official_data;
-    let officialUbl = invoice.e_invoice_official_ubl;
     const code = cleanText(verificationCode || invoice.e_invoice_uuid);
+    const localOnly = preferLocalPdfMode();
+    const localSource = resolveLocalOfficialSource(invoice);
+    let officialData = localSource.officialData;
+    let officialUbl = localSource.officialUbl;
     let maliyeWarning = null;
 
-    const canUseCache = invoiceHasOfficialArchive(invoice) && !refreshOfficial;
-    if (!canUseCache) {
+    const mustHitMaliye = shouldRefreshOfficialForArchive({
+      refreshOfficial,
+      invoice,
+      localOnly,
+    });
+
+    if (mustHitMaliye) {
       try {
         const archive = await fetchOfficialInvoiceArchive({
           settings,
@@ -1456,21 +1526,19 @@ async function archiveOfficialInvoice({
         officialData = archive.data;
         officialUbl = archive.ubl;
       } catch (maliyeError) {
-        // Mobil PDF açma: kayıtlı resmi veri veya gönderim payload'ı yeterlidir.
-        if (invoiceHasOfficialArchive(invoice)) {
-          officialData = invoice.e_invoice_official_data;
-          officialUbl = invoice.e_invoice_official_ubl;
-          maliyeWarning = humanizeArchiveError(maliyeError.message);
-        } else if (invoice.e_invoice_payload) {
-          officialData =
-            invoice.e_invoice_payload?.faturalar?.[0] ||
-            invoice.e_invoice_payload;
-          officialUbl = cleanText(invoice.e_invoice_official_ubl) || '';
-          maliyeWarning = humanizeArchiveError(maliyeError.message);
-        } else {
+        // PDF açma: CRM/payload/resmi cache varken Keycloak hatası engel olmamalı.
+        if (!invoiceHasLocalPdfSource(invoice)) {
           throw maliyeError;
         }
+        const fallback = resolveLocalOfficialSource(invoice);
+        officialData = fallback.officialData;
+        officialUbl = fallback.officialUbl;
+        maliyeWarning = humanizeArchiveError(maliyeError.message);
       }
+    } else if (!invoiceHasLocalPdfSource(invoice)) {
+      throw new Error(
+        'PDF için kayıtlı e-fatura verisi yok. Önce gönderim/arşiv gerekir.',
+      );
     }
 
     const delivered = await deliverBuiltArchivePdf({
@@ -1480,7 +1548,7 @@ async function archiveOfficialInvoice({
       officialData,
       officialUbl,
       verificationCode: code,
-      includePdf,
+      includePdf: includePdf || localOnly,
     });
     return maliyeWarning
       ? { ...delivered, storageWarning: delivered.storageWarning || maliyeWarning }
@@ -1532,11 +1600,13 @@ async function archiveAfterSuccessfulSend({
       reason: 'test_environment',
     };
   }
+  // Gönderim sonrası: Maliye'den resmi arşivi çek (token elde var).
   return archiveOfficialInvoiceWithRetry({
     invoiceId,
     settings,
     verificationCode,
     token,
+    refreshOfficial: true,
   });
 }
 
@@ -1781,11 +1851,13 @@ async function handler(req, res) {
       }
 
       const includePdf = body.includePdf === true;
-      // force: PDF'i yeniden üret. refreshOfficial: Maliye'den tekrar çek.
-      // Kayıtlı resmi veri varken force Maliye token'ı gerektirmez (mobil PDF açma).
-      const refreshOfficial =
-        body.refreshOfficial === true ||
-        (body.force === true && !invoiceHasOfficialArchive(invoice));
+      const localOnly = preferLocalPdfMode();
+      // force / includePdf: PDF yeniden üret. Maliye yalnızca refreshOfficial:true.
+      const refreshOfficial = shouldRefreshOfficialForArchive({
+        refreshOfficial: body.refreshOfficial === true,
+        invoice,
+        localOnly,
+      });
       const rebuildPdf =
         body.force === true ||
         includePdf === true ||
@@ -1795,7 +1867,7 @@ async function handler(req, res) {
       if (
         !rebuildPdf &&
         !refreshOfficial &&
-        invoiceHasOfficialArchive(invoice) &&
+        invoiceHasLocalPdfSource(invoice) &&
         cleanText(invoice.e_invoice_pdf_bucket) &&
         cleanText(invoice.e_invoice_pdf_path)
       ) {
@@ -1803,9 +1875,10 @@ async function handler(req, res) {
         const bucket = cleanText(invoice.e_invoice_pdf_bucket);
         const objectPath = cleanText(invoice.e_invoice_pdf_path);
 
-        // Yerel arşiv: temp dosya varsa doğrudan aç; yoksa resmi veriden yeniden üret.
-        if (preferLocalPdfMode() || bucket === localPdfBucket) {
+        // Yerel arşiv: temp dosya varsa doğrudan aç; yoksa CRM verisinden üret.
+        if (localOnly || bucket === localPdfBucket) {
           let localPdfPath = null;
+          let pdfBuffer = null;
           if (
             bucket === localPdfBucket &&
             objectPath &&
@@ -1813,19 +1886,23 @@ async function handler(req, res) {
             fs.statSync(objectPath).isFile()
           ) {
             localPdfPath = objectPath;
+            if (includePdf || localOnly) {
+              pdfBuffer = fs.readFileSync(objectPath);
+            }
           } else {
             const settingsForPdf = await getSettings();
-            const pdf = await buildEInvoiceArchivePdf({
+            const localSource = resolveLocalOfficialSource(invoice);
+            pdfBuffer = await buildEInvoiceArchivePdf({
               invoice,
               settings: settingsForPdf,
-              officialData: invoice.e_invoice_official_data,
+              officialData: localSource.officialData,
               verificationCode: invoice.e_invoice_uuid,
               environment:
                 invoice.e_invoice_environment === 'production'
                   ? 'production'
                   : 'test',
             });
-            localPdfPath = writeLocalEInvoicePdf(pdf, pdfFileName);
+            localPdfPath = writeLocalEInvoicePdf(pdfBuffer, pdfFileName);
             await query(
               `
                 update public.invoices
@@ -1840,12 +1917,12 @@ async function handler(req, res) {
                 invoiceId,
                 localPdfBucket,
                 localPdfPath,
-                crypto.createHash('sha256').update(pdf).digest('hex'),
+                crypto.createHash('sha256').update(pdfBuffer).digest('hex'),
               ],
             );
           }
           const pdfUrl = buildLocalOpenPdfUrl(localPdfPath);
-          if (!pdfUrl) {
+          if (!pdfUrl && !(pdfBuffer && (includePdf || localOnly))) {
             return badRequest(
               req,
               res,
@@ -1857,9 +1934,12 @@ async function handler(req, res) {
             archived: true,
             alreadyArchived: true,
             archivedAt: invoice.e_invoice_archived_at,
-            pdfUrl,
+            pdfUrl: pdfUrl || null,
             pdfFileName,
             localPdfPath,
+            ...((includePdf || localOnly) && pdfBuffer
+              ? { pdfBase64: pdfBuffer.toString('base64') }
+              : {}),
           });
         }
 
@@ -1879,7 +1959,7 @@ async function handler(req, res) {
               pdfFileName,
             });
           } catch (_) {
-            // İmzalı URL başarısız → kayıtlı resmi veriden PDF üret.
+            // İmzalı URL başarısız → kayıtlı CRM verisinden PDF üret.
           }
         }
       }
@@ -1894,9 +1974,8 @@ async function handler(req, res) {
         invoiceId,
         settings: archiveSettings,
         verificationCode: invoice.e_invoice_uuid,
-        refreshOfficial:
-          refreshOfficial || !invoiceHasOfficialArchive(invoice),
-        includePdf: includePdf || !preferLocalPdfMode(),
+        refreshOfficial,
+        includePdf: includePdf || localOnly,
         invoice,
       });
       return ok(req, res, { ok: archive.archived, ...archive });
@@ -2243,4 +2322,8 @@ module.exports.testUtils = {
   officialNumberFromResponse,
   localInvoiceNumber,
   applyOfficialInvoiceNumber,
+  invoiceHasLocalPdfSource,
+  resolveLocalOfficialSource,
+  shouldRefreshOfficialForArchive,
+  preferLocalPdfMode,
 };
