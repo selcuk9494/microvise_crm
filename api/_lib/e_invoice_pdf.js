@@ -519,28 +519,35 @@ function writeLocalExportZip(zipBytes, fileName) {
 }
 
 function drawParty(doc, title, party, x, y, width, height) {
+  // İç boşluk: kutu kenarlarından 16pt; başlık–gövde ve satır aralığı belirgin.
+  const padX = 16;
+  const titleTop = 17;
+  const ruleY = y + 42;
+  const bodyTop = y + 50;
+  const padBottom = 16;
+  const bodyLineGap = 2.5;
   doc.lineWidth(0.8).roundedRect(x, y, width, height, 6).stroke(COLORS.border);
   doc
     .font('InvoiceBold')
     .fontSize(10)
     .fillColor(COLORS.text)
-    .text(title, x + 7, y + 8);
+    .text(title, x + padX, y + titleTop);
   doc
     .lineWidth(0.7)
-    .moveTo(x + 7, y + 25)
-    .lineTo(x + width - 7, y + 25)
+    .moveTo(x + padX, ruleY)
+    .lineTo(x + width - padX, ruleY)
     .strokeColor(COLORS.border)
     .stroke();
   const body = partyLines(party);
-  const bodyWidth = width - 14;
-  const bodyHeight = height - 36;
+  const bodyWidth = width - padX * 2;
+  const bodyHeight = height - (bodyTop - y) - padBottom;
   let bodyFontSize = 7.1;
   while (bodyFontSize > 5.8) {
     doc.font('Invoice').fontSize(bodyFontSize);
     if (
       doc.heightOfString(body, {
         width: bodyWidth,
-        lineGap: 0.7,
+        lineGap: bodyLineGap,
       }) <= bodyHeight
     ) {
       break;
@@ -551,10 +558,10 @@ function drawParty(doc, title, party, x, y, width, height) {
     .font('Invoice')
     .fontSize(bodyFontSize)
     .fillColor(COLORS.text)
-    .text(body, x + 7, y + 31, {
+    .text(body, x + padX, bodyTop, {
       width: bodyWidth,
       height: bodyHeight,
-      lineGap: 0.7,
+      lineGap: bodyLineGap,
       ellipsis: true,
     });
 }
@@ -573,7 +580,9 @@ function drawMeta(doc, label, value, x, y, width, row = 0, rowHeight = 30) {
     .text(text(value), x, rowTop + 16, { width, ellipsis: true });
 }
 
-const TABLE_COLUMNS = [48, 160, 272, 336, 384, 421, 458, 504, 548];
+// Mal/Hizmet wide for long product names; Açıklama narrow (often empty).
+// Band 48→272 (224pt): Mal ~168pt, Açıklama ~56pt. Other columns unchanged.
+const TABLE_COLUMNS = [48, 216, 272, 336, 384, 421, 458, 504, 548];
 const TABLE_HEADERS = [
   'Mal/Hizmet',
   'Açıklama',
@@ -620,8 +629,8 @@ const TABLE_HEADER_HEIGHT = 20;
 const TOTALS_BLOCK_HEIGHT = 96;
 // Devam sayfalarında içeriğin başladığı üst sınır.
 const CONTINUATION_TOP = 44;
-// Az kalemde (1–4) üstte yığılmayı azaltmak için açık yerleşim eşiği.
-// 5+ kalemde / çok sayfada kompakt Maliye yerleşimi korunur.
+// Az kalemde üst bölüm aralıklarını açmak için eşik (resolvePageLayout).
+// Tek sayfa toplam-stretch eşiği değildir — canStretchDown kalem sayısından bağımsızdır.
 const OPEN_LAYOUT_MAX_ITEMS = 4;
 
 /**
@@ -631,12 +640,12 @@ const OPEN_LAYOUT_MAX_ITEMS = 4;
  */
 function resolvePageLayout(itemCount) {
   const compact = {
-    boxTop: 108,
-    boxHeight: 98,
-    afterParties: 5,
+    boxTop: 138,
+    boxHeight: 138,
+    afterParties: 24,
     metaHeight: 60,
-    afterMeta: 5,
-    listTitleTop: 5,
+    afterMeta: 20,
+    listTitleTop: 14,
     tableHeaderOffset: 18,
     rowExtra: 3.5,
     rowMax: 16.5,
@@ -653,17 +662,17 @@ function resolvePageLayout(itemCount) {
       ? 1
       : (OPEN_LAYOUT_MAX_ITEMS + 1 - count) / OPEN_LAYOUT_MAX_ITEMS;
   return {
-    boxTop: 108,
-    boxHeight: 98 + Math.round(10 * t),
-    afterParties: 5 + Math.round(14 * t),
+    boxTop: 138,
+    boxHeight: 138 + Math.round(14 * t),
+    afterParties: 24 + Math.round(16 * t),
     metaHeight: 60 + Math.round(8 * t),
-    afterMeta: 5 + Math.round(14 * t),
-    listTitleTop: 5 + Math.round(8 * t),
+    afterMeta: 20 + Math.round(16 * t),
+    listTitleTop: 14 + Math.round(10 * t),
     tableHeaderOffset: 18 + Math.round(8 * t),
-    // Satır ölçüleri orijinal Maliye kompakt değerlerinde kalır.
+    // Az–orta kalemde satırlar hafif nefes alır; sahte ızgara satırı yok.
     rowExtra: 3.5,
-    rowMax: 16.5,
-    rowMin: 11,
+    rowMax: 16.5 + Math.round(2 * t),
+    rowMin: 11 + Math.round(2.5 * t),
     afterTable: 6 + Math.round(18 * t),
     totalsLineGap: 12.5 + 2.5 * t,
   };
@@ -1031,10 +1040,12 @@ async function buildEInvoiceArchivePdf({
   };
 
   let rowsOnPage = 0;
+  let spilledRows = false;
   for (const values of rows) {
     const height = rowHeight(doc, values, 'Invoice', 6.4, layout);
     // rowsOnPage kontrolü, tek başına sayfadan uzun satırlarda sonsuz döngüyü önler.
     if (rowsOnPage > 0 && y + height > tableBottom) {
+      spilledRows = true;
       y = drawTableHeader(doc, startContinuationPage('Mal/Hizmet Listesi (devam)'));
       rowsOnPage = 0;
     }
@@ -1045,11 +1056,29 @@ async function buildEInvoiceArchivePdf({
 
   // Toplamlar sağda, açıklama solda yan yana. Açıklama uzun diye
   // toplamları 2. sayfaya itme; gerekirse yalnız açıklama taşar.
-  // Az kalemde dikey yayılma yalnızca layout.afterTable / bölüm aralıklarıyla;
-  // boş ızgara satırı çizilmez.
-  const blockTopGap = layout.afterTable;
+  // Tek sayfada (kalem sayısı fark etmeksizin): tablo sonrası çerçevesiz spacer ile
+  // Açıklama+toplam bloğunu footer üstüne (tableBottom) yasla — sahte ızgara yok.
+  // Çok sayfa (spilledRows) veya toplamlar sığmıyorsa stretch uygulanmaz.
+  let blockTopGap = layout.afterTable;
+  const canStretchDown =
+    !spilledRows &&
+    y + layout.afterTable + TOTALS_BLOCK_HEIGHT <= tableBottom;
+  if (canStretchDown) {
+    const remaining = tableBottom - y;
+    // Açıklama bu sayfada yan yana sığacaksa bloğa dahil et; değilse yalnız toplamlar.
+    const descBeside =
+      (description || resolvedPo) &&
+      y + layout.afterTable + descHeight <= tableBottom;
+    const sideBlockHeight = Math.max(
+      TOTALS_BLOCK_HEIGHT,
+      descBeside ? descHeight : 0,
+    );
+    const stretchGap = remaining - sideBlockHeight;
+    if (stretchGap > blockTopGap) blockTopGap = stretchGap;
+  }
   if (y + blockTopGap + TOTALS_BLOCK_HEIGHT > tableBottom) {
     y = startContinuationPage('Fatura Toplamları') + 6;
+    blockTopGap = 0;
   }
 
   const discountTotal = Number(source.iskontoToplami ?? invoice.discount_total) || 0;
