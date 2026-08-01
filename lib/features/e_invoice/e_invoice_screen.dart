@@ -30,6 +30,22 @@ import 'e_invoice_pdf_share.dart';
 import 'e_invoice_print.dart';
 import 'e_invoice_whatsapp_share.dart';
 
+String _friendlyPdfError(Object error) {
+  final raw = error
+      .toString()
+      .replaceFirst(RegExp(r'^(Bad state: |Exception: |Error: )'), '')
+      .trim();
+  if (raw.isEmpty) return 'PDF oluşturulamadı.';
+  final lower = raw.toLowerCase();
+  if (lower.contains('invalid user credentials') ||
+      lower.contains('invalid login credentials') ||
+      lower.contains('invalid_grant')) {
+    return 'E-fatura API oturumu açılamadı. Ayarlardaki kullanıcı/şifreyi '
+        'kontrol edin; arşivlenmiş faturalarda PDF kayıtlı veriden üretilir.';
+  }
+  return raw;
+}
+
 final eInvoiceSettingsProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
       final apiClient = ref.watch(apiClientProvider);
@@ -1165,13 +1181,19 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         try {
           final archive = await apiClient.postJson(
             '/e-invoice',
-            body: {'action': 'archive', 'invoiceId': invoice.id, 'force': true},
+            body: {
+              'action': 'archive',
+              'invoiceId': invoice.id,
+              'force': true,
+              'includePdf': true,
+            },
           );
           final pdfUrl = archive['pdfUrl']?.toString().trim() ?? '';
-          if (pdfUrl.isEmpty) {
+          final pdfBase64 = archive['pdfBase64']?.toString().trim() ?? '';
+          if (pdfUrl.isEmpty && pdfBase64.isEmpty) {
             failures.add(
               '${invoice.invoiceNumber}: '
-              '${archive['error']?.toString() ?? 'PDF bağlantısı yok.'}',
+              '${_friendlyPdfError(archive['error'] ?? 'PDF bağlantısı yok.')}',
             );
             continue;
           }
@@ -1189,10 +1211,11 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               localPath: (localPath != null && localPath.isNotEmpty)
                   ? localPath
                   : null,
+              pdfBase64: pdfBase64.isNotEmpty ? pdfBase64 : null,
             ),
           );
         } catch (error) {
-          failures.add('${invoice.invoiceNumber}: $error');
+          failures.add('${invoice.invoiceNumber}: ${_friendlyPdfError(error)}');
         }
       }
 
@@ -1213,7 +1236,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
           ),
         );
         for (final item in downloads) {
-          await openExternalUrl(item.url);
+          if (item.url.trim().isNotEmpty) {
+            await openExternalUrl(item.url);
+          }
         }
       }
 
@@ -1233,9 +1258,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Toplu indir başarısız: $error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Toplu indir başarısız: ${_friendlyPdfError(error)}')),
+      );
     } finally {
       if (mounted) setState(() => _bulkProcessing = false);
     }
@@ -3664,22 +3689,35 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     try {
       final archive = await apiClient.postJson(
         '/e-invoice',
-        body: {'action': 'archive', 'invoiceId': invoice.id, 'force': true},
+        body: {
+          'action': 'archive',
+          'invoiceId': invoice.id,
+          'force': true,
+          'includePdf': true,
+        },
       );
       ref.invalidate(invoicesProvider);
       final pdfUrl = archive['pdfUrl']?.toString().trim() ?? '';
-      if (pdfUrl.isEmpty) {
+      final pdfBase64 = archive['pdfBase64']?.toString().trim() ?? '';
+      if (pdfUrl.isEmpty && pdfBase64.isEmpty) {
         throw StateError(
           archive['error']?.toString().trim().isNotEmpty == true
               ? archive['error'].toString()
               : 'PDF bağlantısı oluşturulamadı.',
         );
       }
-      final opened = await _shareOrOpenPdf(invoice, pdfUrl);
+      final opened = await _shareOrOpenPdf(
+        invoice,
+        pdfUrl,
+        pdfBase64: pdfBase64.isNotEmpty ? pdfBase64 : null,
+      );
       if (!mounted) return;
       if (!opened) {
-        await _showLinkFallbackDialog('Oluşturulan PDF', pdfUrl);
-        return;
+        if (pdfUrl.isNotEmpty) {
+          await _showLinkFallbackDialog('Oluşturulan PDF', pdfUrl);
+          return;
+        }
+        throw StateError('PDF paylaşılamadı.');
       }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('PDF hazır.')),
@@ -3687,7 +3725,9 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Oluşturulan PDF açılamadı: $error')),
+        SnackBar(
+          content: Text('Oluşturulan PDF açılamadı: ${_friendlyPdfError(error)}'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -3713,11 +3753,17 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     try {
       final archive = await apiClient.postJson(
         '/e-invoice',
-        body: {'action': 'archive', 'invoiceId': invoice.id, 'force': true},
+        body: {
+          'action': 'archive',
+          'invoiceId': invoice.id,
+          'force': true,
+          'includePdf': true,
+        },
       );
       ref.invalidate(invoicesProvider);
       final pdfUrl = archive['pdfUrl']?.toString().trim() ?? '';
-      if (pdfUrl.isEmpty) {
+      final pdfBase64 = archive['pdfBase64']?.toString().trim() ?? '';
+      if (pdfUrl.isEmpty && pdfBase64.isEmpty) {
         throw StateError(
           archive['error']?.toString().trim().isNotEmpty == true
               ? archive['error'].toString()
@@ -3725,11 +3771,17 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         );
       }
       if (!mounted) return;
-      await _sendWhatsAppPdfWithUrl(invoice, pdfUrl);
+      await _sendWhatsAppPdfWithUrl(
+        invoice,
+        pdfUrl,
+        pdfBase64: pdfBase64.isNotEmpty ? pdfBase64 : null,
+      );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('WhatsApp gönderimi başarısız: $error')),
+        SnackBar(
+          content: Text('WhatsApp gönderimi başarısız: ${_friendlyPdfError(error)}'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -3737,7 +3789,11 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   }
 
   // ignore: unused_element
-  Future<void> _sendWhatsAppPdfWithUrl(Invoice invoice, String pdfUrl) async {
+  Future<void> _sendWhatsAppPdfWithUrl(
+    Invoice invoice,
+    String pdfUrl, {
+    String? pdfBase64,
+  }) async {
     CustomerDetail? customer;
     final customerId = invoice.customerId.trim();
     if (customerId.isNotEmpty) {
@@ -3752,13 +3808,18 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       context: context,
       invoice: invoice,
       pdfUrl: pdfUrl,
+      pdfBase64: pdfBase64,
       customer: customer,
     );
   }
 
   /// Mobilde imzalı URL yerine PDF dosyasını paylaşır; paylaşım metninde
   /// fatura numarası ve müşteri adı görünür.
-  Future<bool> _shareOrOpenPdf(Invoice invoice, String pdfUrl) async {
+  Future<bool> _shareOrOpenPdf(
+    Invoice invoice,
+    String pdfUrl, {
+    String? pdfBase64,
+  }) async {
     // Electron/yerel: open-pdf köprüsü shell.openPath ile açar; bulut URL gerekmez.
     if (isLocalOpenPdfUrl(pdfUrl)) {
       return openExternalUrl(pdfUrl);
@@ -3778,12 +3839,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         url: pdfUrl,
         fileName: fileName,
         shareText: shareText,
+        pdfBase64: pdfBase64,
       )) {
         return true;
       }
     } catch (_) {
       // Paylaşım başarısızsa bağlantıyı açmaya geri düşülür.
     }
+    if (pdfUrl.trim().isEmpty) return false;
     return openExternalUrl(pdfUrl);
   }
 

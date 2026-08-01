@@ -10,6 +10,7 @@ class EInvoicePdfDownload {
     required this.url,
     required this.fileName,
     this.localPath,
+    this.pdfBase64,
   });
 
   final String url;
@@ -17,6 +18,9 @@ class EInvoicePdfDownload {
 
   /// Electron/yerel API: disk üzerindeki mutlak PDF yolu.
   final String? localPath;
+
+  /// CRM oturumuyla üretilen PDF; imzalı URL gerekmez.
+  final String? pdfBase64;
 }
 
 Uri _resolvePdfUri(String url) {
@@ -41,7 +45,24 @@ Future<bool> shareEInvoicePdf({
   required String url,
   required String fileName,
   required String shareText,
+  String? pdfBase64,
 }) async {
+  final inline = pdfBase64?.trim();
+  if (inline != null && inline.isNotEmpty) {
+    try {
+      final bytes = base64Decode(inline);
+      final safeName = _safeFilename(fileName);
+      if (_triggerBlobDownload(
+        Uint8List.fromList(bytes),
+        safeName,
+        'application/pdf',
+      )) {
+        return true;
+      }
+    } catch (_) {
+      // URL yedeğine düşülür.
+    }
+  }
   return false;
 }
 
@@ -93,13 +114,24 @@ Future<bool> downloadEInvoicePdfs({
         }
       }
 
-      // Yedek: baytları çekip ayrı PDF olarak indir.
-      final response = await http
-          .get(_resolvePdfUri(item.url))
-          .timeout(const Duration(seconds: 60));
-      if (response.statusCode < 200 || response.statusCode >= 300) continue;
-
-      final bytes = response.bodyBytes;
+      Uint8List? bytes;
+      final inline = item.pdfBase64?.trim();
+      if (inline != null && inline.isNotEmpty) {
+        try {
+          bytes = Uint8List.fromList(base64Decode(inline));
+        } catch (_) {
+          bytes = null;
+        }
+      }
+      if (bytes == null || bytes.isEmpty) {
+        final url = item.url.trim();
+        if (url.isEmpty) continue;
+        final response = await http
+            .get(_resolvePdfUri(url))
+            .timeout(const Duration(seconds: 60));
+        if (response.statusCode < 200 || response.statusCode >= 300) continue;
+        bytes = response.bodyBytes;
+      }
       final savedLocal = await _saveExportViaLocalApi(
         bytes: bytes,
         fileName: safeName,

@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
@@ -11,11 +13,15 @@ class EInvoicePdfDownload {
     required this.url,
     required this.fileName,
     this.localPath,
+    this.pdfBase64,
   });
 
   final String url;
   final String fileName;
   final String? localPath;
+
+  /// CRM oturumuyla üretilen PDF; imzalı URL gerekmez.
+  final String? pdfBase64;
 }
 
 /// İmzalı depolama bağlantısını paylaşmak yerine PDF'i indirip dosya olarak
@@ -24,9 +30,16 @@ Future<bool> shareEInvoicePdf({
   required String url,
   required String fileName,
   required String shareText,
+  String? pdfBase64,
 }) async {
   return shareEInvoicePdfBundle(
-    files: [EInvoicePdfDownload(url: url, fileName: fileName)],
+    files: [
+      EInvoicePdfDownload(
+        url: url,
+        fileName: fileName,
+        pdfBase64: pdfBase64,
+      ),
+    ],
     shareText: shareText,
   );
 }
@@ -41,14 +54,12 @@ Future<bool> shareEInvoicePdfBundle({
   final attachments = <XFile>[];
   final usedNames = <String>{};
   for (final item in files) {
-    final response = await http
-        .get(Uri.parse(item.url))
-        .timeout(const Duration(seconds: 60));
-    if (response.statusCode < 200 || response.statusCode >= 300) continue;
+    final bytes = await _resolvePdfBytes(item);
+    if (bytes == null || bytes.isEmpty) continue;
     final safeName = _uniqueFilename(_safeFilename(item.fileName), usedNames);
     usedNames.add(safeName.toLowerCase());
     final file = File('${dir.path}/$safeName');
-    await file.writeAsBytes(response.bodyBytes, flush: true);
+    await file.writeAsBytes(bytes, flush: true);
     attachments.add(
       XFile(file.path, mimeType: 'application/pdf', name: safeName),
     );
@@ -67,6 +78,29 @@ Future<bool> downloadEInvoicePdfs({
     files: files,
     shareText: 'E-faturalar',
   );
+}
+
+Future<Uint8List?> _resolvePdfBytes(EInvoicePdfDownload item) async {
+  final inline = item.pdfBase64?.trim();
+  if (inline != null && inline.isNotEmpty) {
+    try {
+      return Uint8List.fromList(base64Decode(inline));
+    } catch (_) {
+      // URL yedeğine düş.
+    }
+  }
+
+  final url = item.url.trim();
+  if (url.isEmpty) return null;
+  try {
+    final response = await http
+        .get(Uri.parse(url))
+        .timeout(const Duration(seconds: 60));
+    if (response.statusCode < 200 || response.statusCode >= 300) return null;
+    return response.bodyBytes;
+  } catch (_) {
+    return null;
+  }
 }
 
 Future<void> _shareFiles(List<XFile> attachments, String shareText) async {

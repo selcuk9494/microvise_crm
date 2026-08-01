@@ -17,6 +17,7 @@ Future<void> shareEInvoicePdfWithWhatsApp({
   required BuildContext context,
   required Invoice invoice,
   required String pdfUrl,
+  String? pdfBase64,
   CustomerDetail? customer,
 }) async {
   final options = <_PhoneOption>[];
@@ -165,11 +166,12 @@ Future<void> shareEInvoicePdfWithWhatsApp({
         url: pdfUrl,
         fileName: fileName,
         shareText: shareText,
+        pdfBase64: pdfBase64,
       );
     } catch (_) {
       // Paylaşım başarısızsa bağlantıyı açmaya geri düşülür.
     }
-    if (!sharedOrOpened) {
+    if (!sharedOrOpened && pdfUrl.trim().isNotEmpty) {
       sharedOrOpened = await openExternalUrl(pdfUrl);
     }
   }

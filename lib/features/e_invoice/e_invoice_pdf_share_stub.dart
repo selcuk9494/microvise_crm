@@ -4,6 +4,7 @@ Future<bool> shareEInvoicePdf({
   required String url,
   required String fileName,
   required String shareText,
+  String? pdfBase64,
 }) async {
   return false;
 }
@@ -28,9 +29,11 @@ class EInvoicePdfDownload {
     required this.url,
     required this.fileName,
     this.localPath,
+    this.pdfBase64,
   });
 
   final String url;
   final String fileName;
   final String? localPath;
+  final String? pdfBase64;
 }
