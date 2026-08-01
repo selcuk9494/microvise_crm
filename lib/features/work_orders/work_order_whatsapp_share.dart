@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../app/theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:gap/gap.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -46,7 +47,7 @@ Future<void> shareWorkOrderPdfWithWhatsAppPrompt({
             const Gap(6),
             Text(
               'WhatsApp ile göndermek için bir numara seçin veya sadece paylaşın.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             ),
             const Gap(12),
             for (final opt in options)

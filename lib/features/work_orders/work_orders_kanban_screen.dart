@@ -130,7 +130,7 @@ class _WorkOrdersKanbanScreenState extends ConsumerState<WorkOrdersKanbanScreen>
               style: Theme.of(context)
                   .textTheme
                   .bodyMedium
-                  ?.copyWith(color: const Color(0xFF64748B)),
+                  ?.copyWith(color: AppTheme.textMuted),
             ),
           ),
         ),
@@ -200,7 +200,7 @@ class _WorkOrdersList extends ConsumerWidget {
           style: Theme.of(context)
               .textTheme
               .bodyMedium
-              ?.copyWith(color: const Color(0xFF64748B)),
+              ?.copyWith(color: AppTheme.textMuted),
         ),
       );
     }
@@ -265,13 +265,6 @@ class _WorkOrderListTileState extends ConsumerState<_WorkOrderListTile> {
             color: AppTheme.surface,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: AppTheme.border),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
           ),
           child: Row(
             children: [
@@ -299,7 +292,7 @@ class _WorkOrderListTileState extends ConsumerState<_WorkOrderListTile> {
                       style: Theme.of(context)
                           .textTheme
                           .bodySmall
-                          ?.copyWith(color: const Color(0xFF64748B)),
+                          ?.copyWith(color: AppTheme.textMuted),
                     ),
                   ],
                 ),
@@ -425,7 +418,7 @@ class _KanbanColumn extends ConsumerWidget {
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall
-                                  ?.copyWith(color: const Color(0xFF64748B)),
+                                  ?.copyWith(color: AppTheme.textMuted),
                             ),
                           )
                         : ListView.separated(
@@ -471,13 +464,6 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -499,9 +485,9 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
               ),
               const Gap(8),
               if (w.status == 'done')
-                const Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 18)
+                Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 18)
               else
-                const Icon(Icons.open_in_new_rounded, size: 18, color: Color(0xFF64748B)),
+                const Icon(Icons.open_in_new_rounded, size: 18, color: AppTheme.textMuted),
             ],
           ),
           const Gap(6),
@@ -510,7 +496,7 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
             style: Theme.of(context)
                 .textTheme
                 .bodySmall
-                ?.copyWith(color: const Color(0xFF64748B)),
+                ?.copyWith(color: AppTheme.textMuted),
           ),
         ],
       ),
@@ -768,7 +754,7 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
+                      color: AppTheme.surfaceMuted,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: AppTheme.border),
                     ),
@@ -786,7 +772,7 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
                             style: Theme.of(context)
                                 .textTheme
                                 .bodyMedium
-                                ?.copyWith(color: const Color(0xFF64748B)),
+                                ?.copyWith(color: AppTheme.textMuted),
                           ),
                         ),
                       ],

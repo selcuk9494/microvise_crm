@@ -843,7 +843,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
     final lineStockAsync = ref.watch(lineStockAvailableProvider);
 
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.background,
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
@@ -958,7 +958,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                 child: Text(
                   'Müşteri bilgisi yüklenemedi.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
                 ),
               ),
@@ -1077,7 +1077,7 @@ class _SheetBody extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF64748B),
+                      color: AppTheme.textMuted,
                     ),
                   ),
                 ],
@@ -1129,7 +1129,7 @@ class _SheetBody extends StatelessWidget {
                                               .textTheme
                                               .bodySmall
                                               ?.copyWith(
-                                                color: const Color(0xFF64748B),
+                                                color: AppTheme.textMuted,
                                               ),
                                         ),
                                     ],
@@ -1152,7 +1152,7 @@ class _SheetBody extends StatelessWidget {
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall
-                                  ?.copyWith(color: const Color(0xFF64748B)),
+                                  ?.copyWith(color: AppTheme.textMuted),
                             ),
                           ],
                         ],
@@ -1370,7 +1370,7 @@ class _SheetBody extends StatelessWidget {
                           ? 'İmza ile birlikte e-posta gönderimi denenecek.'
                           : 'E-posta yoksa gönderim yapılmaz.',
                       style: Theme.of(context).textTheme.bodySmall
-                          ?.copyWith(color: const Color(0xFF64748B)),
+                          ?.copyWith(color: AppTheme.textMuted),
                     ),
                   ],
                 ),
@@ -1529,7 +1529,7 @@ class _SheetBody extends StatelessWidget {
                                 style: Theme.of(context)
                                     .textTheme
                                     .bodySmall
-                                    ?.copyWith(color: const Color(0xFF64748B)),
+                                    ?.copyWith(color: AppTheme.textMuted),
                               ),
                             ],
                           );
@@ -1543,7 +1543,7 @@ class _SheetBody extends StatelessWidget {
                           style: Theme.of(context)
                               .textTheme
                               .bodySmall
-                              ?.copyWith(color: const Color(0xFF64748B)),
+                              ?.copyWith(color: AppTheme.textMuted),
                         ),
                       ),
                       if (manualAllowed) ...[
@@ -1591,7 +1591,7 @@ class _SheetBody extends StatelessWidget {
                           style: Theme.of(context)
                               .textTheme
                               .bodySmall
-                              ?.copyWith(color: const Color(0xFF64748B)),
+                              ?.copyWith(color: AppTheme.textMuted),
                         ),
                       ],
                     ],

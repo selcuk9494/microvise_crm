@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { query } = require('../_lib/db');
 const { ensureUsersAuthColumns } = require('../_lib/schema');
 const {
@@ -9,6 +11,42 @@ const {
   methodNotAllowed,
   serverError,
 } = require('../_lib/http');
+
+function loadEnvFile(filePath, { override = false } = {}) {
+  if (!fs.existsSync(filePath)) return;
+  const content = fs.readFileSync(filePath, 'utf8');
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if (!key) continue;
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    const current = process.env[key];
+    if (override || current == null || current === '') {
+      process.env[key] = value;
+    }
+  }
+}
+
+/** Electron paketinde process.env bazen eksik kalır; her login'de yeniden oku. */
+function refreshAuthEnv() {
+  const candidates = [];
+  if (process.env.MICROVISE_ENV_DIR) {
+    candidates.push(path.join(process.env.MICROVISE_ENV_DIR, '.env.local'));
+  }
+  candidates.push(path.resolve(__dirname, '../../.env.local'));
+  for (const filePath of candidates) {
+    loadEnvFile(filePath, { override: true });
+  }
+}
 
 async function readJson(req) {
   const chunks = [];
@@ -89,9 +127,11 @@ module.exports = async (req, res) => {
   }
 
   try {
+    refreshAuthEnv();
     const body = await readJson(req);
     const email = normalizeEmail(body.email);
-    const password = String(body.password || '');
+    // Trim: Electron/autofill bazen satır sonu veya boşluk ekler.
+    const password = String(body.password || '').replace(/^\uFEFF/, '').trim();
 
     if (!email || !email.includes('@') || password.length < 1) {
       return badRequest(req, res, 'E-posta ve şifre gerekli.');
@@ -105,7 +145,9 @@ module.exports = async (req, res) => {
     }
 
     const masterEmail = normalizeEmail(process.env.MASTER_ADMIN_EMAIL);
-    const masterPassword = String(process.env.MASTER_ADMIN_PASSWORD || '');
+    const masterPassword = String(process.env.MASTER_ADMIN_PASSWORD || '')
+      .replace(/^\uFEFF/, '')
+      .trim();
     const isMasterEmail = masterEmail && email === masterEmail;
     const isMasterPassword = masterPassword && password === masterPassword;
     const isMaster = isMasterEmail && isMasterPassword;
@@ -200,7 +242,20 @@ module.exports = async (req, res) => {
 
     if (!isMaster) {
       const pwHash = user.password_hash ? String(user.password_hash) : '';
-      if (!pwHash) return unauthorized(req, res, 'Şifre tanımlı değil.');
+      if (!pwHash) {
+        if (isMasterEmail) {
+          return unauthorized(
+            req,
+            res,
+            'Giriş başarısız. Master admin şifresi .env.local içindeki MASTER_ADMIN_PASSWORD değeridir.',
+          );
+        }
+        return unauthorized(
+          req,
+          res,
+          'Şifre tanımlı değil. Yöneticiden şifre sıfırlaması isteyin.',
+        );
+      }
       let okPw;
       if (pwHash.startsWith('md5:')) {
         okPw = await query(
@@ -229,7 +284,64 @@ module.exports = async (req, res) => {
           return unauthorized(req, res, 'Şifre doğrulama yapılamıyor.');
         }
       }
-      if (!okPw.rows[0]?.ok) return unauthorized(req, res, 'Giriş başarısız.');
+      if (!okPw.rows[0]?.ok) {
+        if (isMasterEmail) {
+          return unauthorized(
+            req,
+            res,
+            'Giriş başarısız. Master admin şifresi .env.local içindeki MASTER_ADMIN_PASSWORD değeridir.',
+          );
+        }
+        return unauthorized(req, res, 'Giriş başarısız.');
+      }
+    } else if (isMaster && masterPassword) {
+      // Master girişinde hash'i her zaman MASTER_ADMIN_PASSWORD ile senkron tut.
+      try {
+        await query(
+          `
+            update public.users
+            set password_hash = crypt($2, gen_salt('bf'))
+            where id = $1
+          `,
+          [user.id, masterPassword],
+        );
+      } catch (_) {
+        try {
+          await query(
+            `
+              update public.users
+              set password_hash = 'md5:' || md5($2 || ':' || $1::text)
+              where id = $1
+            `,
+            [user.id, masterPassword],
+          );
+        } catch (_) {}
+      }
+    } else if (!user.password_hash && masterPassword) {
+      // Master girişinde eksik hash'i senkronize et (Electron / ilk kurulum).
+      try {
+        await query(
+          `
+            update public.users
+            set password_hash = crypt($2, gen_salt('bf'))
+            where id = $1
+              and (password_hash is null or password_hash = '')
+          `,
+          [user.id, masterPassword],
+        );
+      } catch (_) {
+        try {
+          await query(
+            `
+              update public.users
+              set password_hash = 'md5:' || md5($2 || ':' || $1::text)
+              where id = $1
+                and (password_hash is null or password_hash = '')
+            `,
+            [user.id, masterPassword],
+          );
+        } catch (_) {}
+      }
     }
 
     const now = Math.floor(Date.now() / 1000);

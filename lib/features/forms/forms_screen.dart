@@ -56,7 +56,7 @@ class FormsScreen extends StatelessWidget {
                       description:
                           'Devir işlemleri için form girişi ve çıktı şablonunu bu modülde toplayacağız.',
                       icon: Icons.swap_horiz_rounded,
-                      accent: const Color(0xFF0F766E),
+                      accent: AppTheme.primary,
                       buttonLabel: 'Aç',
                       onTap: () => context.go('/formlar/devir'),
                       width: isMobile ? double.infinity : 320,
@@ -96,35 +96,35 @@ class _FormEntryCard extends StatelessWidget {
     return SizedBox(
       width: width,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-          border: Border.all(color: AppTheme.border),
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          border: Border.all(color: AppTheme.border.withValues(alpha: 0.7)),
           boxShadow: AppTheme.cardShadow,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 44,
-              height: 44,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.10),
+                color: accent.withValues(alpha: AppTheme.isDark ? 0.18 : 0.10),
                 borderRadius: BorderRadius.circular(AppTheme.radiusSm),
               ),
-              child: Icon(icon, color: accent, size: 20),
+              child: Icon(icon, color: AppTheme.categoryIconFg(accent), size: 19),
             ),
-            const Gap(12),
+            const Gap(10),
             Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const Gap(6),
+            const Gap(4),
             Text(
               description,
               style: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
             ),
-            const Gap(12),
+            const Gap(10),
             FilledButton.icon(
               onPressed: onTap,
               icon: const Icon(Icons.arrow_forward_rounded, size: 16),

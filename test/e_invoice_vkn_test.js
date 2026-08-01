@@ -528,6 +528,96 @@ test('Maliye arşivinde birim fiyat 0 ise payload/DB fiyatını kullanır', () =
   assert.ok(Math.abs(rows[0].total - 220.01) < 0.01);
 });
 
+test('kalem açıklaması boşsa ürün adını kopyalamaz (PDF merge)', () => {
+  const { mergeLineItems } = require('../api/_lib/e_invoice_pdf');
+  const rows = mergeLineItems({
+    officialItems: [
+      {
+        adi: 'PAX A910SF',
+        aciklama: 'PAX A910SF',
+        birimMiktari: 1,
+        birimTurKod: 'C62',
+        fiyat: 100,
+        vergiler: [{ vergiOrani: 16, vergiTutari: 16 }],
+      },
+    ],
+    payloadItems: [
+      {
+        adi: 'PAX A910SF',
+        aciklama: 'PAX A910SF',
+        birimMiktari: 1,
+        birimTurKod: 'C62',
+        fiyat: 100,
+      },
+    ],
+    localItems: [{ description: 'PAX A910SF', quantity: 1, unit_price: 100 }],
+  });
+  assert.equal(rows[0].adi, 'PAX A910SF');
+  assert.equal(rows[0].aciklama, '');
+});
+
+test('kalem açıklaması üründen farklıysa korunur (PDF merge)', () => {
+  const { mergeLineItems } = require('../api/_lib/e_invoice_pdf');
+  const rows = mergeLineItems({
+    officialItems: [
+      {
+        adi: 'PAX A910SF',
+        aciklama: '6 aylık bakım dahil',
+        birimMiktari: 1,
+        birimTurKod: 'C62',
+        fiyat: 100,
+        vergiler: [{ vergiOrani: 16, vergiTutari: 16 }],
+      },
+    ],
+    payloadItems: [],
+    localItems: [
+      {
+        description: 'PAX A910SF',
+        product_description: '6 aylık bakım dahil',
+        quantity: 1,
+        unit_price: 100,
+      },
+    ],
+  });
+  assert.equal(rows[0].adi, 'PAX A910SF');
+  assert.equal(rows[0].aciklama, '6 aylık bakım dahil');
+});
+
+test('Maliye payload açıklaması ürün adını tekrar etmez', () => {
+  const built = buildPayload({
+    settings: validSettings(),
+    invoice: {
+      ...validInvoice(),
+      items: [
+        {
+          description: 'PAX A910SF',
+          quantity: 1,
+          unit: 'Adet',
+          unit_price: 100,
+          tax_rate: 16,
+          tax_amount: 16,
+          discount_amount: 0,
+        },
+        {
+          description: 'B910 SF',
+          product_description: 'İletişim şarj ünitesi',
+          quantity: 1,
+          unit: 'Adet',
+          unit_price: 50,
+          tax_rate: 16,
+          tax_amount: 8,
+          discount_amount: 0,
+        },
+      ],
+    },
+  });
+  const lines = built.payload.faturalar[0].malHizmetler;
+  assert.equal(lines[0].adi, 'PAX A910SF');
+  assert.equal(lines[0].aciklama, '');
+  assert.equal(lines[1].adi, 'B910 SF');
+  assert.equal(lines[1].aciklama, 'İletişim şarj ünitesi');
+});
+
 function officialDataWithItems(items) {
   return {
     fatura: {

@@ -105,7 +105,7 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
               'Servis kaydı yüklenemedi.',
               style: Theme.of(
                 context,
-              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+              ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
             ),
           ),
         ),
@@ -777,7 +777,7 @@ class _BodyState extends ConsumerState<_Body> {
               date,
               style: Theme.of(
                 context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             ),
             if (isMobile) ...[
               const Gap(10),
@@ -1017,7 +1017,7 @@ class _BodyState extends ConsumerState<_Body> {
                 'Fotoğraf yok.',
                 style: Theme.of(
                   context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
               )
             else
               Wrap(
@@ -1305,7 +1305,7 @@ class _ImageThumb extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: AppTheme.border),
-            color: const Color(0xFFF8FAFC),
+            color: AppTheme.surfaceMuted,
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
@@ -1369,7 +1369,7 @@ class _SignaturePad extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: AppTheme.border),
-            color: const Color(0xFFF8FAFC),
+            color: AppTheme.surfaceMuted,
           ),
           child: IgnorePointer(
             ignoring: !enabled,
@@ -1426,7 +1426,7 @@ class _CostCard extends StatelessWidget {
               'Kayıt yok.',
               style: Theme.of(
                 context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             )
           else
             for (int i = 0; i < items.length; i++) ...[

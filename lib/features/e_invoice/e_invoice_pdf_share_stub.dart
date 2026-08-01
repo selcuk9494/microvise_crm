@@ -16,9 +16,21 @@ Future<bool> shareEInvoicePdfBundle({
   return false;
 }
 
+/// Birden çok PDF'i ayrı dosya olarak indirir (ZIP yok).
+Future<bool> downloadEInvoicePdfs({
+  required List<EInvoicePdfDownload> files,
+}) async {
+  return false;
+}
+
 class EInvoicePdfDownload {
-  const EInvoicePdfDownload({required this.url, required this.fileName});
+  const EInvoicePdfDownload({
+    required this.url,
+    required this.fileName,
+    this.localPath,
+  });
 
   final String url;
   final String fileName;
+  final String? localPath;
 }

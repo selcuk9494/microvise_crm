@@ -37,8 +37,8 @@ class LoginCredentialFields extends StatelessWidget {
           enableSuggestions: true,
           textCapitalization: TextCapitalization.none,
           keyboardAppearance: Brightness.light,
-          style: const TextStyle(color: Color(0xFF0F172A)),
-          cursorColor: AppTheme.primary,
+          style: TextStyle(color: AppTheme.text),
+          cursorColor: AppTheme.primaryDark,
           decoration: const InputDecoration(
             labelText: 'E-posta',
             hintText: 'ornek@firma.com',
@@ -56,8 +56,8 @@ class LoginCredentialFields extends StatelessWidget {
           autocorrect: false,
           enableSuggestions: true,
           keyboardAppearance: Brightness.light,
-          style: const TextStyle(color: Color(0xFF0F172A)),
-          cursorColor: AppTheme.primary,
+          style: TextStyle(color: AppTheme.text),
+          cursorColor: AppTheme.primaryDark,
           decoration: const InputDecoration(
             labelText: 'Şifre',
             hintText: '••••••••',

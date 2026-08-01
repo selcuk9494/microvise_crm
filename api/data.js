@@ -33,6 +33,7 @@ const {
   ensureApplicationFormsApprovalColumns,
   ensureApplicationFormActivityLogsTable,
   ensureCustomerCountryColumns,
+  ensureAkinsoftInvoiceSyncColumns,
 } = require('./_lib/schema');
 const {
   handleCors,
@@ -1704,6 +1705,7 @@ module.exports = async (req, res) => {
 
       case 'invoices_list': {
         if (!requireAnyPage(req, user, ['faturalama'], res)) return;
+        await ensureAkinsoftInvoiceSyncColumns();
         await query(`
           create table if not exists public.akinsoft_sync_map (
             id uuid primary key default gen_random_uuid(),
@@ -1763,11 +1765,17 @@ module.exports = async (req, res) => {
           }
         }
         if (eInvoiceStatus === 'sent') {
-          whereSql += ` and i.e_invoice_status = 'sent'`;
+          whereSql += ` and i.e_invoice_status = 'sent' and coalesce(i.e_invoice_environment, 'production') <> 'test'`;
+        } else if (eInvoiceStatus === 'manual_sent' || eInvoiceStatus === 'sent_test') {
+          whereSql += ` and (
+            i.e_invoice_status = 'manual_sent'
+            or (i.e_invoice_status = 'sent' and i.e_invoice_environment = 'test')
+            or (i.e_invoice_status = 'manual' and i.e_invoice_environment = 'test')
+          )`;
         } else if (eInvoiceStatus === 'manual') {
-          whereSql += ` and i.e_invoice_status = 'manual'`;
+          whereSql += ` and i.e_invoice_status = 'manual' and coalesce(i.e_invoice_environment, '') <> 'test'`;
         } else if (eInvoiceStatus === 'not_sent') {
-          whereSql += ` and coalesce(i.e_invoice_status, 'not_sent') not in ('sent', 'manual')`;
+          whereSql += ` and coalesce(i.e_invoice_status, 'not_sent') not in ('sent', 'manual', 'manual_sent')`;
         }
         if (customerId) {
           values.push(customerId);
@@ -1879,7 +1887,9 @@ module.exports = async (req, res) => {
                 else fi.status
               end as effective_status,
               json_build_object('name', c.name) as customers,
-              asm.source_id as akinsoft_source_id
+              fi.erp_invoice_number,
+              asm.source_id as akinsoft_source_id,
+              asm.source_code as akinsoft_source_code
             from filtered_invoices fi
             left join public.customers c on c.id = fi.customer_id
             left join item_totals on item_totals.invoice_id = fi.id

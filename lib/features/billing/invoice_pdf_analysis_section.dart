@@ -155,7 +155,7 @@ class _InvoicePdfAnalysisSectionState
                         Text(
                           'Liste fatura numarasi, tarih, fatura tutari, KDV orani ve KDV tutarina gore duzenlenir. Excel ve PDF olarak aktarabilirsiniz.',
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFF64748B),
+                            color: AppTheme.textMuted,
                           ),
                         ),
                       ],
@@ -432,7 +432,7 @@ class _InvoicePdfAnalysisSectionState
                 Text(
                   'Kayitli liste: ${DateFormat('dd.MM.yyyy HH:mm', 'tr_TR').format(DateTime.fromMillisecondsSinceEpoch(state.lastSavedAtMs!))}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
                 ),
               ],
@@ -778,7 +778,7 @@ class _InvoicePdfEmptyState extends StatelessWidget {
               'Yukleme sonrasi KDV oran bazli dashboard ve aktarilabilir muhasebe listesi burada gorunur.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF64748B),
+                color: AppTheme.textMuted,
               ),
             ),
           ],
@@ -937,21 +937,21 @@ class _VatRateCard extends StatelessWidget {
             Text(
               'Matrah ${_formatAmount(item.baseAmount, item.currency)}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF64748B),
+                color: AppTheme.textMuted,
               ),
             ),
             const Gap(2),
             Text(
               'Vergili Toplam ${_formatAmount(item.grandTotal, item.currency)}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF64748B),
+                color: AppTheme.textMuted,
               ),
             ),
             const Gap(2),
             Text(
               'TL Karsiligi ${_formatAmount(item.tlEquivalent, 'TRY')}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF64748B),
+                color: AppTheme.textMuted,
               ),
             ),
           ],
@@ -1008,7 +1008,7 @@ class _FxRateCard extends StatelessWidget {
           Text(
             'Iki tarih arasina kur girin. Dip toplamda yabanci para faturalarin TL karsiligi ayrica hesaplanir.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: const Color(0xFF64748B),
+              color: AppTheme.textMuted,
             ),
           ),
           const Gap(12),
@@ -1190,7 +1190,7 @@ class _TopStatCard extends StatelessWidget {
             Text(
               title,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF64748B),
+                color: AppTheme.textMuted,
               ),
             ),
             const Gap(8),
@@ -1205,7 +1205,7 @@ class _TopStatCard extends StatelessWidget {
             Text(
               subtitle,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF64748B),
+                color: AppTheme.textMuted,
               ),
             ),
           ],

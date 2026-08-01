@@ -12,6 +12,7 @@ import '../../core/ui/app_page_layout.dart';
 import 'invoice_model.dart';
 import 'invoice_providers.dart';
 import 'invoice_form_screen.dart';
+import 'invoice_statement_pdf.dart';
 import 'invoice_statement_share.dart';
 
 class InvoicesScreen extends ConsumerStatefulWidget {
@@ -122,7 +123,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                             Text(
                               'Fatura bulunmuyor',
                               style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: const Color(0xFF64748B)),
+                                  ?.copyWith(color: AppTheme.textMuted),
                             ),
                           ],
                         ),
@@ -150,7 +151,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                 child: Text(
                   'Faturalar yüklenemedi',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
                 ),
               ),
@@ -461,7 +462,7 @@ class _InvoiceCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF64748B),
+                      color: AppTheme.textMuted,
                     ),
                   ),
                   const Gap(2),
@@ -607,7 +608,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                               ? 'Satış Faturası'
                               : 'Alış Faturası',
                           style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: const Color(0xFF64748B)),
+                              ?.copyWith(color: AppTheme.textMuted),
                         ),
                       ],
                     ),
@@ -675,7 +676,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                               Text(
                                 '${item.quantity} ${item.unit} x $currencySymbol${_money.format(item.unitPrice).replaceAll('₺', '').trim()}',
                                 style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: const Color(0xFF64748B)),
+                                    ?.copyWith(color: AppTheme.textMuted),
                               ),
                             ],
                           ),
@@ -963,12 +964,16 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   Future<void> _shareInvoicePdf(Invoice invoice) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
+      final customerName = (invoice.customerName ?? '').trim().isNotEmpty
+          ? invoice.customerName!.trim()
+          : 'Cari';
+      final stamp = DateTime.now().toIso8601String().substring(0, 10);
       await shareInvoiceStatementPdf(
         title: 'Fatura Ekstresi',
-        customerName: invoice.customerName ?? '-',
+        customerName: customerName,
         invoices: [invoice],
         filename:
-            'fatura_${invoice.invoiceNumber}_${DateTime.now().toIso8601String().substring(0, 10)}.pdf',
+            'fatura_ekstresi_${safeStatementFilePart(customerName)}_${safeStatementFilePart(invoice.invoiceNumber, fallback: 'fatura')}_$stamp.pdf',
       );
     } catch (e) {
       if (!mounted) return;
@@ -993,12 +998,12 @@ class _StatusBadgeLarge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color) = switch (status) {
-      'draft' => ('Taslak', const Color(0xFF64748B)),
+      'draft' => ('Taslak', AppTheme.textMuted),
       'open' => ('Açık', const Color(0xFFF59E0B)),
       'partial' => ('Kısmi', AppTheme.primary),
       'paid' => ('Kapalı', AppTheme.success),
       'cancelled' => ('İptal', AppTheme.error),
-      _ => ('?', const Color(0xFF64748B)),
+      _ => ('?', AppTheme.textMuted),
     };
 
     return Container(
@@ -1035,7 +1040,7 @@ class _InfoRow extends StatelessWidget {
             label,
             style: Theme.of(
               context,
-            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+            ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
           ),
         ),
         Expanded(

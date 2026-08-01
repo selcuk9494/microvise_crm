@@ -90,7 +90,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                       Text(
                         'Stok takipli ürün bulunmuyor',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: const Color(0xFF64748B),
+                          color: AppTheme.textMuted,
                         ),
                       ),
                       const Gap(8),
@@ -351,7 +351,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
             'Stok bilgileri yüklenemedi',
             style: Theme.of(
               context,
-            ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+            ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
           ),
         ),
       ),
@@ -876,7 +876,7 @@ class _SummaryCard extends StatelessWidget {
                 title,
                 style: Theme.of(
                   context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
               ),
               Text(
                 value,
@@ -947,7 +947,7 @@ class _StockCard extends StatelessWidget {
                     Text(
                       'Min: ${money.format(min)}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF64748B),
+                        color: AppTheme.textMuted,
                       ),
                     ),
                     const Gap(12),
@@ -964,7 +964,7 @@ class _StockCard extends StatelessWidget {
                       Text(
                         'Seri: ${serialSummary!.availableCount} hazır / ${serialSummary!.consumedCount} kullanıldı',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF64748B),
+                          color: AppTheme.textMuted,
                         ),
                       ),
                     ],
@@ -997,7 +997,7 @@ class _StockCard extends StatelessWidget {
                 'adet',
                 style: Theme.of(
                   context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
               ),
             ],
           ),
@@ -1166,14 +1166,14 @@ class _InlineInfoChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: const Color(0xFF64748B)),
+          Icon(icon, size: 14, color: AppTheme.textMuted),
           const Gap(6),
           Text(
             label,

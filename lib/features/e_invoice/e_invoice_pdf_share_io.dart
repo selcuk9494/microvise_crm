@@ -7,10 +7,15 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 class EInvoicePdfDownload {
-  const EInvoicePdfDownload({required this.url, required this.fileName});
+  const EInvoicePdfDownload({
+    required this.url,
+    required this.fileName,
+    this.localPath,
+  });
 
   final String url;
   final String fileName;
+  final String? localPath;
 }
 
 /// İmzalı depolama bağlantısını paylaşmak yerine PDF'i indirip dosya olarak
@@ -34,12 +39,14 @@ Future<bool> shareEInvoicePdfBundle({
 
   final dir = await getTemporaryDirectory();
   final attachments = <XFile>[];
+  final usedNames = <String>{};
   for (final item in files) {
     final response = await http
         .get(Uri.parse(item.url))
         .timeout(const Duration(seconds: 60));
     if (response.statusCode < 200 || response.statusCode >= 300) continue;
-    final safeName = _safeFilename(item.fileName);
+    final safeName = _uniqueFilename(_safeFilename(item.fileName), usedNames);
+    usedNames.add(safeName.toLowerCase());
     final file = File('${dir.path}/$safeName');
     await file.writeAsBytes(response.bodyBytes, flush: true);
     attachments.add(
@@ -48,6 +55,21 @@ Future<bool> shareEInvoicePdfBundle({
   }
   if (attachments.isEmpty) return false;
 
+  await _shareFiles(attachments, shareText);
+  return true;
+}
+
+/// Seçilen PDF'leri tek tek ayrı dosya olarak kaydeder/paylaşır (ZIP yok).
+Future<bool> downloadEInvoicePdfs({
+  required List<EInvoicePdfDownload> files,
+}) async {
+  return shareEInvoicePdfBundle(
+    files: files,
+    shareText: 'E-faturalar',
+  );
+}
+
+Future<void> _shareFiles(List<XFile> attachments, String shareText) async {
   final view = WidgetsBinding.instance.platformDispatcher.views.firstOrNull;
   final dpr = view?.devicePixelRatio ?? 1.0;
   final size = view == null
@@ -68,11 +90,23 @@ Future<bool> shareEInvoicePdfBundle({
     subject: shareText,
     sharePositionOrigin: origin,
   );
-  return true;
 }
 
 String _safeFilename(String input) {
   final trimmed = input.trim().isEmpty ? 'e_fatura.pdf' : input.trim();
   final cleaned = trimmed.replaceAll(RegExp(r'[^a-zA-Z0-9._-]+'), '_');
   return cleaned.toLowerCase().endsWith('.pdf') ? cleaned : '$cleaned.pdf';
+}
+
+String _uniqueFilename(String name, Set<String> usedLower) {
+  if (!usedLower.contains(name.toLowerCase())) return name;
+  final dot = name.lastIndexOf('.');
+  final stem = dot > 0 ? name.substring(0, dot) : name;
+  final ext = dot > 0 ? name.substring(dot) : '';
+  var i = 2;
+  while (true) {
+    final candidate = '${stem}_$i$ext';
+    if (!usedLower.contains(candidate.toLowerCase())) return candidate;
+    i += 1;
+  }
 }

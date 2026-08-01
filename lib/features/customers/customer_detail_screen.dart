@@ -290,7 +290,7 @@ class CustomerDetailScreen extends ConsumerWidget {
                     style: Theme.of(context)
                         .textTheme
                         .bodyMedium
-                        ?.copyWith(color: const Color(0xFF64748B)),
+                        ?.copyWith(color: AppTheme.textMuted),
                   ),
                   const Gap(14),
                   FilledButton(
@@ -355,7 +355,7 @@ class _Content extends ConsumerWidget {
                                 style: Theme.of(context)
                                     .textTheme
                                     .bodySmall
-                                    ?.copyWith(color: const Color(0xFF64748B)),
+                                    ?.copyWith(color: AppTheme.textMuted),
                               ),
                             ],
                           ],
@@ -574,7 +574,7 @@ class _GeneralTab extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: AppTheme.surfaceMuted,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: AppTheme.border),
               ),
@@ -615,7 +615,7 @@ class _QuickStat extends StatelessWidget {
         width: 150,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
+          color: AppTheme.surfaceMuted,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppTheme.border),
         ),
@@ -1356,7 +1356,7 @@ class _DeviceRegistryItemState extends ConsumerState<_DeviceRegistryItem> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -1383,7 +1383,7 @@ class _DeviceRegistryItemState extends ConsumerState<_DeviceRegistryItem> {
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
-                        ?.copyWith(color: const Color(0xFF64748B)),
+                        ?.copyWith(color: AppTheme.textMuted),
                   ),
                 ],
               ],
@@ -1657,7 +1657,7 @@ class _PillText extends StatelessWidget {
         style: Theme.of(context)
             .textTheme
             .bodySmall
-            ?.copyWith(color: const Color(0xFF64748B)),
+            ?.copyWith(color: AppTheme.textMuted),
       ),
     );
   }
@@ -1683,7 +1683,7 @@ class _BranchItem extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -1716,7 +1716,7 @@ class _BranchItem extends StatelessWidget {
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
-                  ?.copyWith(color: const Color(0xFF64748B)),
+                  ?.copyWith(color: AppTheme.textMuted),
             ),
           ],
           if (branch.address?.trim().isNotEmpty ?? false) ...[
@@ -1884,7 +1884,7 @@ class _LineItemState extends ConsumerState<_LineItem> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -1913,7 +1913,7 @@ class _LineItemState extends ConsumerState<_LineItem> {
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
-                        ?.copyWith(color: const Color(0xFF64748B)),
+                        ?.copyWith(color: AppTheme.textMuted),
                   ),
                 ],
                 if (period != null) ...[
@@ -2147,7 +2147,7 @@ class _LicenseItemState extends ConsumerState<_LicenseItem> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -2173,7 +2173,7 @@ class _LicenseItemState extends ConsumerState<_LicenseItem> {
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
-                        ?.copyWith(color: const Color(0xFF64748B)),
+                        ?.copyWith(color: AppTheme.textMuted),
                   ),
                 ],
                 if ((license.softwareCompanyName ?? '').trim().isNotEmpty ||
@@ -2189,7 +2189,7 @@ class _LicenseItemState extends ConsumerState<_LicenseItem> {
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
-                        ?.copyWith(color: const Color(0xFF64748B)),
+                        ?.copyWith(color: AppTheme.textMuted),
                   ),
                 ],
               ],
@@ -3233,7 +3233,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                       child: Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: AppTheme.surfaceMuted,
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: AppTheme.border),
                         ),
@@ -3861,7 +3861,7 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
+                    color: AppTheme.surfaceMuted,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: AppTheme.border),
                   ),
@@ -4224,7 +4224,7 @@ class _ExpiryItem extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -4252,7 +4252,7 @@ class _ExpiryItem extends StatelessWidget {
                           style: Theme.of(context)
                               .textTheme
                               .bodySmall
-                              ?.copyWith(color: const Color(0xFF64748B)),
+                              ?.copyWith(color: AppTheme.textMuted),
                         ),
                       )
                     else
@@ -4262,7 +4262,7 @@ class _ExpiryItem extends StatelessWidget {
                           style: Theme.of(context)
                               .textTheme
                               .bodySmall
-                              ?.copyWith(color: const Color(0xFF64748B)),
+                              ?.copyWith(color: AppTheme.textMuted),
                         ),
                       ),
                     if (subtitle != null)
@@ -4342,7 +4342,7 @@ class _InfoRow extends StatelessWidget {
                   style: Theme.of(sheetContext)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                      ?.copyWith(color: AppTheme.textMuted),
                 ),
                 const Gap(12),
                 ListTile(
@@ -4404,7 +4404,7 @@ class _InfoRow extends StatelessWidget {
           child: Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF64748B),
+                  color: AppTheme.textMuted,
                   fontWeight: FontWeight.w600,
                 ),
           ),
@@ -4458,7 +4458,7 @@ class _TabEmpty extends StatelessWidget {
         style: Theme.of(context)
             .textTheme
             .bodyMedium
-            ?.copyWith(color: const Color(0xFF64748B)),
+            ?.copyWith(color: AppTheme.textMuted),
       ),
     );
   }
@@ -4477,7 +4477,7 @@ class _TabError extends StatelessWidget {
         style: Theme.of(context)
             .textTheme
             .bodyMedium
-            ?.copyWith(color: const Color(0xFF64748B)),
+            ?.copyWith(color: AppTheme.textMuted),
       ),
     );
   }

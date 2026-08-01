@@ -758,7 +758,7 @@ class _LinesTab extends ConsumerWidget {
                           ? 'Hat kaydı bulunmuyor'
                           : 'Filtreye uygun hat bulunamadı',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF64748B),
+                        color: AppTheme.textMuted,
                       ),
                     ),
                   ],
@@ -918,7 +918,7 @@ class _LicensesTab extends ConsumerWidget {
                           ? 'Lisans kaydı bulunmuyor'
                           : 'Filtreye uygun lisans bulunamadı',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF64748B),
+                        color: AppTheme.textMuted,
                       ),
                     ),
                   ],
@@ -1049,7 +1049,7 @@ class _OverviewCard extends StatelessWidget {
                 label,
                 style: Theme.of(
                   context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
               ),
             ],
           ),
@@ -1080,7 +1080,7 @@ class _SummaryCard extends StatelessWidget {
             title,
             style: Theme.of(
               context,
-            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+            ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
           ),
           const Gap(4),
           Text(
@@ -1272,7 +1272,7 @@ class _LineCardState extends ConsumerState<_LineCard> {
                   Text(
                     line.customerName ?? '-',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF64748B),
+                          color: AppTheme.textMuted,
                         ),
                   ),
                   if (details.isNotEmpty) ...[
@@ -1401,7 +1401,7 @@ class _LicenseCard extends StatelessWidget {
                   Text(
                     license.customerName ?? '-',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF64748B),
+                      color: AppTheme.textMuted,
                     ),
                   ),
                   if ((license.softwareCompanyName ?? '').trim().isNotEmpty) ...[

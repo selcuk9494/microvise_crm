@@ -115,30 +115,10 @@ class DashboardScreen extends ConsumerWidget {
 
                     final surface =
                         Theme.of(context).cardTheme.color ?? AppTheme.surface;
-                    final revenueBgTop = Color.alphaBlend(
-                      AppTheme.success.withValues(alpha: 0.14),
-                      surface,
-                    );
-                    final revenueBgBottom = Color.alphaBlend(
-                      AppTheme.success.withValues(alpha: 0.06),
-                      surface,
-                    );
 
                     final revenueCard = AppCard(
                       padding: EdgeInsets.zero,
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.all(
-                          Radius.circular(AppTheme.radiusMd),
-                        ),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [revenueBgTop, revenueBgBottom],
-                            ),
-                          ),
-                          child: Padding(
+                      child: Padding(
                             padding: const EdgeInsets.all(16),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -149,20 +129,18 @@ class DashboardScreen extends ConsumerWidget {
                                       width: 36,
                                       height: 36,
                                       decoration: BoxDecoration(
-                                        color: AppTheme.success.withValues(
-                                          alpha: 0.16,
-                                        ),
-                                        borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(
-                                          color: AppTheme.success.withValues(
-                                            alpha: 0.26,
+                                        color: Color.alphaBlend(
+                                          AppTheme.metricBlue.withValues(
+                                            alpha: AppTheme.isDark ? 0.22 : 0.14,
                                           ),
+                                          surface,
                                         ),
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
-                                      child: const Icon(
-                                        Icons.show_chart_rounded,
+                                      child: Icon(
+                                        Icons.show_chart_outlined,
                                         size: 18,
-                                        color: AppTheme.success,
+                                        color: AppTheme.metricBlue,
                                       ),
                                     ),
                                     const Gap(10),
@@ -184,9 +162,7 @@ class DashboardScreen extends ConsumerWidget {
                                                 .textTheme
                                                 .bodySmall
                                                 ?.copyWith(
-                                                  color: const Color(
-                                                    0xFF64748B,
-                                                  ),
+                                                  color: AppTheme.textMuted,
                                                 ),
                                           ),
                                         ],
@@ -206,35 +182,12 @@ class DashboardScreen extends ConsumerWidget {
                                 ),
                               ],
                             ),
-                          ),
-                        ),
                       ),
-                    );
-
-                    final statusBgTop = Color.alphaBlend(
-                      AppTheme.primary.withValues(alpha: 0.14),
-                      surface,
-                    );
-                    final statusBgBottom = Color.alphaBlend(
-                      AppTheme.primary.withValues(alpha: 0.06),
-                      surface,
                     );
 
                     final workOrderStatusCard = AppCard(
                       padding: EdgeInsets.zero,
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.all(
-                          Radius.circular(AppTheme.radiusMd),
-                        ),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [statusBgTop, statusBgBottom],
-                            ),
-                          ),
-                          child: Padding(
+                      child: Padding(
                             padding: const EdgeInsets.all(16),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,20 +198,18 @@ class DashboardScreen extends ConsumerWidget {
                                       width: 36,
                                       height: 36,
                                       decoration: BoxDecoration(
-                                        color: AppTheme.primary.withValues(
-                                          alpha: 0.16,
-                                        ),
-                                        borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(
-                                          color: AppTheme.primary.withValues(
-                                            alpha: 0.26,
+                                        color: Color.alphaBlend(
+                                          AppTheme.metricBlue.withValues(
+                                            alpha: AppTheme.isDark ? 0.22 : 0.14,
                                           ),
+                                          surface,
                                         ),
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
-                                      child: const Icon(
+                                      child: Icon(
                                         Icons.assignment_rounded,
                                         size: 18,
-                                        color: AppTheme.primary,
+                                        color: AppTheme.metricBlue,
                                       ),
                                     ),
                                     const Gap(10),
@@ -280,9 +231,7 @@ class DashboardScreen extends ConsumerWidget {
                                                 .textTheme
                                                 .bodySmall
                                                 ?.copyWith(
-                                                  color: const Color(
-                                                    0xFF64748B,
-                                                  ),
+                                                  color: AppTheme.textMuted,
                                                 ),
                                           ),
                                         ],
@@ -301,35 +250,12 @@ class DashboardScreen extends ConsumerWidget {
                                 ),
                               ],
                             ),
-                          ),
-                        ),
                       ),
-                    );
-
-                    final activityBgTop = Color.alphaBlend(
-                      AppTheme.warning.withValues(alpha: 0.12),
-                      surface,
-                    );
-                    final activityBgBottom = Color.alphaBlend(
-                      AppTheme.warning.withValues(alpha: 0.05),
-                      surface,
                     );
 
                     final activityCard = AppCard(
                       padding: EdgeInsets.zero,
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.all(
-                          Radius.circular(AppTheme.radiusMd),
-                        ),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [activityBgTop, activityBgBottom],
-                            ),
-                          ),
-                          child: Padding(
+                      child: Padding(
                             padding: const EdgeInsets.all(16),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -340,20 +266,18 @@ class DashboardScreen extends ConsumerWidget {
                                       width: 36,
                                       height: 36,
                                       decoration: BoxDecoration(
-                                        color: AppTheme.warning.withValues(
-                                          alpha: 0.16,
-                                        ),
-                                        borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(
-                                          color: AppTheme.warning.withValues(
-                                            alpha: 0.26,
+                                        color: Color.alphaBlend(
+                                          AppTheme.metricOrange.withValues(
+                                            alpha: AppTheme.isDark ? 0.22 : 0.14,
                                           ),
+                                          surface,
                                         ),
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
-                                      child: const Icon(
+                                      child: Icon(
                                         Icons.bolt_rounded,
                                         size: 18,
-                                        color: AppTheme.warning,
+                                        color: AppTheme.metricOrange,
                                       ),
                                     ),
                                     const Gap(10),
@@ -375,9 +299,7 @@ class DashboardScreen extends ConsumerWidget {
                                                 .textTheme
                                                 .bodySmall
                                                 ?.copyWith(
-                                                  color: const Color(
-                                                    0xFF64748B,
-                                                  ),
+                                                  color: AppTheme.textMuted,
                                                 ),
                                           ),
                                         ],
@@ -389,8 +311,6 @@ class DashboardScreen extends ConsumerWidget {
                                 const _ActivityTimeline(),
                               ],
                             ),
-                          ),
-                        ),
                       ),
                     );
 
@@ -449,7 +369,7 @@ class _DashboardBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const ColoredBox(color: AppTheme.background);
+    return DecoratedBox(decoration: AppTheme.pageCanvas);
   }
 }
 
@@ -460,15 +380,6 @@ class _ExchangeRatesCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final ratesAsync = ref.watch(dashboardHalkbankRatesProvider);
     final format = NumberFormat('#,##0.0000', 'tr_TR');
-    final surface = Theme.of(context).cardTheme.color ?? AppTheme.surface;
-    final bgTop = Color.alphaBlend(
-      AppTheme.warning.withValues(alpha: 0.14),
-      surface,
-    );
-    final bgBottom = Color.alphaBlend(
-      AppTheme.warning.withValues(alpha: 0.06),
-      surface,
-    );
 
     String subtitleFromRates(DashboardExchangeRates rates) {
       if (rates.items.isEmpty) return 'Halkbank • USD, EUR, GBP';
@@ -512,7 +423,7 @@ class _ExchangeRatesCard extends ConsumerWidget {
                               Text(
                                 'Güncelleme: $updatedText',
                                 style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: const Color(0xFF64748B)),
+                                    ?.copyWith(color: AppTheme.textMuted),
                               ),
                               const Gap(12),
                               if (rates.items.isEmpty)
@@ -567,9 +478,7 @@ class _ExchangeRatesCard extends ConsumerWidget {
                                                     .textTheme
                                                     .bodySmall
                                                     ?.copyWith(
-                                                      color: const Color(
-                                                        0xFF64748B,
-                                                      ),
+                                                      color: AppTheme.textMuted,
                                                     ),
                                               ),
                                             ),
@@ -613,67 +522,61 @@ class _ExchangeRatesCard extends ConsumerWidget {
             },
           );
         },
-        child: ClipRRect(
-          borderRadius: const BorderRadius.all(
-            Radius.circular(AppTheme.radiusMd),
-          ),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [bgTop, bgBottom],
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Container(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Builder(
+                builder: (context) {
+                  final surface =
+                      Theme.of(context).cardTheme.color ?? AppTheme.surface;
+                  return Container(
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: AppTheme.warning.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: AppTheme.warning.withValues(alpha: 0.26),
+                      color: Color.alphaBlend(
+                        AppTheme.metricOrange.withValues(
+                          alpha: AppTheme.isDark ? 0.22 : 0.14,
+                        ),
+                        surface,
                       ),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.currency_exchange_rounded,
                       size: 18,
-                      color: AppTheme.warning,
+                      color: AppTheme.metricOrange,
                     ),
-                  ),
-                  const Gap(10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Döviz Kurları',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const Gap(2),
-                        Text(
-                          ratesAsync.when(
-                            data: subtitleFromRates,
-                            loading: () => 'Halkbank • yükleniyor…',
-                            error: (err, st) => 'Halkbank • USD, EUR, GBP',
-                          ),
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: const Color(0xFF64748B)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(
-                    Icons.open_in_new_rounded,
-                    color: Color(0xFF94A3B8),
-                  ),
-                ],
+                  );
+                },
               ),
-            ),
+              const Gap(10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Döviz Kurları',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const Gap(2),
+                    Text(
+                      ratesAsync.when(
+                        data: subtitleFromRates,
+                        loading: () => 'Halkbank • yükleniyor…',
+                        error: (err, st) => 'Halkbank • USD, EUR, GBP',
+                      ),
+                      style: Theme.of(context).textTheme.bodySmall
+                          ?.copyWith(color: AppTheme.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.open_in_new_rounded,
+                color: AppTheme.textMuted,
+              ),
+            ],
           ),
         ),
       ),
@@ -687,79 +590,55 @@ class _BankPasswordsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final surface = Theme.of(context).cardTheme.color ?? AppTheme.surface;
-    final bgTop = Color.alphaBlend(
-      AppTheme.primary.withValues(alpha: 0.14),
-      surface,
-    );
-    final bgMid = Color.alphaBlend(
-      AppTheme.accent.withValues(alpha: 0.08),
-      surface,
-    );
-    final bgBottom = Color.alphaBlend(
-      AppTheme.primary.withValues(alpha: 0.06),
-      surface,
-    );
     return AppCard(
       padding: EdgeInsets.zero,
       onTap: () => _showBankPicker(context),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.all(
-          Radius.circular(AppTheme.radiusMd),
-        ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [bgTop, bgMid, bgBottom],
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Color.alphaBlend(
+                  AppTheme.metricBlue.withValues(
+                    alpha: AppTheme.isDark ? 0.22 : 0.14,
+                  ),
+                  surface,
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                Icons.lock_rounded,
+                size: 18,
+                color: AppTheme.metricBlue,
+              ),
             ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.16),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: AppTheme.primary.withValues(alpha: 0.26),
+            const Gap(10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Banka Şifreleri',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const Gap(2),
+                  Text(
+                    'İş Bankası / Garanti Bankası',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.textMuted,
                     ),
                   ),
-                  child: const Icon(
-                    Icons.lock_rounded,
-                    size: 18,
-                    color: AppTheme.primary,
-                  ),
-                ),
-                const Gap(10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Banka Şifreleri',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const Gap(2),
-                      Text(
-                        'İş Bankası / Garanti Bankası',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: Color(0xFF94A3B8),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: AppTheme.textMuted,
+            ),
+          ],
         ),
       ),
     );
@@ -822,9 +701,9 @@ class _BankPasswordsCard extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: AppTheme.surfaceMuted,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.border),
+                border: Border.all(color: AppTheme.border.withValues(alpha: 0.45)),
               ),
               child: Text(
                 password,
@@ -928,61 +807,60 @@ class _MetricsGrid extends StatelessWidget {
             _MetricTile(
               title: 'Toplam Müşteri',
               value: metrics.totalCustomers.toString(),
-              icon: Icons.people_alt_rounded,
+              icon: Icons.groups_outlined,
+              accent: AppTheme.metricBlue,
               onTap: () => context.go('/musteriler'),
             ),
           if (canSeeWorkOrders && canSeeTileOpenWorkOrders)
             _MetricTile(
               title: 'Açık İş Emirleri',
               value: metrics.openWorkOrders.toString(),
-              icon: Icons.assignment_rounded,
-              tone: metrics.openWorkOrders > 0
-                  ? _MetricTone.warning
-                  : _MetricTone.neutral,
+              icon: Icons.view_kanban_outlined,
+              accent: AppTheme.metricOrange,
               onTap: () => context.go('/is-emirleri'),
             ),
           if (canSeeWorkOrders && canSeeTileInProgressWorkOrders)
             _MetricTile(
               title: 'Devam Eden',
               value: metrics.inProgressWorkOrders.toString(),
-              icon: Icons.timelapse_rounded,
-              tone: _MetricTone.primary,
+              icon: Icons.timelapse_outlined,
+              accent: AppTheme.metricBlue,
               onTap: () => context.go('/is-emirleri'),
             ),
           if (canSeeWorkOrders && canSeeTileTodayWorkOrders)
             _MetricTile(
               title: 'Bugünkü İşler',
               value: metrics.todayWorkOrders.toString(),
-              icon: Icons.today_rounded,
+              icon: Icons.today_outlined,
+              accent: AppTheme.metricPurple,
               onTap: () => context.go('/is-emirleri'),
             ),
           if (canSeeProducts && canSeeTileExpiringSoon)
             _MetricTile(
               title: 'Süresi Dolanlar',
               value: metrics.expiringSoon.toString(),
-              icon: Icons.warning_rounded,
-              tone: metrics.expiringSoon > 0
-                  ? _MetricTone.warning
-                  : _MetricTone.neutral,
+              icon: Icons.warning_amber_outlined,
+              accent: AppTheme.metricRed,
               onTap: () => context.go('/urunler'),
             ),
           if (canSeeReports && canSeeTileRevenue)
             _MetricTile(
               title: 'Gelir (Bu Ay)',
               value: money.format(metrics.revenue),
-              icon: Icons.payments_rounded,
-              tone: _MetricTone.success,
+              icon: Icons.payments_outlined,
+              accent: AppTheme.metricGreen,
               subtitle: revenueChangeText,
               subtitleColor: revenueChange >= 0
-                  ? AppTheme.success
-                  : AppTheme.error,
+                  ? AppTheme.metricGreen
+                  : AppTheme.metricRed,
               onTap: () => context.go('/raporlar'),
             ),
           if (canSeeBilling && canSeeTileOpenInvoices)
             _MetricTile(
               title: 'Açık Faturalar',
               value: metrics.openInvoices.toString(),
-              icon: Icons.receipt_long_rounded,
+              icon: Icons.receipt_long_outlined,
+              accent: AppTheme.metricBlue,
               subtitle: money.format(metrics.totalInvoiceAmount),
               onTap: () => context.go('/faturalama'),
             ),
@@ -990,20 +868,18 @@ class _MetricsGrid extends StatelessWidget {
             _MetricTile(
               title: 'Fatura Kuyruğu',
               value: metrics.invoiceQueuePending.toString(),
-              icon: Icons.receipt_rounded,
-              tone: metrics.invoiceQueuePending > 0
-                  ? _MetricTone.warning
-                  : _MetricTone.neutral,
+              icon: Icons.receipt_outlined,
+              accent: AppTheme.metricYellow,
               onTap: () => context.go('/faturalama'),
             ),
           if (canSeeProducts && canSeeTileLowStock)
             _MetricTile(
               title: 'Düşük Stok',
               value: metrics.lowStockProducts.toString(),
-              icon: Icons.inventory_2_rounded,
-              tone: metrics.lowStockProducts > 0
-                  ? _MetricTone.warning
-                  : _MetricTone.success,
+              icon: Icons.inventory_2_outlined,
+              accent: metrics.lowStockProducts > 0
+                  ? AppTheme.metricOrange
+                  : AppTheme.metricGreen,
               onTap: () => context.go('/urunler'),
             ),
         ];
@@ -1015,7 +891,7 @@ class _MetricsGrid extends StatelessWidget {
             for (final item in items)
               SizedBox(
                 width: itemWidth,
-                height: isPhone ? 76 : 96,
+                height: isPhone ? 72 : 88,
                 child: AppCard(
                   padding: EdgeInsets.zero,
                   onTap: item.onTap,
@@ -1023,7 +899,7 @@ class _MetricsGrid extends StatelessWidget {
                     title: item.title,
                     value: item.value,
                     icon: item.icon,
-                    tone: item.tone,
+                    accent: item.accent,
                     subtitle: item.subtitle,
                     subtitleColor: item.subtitleColor,
                     onTap: item.onTap,
@@ -1043,7 +919,7 @@ class _MetricTile extends StatelessWidget {
     required this.title,
     required this.value,
     required this.icon,
-    this.tone = _MetricTone.neutral,
+    required this.accent,
     this.subtitle,
     this.subtitleColor,
     this.onTap,
@@ -1053,7 +929,7 @@ class _MetricTile extends StatelessWidget {
   final String title;
   final String value;
   final IconData icon;
-  final _MetricTone tone;
+  final Color accent;
   final String? subtitle;
   final Color? subtitleColor;
   final VoidCallback? onTap;
@@ -1061,122 +937,137 @@ class _MetricTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = switch (tone) {
-      _MetricTone.primary => AppTheme.primary,
-      _MetricTone.warning => AppTheme.warning,
-      _MetricTone.success => AppTheme.success,
-      _MetricTone.neutral => const Color(0xFF334155),
-    };
-
-    return ClipRRect(
-      borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusMd)),
-      child: DecoratedBox(
-        decoration: BoxDecoration(color: AppTheme.surface),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            dense ? 12 : 16,
-            dense ? 10 : 14,
-            dense ? 10 : 12,
-            dense ? 10 : 14,
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        dense ? 12 : 16,
+        dense ? 10 : 14,
+        dense ? 10 : 12,
+        dense ? 10 : 14,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: dense ? 36 : 40,
+            height: dense ? 36 : 40,
+            decoration: AppTheme.categoryIconWell(
+              accent,
+              radius: dense ? 9 : 10,
+            ),
+            child: Icon(
+              icon,
+              size: dense ? 17 : 19,
+              color: AppTheme.categoryIconFg(accent),
+            ),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: dense ? 36 : 40,
-                height: dense ? 36 : 40,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.09),
-                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                  border: Border.all(color: accent.withValues(alpha: 0.16)),
+          Gap(dense ? 10 : 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.textMuted,
+                    fontWeight: FontWeight.w600,
+                    fontSize: dense ? 11.5 : 12,
+                  ),
                 ),
-                child: Icon(icon, size: dense ? 17 : 19, color: accent),
-              ),
-              Gap(dense ? 10 : 12),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Gap(dense ? 4 : 6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.textMuted,
-                        fontWeight: FontWeight.w700,
-                        fontSize: dense ? 12 : null,
+                    Flexible(
+                      child: Text(
+                        value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontSize: dense ? 20 : 22,
+                          height: 1.05,
+                          letterSpacing: -0.2,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.text,
+                        ),
                       ),
                     ),
-                    Gap(dense ? 4 : 7),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            value,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(
-                                  fontSize: dense ? 21 : 24,
-                                  height: 1.05,
-                                  letterSpacing: 0,
-                                ),
-                          ),
+                    if (subtitle != null) ...[
+                      Gap(dense ? 6 : 8),
+                      Text(
+                        subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: subtitleColor ?? AppTheme.textMuted,
+                          fontWeight: FontWeight.w700,
+                          fontSize: dense ? 11 : 12,
                         ),
-                        if (subtitle != null) ...[
-                          Gap(dense ? 6 : 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: (subtitleColor ?? const Color(0xFF64748B))
-                                  .withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color:
-                                    (subtitleColor ?? const Color(0xFF64748B))
-                                        .withValues(alpha: 0.15),
-                              ),
-                            ),
-                            child: Text(
-                              subtitle!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color:
-                                        subtitleColor ??
-                                        const Color(0xFF64748B),
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: dense ? 11 : null,
-                                  ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
+                      ),
+                    ],
                   ],
                 ),
-              ),
-              if (onTap != null)
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: dense ? 19 : 21,
-                  color: const Color(0xFFCBD5E1),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
+          Gap(dense ? 6 : 8),
+          SizedBox(
+            width: dense ? 44 : 56,
+            height: dense ? 28 : 34,
+            child: CustomPaint(
+              painter: _MetricSparklinePainter(color: accent),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-enum _MetricTone { primary, warning, success, neutral }
+class _MetricSparklinePainter extends CustomPainter {
+  _MetricSparklinePainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final seed = color.toARGB32();
+    final points = <Offset>[];
+    const steps = 7;
+    for (var i = 0; i <= steps; i++) {
+      final t = i / steps;
+      final wave = ((seed >> (i % 8)) & 7) / 7.0;
+      final yNorm = 0.25 +
+          0.55 *
+              ((0.55 * wave) +
+                  (0.45 * (1 - (t - 0.5).abs() * 1.4).clamp(0.0, 1.0)));
+      points.add(Offset(t * size.width, size.height * (1 - yNorm)));
+    }
+
+    final path = Path()..moveTo(points.first.dx, points.first.dy);
+    for (var i = 1; i < points.length; i++) {
+      final prev = points[i - 1];
+      final curr = points[i];
+      final mid = Offset((prev.dx + curr.dx) / 2, (prev.dy + curr.dy) / 2);
+      path.quadraticBezierTo(prev.dx, prev.dy, mid.dx, mid.dy);
+    }
+    path.lineTo(points.last.dx, points.last.dy);
+
+    final stroke = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(path, stroke);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MetricSparklinePainter oldDelegate) =>
+      oldDelegate.color != color;
+}
 
 class _WorkOrderPieChart extends StatelessWidget {
   const _WorkOrderPieChart({required this.metrics});
@@ -1196,7 +1087,7 @@ class _WorkOrderPieChart extends StatelessWidget {
           'İş emri kaydı yok.',
           style: Theme.of(
             context,
-          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+          ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
         ),
       );
     }
@@ -1211,19 +1102,19 @@ class _WorkOrderPieChart extends StatelessWidget {
               sections: [
                 PieChartSectionData(
                   value: metrics.openWorkOrders.toDouble(),
-                  color: AppTheme.warning,
+                  color: AppTheme.orange,
                   radius: 35,
                   title: '',
                 ),
                 PieChartSectionData(
                   value: metrics.inProgressWorkOrders.toDouble(),
-                  color: AppTheme.primary,
+                  color: AppTheme.blue,
                   radius: 35,
                   title: '',
                 ),
                 PieChartSectionData(
                   value: metrics.completedWorkOrders.toDouble(),
-                  color: AppTheme.success,
+                  color: AppTheme.green,
                   radius: 35,
                   title: '',
                 ),
@@ -1237,19 +1128,19 @@ class _WorkOrderPieChart extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _LegendItem(
-              color: AppTheme.warning,
+              color: AppTheme.orange,
               label: 'Açık',
               value: metrics.openWorkOrders,
             ),
             const Gap(8),
             _LegendItem(
-              color: AppTheme.primary,
+              color: AppTheme.blue,
               label: 'Devam',
               value: metrics.inProgressWorkOrders,
             ),
             const Gap(8),
             _LegendItem(
-              color: AppTheme.success,
+              color: AppTheme.green,
               label: 'Tamamlanan',
               value: metrics.completedWorkOrders,
             ),
@@ -1310,7 +1201,7 @@ class _RevenueChart extends StatelessWidget {
           'Bu aralıkta gelir kaydı yok.',
           style: Theme.of(
             context,
-          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+          ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
         ),
       );
     }
@@ -1378,7 +1269,7 @@ class _ChartSkeleton extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: AppTheme.border.withValues(alpha: 0.45)),
       ),
     );
   }
@@ -1394,7 +1285,7 @@ class _ChartError extends StatelessWidget {
         'Gelir grafiği yüklenemedi.',
         style: Theme.of(
           context,
-        ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+        ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
       ),
     );
   }
@@ -1414,7 +1305,7 @@ class _ActivityTimeline extends ConsumerWidget {
             'Henüz aktivite kaydı yok.',
             style: Theme.of(
               context,
-            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+            ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
           );
         }
 
@@ -1442,9 +1333,9 @@ class _ActivityTimeline extends ConsumerWidget {
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: AppTheme.surfaceMuted,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppTheme.border),
+                          border: Border.all(color: AppTheme.border.withValues(alpha: 0.45)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1466,7 +1357,7 @@ class _ActivityTimeline extends ConsumerWidget {
                                     overflow: TextOverflow.ellipsis,
                                     style: Theme.of(context).textTheme.bodySmall
                                         ?.copyWith(
-                                          color: const Color(0xFF64748B),
+                                          color: AppTheme.textMuted,
                                         ),
                                   ),
                                 ),
@@ -1474,7 +1365,7 @@ class _ActivityTimeline extends ConsumerWidget {
                                   _relativeTime(items[i].createdAt),
                                   style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(
-                                        color: const Color(0xFF94A3B8),
+                                        color: AppTheme.textMuted,
                                       ),
                                 ),
                               ],
@@ -1513,9 +1404,9 @@ class _ActivityTimeline extends ConsumerWidget {
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: AppTheme.surfaceMuted,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppTheme.border),
+                          border: Border.all(color: AppTheme.border.withValues(alpha: 0.45)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1546,7 +1437,7 @@ class _ActivityTimeline extends ConsumerWidget {
         'Aktivite akışı yüklenemedi.',
         style: Theme.of(
           context,
-        ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+        ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
       ),
     );
   }

@@ -80,12 +80,13 @@ class _AppPageLayoutState extends State<AppPageLayout> {
       return Scaffold(
         backgroundColor: AppTheme.background,
         body: DecoratedBox(
-          decoration: const BoxDecoration(color: AppTheme.background),
+          decoration: AppTheme.pageCanvas,
           child: NestedScrollView(
             headerSliverBuilder: (context, innerBoxIsScrolled) => [
               SliverAppBar(
-                backgroundColor: AppTheme.background,
+                backgroundColor: AppTheme.surface.withValues(alpha: 0.98),
                 surfaceTintColor: Colors.transparent,
+                foregroundColor: AppTheme.text,
                 elevation: 0,
                 pinned: true,
                 floating: false,
@@ -205,7 +206,7 @@ class _AppPageLayoutState extends State<AppPageLayout> {
         child: PrimaryScrollController(
           controller: _primaryScrollController,
           child: DecoratedBox(
-            decoration: const BoxDecoration(color: AppTheme.background),
+            decoration: AppTheme.pageCanvas,
             child: Column(
               children: [
                 GestureDetector(
@@ -228,12 +229,7 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                             ? (widget.compactHeader ? 8 : 10)
                             : 10,
                       ),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surface.withValues(alpha: 0.96),
-                        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                        border: Border.all(color: AppTheme.border),
-                        boxShadow: AppTheme.cardShadow,
-                      ),
+                      decoration: AppTheme.panelSurface,
                       child: isMobile
                           ? Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -335,7 +331,7 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                       horizontalPadding,
                       16,
                     ),
-                    child: widget.body,
+                    child: ClipRect(child: widget.body),
                   ),
                 ),
               ],

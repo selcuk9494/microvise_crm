@@ -20,25 +20,32 @@ class AppBadge extends StatelessWidget {
       AppBadgeTone.success => AppTheme.success,
       AppBadgeTone.warning => AppTheme.warning,
       AppBadgeTone.error => AppTheme.error,
-      AppBadgeTone.neutral => const Color(0xFF64748B),
+      AppBadgeTone.neutral => AppTheme.textMuted,
       AppBadgeTone.primary => AppTheme.primary,
     };
+    final fg = AppTheme.softFg(color);
 
     return Container(
       padding: dense
           ? const EdgeInsets.symmetric(horizontal: 7, vertical: 2)
           : const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
+        color: AppTheme.softTint(color, alpha: AppTheme.isDark ? 0.18 : 0.14),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.18)),
+        border: Border.all(
+          color: AppTheme.softBorder(color, alpha: AppTheme.isDark ? 0.32 : 0.24),
+        ),
       ),
       child: Text(
         label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          fontWeight: FontWeight.w600,
-          color: color,
-          fontSize: dense ? 10 : 11,
+          fontWeight: FontWeight.w700,
+          color: fg,
+          fontSize: dense ? 10.5 : 11,
+          height: 1.15,
+          letterSpacing: 0.05,
         ),
       ),
     );

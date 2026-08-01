@@ -1,8 +1,12 @@
 const crypto = require('crypto');
+const fs = require('fs');
 
 const { getAuthenticatedUser, hasPageAccess } = require('./_lib/auth');
 const { query } = require('./_lib/db');
-const { buildEInvoiceArchivePdf } = require('./_lib/e_invoice_pdf');
+const {
+  buildEInvoiceArchivePdf,
+  writeLocalEInvoicePdf,
+} = require('./_lib/e_invoice_pdf');
 const {
   handleCors,
   ok,
@@ -136,13 +140,18 @@ async function ensureEInvoiceSchema() {
       add column if not exists irsaliye_tarihi date,
       add column if not exists po_number text,
       add column if not exists erp_invoice_number text,
-      add column if not exists erp_invoice_number_synced_at timestamptz
+      add column if not exists erp_invoice_number_synced_at timestamptz,
+      add column if not exists prices_include_vat boolean not null default false,
+      add column if not exists akinsoft_sync_status text,
+      add column if not exists akinsoft_synced_at timestamptz,
+      add column if not exists akinsoft_sync_error text
   `);
   await query(`
     alter table public.invoice_items
       add column if not exists special_matrah boolean not null default false,
       add column if not exists tax_exemption_code text,
-      add column if not exists tax_exemption_description text
+      add column if not exists tax_exemption_description text,
+      add column if not exists notes text
   `);
   await query(`
     alter table public.customers
@@ -189,6 +198,25 @@ async function ensureEInvoiceSchema() {
 function cleanText(value) {
   const text = String(value ?? '').trim();
   return text.length ? text : null;
+}
+
+/** Line açıklama: only a real distinct note — never duplicate Mal/Hizmet (adi). */
+function distinctLineAciklama(adi, item) {
+  const name = String(adi || '')
+    .trim()
+    .toLocaleLowerCase('tr-TR');
+  const candidates = [
+    item?.aciklama,
+    item?.line_description,
+    item?.notes,
+  ];
+  for (const candidate of candidates) {
+    const value = cleanText(candidate);
+    if (!value) continue;
+    if (name && value.toLocaleLowerCase('tr-TR') === name) continue;
+    return value;
+  }
+  return '';
 }
 
 function invoiceDescription(settings, invoice) {
@@ -751,9 +779,15 @@ async function fetchInvoice(invoiceId) {
         row_to_json(c.*) as customer,
         coalesce(
           (
-            select json_agg(ii order by ii.sort_order asc)
-            from public.invoice_items ii
-            where ii.invoice_id = i.id
+            select json_agg(row_to_json(line) order by line.sort_order asc)
+            from (
+              select
+                ii.*,
+                nullif(btrim(coalesce(p.description, '')), '') as product_description
+              from public.invoice_items ii
+              left join public.products p on p.id = ii.product_id
+              where ii.invoice_id = i.id
+            ) line
           ),
           '[]'::json
         ) as items
@@ -813,12 +847,13 @@ function buildPayload({ settings, invoice, number: numberOverride }) {
     faturaToplami += base;
     iskontoToplami += discount;
     kdvToplami += taxAmount;
+    const adi = cleanText(item.description) || 'Mal/Hizmet';
     return {
-      adi: cleanText(item.description) || 'Mal/Hizmet',
+      adi,
       birimMiktari: qty,
       fiyat: price,
       birimTurKod: unitCode(item.unit),
-      aciklama: cleanText(item.description),
+      aciklama: distinctLineAciklama(adi, item),
       saticiUrunKodu: cleanText(item.product_id),
       iskontoVeEkUcretler:
         discount > 0
@@ -886,7 +921,12 @@ function buildPayload({ settings, invoice, number: numberOverride }) {
 }
 
 function canSendInvoiceToEnvironment(invoice, environment) {
-  if (invoice.e_invoice_status === 'manual') return false;
+  if (
+    invoice.e_invoice_status === 'manual' ||
+    invoice.e_invoice_status === 'manual_sent'
+  ) {
+    return false;
+  }
   if (invoice.e_invoice_status !== 'sent') return true;
   return (
     invoice.e_invoice_environment === 'test' &&
@@ -1053,6 +1093,33 @@ async function fetchOfficialInvoiceArchive({ settings, verificationCode, token }
 }
 
 const eInvoicePdfBucket = 'service-images';
+const localPdfBucket = 'local';
+
+/** Electron / yerel API: bulut depolama olmadan PDF üret. */
+function preferLocalPdfMode() {
+  if (String(process.env.DISABLE_SUPABASE || '').trim().toLowerCase() === 'true') {
+    return true;
+  }
+  if (String(process.env.MICROVISE_LOCAL_ORIGIN || '').trim()) {
+    return true;
+  }
+  const url = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+  const key = String(
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '',
+  ).trim();
+  return !url || !key;
+}
+
+function hasSupabaseStorageConfig() {
+  if (String(process.env.DISABLE_SUPABASE || '').trim().toLowerCase() === 'true') {
+    return false;
+  }
+  const url = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+  const key = String(
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '',
+  ).trim();
+  return Boolean(url && key);
+}
 
 function supabaseStorageConfig() {
   const url = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
@@ -1063,6 +1130,17 @@ function supabaseStorageConfig() {
     throw new Error('SUPABASE_URL ve SUPABASE_SERVICE_ROLE_KEY zorunludur.');
   }
   return { url, key };
+}
+
+function buildLocalOpenPdfUrl(absolutePath) {
+  const filePath = String(absolutePath || '').trim();
+  if (!filePath) return null;
+  const pathQuery = `/api/_local/open-pdf?path=${encodeURIComponent(filePath)}`;
+  const localOrigin = String(process.env.MICROVISE_LOCAL_ORIGIN || '').trim();
+  if (localOrigin) {
+    return `${localOrigin.replace(/\/$/, '')}${pathQuery}`;
+  }
+  return pathQuery;
 }
 
 function storageHeaders(key) {
@@ -1207,12 +1285,35 @@ async function archiveOfficialInvoice({ invoiceId, settings, verificationCode, t
       verificationCode,
       environment: settings.environment,
     });
-    const storedPdf = await uploadEInvoicePdf({
-      invoiceId,
-      invoice,
-      verificationCode,
-      pdf,
-    });
+    const fileName = buildEInvoicePdfFileName(invoice);
+    const sha256 = crypto.createHash('sha256').update(pdf).digest('hex');
+    const localOnly = preferLocalPdfMode();
+
+    let storedPdf;
+    let localPdfPath = null;
+
+    if (localOnly) {
+      localPdfPath = writeLocalEInvoicePdf(pdf, fileName);
+      storedPdf = {
+        bucket: localPdfBucket,
+        path: localPdfPath,
+        fileName,
+        sha256,
+      };
+    } else {
+      storedPdf = await uploadEInvoicePdf({
+        invoiceId,
+        invoice,
+        verificationCode,
+        pdf,
+      });
+      try {
+        localPdfPath = writeLocalEInvoicePdf(pdf, storedPdf.fileName);
+      } catch (_) {
+        // Yerel kopya isteğe bağlı; depolama asıl kaynaktır.
+      }
+    }
+
     await query(
       `
         update public.invoices
@@ -1236,21 +1337,33 @@ async function archiveOfficialInvoice({ invoiceId, settings, verificationCode, t
         storedPdf.sha256,
       ],
     );
-    let pdfUrl = null;
-    try {
-      pdfUrl = await createEInvoicePdfSignedUrl(
-        storedPdf.bucket,
-        storedPdf.path,
-        storedPdf.fileName,
-      );
-    } catch (_) {
-      // Depolama tamamlandı; imzalı URL yanıt için isteğe bağlıdır.
+
+    let pdfUrl = buildLocalOpenPdfUrl(localPdfPath);
+    if (!pdfUrl && !localOnly && hasSupabaseStorageConfig()) {
+      try {
+        pdfUrl = await createEInvoicePdfSignedUrl(
+          storedPdf.bucket,
+          storedPdf.path,
+          storedPdf.fileName,
+        );
+      } catch (_) {
+        // Depolama tamamlandı; imzalı URL yanıt için isteğe bağlıdır.
+      }
     }
+    if (!pdfUrl) {
+      throw new Error(
+        localOnly
+          ? 'Yerel PDF oluşturuldu ancak açılamadı (MICROVISE_LOCAL_ORIGIN / temp yolu).'
+          : 'PDF bağlantısı oluşturulamadı.',
+      );
+    }
+
     return {
       archived: true,
       archivedAt: new Date().toISOString(),
       pdfUrl,
       pdfFileName: storedPdf.fileName,
+      localPdfPath,
       bucket: storedPdf.bucket,
       path: storedPdf.path,
     };
@@ -1555,9 +1668,79 @@ async function handler(req, res) {
         cleanText(invoice.e_invoice_pdf_path)
       ) {
         const pdfFileName = buildEInvoicePdfFileName(invoice);
+        const bucket = cleanText(invoice.e_invoice_pdf_bucket);
+        const objectPath = cleanText(invoice.e_invoice_pdf_path);
+
+        // Yerel arşiv: temp dosya varsa doğrudan aç; yoksa resmi veriden yeniden üret.
+        if (preferLocalPdfMode() || bucket === localPdfBucket) {
+          let localPdfPath = null;
+          if (
+            bucket === localPdfBucket &&
+            objectPath &&
+            fs.existsSync(objectPath) &&
+            fs.statSync(objectPath).isFile()
+          ) {
+            localPdfPath = objectPath;
+          } else {
+            const settingsForPdf = await getSettings();
+            const pdf = await buildEInvoiceArchivePdf({
+              invoice,
+              settings: settingsForPdf,
+              officialData: invoice.e_invoice_official_data,
+              verificationCode: invoice.e_invoice_uuid,
+              environment:
+                invoice.e_invoice_environment === 'production'
+                  ? 'production'
+                  : 'test',
+            });
+            localPdfPath = writeLocalEInvoicePdf(pdf, pdfFileName);
+            await query(
+              `
+                update public.invoices
+                set e_invoice_pdf_bucket = $2,
+                    e_invoice_pdf_path = $3,
+                    e_invoice_pdf_sha256 = $4,
+                    e_invoice_pdf_created_at = now(),
+                    updated_at = now()
+                where id = $1
+              `,
+              [
+                invoiceId,
+                localPdfBucket,
+                localPdfPath,
+                crypto.createHash('sha256').update(pdf).digest('hex'),
+              ],
+            );
+          }
+          const pdfUrl = buildLocalOpenPdfUrl(localPdfPath);
+          if (!pdfUrl) {
+            return badRequest(
+              req,
+              res,
+              'Yerel PDF açılamadı (MICROVISE_LOCAL_ORIGIN / temp yolu).',
+            );
+          }
+          return ok(req, res, {
+            ok: true,
+            archived: true,
+            alreadyArchived: true,
+            archivedAt: invoice.e_invoice_archived_at,
+            pdfUrl,
+            pdfFileName,
+            localPdfPath,
+          });
+        }
+
+        if (!hasSupabaseStorageConfig()) {
+          return badRequest(
+            req,
+            res,
+            'PDF depolama yapılandırması yok; yerel modda yeniden arşivleyin (force).',
+          );
+        }
         const pdfUrl = await createEInvoicePdfSignedUrl(
-          invoice.e_invoice_pdf_bucket,
-          invoice.e_invoice_pdf_path,
+          bucket,
+          objectPath,
           pdfFileName,
         );
         return ok(req, res, {
@@ -1594,11 +1777,16 @@ async function handler(req, res) {
         invoice.e_invoice_environment === 'test' &&
         settings.environment === 'production';
       if (!canSendInvoiceToEnvironment(invoice, settings.environment)) {
-        if (invoice.e_invoice_status === 'manual') {
+        if (
+          invoice.e_invoice_status === 'manual' ||
+          invoice.e_invoice_status === 'manual_sent'
+        ) {
           return badRequest(
             req,
             res,
-            'Bu fatura manuel kesildi olarak işaretli. API’ye gönderilmez.',
+            invoice.e_invoice_status === 'manual_sent'
+              ? 'Bu fatura manuel gönderildi olarak işaretli. API’ye gönderilmez.'
+              : 'Bu fatura manuel kesildi olarak işaretli. API’ye gönderilmez.',
           );
         }
         return badRequest(

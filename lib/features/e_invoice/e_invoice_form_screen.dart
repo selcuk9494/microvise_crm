@@ -6,7 +6,10 @@ import 'package:intl/intl.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/format/app_date_time.dart';
+import '../../core/format/search_normalize.dart';
 import '../../core/ui/app_card.dart';
+import '../customers/customer_form_dialog.dart';
 import '../customers/customer_model.dart';
 import '../customers/customers_providers.dart';
 import '../definitions/definitions_screen.dart';
@@ -14,6 +17,87 @@ import '../invoices/invoice_model.dart';
 import '../invoices/invoice_providers.dart';
 import '../work_orders/currency_service.dart';
 import 'e_invoice_screen.dart';
+
+const _invoiceCurrencies = ['TRY', 'USD', 'EUR', 'GBP'];
+const _unitOptions = ['Adet', 'Kg', 'Lt', 'Mt', 'Saat'];
+
+String _currencyLabel(String code) {
+  switch (code) {
+    case 'TRY':
+      return 'TL';
+    case 'USD':
+      return 'USD';
+    case 'EUR':
+      return 'EUR';
+    case 'GBP':
+      return 'GBP';
+    default:
+      return code;
+  }
+}
+
+String _currencySymbol(String currency) {
+  switch (currency) {
+    case 'TRY':
+      return '₺';
+    case 'USD':
+      return '\$';
+    case 'EUR':
+      return '€';
+    case 'GBP':
+      return '£';
+    default:
+      return '$currency ';
+  }
+}
+
+/// Maps free-form / API unit labels onto the invoice dropdown values.
+/// Empty or unknown units become **Adet** so the Birim field is never blank.
+String _coerceUnit(String? value) {
+  final raw = (value ?? '').trim();
+  if (raw.isEmpty) return 'Adet';
+  for (final option in _unitOptions) {
+    if (option.toLowerCase() == raw.toLowerCase()) return option;
+  }
+  switch (raw.toUpperCase()) {
+    case 'AD':
+    case 'ADS':
+    case 'PCS':
+    case 'PIECE':
+    case 'PIECES':
+    case 'C62':
+      return 'Adet';
+    case 'KG':
+    case 'KILO':
+    case 'KILOGRAM':
+    case 'KGM':
+      return 'Kg';
+    case 'LT':
+    case 'L':
+    case 'LITRE':
+    case 'LITER':
+    case 'LTR':
+      return 'Lt';
+    case 'MT':
+    case 'M':
+    case 'METRE':
+    case 'METER':
+    case 'MTR':
+      return 'Mt';
+    case 'SAAT':
+    case 'HOUR':
+    case 'HOURS':
+    case 'HUR':
+      return 'Saat';
+    default:
+      return 'Adet';
+  }
+}
+
+List<DropdownMenuItem<String>> _unitDropdownItems() => [
+  for (final unit in _unitOptions)
+    DropdownMenuItem(value: unit, child: Text(unit)),
+];
 
 class EInvoiceFormScreen extends ConsumerStatefulWidget {
   const EInvoiceFormScreen({
@@ -38,11 +122,12 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
   final _items = <_EInvoiceItemDraft>[_EInvoiceItemDraft()];
 
   String? _customerId;
-  DateTime _invoiceDate = DateTime.now();
-  DateTime? _dueDate;
+  DateTime _invoiceDate = normalizeAppDate(DateTime.now());
+  DateTime? _dueDate = normalizeAppDate(DateTime.now());
   DateTime? _irsaliyeTarihi;
-  String _currency = 'TRY';
+  late String _currency;
   double _exchangeRate = 1;
+  bool _pricesIncludeVat = false;
   bool _saving = false;
   bool _sendAfterSave = false;
   Map<String, double> _rates = const {};
@@ -50,10 +135,14 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
   bool get _isSales => widget.invoiceType == 'sales';
   bool get _isEditing => widget.initialInvoice != null;
 
-  double get _subtotal => _items.fold(0, (sum, item) => sum + item.subtotal);
-  double get _discountTotal =>
-      _items.fold(0, (sum, item) => sum + item.discountAmount);
-  double get _taxTotal => _items.fold(0, (sum, item) => sum + item.taxAmount);
+  double get _subtotal =>
+      _items.fold(0, (sum, item) => sum + item.subtotal(_pricesIncludeVat));
+  double get _discountTotal => _items.fold(
+    0,
+    (sum, item) => sum + item.discountAmount(_pricesIncludeVat),
+  );
+  double get _taxTotal =>
+      _items.fold(0, (sum, item) => sum + item.taxAmount(_pricesIncludeVat));
   double get _grandTotal => _subtotal - _discountTotal + _taxTotal;
 
   @override
@@ -62,13 +151,16 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
     final invoice = widget.initialInvoice;
     if (invoice != null) {
       _customerId = invoice.customerId;
-      _invoiceDate = invoice.invoiceDate;
-      _dueDate = invoice.dueDate;
+      _invoiceDate = normalizeAppDate(invoice.invoiceDate);
+      _dueDate = invoice.dueDate == null
+          ? null
+          : normalizeAppDate(invoice.dueDate!);
       _irsaliyeNoController.text = invoice.irsaliyeNo ?? '';
       _irsaliyeTarihi = invoice.irsaliyeTarihi;
       _poNumberController.text = invoice.poNumber ?? '';
       _currency = invoice.currency;
       _exchangeRate = invoice.exchangeRate;
+      _pricesIncludeVat = invoice.pricesIncludeVat;
       _exchangeRateController.text = invoice.exchangeRate.toStringAsFixed(
         invoice.currency == 'TRY' ? 0 : 4,
       );
@@ -81,8 +173,15 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
         ..addAll(
           invoice.items.isEmpty
               ? [_EInvoiceItemDraft()]
-              : invoice.items.map(_EInvoiceItemDraft.fromInvoiceItem),
+              : invoice.items.map(
+                  (item) => _EInvoiceItemDraft.fromInvoiceItem(
+                    item,
+                    pricesIncludeVat: invoice.pricesIncludeVat,
+                  ),
+                ),
         );
+    } else {
+      _currency = _isSales ? 'USD' : 'TRY';
     }
     _loadRates();
   }
@@ -90,7 +189,36 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
   Future<void> _loadRates() async {
     final rates = await CurrencyService.getExchangeRates();
     if (!mounted) return;
-    setState(() => _rates = rates);
+    setState(() {
+      _rates = rates;
+      if (!_isEditing && _currency != 'TRY') {
+        _exchangeRate = rates[_currency] ?? _exchangeRate;
+        _exchangeRateController.text = _exchangeRate.toStringAsFixed(4);
+      }
+    });
+  }
+
+  void _setCurrency(String value) {
+    setState(() {
+      _currency = value;
+      _exchangeRate = value == 'TRY' ? 1 : (_rates[value] ?? 1);
+      _exchangeRateController.text = _exchangeRate.toStringAsFixed(
+        value == 'TRY' ? 0 : 4,
+      );
+    });
+  }
+
+  void _setPricesIncludeVat(bool value) {
+    if (value == _pricesIncludeVat) return;
+    setState(() {
+      for (final item in _items) {
+        item.convertPriceDisplay(
+          fromIncludeVat: _pricesIncludeVat,
+          toIncludeVat: value,
+        );
+      }
+      _pricesIncludeVat = value;
+    });
   }
 
   @override
@@ -129,9 +257,11 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
       taxTotal: _taxTotal,
       grandTotal: _grandTotal,
       currency: _currency,
+      pricesIncludeVat: _pricesIncludeVat,
       sendAfterSave: _sendAfterSave,
       isSales: _isSales,
       saving: _saving,
+      onPricesIncludeVatChanged: _setPricesIncludeVat,
       onSendAfterSaveChanged: (value) => setState(() => _sendAfterSave = value),
       onSaveDraft: () => _save(status: 'draft'),
       onSaveOpen: () => _save(status: 'open'),
@@ -198,19 +328,12 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                     exchangeRateController: _exchangeRateController,
                     onCustomerSearch: (customers) => _pickCustomer(customers),
                     onInvoiceDateChanged: (value) =>
-                        setState(() => _invoiceDate = value),
-                    onDueDateChanged: (value) =>
-                        setState(() => _dueDate = value),
-                    onCurrencyChanged: (value) {
-                      setState(() {
-                        _currency = value;
-                        _exchangeRate = value == 'TRY'
-                            ? 1
-                            : (_rates[value] ?? 1);
-                        _exchangeRateController.text = _exchangeRate
-                            .toStringAsFixed(value == 'TRY' ? 0 : 4);
-                      });
-                    },
+                        setState(() => _invoiceDate = normalizeAppDate(value)),
+                    onDueDateChanged: (value) => setState(
+                      () => _dueDate =
+                          value == null ? null : normalizeAppDate(value),
+                    ),
+                    onCurrencyChanged: _setCurrency,
                     onExchangeRateChanged: (value) =>
                         _exchangeRate = _parseDecimal(value),
                   ),
@@ -220,6 +343,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                     productsAsync: productsAsync,
                     taxRatesAsync: taxRatesAsync,
                     currency: _currency,
+                    pricesIncludeVat: _pricesIncludeVat,
                     isSales: _isSales,
                     onChanged: () => setState(() {}),
                     onProductSearch: (products) => _addProducts(products),
@@ -305,36 +429,28 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                               value: dateFormat.format(_invoiceDate),
                               initialDate: _invoiceDate,
                               onPicked: (value) =>
-                                  setState(() => _invoiceDate = value),
+                                  setState(
+                                    () => _invoiceDate = normalizeAppDate(value),
+                                  ),
                             ),
                           ),
                           const Gap(8),
                           SizedBox(
-                            width: 108,
+                            width: 118,
                             child: DropdownButtonFormField<String>(
-                              initialValue: _currency,
+                              initialValue: _invoiceCurrencies.contains(_currency)
+                                  ? _currency
+                                  : 'USD',
                               isExpanded: true,
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'TRY',
-                                  child: Text('TL'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'USD',
-                                  child: Text('USD'),
-                                ),
+                              items: [
+                                for (final code in _invoiceCurrencies)
+                                  DropdownMenuItem(
+                                    value: code,
+                                    child: Text(_currencyLabel(code)),
+                                  ),
                               ],
-                              onChanged: (value) {
-                                final next = value ?? 'TRY';
-                                setState(() {
-                                  _currency = next;
-                                  _exchangeRate = next == 'TRY'
-                                      ? 1
-                                      : (_rates[next] ?? 1);
-                                  _exchangeRateController.text = _exchangeRate
-                                      .toStringAsFixed(next == 'TRY' ? 0 : 4);
-                                });
-                              },
+                              onChanged: (value) =>
+                                  _setCurrency(value ?? (_isSales ? 'USD' : 'TRY')),
                               decoration: const InputDecoration(
                                 labelText: 'Para',
                                 isDense: true,
@@ -342,6 +458,19 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                             ),
                           ),
                         ],
+                      ),
+                      const Gap(8),
+                      SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: const Text('KDV dahil'),
+                        subtitle: Text(
+                          _pricesIncludeVat
+                              ? 'Birim fiyatlar KDV dahil girilir'
+                              : 'Birim fiyatlar KDV hariç girilir',
+                        ),
+                        value: _pricesIncludeVat,
+                        onChanged: _setPricesIncludeVat,
                       ),
                       if (_currency != 'TRY') ...[
                         const Gap(8),
@@ -370,6 +499,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                   productsAsync: productsAsync,
                   taxRatesAsync: taxRatesAsync,
                   currency: _currency,
+                  pricesIncludeVat: _pricesIncludeVat,
                   isSales: _isSales,
                   onChanged: () => setState(() {}),
                   onAddBlank: () =>
@@ -418,7 +548,9 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                           initialDate:
                               _dueDate ??
                               _invoiceDate.add(const Duration(days: 30)),
-                          onPicked: (value) => setState(() => _dueDate = value),
+                          onPicked: (value) => setState(
+                            () => _dueDate = normalizeAppDate(value),
+                          ),
                         ),
                         const Gap(8),
                         TextFormField(
@@ -539,6 +671,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
             'due_date': _dueDate == null ? null : _dateIso(_dueDate!),
             'currency': _currency,
             'exchange_rate': _currency == 'TRY' ? 1 : _exchangeRate,
+            'prices_include_vat': _pricesIncludeVat,
             'status': status,
             'notes': _notesController.text.trim().isEmpty
                 ? null
@@ -583,22 +716,25 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                 'invoice_id': invoiceId,
                 'product_id': validItems[i].productId,
                 'description': validItems[i].description,
+                'notes': validItems[i].notes.isEmpty
+                    ? null
+                    : validItems[i].notes,
                 'quantity': validItems[i].quantity,
                 'unit': validItems[i].unit,
-                'unit_price': validItems[i].unitPrice,
+                'unit_price': validItems[i].exclusiveUnitPrice(
+                  _pricesIncludeVat,
+                ),
                 'tax_rate': validItems[i].taxRate,
-                'tax_amount': validItems[i].taxAmount,
+                'tax_amount': validItems[i].taxAmount(_pricesIncludeVat),
                 'discount_rate': validItems[i].discountRate,
-                'discount_amount': validItems[i].discountAmount,
-                'line_total': validItems[i].lineTotal,
+                'discount_amount': validItems[i].discountAmount(
+                  _pricesIncludeVat,
+                ),
+                'line_total': validItems[i].lineTotal(_pricesIncludeVat),
                 'sort_order': i,
-                'special_matrah': validItems[i].specialMatrah,
-                'tax_exemption_code': validItems[i].specialMatrah
-                    ? '101'
-                    : null,
-                'tax_exemption_description': validItems[i].specialMatrah
-                    ? 'Özel Matrah'
-                    : null,
+                'special_matrah': false,
+                'tax_exemption_code': null,
+                'tax_exemption_description': null,
               },
           ],
         },
@@ -643,6 +779,17 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
         customers: customers,
         selectedCustomerId: _customerId,
         title: _isSales ? 'Müşteri Seç' : 'Tedarikçi / Cari Seç',
+        onCreateNew: () async {
+          final createdId = await showCreateCustomerDialog(context);
+          if (createdId == null || !mounted) return null;
+          ref.invalidate(customersLookupProvider);
+          ref.invalidate(customersProvider);
+          final refreshed = await ref.read(customersLookupProvider.future);
+          for (final customer in refreshed) {
+            if (customer.id == createdId) return customer;
+          }
+          return null;
+        },
       ),
     );
     if (selected == null) return;
@@ -663,7 +810,13 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
         _items.clear();
       }
       for (final product in selected) {
-        _items.add(_EInvoiceItemDraft.fromProduct(product, isSales: _isSales));
+        _items.add(
+          _EInvoiceItemDraft.fromProduct(
+            product,
+            isSales: _isSales,
+            pricesIncludeVat: _pricesIncludeVat,
+          ),
+        );
       }
     });
   }
@@ -704,7 +857,7 @@ class _DesktopInvoiceTop extends StatelessWidget {
         ?.where((customer) => customer.id == selectedCustomerId)
         .cast<Customer?>()
         .firstOrNull;
-    final dateFormat = DateFormat('dd.MM.yyyy HH:mm');
+    final dateFormat = DateFormat('dd.MM.yyyy');
 
     return AppCard(
       padding: EdgeInsets.zero,
@@ -726,7 +879,7 @@ class _DesktopInvoiceTop extends StatelessWidget {
                         ),
                         TextSpan(
                           text: isSales ? '(Standart)' : '(Cari)',
-                          style: const TextStyle(color: Color(0xFF1AA8D8)),
+                          style: TextStyle(color: AppTheme.primary),
                         ),
                       ],
                     ),
@@ -829,16 +982,16 @@ class _DesktopInvoiceTop extends StatelessWidget {
                               children: [
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
-                                    initialValue: currency,
-                                    items: const [
-                                      DropdownMenuItem(
-                                        value: 'TRY',
-                                        child: Text('TL'),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: 'USD',
-                                        child: Text('USD'),
-                                      ),
+                                    initialValue:
+                                        _invoiceCurrencies.contains(currency)
+                                        ? currency
+                                        : 'USD',
+                                    items: [
+                                      for (final code in _invoiceCurrencies)
+                                        DropdownMenuItem(
+                                          value: code,
+                                          child: Text(_currencyLabel(code)),
+                                        ),
                                     ],
                                     onChanged: (value) =>
                                         onCurrencyChanged(value ?? 'TRY'),
@@ -962,11 +1115,13 @@ class _CustomerPickerDialog extends StatefulWidget {
     required this.customers,
     required this.selectedCustomerId,
     required this.title,
+    required this.onCreateNew,
   });
 
   final List<Customer> customers;
   final String? selectedCustomerId;
   final String title;
+  final Future<Customer?> Function() onCreateNew;
 
   @override
   State<_CustomerPickerDialog> createState() => _CustomerPickerDialogState();
@@ -974,6 +1129,7 @@ class _CustomerPickerDialog extends StatefulWidget {
 
 class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
   final _search = TextEditingController();
+  bool _creating = false;
 
   @override
   void dispose() {
@@ -981,22 +1137,40 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
     super.dispose();
   }
 
+  bool _matchesCustomer(Customer customer, String query) {
+    return matchesSearchQuery(
+      [
+        customer.name,
+        customer.vkn ?? '',
+        customer.tcknMs ?? '',
+        customer.city ?? '',
+        customer.phone1 ?? '',
+        customer.email ?? '',
+        customer.id,
+      ].join(' '),
+      query,
+    );
+  }
+
+  Future<void> _createCustomer() async {
+    if (_creating) return;
+    setState(() => _creating = true);
+    try {
+      final created = await widget.onCreateNew();
+      if (!mounted || created == null) return;
+      Navigator.of(context).pop(created);
+    } finally {
+      if (mounted) setState(() => _creating = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final query = _search.text.trim().toLowerCase();
+    final query = _search.text.trim();
     final filtered = query.isEmpty
         ? widget.customers.take(80).toList(growable: false)
         : widget.customers
-              .where((customer) {
-                final haystack = [
-                  customer.name,
-                  customer.vkn ?? '',
-                  customer.tcknMs ?? '',
-                  customer.city ?? '',
-                  customer.phone1 ?? '',
-                ].join(' ').toLowerCase();
-                return haystack.contains(query);
-              })
+              .where((customer) => _matchesCustomer(customer, query))
               .take(120)
               .toList(growable: false);
 
@@ -1017,9 +1191,37 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
               ),
             ),
             const Gap(10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _creating ? null : _createCustomer,
+                icon: _creating
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                label: Text(_creating ? 'Oluşturuluyor…' : 'Yeni cari ekle'),
+              ),
+            ),
+            const Gap(4),
             Expanded(
               child: filtered.isEmpty
-                  ? const Center(child: Text('Cari bulunamadı.'))
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Cari bulunamadı.'),
+                          const Gap(8),
+                          OutlinedButton.icon(
+                            onPressed: _creating ? null : _createCustomer,
+                            icon: const Icon(Icons.person_add_alt_1_rounded),
+                            label: const Text('Yeni cari oluştur'),
+                          ),
+                        ],
+                      ),
+                    )
                   : ListView.separated(
                       itemCount: filtered.length,
                       separatorBuilder: (context, index) =>
@@ -1085,8 +1287,8 @@ class _AddressInfoPanel extends StatelessWidget {
     final tax = customer?.vkn?.trim();
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8FAFC),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceMuted,
         border: Border(left: BorderSide(color: AppTheme.border)),
       ),
       padding: const EdgeInsets.all(14),
@@ -1095,7 +1297,7 @@ class _AddressInfoPanel extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.home_work_rounded, size: 18, color: AppTheme.primary),
+              Icon(Icons.home_work_outlined, size: 18, color: AppTheme.primary),
               const Gap(8),
               Text(
                 'Adres ve Vergi Bilgisi',
@@ -1160,6 +1362,7 @@ class _DesktopItemsTable extends StatelessWidget {
     required this.productsAsync,
     required this.taxRatesAsync,
     required this.currency,
+    required this.pricesIncludeVat,
     required this.isSales,
     required this.onChanged,
     required this.onProductSearch,
@@ -1171,6 +1374,7 @@ class _DesktopItemsTable extends StatelessWidget {
   final AsyncValue<List<Product>> productsAsync;
   final AsyncValue<List<TaxRate>> taxRatesAsync;
   final String currency;
+  final bool pricesIncludeVat;
   final bool isSales;
   final VoidCallback onChanged;
   final ValueChanged<List<Product>> onProductSearch;
@@ -1220,13 +1424,15 @@ class _DesktopItemsTable extends StatelessWidget {
                   constraints: const BoxConstraints(minWidth: 1160),
                   child: Column(
                     children: [
-                      const _InvoiceTableHeader(),
+                      _InvoiceTableHeader(pricesIncludeVat: pricesIncludeVat),
                       for (var i = 0; i < items.length; i++)
                         _InvoiceTableRow(
+                          key: ObjectKey(items[i]),
                           item: items[i],
                           products: products,
                           taxRates: taxRates,
                           currency: currency,
+                          pricesIncludeVat: pricesIncludeVat,
                           isSales: isSales,
                           onChanged: onChanged,
                           onRemove: () => onRemove(i),
@@ -1264,7 +1470,7 @@ class _SectionTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? const Color(0xFF229ED3) : AppTheme.textSoft;
+    final color = selected ? AppTheme.primary : AppTheme.textSoft;
     return Container(
       margin: const EdgeInsets.only(left: 12),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
@@ -1289,23 +1495,28 @@ class _SectionTab extends StatelessWidget {
 }
 
 class _InvoiceTableHeader extends StatelessWidget {
-  const _InvoiceTableHeader();
+  const _InvoiceTableHeader({required this.pricesIncludeVat});
+
+  final bool pricesIncludeVat;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       height: 42,
-      color: const Color(0xFFEFF6FD),
+      color: AppTheme.tableHeaderBg,
       child: Row(
-        children: const [
-          _HeaderCell('Ürün', width: 330),
-          _HeaderCell('Miktar', width: 92),
-          _HeaderCell('Birim', width: 104),
-          _HeaderCell('Birim Fiyatı', width: 130),
-          _HeaderCell('İndirim', width: 104),
-          _HeaderCell('Vergi', width: 104),
-          _HeaderCell('Toplam', width: 160),
-          _HeaderCell('', width: 62),
+        children: [
+          const _HeaderCell('Ürün', width: 330),
+          const _HeaderCell('Miktar', width: 92),
+          const _HeaderCell('Birim', width: 104),
+          _HeaderCell(
+            pricesIncludeVat ? 'Birim Fiyatı (KDV dahil)' : 'Birim Fiyatı',
+            width: 130,
+          ),
+          const _HeaderCell('İndirim', width: 104),
+          const _HeaderCell('Vergi', width: 104),
+          const _HeaderCell('Toplam', width: 160),
+          const _HeaderCell('', width: 62),
         ],
       ),
     );
@@ -1328,7 +1539,7 @@ class _HeaderCell extends StatelessWidget {
           label,
           style: Theme.of(
             context,
-          ).textTheme.labelLarge?.copyWith(color: const Color(0xFF40556F)),
+          ).textTheme.labelLarge?.copyWith(color: AppTheme.textSoft),
         ),
       ),
     );
@@ -1337,10 +1548,12 @@ class _HeaderCell extends StatelessWidget {
 
 class _InvoiceTableRow extends StatelessWidget {
   const _InvoiceTableRow({
+    super.key,
     required this.item,
     required this.products,
     required this.taxRates,
     required this.currency,
+    required this.pricesIncludeVat,
     required this.isSales,
     required this.onChanged,
     required this.onRemove,
@@ -1350,6 +1563,7 @@ class _InvoiceTableRow extends StatelessWidget {
   final List<Product> products;
   final List<double> taxRates;
   final String currency;
+  final bool pricesIncludeVat;
   final bool isSales;
   final VoidCallback onChanged;
   final VoidCallback? onRemove;
@@ -1361,164 +1575,176 @@ class _InvoiceTableRow extends StatelessWidget {
       symbol: currency == 'TRY' ? '' : '$currency ',
       decimalDigits: 2,
     );
+    final unit = _coerceUnit(item.unit);
+    final taxRate = _taxInitialValue(item.taxRate, taxRates);
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: AppTheme.border)),
       ),
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 330,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Autocomplete<Product>(
-                optionsBuilder: (value) {
-                  final query = value.text.trim().toLowerCase();
-                  if (query.isEmpty) return products.take(12);
-                  return products
-                      .where(
-                        (product) =>
-                            product.name.toLowerCase().contains(query) ||
-                            (product.code ?? '').toLowerCase().contains(query),
-                      )
-                      .take(12);
-                },
-                displayStringForOption: (product) => product.name,
-                onSelected: (product) {
-                  item.productId = product.id;
-                  item.descriptionController.text = product.name;
-                  item.unit = product.unit;
-                  item.taxRate = product.taxRate;
-                  item.priceController.text =
-                      (isSales ? product.salePrice : product.purchasePrice)
-                          .toStringAsFixed(2);
-                  onChanged();
-                },
-                fieldViewBuilder: (context, controller, focusNode, _) {
-                  if (controller.text.isEmpty &&
-                      item.descriptionController.text.isNotEmpty) {
-                    controller.text = item.descriptionController.text;
-                  }
-                  return TextFormField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    decoration: const InputDecoration(hintText: 'Ürün seçin'),
-                    validator: (value) =>
-                        (value ?? '').trim().isEmpty ? 'Gerekli' : null,
-                    onChanged: (value) {
-                      item.productId = null;
-                      item.descriptionController.text = value;
+          Row(
+            children: [
+              SizedBox(
+                width: 330,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Autocomplete<Product>(
+                    optionsBuilder: (value) {
+                      final query = value.text.trim().toLowerCase();
+                      if (query.isEmpty) return products.take(12);
+                      return products
+                          .where(
+                            (product) =>
+                                product.name.toLowerCase().contains(query) ||
+                                (product.code ?? '')
+                                    .toLowerCase()
+                                    .contains(query),
+                          )
+                          .take(12);
+                    },
+                    displayStringForOption: (product) => product.name,
+                    onSelected: (product) {
+                      item.applyProduct(
+                        product,
+                        isSales: isSales,
+                        pricesIncludeVat: pricesIncludeVat,
+                      );
                       onChanged();
                     },
-                  );
-                },
-              ),
-            ),
-          ),
-          _TableTextField(
-            width: 92,
-            controller: item.quantityController,
-            onChanged: onChanged,
-          ),
-          SizedBox(
-            width: 104,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: DropdownButtonFormField<String>(
-                initialValue: item.unit,
-                items: const [
-                  DropdownMenuItem(value: 'Adet', child: Text('Adet')),
-                  DropdownMenuItem(value: 'Kg', child: Text('Kg')),
-                  DropdownMenuItem(value: 'Lt', child: Text('Lt')),
-                  DropdownMenuItem(value: 'Mt', child: Text('Mt')),
-                  DropdownMenuItem(value: 'Saat', child: Text('Saat')),
-                ],
-                onChanged: (value) {
-                  item.unit = value ?? 'Adet';
-                  onChanged();
-                },
-              ),
-            ),
-          ),
-          _TableTextField(
-            width: 130,
-            controller: item.priceController,
-            onChanged: onChanged,
-          ),
-          SizedBox(
-            width: 104,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: TextFormField(
-                initialValue: item.discountRate.toStringAsFixed(0),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+                    fieldViewBuilder: (context, controller, focusNode, _) {
+                      if (controller.text.isEmpty &&
+                          item.descriptionController.text.isNotEmpty) {
+                        controller.text = item.descriptionController.text;
+                      }
+                      return TextFormField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        decoration: const InputDecoration(hintText: 'Ürün seçin'),
+                        validator: (value) =>
+                            (value ?? '').trim().isEmpty ? 'Gerekli' : null,
+                        onChanged: (value) {
+                          item.productId = null;
+                          item.descriptionController.text = value;
+                          onChanged();
+                        },
+                      );
+                    },
+                  ),
                 ),
-                decoration: const InputDecoration(suffixText: '%'),
-                onChanged: (value) {
-                  item.discountRate = _parseDecimal(value);
-                  onChanged();
-                },
               ),
-            ),
-          ),
-          SizedBox(
-            width: 104,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: DropdownButtonFormField<double>(
-                initialValue: _taxInitialValue(item.taxRate, taxRates),
-                items: [
-                  for (final rate in taxRates)
-                    DropdownMenuItem(value: rate, child: Text(_taxLabel(rate))),
-                ],
-                onChanged: (value) {
-                  item.taxRate = item.specialMatrah ? 0 : (value ?? 20);
-                  onChanged();
-                },
+              _TableTextField(
+                width: 92,
+                controller: item.quantityController,
+                onChanged: onChanged,
               ),
-            ),
-          ),
-          SizedBox(
-            width: 160,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    money.format(item.lineTotal),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleSmall?.copyWith(color: AppTheme.success),
+              SizedBox(
+                width: 104,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: DropdownButtonFormField<String>(
+                    key: ValueKey('unit-${identityHashCode(item)}-$unit'),
+                    initialValue: unit,
+                    items: _unitDropdownItems(),
+                    onChanged: (value) {
+                      item.unit = _coerceUnit(value);
+                      onChanged();
+                    },
                   ),
-                  Text(
-                    'KDV ${money.format(item.taxAmount)}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  Tooltip(
-                    message: 'Özel matrah (muafiyet 101)',
-                    child: Checkbox(
-                      value: item.specialMatrah,
-                      onChanged: (value) {
-                        item.specialMatrah = value ?? false;
-                        if (item.specialMatrah) item.taxRate = 0;
-                        onChanged();
-                      },
-                      visualDensity: VisualDensity.compact,
+                ),
+              ),
+              _TableTextField(
+                width: 130,
+                controller: item.priceController,
+                onChanged: onChanged,
+              ),
+              SizedBox(
+                width: 104,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: TextFormField(
+                    initialValue: item.discountRate.toStringAsFixed(0),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
                     ),
+                    decoration: const InputDecoration(suffixText: '%'),
+                    onChanged: (value) {
+                      item.discountRate = _parseDecimal(value);
+                      onChanged();
+                    },
                   ),
-                ],
+                ),
               ),
-            ),
+              SizedBox(
+                width: 104,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: DropdownButtonFormField<double>(
+                    key: ValueKey('tax-${identityHashCode(item)}-$taxRate'),
+                    initialValue: taxRate,
+                    items: [
+                      for (final rate in taxRates)
+                        DropdownMenuItem(
+                          value: rate,
+                          child: Text(_taxLabel(rate)),
+                        ),
+                    ],
+                    onChanged: (value) {
+                      item.taxRate = value ?? taxRate;
+                      onChanged();
+                    },
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 160,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        money.format(item.lineTotal(pricesIncludeVat)),
+                        style: Theme.of(context).textTheme.titleSmall
+                            ?.copyWith(color: AppTheme.success),
+                      ),
+                      Text(
+                        'KDV ${money.format(item.taxAmount(pricesIncludeVat))}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 62,
+                child: IconButton(
+                  tooltip: 'Sil',
+                  onPressed: onRemove,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+              ),
+            ],
           ),
-          SizedBox(
-            width: 62,
-            child: IconButton(
-              tooltip: 'Sil',
-              onPressed: onRemove,
-              icon: const Icon(Icons.delete_outline_rounded),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 2),
+            child: SizedBox(
+              width: 694,
+              child: TextFormField(
+                controller: item.notesController,
+                style: Theme.of(context).textTheme.bodySmall,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: 'Kalem açıklama (isteğe bağlı)',
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                ),
+                onChanged: (_) => onChanged(),
+              ),
             ),
           ),
         ],
@@ -1527,7 +1753,7 @@ class _InvoiceTableRow extends StatelessWidget {
   }
 }
 
-class _TableTextField extends StatelessWidget {
+class _TableTextField extends StatefulWidget {
   const _TableTextField({
     required this.width,
     required this.controller,
@@ -1539,15 +1765,54 @@ class _TableTextField extends StatelessWidget {
   final VoidCallback onChanged;
 
   @override
+  State<_TableTextField> createState() => _TableTextFieldState();
+}
+
+class _TableTextFieldState extends State<_TableTextField> {
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode();
+    _focusNode.addListener(_selectAllOnFocus);
+  }
+
+  void _selectAllOnFocus() {
+    if (!_focusNode.hasFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_focusNode.hasFocus || !mounted) return;
+      widget.controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: widget.controller.text.length,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_selectAllOnFocus);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: width,
+      width: widget.width,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: TextFormField(
-          controller: controller,
+          controller: widget.controller,
+          focusNode: _focusNode,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          onChanged: (_) => onChanged(),
+          onTap: () {
+            widget.controller.selection = TextSelection(
+              baseOffset: 0,
+              extentOffset: widget.controller.text.length,
+            );
+          },
+          onChanged: (_) => widget.onChanged(),
         ),
       ),
     );
@@ -1792,10 +2057,12 @@ class _DateField extends StatelessWidget {
 
 class _ItemEditor extends StatelessWidget {
   const _ItemEditor({
+    super.key,
     required this.item,
     required this.products,
     required this.taxRates,
     required this.currency,
+    required this.pricesIncludeVat,
     required this.isSales,
     required this.onChanged,
     required this.onRemove,
@@ -1805,6 +2072,7 @@ class _ItemEditor extends StatelessWidget {
   final List<Product> products;
   final List<double> taxRates;
   final String currency;
+  final bool pricesIncludeVat;
   final bool isSales;
   final VoidCallback onChanged;
   final VoidCallback? onRemove;
@@ -1813,7 +2081,7 @@ class _ItemEditor extends StatelessWidget {
   Widget build(BuildContext context) {
     final money = NumberFormat.currency(
       locale: 'tr_TR',
-      symbol: currency == 'TRY' ? '₺' : '$currency ',
+      symbol: _currencySymbol(currency),
       decimalDigits: 2,
     );
 
@@ -1839,13 +2107,11 @@ class _ItemEditor extends StatelessWidget {
           },
           displayStringForOption: (product) => product.name,
           onSelected: (product) {
-            item.productId = product.id;
-            item.descriptionController.text = product.name;
-            item.unit = product.unit;
-            item.taxRate = product.taxRate;
-            item.priceController.text =
-                (isSales ? product.salePrice : product.purchasePrice)
-                    .toStringAsFixed(2);
+            item.applyProduct(
+              product,
+              isSales: isSales,
+              pricesIncludeVat: pricesIncludeVat,
+            );
             onChanged();
           },
           fieldViewBuilder: (context, controller, focusNode, _) {
@@ -1870,45 +2136,51 @@ class _ItemEditor extends StatelessWidget {
             );
           },
         );
-        final quantityField = TextFormField(
+        final notesField = TextFormField(
+          controller: item.notesController,
+          decoration: inputDecoration.copyWith(
+            labelText: 'Kalem açıklama',
+            hintText: 'PDF / Maliye / Akınsoft (isteğe bağlı)',
+          ),
+          onChanged: (_) => onChanged(),
+        );
+        final quantityField = _SelectAllNumberField(
           controller: item.quantityController,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: inputDecoration.copyWith(labelText: 'Miktar'),
           onChanged: (_) => onChanged(),
           validator: (value) =>
               _parseDecimal(value ?? '') <= 0 ? 'Gerekli' : null,
         );
-        final priceField = TextFormField(
+        final priceField = _SelectAllNumberField(
           controller: item.priceController,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: inputDecoration.copyWith(labelText: 'Fiyat'),
+          decoration: inputDecoration.copyWith(
+            labelText: pricesIncludeVat ? 'Fiyat (KDV dahil)' : 'Fiyat',
+          ),
           onChanged: (_) => onChanged(),
         );
+        final unit = _coerceUnit(item.unit);
+        final taxRate = _taxInitialValue(item.taxRate, taxRates);
         final unitField = DropdownButtonFormField<String>(
-          initialValue: item.unit,
+          key: ValueKey('m-unit-${identityHashCode(item)}-$unit'),
+          initialValue: unit,
           isExpanded: true,
-          items: const [
-            DropdownMenuItem(value: 'Adet', child: Text('Adet')),
-            DropdownMenuItem(value: 'Kg', child: Text('Kg')),
-            DropdownMenuItem(value: 'Lt', child: Text('Lt')),
-            DropdownMenuItem(value: 'Mt', child: Text('Mt')),
-            DropdownMenuItem(value: 'Saat', child: Text('Saat')),
-          ],
+          items: _unitDropdownItems(),
           onChanged: (value) {
-            item.unit = value ?? 'Adet';
+            item.unit = _coerceUnit(value);
             onChanged();
           },
           decoration: inputDecoration.copyWith(labelText: 'Birim'),
         );
         final taxField = DropdownButtonFormField<double>(
-          initialValue: _taxInitialValue(item.taxRate, taxRates),
+          key: ValueKey('m-tax-${identityHashCode(item)}-$taxRate'),
+          initialValue: taxRate,
           isExpanded: true,
           items: [
             for (final rate in taxRates)
               DropdownMenuItem(value: rate, child: Text(_taxLabel(rate))),
           ],
           onChanged: (value) {
-            item.taxRate = item.specialMatrah ? 0 : (value ?? 20);
+            item.taxRate = value ?? taxRate;
             onChanged();
           },
           decoration: inputDecoration.copyWith(labelText: 'KDV'),
@@ -1924,7 +2196,8 @@ class _ItemEditor extends StatelessWidget {
         );
         final totalField = _LineTotal(
           label: compact ? 'Toplam' : 'Kalem Toplamı',
-          value: money.format(item.lineTotal),
+          value: money.format(item.lineTotal(pricesIncludeVat)),
+          subtitle: 'KDV ${money.format(item.taxAmount(pricesIncludeVat))}',
           dense: compact,
         );
 
@@ -1963,6 +2236,8 @@ class _ItemEditor extends StatelessWidget {
                         ],
                       ),
                       Gap(fieldGap),
+                      notesField,
+                      Gap(fieldGap),
                       Row(
                         children: [
                           Expanded(flex: 2, child: quantityField),
@@ -1986,27 +2261,14 @@ class _ItemEditor extends StatelessWidget {
                                 ?.copyWith(fontWeight: FontWeight.w600),
                           ),
                           subtitle: Text(
-                            '${item.unit} · ${_taxLabel(item.taxRate)}'
-                            '${item.discountRate > 0 ? ' · %${item.discountRate.toStringAsFixed(0)} indirim' : ''}'
-                            '${item.specialMatrah ? ' · özel matrah' : ''}',
+                            '$unit · ${_taxLabel(taxRate)}'
+                            '${item.discountRate > 0 ? ' · %${item.discountRate.toStringAsFixed(0)} indirim' : ''}',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                           children: [
                             twoUp(unitField, taxField),
                             Gap(fieldGap),
                             discountField,
-                            SwitchListTile.adaptive(
-                              contentPadding: EdgeInsets.zero,
-                              dense: true,
-                              title: const Text('Özel matrah'),
-                              subtitle: const Text('Muafiyet kodu 101'),
-                              value: item.specialMatrah,
-                              onChanged: (value) {
-                                item.specialMatrah = value;
-                                if (value) item.taxRate = 0;
-                                onChanged();
-                              },
-                            ),
                           ],
                         ),
                       ),
@@ -2029,6 +2291,8 @@ class _ItemEditor extends StatelessWidget {
                         ],
                       ),
                       Gap(fieldGap),
+                      notesField,
+                      Gap(fieldGap),
                       Row(
                         children: [
                           SizedBox(width: 120, child: unitField),
@@ -2039,20 +2303,6 @@ class _ItemEditor extends StatelessWidget {
                           Gap(fieldGap),
                           SizedBox(width: 170, child: totalField),
                           const Spacer(),
-                          SizedBox(
-                            width: 190,
-                            child: SwitchListTile.adaptive(
-                              contentPadding: EdgeInsets.zero,
-                              title: const Text('Özel matrah'),
-                              subtitle: const Text('Muafiyet 101'),
-                              value: item.specialMatrah,
-                              onChanged: (value) {
-                                item.specialMatrah = value;
-                                if (value) item.taxRate = 0;
-                                onChanged();
-                              },
-                            ),
-                          ),
                         ],
                       ),
                     ],
@@ -2068,11 +2318,13 @@ class _LineTotal extends StatelessWidget {
   const _LineTotal({
     required this.label,
     required this.value,
+    this.subtitle,
     this.dense = false,
   });
 
   final String label;
   final String value;
+  final String? subtitle;
   final bool dense;
 
   @override
@@ -2099,6 +2351,13 @@ class _LineTotal extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.labelLarge,
           ),
+          if (subtitle != null)
+            Text(
+              subtitle!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
         ],
       ),
     );
@@ -2111,6 +2370,7 @@ class _MobileItemsCard extends StatelessWidget {
     required this.productsAsync,
     required this.taxRatesAsync,
     required this.currency,
+    required this.pricesIncludeVat,
     required this.isSales,
     required this.onChanged,
     required this.onAddBlank,
@@ -2122,6 +2382,7 @@ class _MobileItemsCard extends StatelessWidget {
   final AsyncValue<List<Product>> productsAsync;
   final AsyncValue<List<TaxRate>> taxRatesAsync;
   final String currency;
+  final bool pricesIncludeVat;
   final bool isSales;
   final VoidCallback onChanged;
   final VoidCallback onAddBlank;
@@ -2159,10 +2420,12 @@ class _MobileItemsCard extends StatelessWidget {
                 children: [
                   for (var i = 0; i < items.length; i++) ...[
                     _ItemEditor(
+                      key: ObjectKey(items[i]),
                       item: items[i],
                       products: products,
                       taxRates: taxRates,
                       currency: currency,
+                      pricesIncludeVat: pricesIncludeVat,
                       isSales: isSales,
                       onChanged: onChanged,
                       onRemove: items.length == 1 ? null : () => onRemove(i),
@@ -2230,7 +2493,7 @@ class _MobileSaveBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final money = NumberFormat.currency(
       locale: 'tr_TR',
-      symbol: currency == 'TRY' ? '₺' : '$currency ',
+      symbol: _currencySymbol(currency),
       decimalDigits: 2,
     );
     return Material(
@@ -2309,9 +2572,11 @@ class _SummaryPanel extends StatelessWidget {
     required this.taxTotal,
     required this.grandTotal,
     required this.currency,
+    required this.pricesIncludeVat,
     required this.sendAfterSave,
     required this.isSales,
     required this.saving,
+    required this.onPricesIncludeVatChanged,
     required this.onSendAfterSaveChanged,
     required this.onSaveDraft,
     required this.onSaveOpen,
@@ -2323,9 +2588,11 @@ class _SummaryPanel extends StatelessWidget {
   final double taxTotal;
   final double grandTotal;
   final String currency;
+  final bool pricesIncludeVat;
   final bool sendAfterSave;
   final bool isSales;
   final bool saving;
+  final ValueChanged<bool> onPricesIncludeVatChanged;
   final ValueChanged<bool> onSendAfterSaveChanged;
   final VoidCallback onSaveDraft;
   final VoidCallback onSaveOpen;
@@ -2335,7 +2602,7 @@ class _SummaryPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final money = NumberFormat.currency(
       locale: 'tr_TR',
-      symbol: currency == 'TRY' ? '₺' : '$currency ',
+      symbol: _currencySymbol(currency),
       decimalDigits: 2,
     );
     return AppCard(
@@ -2344,7 +2611,20 @@ class _SummaryPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text('Fatura Özeti', style: Theme.of(context).textTheme.titleMedium),
-          const Gap(14),
+          const Gap(8),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text('KDV dahil'),
+            subtitle: Text(
+              pricesIncludeVat
+                  ? 'Birim fiyatlar KDV dahil girilir'
+                  : 'Birim fiyatlar KDV hariç girilir',
+            ),
+            value: pricesIncludeVat,
+            onChanged: saving ? null : onPricesIncludeVatChanged,
+          ),
+          const Gap(6),
           _SummaryLine(label: 'Ara Toplam', value: money.format(subtotal)),
           _SummaryLine(label: 'İndirim', value: money.format(discountTotal)),
           _SummaryLine(label: 'KDV', value: money.format(taxTotal)),
@@ -2411,59 +2691,200 @@ class _SummaryLine extends StatelessWidget {
 class _EInvoiceItemDraft {
   _EInvoiceItemDraft()
     : descriptionController = TextEditingController(),
+      notesController = TextEditingController(),
       quantityController = TextEditingController(text: '1'),
       priceController = TextEditingController(text: '0');
 
-  _EInvoiceItemDraft.fromProduct(Product product, {required bool isSales})
-    : descriptionController = TextEditingController(text: product.name),
-      quantityController = TextEditingController(text: '1'),
-      priceController = TextEditingController(
-        text: (isSales ? product.salePrice : product.purchasePrice)
-            .toStringAsFixed(2),
-      ),
-      productId = product.id,
-      unit = product.unit,
-      taxRate = product.taxRate;
+  _EInvoiceItemDraft.fromProduct(
+    Product product, {
+    required bool isSales,
+    required bool pricesIncludeVat,
+  }) : descriptionController = TextEditingController(text: product.name),
+       notesController = TextEditingController(),
+       quantityController = TextEditingController(text: '1'),
+       priceController = TextEditingController(
+         text: _displayUnitPrice(
+           isSales ? product.salePrice : product.purchasePrice,
+           taxRate: product.taxRate,
+           pricesIncludeVat: pricesIncludeVat,
+         ).toStringAsFixed(2),
+       ),
+       productId = product.id,
+       _unit = _coerceUnit(product.unit),
+       taxRate = product.taxRate;
 
-  _EInvoiceItemDraft.fromInvoiceItem(InvoiceItem item)
-    : descriptionController = TextEditingController(text: item.description),
-      quantityController = TextEditingController(
-        text: item.quantity.toStringAsFixed(
-          item.quantity.truncateToDouble() == item.quantity ? 0 : 2,
-        ),
-      ),
-      priceController = TextEditingController(
-        text: item.unitPrice.toStringAsFixed(2),
-      ),
-      productId = item.productId,
-      unit = item.unit,
-      taxRate = item.taxRate,
-      discountRate = item.discountRate,
-      specialMatrah = item.specialMatrah;
+  _EInvoiceItemDraft.fromInvoiceItem(
+    InvoiceItem item, {
+    required bool pricesIncludeVat,
+  }) : descriptionController = TextEditingController(text: item.description),
+       notesController = TextEditingController(text: item.notes ?? ''),
+       quantityController = TextEditingController(
+         text: item.quantity.toStringAsFixed(
+           item.quantity.truncateToDouble() == item.quantity ? 0 : 2,
+         ),
+       ),
+       priceController = TextEditingController(
+         text: _displayUnitPrice(
+           item.unitPrice,
+           taxRate: item.taxRate,
+           pricesIncludeVat: pricesIncludeVat,
+         ).toStringAsFixed(2),
+       ),
+       productId = item.productId,
+       _unit = _coerceUnit(item.unit),
+       taxRate = item.taxRate,
+       discountRate = item.discountRate;
 
   final TextEditingController descriptionController;
+  final TextEditingController notesController;
   final TextEditingController quantityController;
   final TextEditingController priceController;
   String? productId;
-  String unit = 'Adet';
+  String _unit = 'Adet';
   double taxRate = 20;
   double discountRate = 0;
-  bool specialMatrah = false;
+
+  String get unit => _coerceUnit(_unit);
+  set unit(String value) => _unit = _coerceUnit(value);
 
   String get description => descriptionController.text.trim();
+  String get notes => notesController.text.trim();
   double get quantity => _parseDecimal(quantityController.text);
   double get unitPrice => _parseDecimal(priceController.text);
-  double get subtotal => _round2(quantity * unitPrice);
-  double get discountAmount => _round2(subtotal * (discountRate / 100));
-  double get taxAmount => specialMatrah
-      ? 0
-      : _round2((subtotal - discountAmount) * (taxRate / 100));
-  double get lineTotal => _round2(subtotal - discountAmount + taxAmount);
+
+  double exclusiveUnitPrice(bool pricesIncludeVat) {
+    final entered = unitPrice;
+    if (!pricesIncludeVat || taxRate <= 0) return entered;
+    return entered / (1 + taxRate / 100);
+  }
+
+  double subtotal(bool pricesIncludeVat) =>
+      _round2(quantity * exclusiveUnitPrice(pricesIncludeVat));
+
+  double discountAmount(bool pricesIncludeVat) =>
+      _round2(subtotal(pricesIncludeVat) * (discountRate / 100));
+
+  double taxAmount(bool pricesIncludeVat) => _round2(
+    (subtotal(pricesIncludeVat) - discountAmount(pricesIncludeVat)) *
+        (taxRate / 100),
+  );
+
+  double lineTotal(bool pricesIncludeVat) => _round2(
+    subtotal(pricesIncludeVat) -
+        discountAmount(pricesIncludeVat) +
+        taxAmount(pricesIncludeVat),
+  );
+
+  void applyProduct(
+    Product product, {
+    required bool isSales,
+    required bool pricesIncludeVat,
+  }) {
+    productId = product.id;
+    descriptionController.text = product.name;
+    unit = _coerceUnit(product.unit);
+    taxRate = product.taxRate;
+    priceController.text = _displayUnitPrice(
+      isSales ? product.salePrice : product.purchasePrice,
+      taxRate: product.taxRate,
+      pricesIncludeVat: pricesIncludeVat,
+    ).toStringAsFixed(2);
+  }
+
+  void convertPriceDisplay({
+    required bool fromIncludeVat,
+    required bool toIncludeVat,
+  }) {
+    if (fromIncludeVat == toIncludeVat || taxRate <= 0) {
+      return;
+    }
+    final current = unitPrice;
+    final next = fromIncludeVat
+        ? current / (1 + taxRate / 100)
+        : current * (1 + taxRate / 100);
+    priceController.text = _round2(next).toStringAsFixed(2);
+  }
 
   void dispose() {
     descriptionController.dispose();
+    notesController.dispose();
     quantityController.dispose();
     priceController.dispose();
+  }
+}
+
+double _displayUnitPrice(
+  double exclusivePrice, {
+  required double taxRate,
+  required bool pricesIncludeVat,
+}) {
+  if (!pricesIncludeVat || taxRate <= 0) {
+    return _round2(exclusivePrice);
+  }
+  return _round2(exclusivePrice * (1 + taxRate / 100));
+}
+
+class _SelectAllNumberField extends StatefulWidget {
+  const _SelectAllNumberField({
+    required this.controller,
+    required this.decoration,
+    required this.onChanged,
+    this.validator,
+  });
+
+  final TextEditingController controller;
+  final InputDecoration decoration;
+  final ValueChanged<String> onChanged;
+  final FormFieldValidator<String>? validator;
+
+  @override
+  State<_SelectAllNumberField> createState() => _SelectAllNumberFieldState();
+}
+
+class _SelectAllNumberFieldState extends State<_SelectAllNumberField> {
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode();
+    _focusNode.addListener(_selectAllOnFocus);
+  }
+
+  void _selectAllOnFocus() {
+    if (!_focusNode.hasFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_focusNode.hasFocus || !mounted) return;
+      widget.controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: widget.controller.text.length,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_selectAllOnFocus);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: widget.controller,
+      focusNode: _focusNode,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: widget.decoration,
+      validator: widget.validator,
+      onTap: () {
+        widget.controller.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: widget.controller.text.length,
+        );
+      },
+      onChanged: widget.onChanged,
+    );
   }
 }
 
@@ -2505,7 +2926,7 @@ String _taxLabel(double value) {
   return '%$text';
 }
 
-String _dateIso(DateTime date) => date.toIso8601String().substring(0, 10);
+String _dateIso(DateTime date) => formatAppDateIso(date);
 
 double _parseDecimal(String value) {
   final normalized = value.trim().replaceAll(' ', '').replaceAll(',', '.');

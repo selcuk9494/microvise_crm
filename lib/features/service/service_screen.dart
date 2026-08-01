@@ -272,9 +272,8 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                         ),
                         _StatusPill(
                           label: 'Durum: ${_statusLabel(_query.status)}',
-                          backgroundColor:
-                              const Color(0xFF7C3AED).withValues(alpha: 0.12),
-                          foregroundColor: const Color(0xFF4C1D95),
+                          backgroundColor: AppTheme.filterControlBg,
+                          foregroundColor: AppTheme.filterControlFg,
                           icon: Icons.circle_rounded,
                           onTap: () async {
                             final next = await showModalBottomSheet<String>(
@@ -320,9 +319,8 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                         ),
                         _StatusPill(
                           label: 'Öncelik: ${_priorityLabel(_query.priority)}',
-                          backgroundColor:
-                              const Color(0xFF0EA5E9).withValues(alpha: 0.12),
-                          foregroundColor: const Color(0xFF0C4A6E),
+                          backgroundColor: AppTheme.filterControlBg,
+                          foregroundColor: AppTheme.filterControlFg,
                           icon: Icons.flag_rounded,
                           onTap: () async {
                             final next = await showModalBottomSheet<String>(
@@ -358,9 +356,8 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                                     : selected.first.fullName;
                             return _StatusPill(
                               label: 'Teknisyen: $selectedName',
-                              backgroundColor:
-                                  const Color(0xFF16A34A).withValues(alpha: 0.12),
-                              foregroundColor: const Color(0xFF14532D),
+                              backgroundColor: AppTheme.filterControlBg,
+                          foregroundColor: AppTheme.filterControlFg,
                               icon: Icons.person_rounded,
                               onTap: () async {
                                 final techs = techAsync.asData?.value ?? const <ServiceTechnician>[];
@@ -390,9 +387,8 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                           label: _query.range == null
                               ? 'Tarih: Tümü'
                               : 'Tarih: ${DateFormat('d MMM', 'tr_TR').format(_query.range!.start)} - ${DateFormat('d MMM', 'tr_TR').format(_query.range!.end)}',
-                          backgroundColor:
-                              const Color(0xFFF59E0B).withValues(alpha: 0.12),
-                          foregroundColor: const Color(0xFF7C2D12),
+                          backgroundColor: AppTheme.filterControlBg,
+                          foregroundColor: AppTheme.filterControlFg,
                           icon: Icons.date_range_rounded,
                           onTap: () async {
                             final picked = await showDateRangePicker(
@@ -425,9 +421,8 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                               const Icon(Icons.delete_outline_rounded, size: 18),
                           label: const Text('Sıfırla'),
                           style: FilledButton.styleFrom(
-                            backgroundColor:
-                                const Color(0xFFEF4444).withValues(alpha: 0.12),
-                            foregroundColor: const Color(0xFF7F1D1D),
+                            backgroundColor: AppTheme.softTint(AppTheme.error),
+                          foregroundColor: AppTheme.softFg(AppTheme.error),
                             minimumSize: const Size(0, 40),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 14,
@@ -449,7 +444,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                           style: Theme.of(context)
                               .textTheme
                               .bodySmall
-                              ?.copyWith(color: const Color(0xFF64748B)),
+                              ?.copyWith(color: AppTheme.textMuted),
                         ),
                         IconButton(
                           tooltip: 'Sonraki',
@@ -593,7 +588,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
               style: Theme.of(context)
                   .textTheme
                   .bodyMedium
-                  ?.copyWith(color: const Color(0xFF64748B)),
+                  ?.copyWith(color: AppTheme.textMuted),
             ),
           ),
         ),
@@ -724,7 +719,7 @@ class _MetricCard extends StatelessWidget {
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                      ?.copyWith(color: AppTheme.textMuted),
                 ),
                 const Gap(2),
                 Text(
@@ -749,7 +744,7 @@ class _ServiceTableHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      color: const Color(0xFFF8FAFC),
+      color: AppTheme.tableHeaderBg,
       child: Row(
         children: [
           Expanded(
@@ -758,7 +753,7 @@ class _ServiceTableHeader extends StatelessWidget {
               'Kayıt',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
             ),
           ),
@@ -768,7 +763,7 @@ class _ServiceTableHeader extends StatelessWidget {
               'Müşteri',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
             ),
           ),
@@ -778,7 +773,7 @@ class _ServiceTableHeader extends StatelessWidget {
               'Sicil / Arıza',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
             ),
           ),
@@ -789,7 +784,7 @@ class _ServiceTableHeader extends StatelessWidget {
               textAlign: TextAlign.right,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
             ),
           ),
@@ -800,7 +795,7 @@ class _ServiceTableHeader extends StatelessWidget {
               textAlign: TextAlign.right,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
             ),
           ),
@@ -811,7 +806,7 @@ class _ServiceTableHeader extends StatelessWidget {
               textAlign: TextAlign.right,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
             ),
           ),
@@ -961,7 +956,7 @@ class _ServiceDetailPanel extends ConsumerWidget {
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                      ?.copyWith(color: AppTheme.textMuted),
                 ),
               ],
               const Divider(height: 24),
@@ -1061,7 +1056,7 @@ class _ServiceDetailPanel extends ConsumerWidget {
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
-                  ?.copyWith(color: const Color(0xFF64748B)),
+                  ?.copyWith(color: AppTheme.textMuted),
             ),
           ),
           const Gap(10),
@@ -1154,7 +1149,7 @@ class _ServiceRow extends StatelessWidget {
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                      ?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
               Expanded(
@@ -1172,7 +1167,7 @@ class _ServiceRow extends StatelessWidget {
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                      ?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
               Expanded(
@@ -1473,7 +1468,7 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                           Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
+                              color: AppTheme.surfaceMuted,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: AppTheme.border),
                             ),

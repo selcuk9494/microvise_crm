@@ -64,7 +64,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     while (email.endsWith('.')) {
       email = email.substring(0, email.length - 1).trimRight();
     }
-    final password = _passwordController.text;
+    final password = _passwordController.text.replaceAll('\uFEFF', '').trim();
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('E-posta ve şifre gerekli.')),
@@ -98,8 +98,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       context.go('/panel');
     } catch (e) {
       if (!mounted) return;
+      final raw = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Giriş başarısız: ${e.toString()}')),
+        SnackBar(
+          content: Text(raw.startsWith('Giriş') ? raw : 'Giriş başarısız: $raw'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -124,153 +127,177 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final base = Theme.of(context);
+
     return SelectionContainer.disabled(
-      child: Scaffold(
-        backgroundColor: AppTheme.background,
-        body: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                AppTheme.backgroundAlt.withValues(alpha: 0.72),
-                AppTheme.background,
-              ],
+      child: Theme(
+        data: base.copyWith(
+          colorScheme: base.colorScheme.copyWith(
+            surface: AppTheme.surface,
+            onSurface: AppTheme.text,
+            primary: AppTheme.primary,
+            outline: AppTheme.border,
+          ),
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: AppTheme.surface,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 13,
+            ),
+            hintStyle: base.textTheme.bodyMedium?.copyWith(
+              color: AppTheme.textMuted,
+            ),
+            labelStyle: base.textTheme.bodyMedium?.copyWith(
+              color: AppTheme.textSoft,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+              borderSide: BorderSide(color: AppTheme.border),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+              borderSide: BorderSide(color: AppTheme.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+              borderSide: BorderSide(color: AppTheme.primary, width: 1.5),
             ),
           ),
-          child: SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: AppCard(
+          checkboxTheme: CheckboxThemeData(
+            fillColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return AppTheme.primary;
+              }
+              return Colors.transparent;
+            }),
+            side: BorderSide(color: AppTheme.borderStrong),
+            checkColor: WidgetStateProperty.all(Colors.white),
+          ),
+          listTileTheme: ListTileThemeData(
+            textColor: AppTheme.text,
+            iconColor: AppTheme.textMuted,
+          ),
+        ),
+        child: Scaffold(
+          backgroundColor: const Color(0xFF5E7389),
+          body: DecoratedBox(
+            decoration: AppTheme.loginCanvas,
+            child: SafeArea(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: Padding(
                     padding: const EdgeInsets.all(24),
-                    child: AutofillGroup(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final compact = constraints.maxWidth < 380;
-                              final logo = Container(
-                                width: 152,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(
-                                    AppTheme.radiusMd,
-                                  ),
-                                  border: Border.all(color: AppTheme.border),
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                child: OverflowBox(
-                                  maxWidth: 152,
-                                  maxHeight: 152,
-                                  child: Image.asset(
-                                    'assets/images/logo.png',
-                                    width: 152,
-                                    height: 152,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              );
-                              final titleBlock = Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Microvise CRM',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleLarge
-                                        ?.copyWith(fontWeight: FontWeight.w800),
-                                  ),
-                                  Text(
-                                    'Güvenli çalışma alanı',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context).textTheme.bodySmall
-                                        ?.copyWith(
-                                          color: const Color(0xFF64748B),
-                                        ),
-                                  ),
-                                ],
-                              );
-                              if (compact) {
+                    child: AppCard(
+                      color: AppTheme.surface,
+                      borderColor: AppTheme.border,
+                      padding: const EdgeInsets.all(24),
+                      child: AutofillGroup(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final compact = constraints.maxWidth < 380;
                                 return Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [logo, const Gap(10), titleBlock],
+                                  children: [
+                                    Image.asset(
+                                      'assets/images/logo_v2.png',
+                                      height: compact ? 36 : 44,
+                                      fit: BoxFit.contain,
+                                      alignment: Alignment.centerLeft,
+                                      filterQuality: FilterQuality.high,
+                                    ),
+                                    const Gap(10),
+                                    Text(
+                                      'Güvenli çalışma alanı',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(color: AppTheme.textMuted),
+                                    ),
+                                  ],
                                 );
-                              }
-                              return Row(
-                                children: [
-                                  logo,
-                                  const Gap(12),
-                                  Expanded(child: titleBlock),
-                                ],
-                              );
-                            },
-                          ),
-                          const Gap(24),
-                          LoginCredentialFields(
-                            emailController: _emailController,
-                            passwordController: _passwordController,
-                            emailFocusNode: _emailFocusNode,
-                            passwordFocusNode: _passwordFocusNode,
-                            loading: _loading,
-                            onSubmit: _signIn,
-                            onFillSavedCredential: _fillSavedCredential,
-                          ),
-                          const Gap(8),
-                          CheckboxListTile(
-                            value: _rememberMe,
-                            onChanged: _loading
-                                ? null
-                                : (value) {
-                                    setState(() => _rememberMe = value ?? true);
-                                    AppCache.writeBool(
-                                      _rememberMeKey,
-                                      _rememberMe,
-                                    );
-                                    if (!_rememberMe) {
-                                      AppCache.remove(_rememberedEmailKey);
-                                    }
-                                  },
-                            title: const Text('Beni hatırla'),
-                            controlAffinity: ListTileControlAffinity.leading,
-                            contentPadding: EdgeInsets.zero,
-                            dense: true,
-                          ),
-                          const Gap(6),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: FilledButton(
-                                  onPressed: _loading ? null : _signIn,
-                                  child: _loading
-                                      ? const SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : const Text('Giriş Yap'),
+                              },
+                            ),
+                            const Gap(24),
+                            LoginCredentialFields(
+                              emailController: _emailController,
+                              passwordController: _passwordController,
+                              emailFocusNode: _emailFocusNode,
+                              passwordFocusNode: _passwordFocusNode,
+                              loading: _loading,
+                              onSubmit: _signIn,
+                              onFillSavedCredential: _fillSavedCredential,
+                            ),
+                            const Gap(8),
+                            CheckboxListTile(
+                              value: _rememberMe,
+                              onChanged: _loading
+                                  ? null
+                                  : (value) {
+                                      setState(
+                                        () => _rememberMe = value ?? true,
+                                      );
+                                      AppCache.writeBool(
+                                        _rememberMeKey,
+                                        _rememberMe,
+                                      );
+                                      if (!_rememberMe) {
+                                        AppCache.remove(_rememberedEmailKey);
+                                      }
+                                    },
+                              title: const Text('Beni hatırla'),
+                              controlAffinity: ListTileControlAffinity.leading,
+                              contentPadding: EdgeInsets.zero,
+                              dense: true,
+                            ),
+                            const Gap(6),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: FilledButton(
+                                    onPressed: _loading ? null : _signIn,
+                                    child: _loading
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Text('Giriş Yap'),
+                                  ),
                                 ),
+                              ],
+                            ),
+                            const Gap(12),
+                            Text(
+                              'Admin ve personel rolleri sistem üzerinden yönetilir.',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: AppTheme.textMuted),
+                            ),
+                            if (Uri.base.host == '127.0.0.1' ||
+                                Uri.base.host == 'localhost') ...[
+                              const Gap(10),
+                              Text(
+                                'Yerel Electron: şifre, .env.local içindeki MASTER_ADMIN_PASSWORD değeridir.',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: AppTheme.primaryDark,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                               ),
                             ],
-                          ),
-                          const Gap(12),
-                          Text(
-                            'Admin ve personel rolleri sistem üzerinden yönetilir.',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: const Color(0xFF64748B)),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),

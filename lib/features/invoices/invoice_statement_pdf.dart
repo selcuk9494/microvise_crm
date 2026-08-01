@@ -3,13 +3,32 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../core/format/search_normalize.dart';
 import 'invoice_model.dart';
+
+/// Same default bank block used on e-invoices (`seller_bank_details`).
+const kDefaultSellerBankDetails =
+    'Banka Hesap Bilgileri\n'
+    'Türkiye İş Bankası\n'
+    'Microvise Innovation Ltd\n'
+    'TL IBAN: TR57 0006 4000 0016 8010 3409 94\n'
+    'USD IBAN: TR41 0006 4000 0026 8010 4107 29';
+
+/// Filesystem-safe slug: Turkish fold → ASCII, then strip unsafe chars.
+String safeStatementFilePart(String value, {String fallback = 'cari'}) {
+  final folded = normalizeSearchText(value)
+      .replaceAll(RegExp(r'[^a-z0-9._-]+'), '_')
+      .replaceAll(RegExp(r'_+'), '_')
+      .replaceAll(RegExp(r'^_|_$'), '');
+  return folded.isEmpty ? fallback : folded;
+}
 
 Future<Uint8List> buildInvoiceStatementPdfBytes({
   required String title,
   required String customerName,
   required List<Invoice> invoices,
   DateTime? generatedAt,
+  String? bankDetails,
 }) async {
   final regularFont = pw.Font.ttf(
     await rootBundle.load('assets/fonts/noto_sans/NotoSans-Regular.ttf'),
@@ -30,6 +49,10 @@ Future<Uint8List> buildInvoiceStatementPdfBytes({
   final created = generatedAt ?? DateTime.now();
   final ordered = [...invoices]
     ..sort((a, b) => a.invoiceDate.compareTo(b.invoiceDate));
+  final resolvedBank =
+      (bankDetails ?? '').trim().isNotEmpty
+          ? bankDetails!.trim()
+          : kDefaultSellerBankDetails;
 
   String amount(Invoice invoice, double value) {
     final symbol = switch (invoice.currency) {
@@ -179,6 +202,36 @@ Future<Uint8List> buildInvoiceStatementPdfBytes({
     );
   }
 
+  pw.Widget bankDetailsBlock() {
+    final lines = resolvedBank
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+    if (lines.isEmpty) return pw.SizedBox();
+    return pw.Container(
+      width: double.infinity,
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300),
+        color: PdfColors.grey50,
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < lines.length; i++)
+            pw.Padding(
+              padding: pw.EdgeInsets.only(bottom: i == lines.length - 1 ? 0 : 2),
+              child: pw.Text(
+                lines[i],
+                style: i == 0 ? labelStyle() : valueStyle(),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   doc.addPage(
     pw.MultiPage(
       pageTheme: pw.PageTheme(
@@ -229,6 +282,8 @@ Future<Uint8List> buildInvoiceStatementPdfBytes({
         totals(),
         pw.SizedBox(height: 14),
         invoiceRows(),
+        pw.SizedBox(height: 18),
+        bankDetailsBlock(),
       ],
     ),
   );

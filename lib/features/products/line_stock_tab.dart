@@ -748,7 +748,7 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                       return Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: AppTheme.surfaceMuted,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: AppTheme.border),
                         ),
@@ -791,7 +791,7 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall
-                                          ?.copyWith(color: const Color(0xFF64748B)),
+                                          ?.copyWith(color: AppTheme.textMuted),
                                     ),
                                   ],
                                 ],
@@ -900,7 +900,7 @@ class _Empty extends StatelessWidget {
             style: Theme.of(context)
                 .textTheme
                 .bodyMedium
-                ?.copyWith(color: const Color(0xFF64748B)),
+                ?.copyWith(color: AppTheme.textMuted),
           ),
         ),
       ),

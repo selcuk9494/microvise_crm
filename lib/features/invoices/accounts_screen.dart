@@ -11,6 +11,7 @@ import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import 'invoice_model.dart';
 import 'invoice_providers.dart';
+import 'invoice_statement_pdf.dart';
 import 'invoice_statement_share.dart';
 
 class AccountsScreen extends ConsumerStatefulWidget {
@@ -142,7 +143,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                             Text(
                               'Cari hesap bulunmuyor',
                               style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: const Color(0xFF64748B)),
+                                  ?.copyWith(color: AppTheme.textMuted),
                             ),
                           ],
                         ),
@@ -170,7 +171,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                 child: Text(
                   'Cari hesaplar yüklenemedi',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
                 ),
               ),
@@ -242,7 +243,7 @@ class _SummaryCard extends StatelessWidget {
                     child: Text(
                       title,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF64748B),
+                        color: AppTheme.textMuted,
                       ),
                     ),
                   ),
@@ -301,7 +302,7 @@ class _AccountCard extends StatelessWidget {
                     ? AppTheme.success.withValues(alpha: 0.1)
                     : isPayable
                     ? AppTheme.error.withValues(alpha: 0.1)
-                    : const Color(0xFFF1F5F9),
+                    : AppTheme.surfaceMuted,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -310,7 +311,7 @@ class _AccountCard extends StatelessWidget {
                     ? AppTheme.success
                     : isPayable
                     ? AppTheme.error
-                    : const Color(0xFF64748B),
+                    : AppTheme.textMuted,
                 size: 22,
               ),
             ),
@@ -353,7 +354,7 @@ class _AccountCard extends StatelessWidget {
                       ? 'Borç'
                       : 'Dengede',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
                 ),
               ],
@@ -632,7 +633,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
                           Text(
                             'Fatura: ${tx.invoiceNumber}',
                             style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: const Color(0xFF64748B)),
+                                ?.copyWith(color: AppTheme.textMuted),
                           ),
                         Text(
                           DateFormat(
@@ -799,12 +800,13 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
       return;
     }
     try {
+      final stamp = DateTime.now().toIso8601String().substring(0, 10);
       await shareInvoiceStatementPdf(
         title: 'Cari Hesap Ekstresi',
         customerName: widget.customerName,
         invoices: invoices,
         filename:
-            'cari_ekstre_${_safeFilePart(widget.customerName)}_${DateTime.now().toIso8601String().substring(0, 10)}.pdf',
+            'cari_ekstre_${safeStatementFilePart(widget.customerName)}_$stamp.pdf',
       );
     } catch (e) {
       if (!mounted) return;
@@ -841,12 +843,13 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
       return;
     }
     try {
+      final stamp = DateTime.now().toIso8601String().substring(0, 10);
       await shareInvoiceStatementPdf(
         title: 'Seçili Fatura Ekstresi',
         customerName: widget.customerName,
         invoices: selected,
         filename:
-            'secili_fatura_ekstresi_${_safeFilePart(widget.customerName)}_${DateTime.now().toIso8601String().substring(0, 10)}.pdf',
+            'secili_fatura_ekstresi_${safeStatementFilePart(widget.customerName)}_$stamp.pdf',
       );
     } catch (e) {
       if (!mounted) return;
@@ -855,15 +858,6 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
       );
     }
   }
-}
-
-String _safeFilePart(String value) {
-  final cleaned = value
-      .trim()
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
-      .replaceAll(RegExp(r'_+'), '_');
-  return cleaned.isEmpty ? 'cari' : cleaned;
 }
 
 class _InvoiceSelectCard extends StatelessWidget {
@@ -886,7 +880,7 @@ class _InvoiceSelectCard extends StatelessWidget {
       'partial' => ('Kısmi', AppTheme.primary),
       'paid' => ('Kapalı', AppTheme.success),
       'cancelled' => ('İptal', AppTheme.error),
-      _ => ('?', const Color(0xFF64748B)),
+      _ => ('?', AppTheme.textMuted),
     };
 
     return InkWell(
@@ -936,7 +930,7 @@ class _InvoiceSelectCard extends StatelessWidget {
                   Text(
                     DateFormat('d MMM y', 'tr_TR').format(invoice.invoiceDate),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF64748B),
+                      color: AppTheme.textMuted,
                     ),
                   ),
                 ],

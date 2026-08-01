@@ -418,16 +418,22 @@ class FormRecordIconAction extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
+      waitDuration: const Duration(milliseconds: 250),
       child: IconButton(
         visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
         constraints: const BoxConstraints.tightFor(width: 34, height: 34),
         style: IconButton.styleFrom(
-          backgroundColor: primary ? AppTheme.primary : AppTheme.surfaceMuted,
+          backgroundColor: primary
+              ? AppTheme.primary
+              : AppTheme.surfaceMuted.withValues(alpha: 0.95),
           foregroundColor: primary ? Colors.white : AppTheme.text,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+            borderRadius: BorderRadius.circular(AppTheme.radiusXs),
             side: BorderSide(
-              color: primary ? AppTheme.primary : AppTheme.border,
+              color: primary
+                  ? AppTheme.primary.withValues(alpha: 0.28)
+                  : AppTheme.border.withValues(alpha: 0.85),
             ),
           ),
         ),
@@ -447,27 +453,35 @@ class FormDocumentMetaChip extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!document.hasDocument) return const SizedBox.shrink();
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color(0xFFECFDF5),
+        color: AppTheme.softTint(AppTheme.success, alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppTheme.success.withValues(alpha: 0.25)),
+        border: Border.all(
+          color: AppTheme.softBorder(AppTheme.success, alpha: 0.26),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
+          Icon(
             Icons.attach_file_rounded,
-            size: 14,
-            color: AppTheme.success,
+            size: 13,
+            color: AppTheme.softFg(AppTheme.success),
           ),
-          const Gap(6),
-          Text(
-            document.displayName,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: AppTheme.success),
+          const Gap(4),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 140),
+            child: Text(
+              document.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: AppTheme.softFg(AppTheme.success),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),

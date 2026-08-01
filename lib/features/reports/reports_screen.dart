@@ -252,7 +252,7 @@ class ReportsScreen extends ConsumerWidget {
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall
-                                  ?.copyWith(color: const Color(0xFF64748B)),
+                                  ?.copyWith(color: AppTheme.textMuted),
                             ),
                             const Gap(16),
                             SizedBox(
@@ -298,7 +298,7 @@ class ReportsScreen extends ConsumerWidget {
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall
-                                          ?.copyWith(color: const Color(0xFF64748B)),
+                                          ?.copyWith(color: AppTheme.textMuted),
                                     )
                                   else
                                     for (final e in data.topCustomers)
@@ -321,7 +321,7 @@ class ReportsScreen extends ConsumerWidget {
                                               style: Theme.of(context)
                                                   .textTheme
                                                   .bodySmall
-                                                  ?.copyWith(color: const Color(0xFF64748B)),
+                                                  ?.copyWith(color: AppTheme.textMuted),
                                             ),
                                           ],
                                         ),
@@ -350,7 +350,7 @@ class ReportsScreen extends ConsumerWidget {
                   style: Theme.of(context)
                       .textTheme
                       .bodyMedium
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                      ?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
             ),
@@ -376,7 +376,7 @@ class _TrendChart extends StatelessWidget {
           style: Theme.of(context)
               .textTheme
               .bodyMedium
-              ?.copyWith(color: const Color(0xFF64748B)),
+              ?.copyWith(color: AppTheme.textMuted),
         ),
       );
     }
@@ -469,7 +469,7 @@ class _StatusRow extends StatelessWidget {
             style: Theme.of(context)
                 .textTheme
                 .bodySmall
-                ?.copyWith(color: const Color(0xFF64748B), fontWeight: FontWeight.w600),
+                ?.copyWith(color: AppTheme.textMuted, fontWeight: FontWeight.w600),
           ),
         ),
         Expanded(
@@ -478,7 +478,7 @@ class _StatusRow extends StatelessWidget {
             child: LinearProgressIndicator(
               value: ratio.isNaN ? 0 : ratio,
               minHeight: 10,
-              backgroundColor: const Color(0xFFF1F5F9),
+              backgroundColor: AppTheme.surfaceMuted,
               valueColor: AlwaysStoppedAnimation(color),
             ),
           ),

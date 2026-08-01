@@ -445,11 +445,8 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                               size: 18),
                                           label: const Text('Temizle'),
                                           style: FilledButton.styleFrom(
-                                            backgroundColor:
-                                                const Color(0xFFEF4444)
-                                                    .withValues(alpha: 0.12),
-                                            foregroundColor:
-                                                const Color(0xFF7F1D1D),
+                                            backgroundColor: AppTheme.softTint(AppTheme.error),
+                                            foregroundColor: AppTheme.softFg(AppTheme.error),
                                             minimumSize: const Size(0, 44),
                                           ),
                                         ),
@@ -475,9 +472,8 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                   _StatusPill(
                                     label:
                                         'Durum: ${_statusLabel(_statusFilter)}',
-                                    backgroundColor: const Color(0xFF7C3AED)
-                                        .withValues(alpha: 0.12),
-                                    foregroundColor: const Color(0xFF4C1D95),
+                                    backgroundColor: AppTheme.filterControlBg,
+                                    foregroundColor: AppTheme.filterControlFg,
                                     icon: Icons.circle_rounded,
                                     onTap: () async {
                                       final next =
@@ -591,9 +587,8 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                               ),
                               _StatusPill(
                                 label: 'Durum: ${_statusLabel(_statusFilter)}',
-                                backgroundColor: const Color(0xFF7C3AED)
-                                    .withValues(alpha: 0.12),
-                                foregroundColor: const Color(0xFF4C1D95),
+                                backgroundColor: AppTheme.filterControlBg,
+                                    foregroundColor: AppTheme.filterControlFg,
                                 icon: Icons.circle_rounded,
                                 onTap: () async {
                                   final next =
@@ -663,9 +658,8 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                         : 'Sıralama: Kapalı',
                                   ),
                                   style: FilledButton.styleFrom(
-                                    backgroundColor: const Color(0xFF0EA5E9)
-                                        .withValues(alpha: 0.12),
-                                    foregroundColor: const Color(0xFF0C4A6E),
+                                    backgroundColor: AppTheme.filterControlBg,
+                                    foregroundColor: AppTheme.filterControlFg,
                                     minimumSize: const Size(0, 40),
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 14,
@@ -720,9 +714,8 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                   _showPassive ? 'Kayıt: Tümü' : 'Kayıt: Aktif',
                                 ),
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFF16A34A)
-                                      .withValues(alpha: 0.12),
-                                  foregroundColor: const Color(0xFF14532D),
+                                  backgroundColor: AppTheme.filterControlBg,
+                                    foregroundColor: AppTheme.filterControlFg,
                                   minimumSize: const Size(0, 40),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 14,
@@ -745,9 +738,8 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                     size: 18),
                                 label: const Text('Temizle'),
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFFEF4444)
-                                      .withValues(alpha: 0.12),
-                                  foregroundColor: const Color(0xFF7F1D1D),
+                                  backgroundColor: AppTheme.softTint(AppTheme.error),
+                                            foregroundColor: AppTheme.softFg(AppTheme.error),
                                   minimumSize: const Size(0, 40),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 14,
@@ -1779,7 +1771,7 @@ class _WorkOrderGridCard extends ConsumerWidget {
                   decoration: BoxDecoration(
                     color: isDarkCard
                         ? Colors.white.withValues(alpha: 0.14)
-                        : const Color(0xFFDBEAFE),
+                        : AppTheme.primarySoft,
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(
                       color: isDarkCard
@@ -2293,7 +2285,7 @@ class _WorkOrderCard extends ConsumerWidget {
                           color: const Color(0xFF1D4ED8),
                           fontWeight: FontWeight.w900,
                         ),
-                        backgroundColor: const Color(0xFFDBEAFE),
+                        backgroundColor: AppTheme.primarySoft,
                         borderColor: const Color(0xFF93C5FD),
                       ),
                     if (meta.trim().isNotEmpty) _InfoChip(text: meta, style: muted),

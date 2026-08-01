@@ -8,4 +8,4 @@ flutter build web --release \
   --dart-define=API_BASE_URL=https://crm.microvise.net/api \
   --dart-define=DISABLE_SUPABASE=true
 
-node ./scripts/local_server.js
+PORT=4000 node ./scripts/local_server.js

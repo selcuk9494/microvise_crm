@@ -35,6 +35,8 @@ migrate_working_dir/
 
 # Node
 node_modules/
+/dist-electron/
+.electron-builder/
 
 # Symbolication related
 app.*.symbols

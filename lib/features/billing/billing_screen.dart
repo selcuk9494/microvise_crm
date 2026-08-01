@@ -175,7 +175,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                 child: Text(
                   'Bu sayfaya erişiminiz yok.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
                 ),
               ),
@@ -231,7 +231,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                   child: Text(
                     'Fatura listesi yüklenemedi: $e',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF64748B),
+                      color: AppTheme.textMuted,
                     ),
                   ),
                 ),
@@ -508,7 +508,7 @@ class _MiniStat extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
@@ -519,7 +519,7 @@ class _MiniStat extends StatelessWidget {
             label,
             style: Theme.of(
               context,
-            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+            ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
           ),
           const Gap(8),
           Text(

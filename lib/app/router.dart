@@ -14,6 +14,7 @@ import '../features/billing/billing_screen.dart';
 import '../features/billing/invoice_pdf_analysis_screen.dart';
 import '../features/e_invoice/e_invoice_screen.dart';
 import '../features/finance/finance_screen.dart';
+import '../features/finance/akinsoft_finance_screen.dart';
 import '../features/products/products_screen.dart';
 import '../features/definitions/definitions_screen.dart';
 import '../features/forms/forms_screen.dart';
@@ -196,6 +197,32 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           path: '/finans',
           pageBuilder: (context, state) =>
               const NoTransitionPage(child: FinanceScreen()),
+          routes: [
+            GoRoute(
+              path: 'akinsoft/bankalar',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: AkinsoftFinanceScreen(section: 'bankalar'),
+              ),
+            ),
+            GoRoute(
+              path: 'akinsoft/kasa',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: AkinsoftFinanceScreen(section: 'kasa'),
+              ),
+            ),
+            GoRoute(
+              path: 'akinsoft/transferler',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: AkinsoftFinanceScreen(section: 'transferler'),
+              ),
+            ),
+            GoRoute(
+              path: 'akinsoft/masraf',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: AkinsoftFinanceScreen(section: 'masraf'),
+              ),
+            ),
+          ],
         ),
         GoRoute(
           path: '/kdv-analizi',

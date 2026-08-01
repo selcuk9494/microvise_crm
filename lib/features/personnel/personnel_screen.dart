@@ -94,7 +94,7 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                 child: Text(
                   'Bu sayfa sadece admin için erişilebilir.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
                 ),
               ),
@@ -211,10 +211,10 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                                   ),
                                   label: const Text('Temizle'),
                                   style: FilledButton.styleFrom(
-                                    backgroundColor: const Color(
-                                      0xFFEF4444,
-                                    ).withValues(alpha: 0.12),
-                                    foregroundColor: const Color(0xFF7F1D1D),
+                                    backgroundColor:
+                                        AppTheme.softTint(AppTheme.error),
+                                    foregroundColor:
+                                        AppTheme.softFg(AppTheme.error),
                                     minimumSize: const Size(0, 40),
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 14,
@@ -284,7 +284,7 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                   child: Text(
                     'Personel listesi yüklenemedi.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF64748B),
+                      color: AppTheme.textMuted,
                     ),
                   ),
                 ),
@@ -575,7 +575,7 @@ class _UserRowState extends ConsumerState<_UserRow> {
                           ? user.id
                           : user.fullName!.trim(),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF64748B),
+                        color: AppTheme.textMuted,
                       ),
                     ),
                     const Gap(16),
@@ -856,7 +856,7 @@ class _UserRowState extends ConsumerState<_UserRow> {
                         ? widget.user.email!
                         : widget.user.id,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF64748B),
+                      color: AppTheme.textMuted,
                     ),
                   ),
                   const Gap(12),
@@ -1059,7 +1059,7 @@ class _UserRowState extends ConsumerState<_UserRow> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
                 ),
               ],
@@ -1328,14 +1328,14 @@ class _CreatePersonnelDialogState
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
+                    color: AppTheme.surfaceMuted,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: AppTheme.border),
                   ),
                   child: Text(
                     'Not: Kullanıcı bu bilgiler ile sisteme giriş yapar.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF64748B),
+                      color: AppTheme.textMuted,
                     ),
                   ),
                 ),

@@ -172,6 +172,68 @@ void main() {
       expect(entry.taxTotal, 0);
       expect(entry.grandTotal, 0);
     });
+
+    test('Microvise e-fatura PDF formatini tanir ve ayristirir', () async {
+      final file = File('output/pdf/multi_3.pdf');
+      final entry = await InvoicePdfAnalysisParser.parse(
+        bytes: await file.readAsBytes(),
+        fileName: file.path.split(Platform.pathSeparator).last,
+      );
+
+      expect(entry, isNotNull);
+      expect(InvoicePdfAnalysisParser.isMicroviseEInvoice(entry!.rawText), isTrue);
+      expect(entry.customerName, 'NİHAT DÖRTER');
+      expect(entry.invoiceNumber, '620009058-2026-1-00000000016');
+      expect(entry.currency, 'USD');
+      expect(entry.taxTotal, closeTo(12.87, 0.01));
+      expect(entry.items.length, 3);
+      expect(entry.items.first.taxRate, 5);
+      expect(entry.items.first.taxAmount, closeTo(4.29, 0.01));
+      expect(entry.items.first.lineBaseAmount, closeTo(85.71, 0.01));
+    });
+
+    test('Microvise cesbel PDF ara toplam ve musteriyi ayristirir', () async {
+      final file = File('output/pdf/cesbel_8kalem.pdf');
+      final entry = await InvoicePdfAnalysisParser.parse(
+        bytes: await file.readAsBytes(),
+        fileName: file.path.split(Platform.pathSeparator).last,
+      );
+
+      expect(entry, isNotNull);
+      expect(entry!.customerName, contains('ÇESBEL'));
+      expect(entry.invoiceNumber, '620009058-2026-1-00000000022');
+      expect(entry.currency, 'USD');
+      expect(entry.subtotal, closeTo(4638.33, 0.01));
+      expect(entry.taxTotal, closeTo(705.47, 0.01));
+      expect(entry.grandTotal, closeTo(5343.80, 0.01));
+      expect(entry.items.length, 8);
+    });
+
+    test('eski ve yeni format ayni parser ile karisik taninir', () async {
+      final legacy = await InvoicePdfAnalysisParser.parse(
+        bytes: await File('dokuman/fatura/usd.pdf').readAsBytes(),
+        fileName: 'usd.pdf',
+      );
+      final microvise = await InvoicePdfAnalysisParser.parse(
+        bytes: await File('output/pdf/multi_3.pdf').readAsBytes(),
+        fileName: 'multi_3.pdf',
+      );
+
+      expect(legacy, isNotNull);
+      expect(microvise, isNotNull);
+      expect(
+        InvoicePdfAnalysisParser.isMicroviseEInvoice(legacy!.rawText),
+        isFalse,
+      );
+      expect(
+        InvoicePdfAnalysisParser.isMicroviseEInvoice(microvise!.rawText),
+        isTrue,
+      );
+      expect(legacy.currency, 'USD');
+      expect(microvise.currency, 'USD');
+      expect(legacy.items.first.taxRate, 16);
+      expect(microvise.items.first.taxRate, 5);
+    });
   });
 }
 

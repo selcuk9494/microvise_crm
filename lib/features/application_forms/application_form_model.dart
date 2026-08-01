@@ -102,14 +102,10 @@ class ApplicationFormRecord {
   }
 
   factory ApplicationFormRecord.fromJson(Map<String, dynamic> json) {
-    final offsetHours = DateTime.now().timeZoneOffset.inHours;
     return ApplicationFormRecord(
       id: json['id'].toString(),
       applicationDate:
-          parseAppDateTime(
-            json['application_date']?.toString(),
-            fixedOffsetHours: offsetHours,
-          ) ??
+          parseAppDateTime(json['application_date']?.toString()) ??
           DateTime.now(),
       customerId: json['customer_id']?.toString(),
       customerName: json['customer_name']?.toString() ?? '—',
@@ -126,10 +122,7 @@ class ApplicationFormRecord {
       stockProductName: json['stock_product_name']?.toString(),
       stockRegistryNumber: json['stock_registry_number']?.toString(),
       accountingOffice: json['accounting_office']?.toString(),
-      okcStartDate: parseAppDateTime(
-        json['okc_start_date']?.toString(),
-        fixedOffsetHours: offsetHours,
-      ),
+      okcStartDate: parseAppDateTime(json['okc_start_date']?.toString()),
       businessActivityName: json['business_activity_name']?.toString(),
       invoiceNumber: json['invoice_number']?.toString(),
       customerPhone: json['customer_phone']?.toString(),
@@ -155,20 +148,13 @@ class ApplicationFormRecord {
       approvalDocumentUrl: json['approval_document_url']?.toString(),
       approvalDocumentUploadedAt: parseAppDateTime(
         json['approval_document_uploaded_at']?.toString(),
-        fixedOffsetHours: offsetHours,
       ),
       approvalStatus: json['approval_status']?.toString() ?? 'pending',
-      approvedAt: parseAppDateTime(
-        json['approved_at']?.toString(),
-        fixedOffsetHours: offsetHours,
-      ),
+      approvedAt: parseAppDateTime(json['approved_at']?.toString()),
       approvedBy: json['approved_by']?.toString(),
       createdBy: json['created_by']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
-      createdAt: parseAppDateTime(
-        json['created_at']?.toString(),
-        fixedOffsetHours: offsetHours,
-      ),
+      createdAt: parseAppDateTime(json['created_at']?.toString()),
     );
   }
 }

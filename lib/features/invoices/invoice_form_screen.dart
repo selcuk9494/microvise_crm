@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/format/app_date_time.dart';
 import '../../core/ui/app_card.dart';
 import '../customers/customers_providers.dart';
 import '../work_orders/currency_service.dart';
@@ -27,8 +28,8 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   final _notesController = TextEditingController();
   
   String? _selectedCustomerId;
-  DateTime _invoiceDate = DateTime.now();
-  DateTime? _dueDate;
+  DateTime _invoiceDate = normalizeAppDate(DateTime.now());
+  DateTime? _dueDate = normalizeAppDate(DateTime.now());
   String _currency = 'TRY';
   double _exchangeRate = 1.0;
   
@@ -44,8 +45,8 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
     if (widget.editInvoice != null) {
       final inv = widget.editInvoice!;
       _selectedCustomerId = inv.customerId;
-      _invoiceDate = inv.invoiceDate;
-      _dueDate = inv.dueDate;
+      _invoiceDate = normalizeAppDate(inv.invoiceDate);
+      _dueDate = inv.dueDate == null ? null : normalizeAppDate(inv.dueDate!);
       _currency = inv.currency;
       _exchangeRate = inv.exchangeRate;
       _notesController.text = inv.notes ?? '';
@@ -375,8 +376,8 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
         'invoice_number': invoiceNumber,
         'invoice_type': widget.invoiceType,
         'customer_id': _selectedCustomerId,
-        'invoice_date': _invoiceDate.toIso8601String().substring(0, 10),
-        'due_date': _dueDate?.toIso8601String().substring(0, 10),
+        'invoice_date': formatAppDateIso(_invoiceDate),
+        'due_date': _dueDate == null ? null : formatAppDateIso(_dueDate!),
         'currency': _currency,
         'exchange_rate': _exchangeRate,
         'status': status,
@@ -527,7 +528,7 @@ class _ItemRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.border),
       ),

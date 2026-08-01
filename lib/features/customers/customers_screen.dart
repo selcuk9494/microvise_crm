@@ -11,6 +11,7 @@ import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../../core/ui/empty_state_card.dart';
 import '../../core/supabase/supabase_providers.dart';
@@ -1097,8 +1098,41 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       ],
       body: Builder(
         builder: (context) {
+          void clearFilters({bool popSheet = false}) {
+            ref.read(customerFiltersProvider.notifier).setSearch('');
+            ref.read(customerFiltersProvider.notifier).setCity(null);
+            ref.read(customerShowPassiveProvider.notifier).set(false);
+            ref
+                .read(customerSortProvider.notifier)
+                .set(CustomerSortOption.id);
+            ref.read(customerPageProvider.notifier).reset();
+            ref.invalidate(customersProvider);
+            if (popSheet && context.mounted) {
+              Navigator.of(context).pop();
+            }
+          }
+
+          InputDecoration filterFieldDecoration({
+            String? hintText,
+            String? labelText,
+            Widget? prefixIcon,
+          }) {
+            return InputDecoration(
+              isDense: true,
+              hintText: hintText,
+              labelText: labelText,
+              prefixIcon: prefixIcon,
+              filled: true,
+              fillColor: AppTheme.filterControlBg,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+            );
+          }
+
           final filterCard = AppCard(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: isMobile
                 ? citiesAsync.when(
                     data: (cities) => Column(
@@ -1117,19 +1151,22 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                       .read(customerPageProvider.notifier)
                                       .reset();
                                 },
-                                decoration: const InputDecoration(
-                                  prefixIcon: Icon(Icons.search_rounded),
-                                  hintText: 'Ara',
+                                decoration: filterFieldDecoration(
+                                  hintText: 'Müşteri, VKN, telefon…',
+                                  prefixIcon: const Icon(
+                                    Icons.search_rounded,
+                                    size: 20,
+                                  ),
                                 ),
                               ),
                             ),
-                            const Gap(10),
-                            IconButton.filledTonal(
+                            const Gap(8),
+                            OutlinedButton(
                               onPressed: () async {
                                 await showModalBottomSheet<void>(
                                   context: context,
                                   showDragHandle: true,
-                                  builder: (context) => SafeArea(
+                                  builder: (sheetContext) => SafeArea(
                                     child: Padding(
                                       padding: const EdgeInsets.all(16),
                                       child: Column(
@@ -1140,7 +1177,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                           Text(
                                             'Filtreler',
                                             style: Theme.of(
-                                              context,
+                                              sheetContext,
                                             ).textTheme.titleMedium,
                                           ),
                                           const Gap(12),
@@ -1149,7 +1186,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                             items: [
                                               const DropdownMenuItem(
                                                 value: null,
-                                                child: Text('Şehir: Tümü'),
+                                                child: Text('Tümü'),
                                               ),
                                               for (final c in cities)
                                                 DropdownMenuItem(
@@ -1171,14 +1208,25 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                                   )
                                                   .reset();
                                             },
-                                            decoration: const InputDecoration(
+                                            decoration: filterFieldDecoration(
                                               labelText: 'Şehir',
                                             ),
                                           ),
                                           const Gap(10),
-                                          SwitchListTile(
-                                            value: showPassive,
+                                          DropdownButtonFormField<bool>(
+                                            initialValue: showPassive,
+                                            items: const [
+                                              DropdownMenuItem(
+                                                value: false,
+                                                child: Text('Aktif'),
+                                              ),
+                                              DropdownMenuItem(
+                                                value: true,
+                                                child: Text('Tümü'),
+                                              ),
+                                            ],
                                             onChanged: (v) {
+                                              if (v == null) return;
                                               ref
                                                   .read(
                                                     customerShowPassiveProvider
@@ -1192,10 +1240,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                                   )
                                                   .reset();
                                             },
-                                            title: const Text(
-                                              'Pasif kayıtları göster',
+                                            decoration: filterFieldDecoration(
+                                              labelText: 'Durum',
                                             ),
-                                            contentPadding: EdgeInsets.zero,
                                           ),
                                           const Gap(10),
                                           DropdownButtonFormField<
@@ -1227,76 +1274,23 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                                   )
                                                   .set(value);
                                             },
-                                            decoration: const InputDecoration(
+                                            decoration: filterFieldDecoration(
                                               labelText: 'Sıralama',
                                             ),
                                           ),
-                                          const Gap(10),
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: FilledButton.tonalIcon(
-                                                  onPressed: () {
-                                                    ref
-                                                        .read(
-                                                          customerFiltersProvider
-                                                              .notifier,
-                                                        )
-                                                        .setSearch('');
-                                                    ref
-                                                        .read(
-                                                          customerFiltersProvider
-                                                              .notifier,
-                                                        )
-                                                        .setCity(null);
-                                                    ref
-                                                        .read(
-                                                          customerShowPassiveProvider
-                                                              .notifier,
-                                                        )
-                                                        .set(false);
-                                                    ref
-                                                        .read(
-                                                          customerSortProvider
-                                                              .notifier,
-                                                        )
-                                                        .set(
-                                                          CustomerSortOption.id,
-                                                        );
-                                                    ref
-                                                        .read(
-                                                          customerPageProvider
-                                                              .notifier,
-                                                        )
-                                                        .reset();
-                                                    ref.invalidate(
-                                                      customersProvider,
-                                                    );
-                                                    Navigator.of(context).pop();
-                                                  },
-                                                  icon: const Icon(
-                                                    Icons
-                                                        .delete_outline_rounded,
-                                                    size: 18,
-                                                  ),
-                                                  label: const Text('Temizle'),
-                                                  style: FilledButton.styleFrom(
-                                                    backgroundColor:
-                                                        const Color(
-                                                          0xFFEF4444,
-                                                        ).withValues(
-                                                          alpha: 0.12,
-                                                        ),
-                                                    foregroundColor:
-                                                        const Color(0xFF7F1D1D),
-                                                    minimumSize: const Size(
-                                                      0,
-                                                      44,
-                                                    ),
-                                                  ),
-                                                ),
+                                          const Gap(14),
+                                          SizedBox(
+                                            width: double.infinity,
+                                            child: OutlinedButton.icon(
+                                              onPressed: () => clearFilters(
+                                                popSheet: true,
                                               ),
-                                            ],
+                                              icon: const Icon(
+                                                Icons.filter_alt_off_rounded,
+                                                size: 18,
+                                              ),
+                                              label: const Text('Temizle'),
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -1304,67 +1298,69 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                   ),
                                 );
                               },
-                              icon: const Icon(Icons.tune_rounded),
-                            ),
-                          ],
-                        ),
-                        const Gap(10),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            AppBadge(
-                              label: showPassive
-                                  ? 'Durum: Tümü'
-                                  : 'Durum: Aktif',
-                              tone: showPassive
-                                  ? AppBadgeTone.neutral
-                                  : AppBadgeTone.success,
-                            ),
-                            if ((filters.city ?? '').trim().isNotEmpty)
-                              AppBadge(
-                                label: (filters.city ?? '').trim(),
-                                tone: AppBadgeTone.primary,
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size(40, 40),
+                                padding: EdgeInsets.zero,
                               ),
+                              child: const Icon(Icons.tune_rounded, size: 18),
+                            ),
                           ],
                         ),
+                        if (showPassive ||
+                            (filters.city ?? '').trim().isNotEmpty) ...[
+                          const Gap(8),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              if (showPassive)
+                                const AppBadge(
+                                  label: 'Durum: Tümü',
+                                  tone: AppBadgeTone.neutral,
+                                  dense: true,
+                                ),
+                              if ((filters.city ?? '').trim().isNotEmpty)
+                                AppBadge(
+                                  label: (filters.city ?? '').trim(),
+                                  tone: AppBadgeTone.primary,
+                                  dense: true,
+                                ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                     loading: () => const SizedBox.shrink(),
                     error: (error, stackTrace) => const SizedBox.shrink(),
                   )
-                : Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+                : Row(
                     children: [
-                      FilledButton.tonalIcon(
-                        onPressed: () => ref
-                            .read(customerCompactViewProvider.notifier)
-                            .toggle(),
-                        icon: Icon(
-                          compactView
-                              ? Icons.view_agenda_rounded
-                              : Icons.view_compact_alt_rounded,
-                          size: 18,
-                        ),
-                        label: Text(
-                          compactView ? 'Geniş Görünüm' : 'Sık Görünüm',
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppTheme.primary.withValues(
-                            alpha: 0.12,
+                      Tooltip(
+                        message: compactView
+                            ? 'Geniş satırlar'
+                            : 'Sıkı satırlar',
+                        child: IconButton(
+                          onPressed: () => ref
+                              .read(customerCompactViewProvider.notifier)
+                              .toggle(),
+                          style: IconButton.styleFrom(
+                            foregroundColor: AppTheme.textSoft,
+                            side: BorderSide(
+                              color: AppTheme.border.withValues(alpha: 0.9),
+                            ),
+                            minimumSize: const Size(40, 40),
                           ),
-                          foregroundColor: AppTheme.primaryDark,
-                          minimumSize: const Size(0, 40),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
+                          icon: Icon(
+                            compactView
+                                ? Icons.view_agenda_outlined
+                                : Icons.view_compact_alt_outlined,
+                            size: 18,
                           ),
                         ),
                       ),
-                      SizedBox(
-                        width: 260,
+                      const Gap(8),
+                      Expanded(
+                        flex: 3,
                         child: TextField(
                           controller: _searchController,
                           onChanged: (value) {
@@ -1373,126 +1369,107 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 .setSearch(value);
                             ref.read(customerPageProvider.notifier).reset();
                           },
-                          decoration: const InputDecoration(
-                            prefixIcon: Icon(Icons.search_rounded),
-                            hintText: 'Ara',
+                          decoration: filterFieldDecoration(
+                            hintText: 'Müşteri, VKN, telefon…',
+                            prefixIcon: const Icon(
+                              Icons.search_rounded,
+                              size: 20,
+                            ),
                           ),
                         ),
                       ),
-                      citiesAsync.when(
-                        data: (cities) => _PillDropdown<String?>(
-                          value: filters.city,
-                          items: [
-                            const DropdownMenuItem(
-                              value: null,
-                              child: Text('Şehir: Tümü'),
+                      const Gap(8),
+                      SizedBox(
+                        width: 150,
+                        child: citiesAsync.when(
+                          data: (cities) => DropdownButtonFormField<String?>(
+                            initialValue: filters.city,
+                            isExpanded: true,
+                            items: [
+                              const DropdownMenuItem(
+                                value: null,
+                                child: Text('Şehir: Tümü'),
+                              ),
+                              for (final c in cities)
+                                DropdownMenuItem(value: c, child: Text(c)),
+                            ],
+                            onChanged: (value) {
+                              ref
+                                  .read(customerFiltersProvider.notifier)
+                                  .setCity(value);
+                              ref.read(customerPageProvider.notifier).reset();
+                            },
+                            decoration: filterFieldDecoration(),
+                          ),
+                          loading: () => const SizedBox.shrink(),
+                          error: (_, _) => const SizedBox.shrink(),
+                        ),
+                      ),
+                      const Gap(8),
+                      SizedBox(
+                        width: 130,
+                        child: DropdownButtonFormField<bool>(
+                          initialValue: showPassive,
+                          isExpanded: true,
+                          items: const [
+                            DropdownMenuItem(
+                              value: false,
+                              child: Text('Aktif'),
                             ),
-                            for (final c in cities)
-                              DropdownMenuItem(value: c, child: Text(c)),
+                            DropdownMenuItem(
+                              value: true,
+                              child: Text('Tümü'),
+                            ),
                           ],
-                          onChanged: (value) {
+                          onChanged: (v) {
+                            if (v == null) return;
                             ref
-                                .read(customerFiltersProvider.notifier)
-                                .setCity(value);
+                                .read(customerShowPassiveProvider.notifier)
+                                .set(v);
                             ref.read(customerPageProvider.notifier).reset();
                           },
-                          backgroundColor: const Color(
-                            0xFF16A34A,
-                          ).withValues(alpha: 0.12),
-                          foregroundColor: const Color(0xFF14532D),
-                          icon: Icons.location_city_rounded,
-                          labelBuilder: (value) => Text(
-                            'Şehir: ${value?.trim().isNotEmpty ?? false ? value!.trim() : 'Tümü'}',
-                          ),
-                        ),
-                        loading: () => const SizedBox.shrink(),
-                        error: (_, _) => const SizedBox.shrink(),
-                      ),
-                      FilledButton.tonalIcon(
-                        onPressed: () {
-                          ref
-                              .read(customerShowPassiveProvider.notifier)
-                              .set(!showPassive);
-                          ref.read(customerPageProvider.notifier).reset();
-                        },
-                        icon: const Icon(Icons.circle_rounded, size: 12),
-                        label: Text(
-                          showPassive ? 'Durum: Tümü' : 'Durum: Aktif',
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(
-                            0xFF7C3AED,
-                          ).withValues(alpha: 0.12),
-                          foregroundColor: const Color(0xFF4C1D95),
-                          minimumSize: const Size(0, 40),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
-                          ),
+                          decoration: filterFieldDecoration(),
                         ),
                       ),
-                      _PillDropdown<CustomerSortOption>(
-                        value: sort,
-                        items: const [
-                          DropdownMenuItem(
-                            value: CustomerSortOption.id,
-                            child: Text('Sıralama: En eski'),
-                          ),
-                          DropdownMenuItem(
-                            value: CustomerSortOption.nameAsc,
-                            child: Text('Sıralama: A-Z'),
-                          ),
-                          DropdownMenuItem(
-                            value: CustomerSortOption.nameDesc,
-                            child: Text('Sıralama: Z-A'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          if (value == null) return;
-                          ref.read(customerSortProvider.notifier).set(value);
-                        },
-                        backgroundColor: const Color(
-                          0xFFF59E0B,
-                        ).withValues(alpha: 0.12),
-                        foregroundColor: const Color(0xFF7C2D12),
-                        icon: Icons.sort_rounded,
-                        labelBuilder: (value) =>
-                            Text(switch (value ?? CustomerSortOption.id) {
-                              CustomerSortOption.id => 'Sıralama: En eski',
-                              CustomerSortOption.nameAsc => 'Sıralama: A-Z',
-                              CustomerSortOption.nameDesc => 'Sıralama: Z-A',
-                            }),
+                      const Gap(8),
+                      SizedBox(
+                        width: 140,
+                        child: DropdownButtonFormField<CustomerSortOption>(
+                          initialValue: sort,
+                          isExpanded: true,
+                          items: const [
+                            DropdownMenuItem(
+                              value: CustomerSortOption.id,
+                              child: Text('En eski'),
+                            ),
+                            DropdownMenuItem(
+                              value: CustomerSortOption.nameAsc,
+                              child: Text('A-Z'),
+                            ),
+                            DropdownMenuItem(
+                              value: CustomerSortOption.nameDesc,
+                              child: Text('Z-A'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            ref.read(customerSortProvider.notifier).set(value);
+                          },
+                          decoration: filterFieldDecoration(),
+                        ),
                       ),
-                      FilledButton.tonalIcon(
-                        onPressed: () {
-                          ref
-                              .read(customerFiltersProvider.notifier)
-                              .setSearch('');
-                          ref
-                              .read(customerFiltersProvider.notifier)
-                              .setCity(null);
-                          ref
-                              .read(customerShowPassiveProvider.notifier)
-                              .set(false);
-                          ref
-                              .read(customerSortProvider.notifier)
-                              .set(CustomerSortOption.id);
-                          ref.read(customerPageProvider.notifier).reset();
-                          ref.invalidate(customersProvider);
-                        },
+                      const Gap(8),
+                      OutlinedButton.icon(
+                        onPressed: clearFilters,
                         icon: const Icon(
-                          Icons.delete_outline_rounded,
-                          size: 18,
+                          Icons.filter_alt_off_rounded,
+                          size: 16,
                         ),
                         label: const Text('Temizle'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(
-                            0xFFEF4444,
-                          ).withValues(alpha: 0.12),
-                          foregroundColor: const Color(0xFF7F1D1D),
+                        style: OutlinedButton.styleFrom(
                           minimumSize: const Size(0, 40),
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
+                            horizontal: 12,
                             vertical: 10,
                           ),
                         ),
@@ -1773,73 +1750,6 @@ class _MobilePill extends StatelessWidget {
   }
 }
 
-class _PillDropdown<T> extends StatelessWidget {
-  const _PillDropdown({
-    required this.value,
-    required this.items,
-    required this.onChanged,
-    required this.backgroundColor,
-    required this.foregroundColor,
-    required this.icon,
-    required this.labelBuilder,
-  });
-
-  final T? value;
-  final List<DropdownMenuItem<T>> items;
-  final ValueChanged<T?> onChanged;
-  final Color backgroundColor;
-  final Color foregroundColor;
-  final IconData icon;
-  final Widget Function(T? value) labelBuilder;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<T>(
-          value: value,
-          items: items,
-          onChanged: onChanged,
-          icon: const Icon(Icons.expand_more_rounded, size: 18),
-          isDense: true,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: foregroundColor),
-          dropdownColor: AppTheme.surface,
-          selectedItemBuilder: (context) {
-            return items
-                .map(
-                  (item) => Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(icon, size: 18, color: foregroundColor),
-                      const Gap(8),
-                      DefaultTextStyle(
-                        style:
-                            Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: foregroundColor,
-                            ) ??
-                            const TextStyle(),
-                        child: labelBuilder(item.value),
-                      ),
-                    ],
-                  ),
-                )
-                .toList(growable: false);
-          },
-        ),
-      ),
-    );
-  }
-}
-
 class _CustomersTable extends StatelessWidget {
   const _CustomersTable({
     required this.items,
@@ -1885,8 +1795,8 @@ class _CustomersTable extends StatelessWidget {
                 Container(
                   height: 40,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFF1F5F9),
+                  decoration: BoxDecoration(
+                    color: AppTheme.tableHeaderBg,
                     borderRadius: BorderRadius.vertical(
                       top: Radius.circular(AppTheme.radiusMd),
                     ),
@@ -1923,6 +1833,7 @@ class _CustomersTable extends StatelessWidget {
                     itemBuilder: (context, index) {
                       return _CustomerTableRow(
                         height: rowHeight,
+                        index: index,
                         customer: items[index],
                         isAdmin: isAdmin,
                         canEdit: canEdit,
@@ -2004,6 +1915,7 @@ class _TableHeaderCell extends StatelessWidget {
 class _CustomerTableRow extends StatelessWidget {
   const _CustomerTableRow({
     required this.height,
+    required this.index,
     required this.customer,
     required this.isAdmin,
     required this.canEdit,
@@ -2013,6 +1925,7 @@ class _CustomerTableRow extends StatelessWidget {
   });
 
   final double height;
+  final int index;
   final Customer customer;
   final bool isAdmin;
   final bool canEdit;
@@ -2040,8 +1953,9 @@ class _CustomerTableRow extends StatelessWidget {
       child: Container(
         height: height,
         padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppTheme.border)),
+        decoration: BoxDecoration(
+          color: AppDenseList.rowFill(index),
+          border: Border(bottom: BorderSide(color: AppTheme.border.withValues(alpha: 0.7))),
         ),
         child: Row(
           children: [

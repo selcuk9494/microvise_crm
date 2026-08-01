@@ -28,6 +28,8 @@ const ensured = {
   application_forms_approval: false,
   application_form_activity_logs: false,
   customer_country_columns: false,
+  invoice_prices_include_vat: false,
+  akinsoft_invoice_sync: false,
 };
 
 async function ensureCustomerCountryColumns() {
@@ -536,6 +538,7 @@ async function ensureInvoiceItemsTable() {
         add column if not exists source_event text,
         add column if not exists source_label text,
         add column if not exists description text,
+        add column if not exists notes text,
         add column if not exists amount numeric,
         add column if not exists currency text,
         add column if not exists status text,
@@ -1630,6 +1633,43 @@ async function ensureApplicationFormActivityLogsTable() {
   return true;
 }
 
+async function ensureInvoicePricesIncludeVatColumn() {
+  if (ensured.invoice_prices_include_vat) return true;
+  await query(`
+    alter table public.invoices
+      add column if not exists prices_include_vat boolean not null default false
+  `);
+  ensured.invoice_prices_include_vat = true;
+  return true;
+}
+
+async function ensureAkinsoftInvoiceSyncColumns() {
+  if (ensured.akinsoft_invoice_sync) return true;
+  await query(`
+    alter table public.invoices
+      add column if not exists akinsoft_sync_status text,
+      add column if not exists akinsoft_synced_at timestamptz,
+      add column if not exists akinsoft_sync_error text
+  `);
+  await query(`
+    update public.invoices i
+    set
+      akinsoft_sync_status = 'synced',
+      akinsoft_synced_at = coalesce(i.akinsoft_synced_at, m.updated_at, m.created_at, now())
+    from public.akinsoft_sync_map m
+    where m.source_system = 'akinsoft'
+      and m.source_type = 'invoice'
+      and m.local_id = i.id
+      and (
+        i.akinsoft_sync_status is null
+        or i.akinsoft_sync_status = ''
+        or i.akinsoft_sync_status = 'pending'
+      )
+  `);
+  ensured.akinsoft_invoice_sync = true;
+  return true;
+}
+
 module.exports = {
   ensureCustomerCountryColumns,
   ensureSerialTrackingTable,
@@ -1658,4 +1698,6 @@ module.exports = {
   ensureFinanceTables,
   ensureApplicationFormsApprovalColumns,
   ensureApplicationFormActivityLogsTable,
+  ensureInvoicePricesIncludeVatColumn,
+  ensureAkinsoftInvoiceSyncColumns,
 };

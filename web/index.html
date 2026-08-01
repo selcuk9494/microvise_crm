@@ -29,7 +29,7 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>microvise_crm</title>
+  <title>Microvise CRM</title>
   <link rel="manifest" href="manifest.json">
   <style>
     body.native-login-active {
@@ -72,26 +72,16 @@
     }
 
     .microvise-login-logo {
-      width: 152px;
       height: 44px;
-      object-fit: cover;
-      border: 1px solid #dce5f0;
-      border-radius: 8px;
-      background: #fff;
+      width: auto;
+      max-width: 100%;
+      object-fit: contain;
       display: block;
-      margin-bottom: 18px;
-    }
-
-    .microvise-login-title {
-      margin: 0;
-      font-size: 28px;
-      line-height: 1.15;
-      font-weight: 800;
-      letter-spacing: 0;
+      margin-bottom: 10px;
     }
 
     .microvise-login-subtitle {
-      margin: 4px 0 24px;
+      margin: 0 0 24px;
       color: #64748b;
       font-size: 15px;
       line-height: 1.35;
@@ -383,8 +373,7 @@
         overlay.innerHTML = `
           <iframe name="microvise-native-login-submit-frame" title="" tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;left:-9999px;top:-9999px;border:0;"></iframe>
           <form id="microvise-native-login-form" class="microvise-login-card" method="post" autocomplete="on" action="${apiBaseUrl()}/auth/login" target="microvise-native-login-submit-frame">
-            <img class="microvise-login-logo" src="assets/assets/images/logo.png" alt="Microvise">
-            <h1 class="microvise-login-title">Microvise CRM</h1>
+            <img class="microvise-login-logo" src="assets/assets/images/logo_v2.png" alt="Microvise">
             <p class="microvise-login-subtitle">Güvenli çalışma alanı</p>
             <p id="microvise-native-login-error" class="microvise-login-error" role="alert"></p>
             <div class="microvise-field">

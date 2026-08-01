@@ -4,6 +4,7 @@ import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../app/theme/theme_mode_provider.dart';
 import '../../core/auth/auth_providers.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
@@ -36,6 +37,18 @@ final eInvoiceNavExpandedProvider =
       _EInvoiceNavExpandedNotifier.new,
     );
 
+class _FinanceNavExpandedNotifier extends Notifier<bool> {
+  @override
+  bool build() => true;
+
+  void toggle() => state = !state;
+}
+
+final financeNavExpandedProvider =
+    NotifierProvider<_FinanceNavExpandedNotifier, bool>(
+      _FinanceNavExpandedNotifier.new,
+    );
+
 class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.child});
 
@@ -45,9 +58,9 @@ class AppShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(currentUserProfileProvider);
     if (profileAsync.isLoading || profileAsync.value == null) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: AppTheme.background,
-        body: Center(child: CircularProgressIndicator()),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -83,27 +96,34 @@ class _DesktopShell extends ConsumerWidget {
     );
     final isFormsExpanded = ref.watch(formsNavExpandedProvider);
     final isEInvoiceExpanded = ref.watch(eInvoiceNavExpandedProvider);
+    final isFinanceExpanded = ref.watch(financeNavExpandedProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: Row(
+      body: DecoratedBox(
+        decoration: AppTheme.pageCanvas,
+        child: Row(
         children: [
           Container(
-            width: compact ? 82 : 272,
+            width: compact ? 78 : 248,
             decoration: BoxDecoration(
-              color: AppTheme.surface,
-              border: Border(right: BorderSide(color: AppTheme.border)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.035),
-                  blurRadius: 16,
-                  offset: const Offset(4, 0),
+              color: AppTheme.sidebar,
+              border: Border(
+                right: BorderSide(
+                  color: AppTheme.isDark
+                      ? AppTheme.border.withValues(alpha: 0.55)
+                      : const Color(0xFF151B26),
                 ),
-              ],
+              ),
             ),
             child: SafeArea(
               child: Padding(
-                padding: EdgeInsets.all(compact ? 10 : 16),
+                padding: EdgeInsets.fromLTRB(
+                  compact ? 8 : 12,
+                  compact ? 10 : 14,
+                  compact ? 8 : 12,
+                  compact ? 10 : 12,
+                ),
                 child: Column(
                   children: [
                     if (compact)
@@ -117,7 +137,7 @@ class _DesktopShell extends ConsumerWidget {
                         onTap: () =>
                             context.go(isBankUser ? '/banka-panel' : '/panel'),
                       ),
-                    const Gap(18),
+                    const Gap(10),
                     Expanded(
                       child: ListView(
                         children: [
@@ -183,6 +203,45 @@ class _DesktopShell extends ConsumerWidget {
                                 ],
                                 matchedLocation: location,
                               )
+                            else if (item.pageKey == 'finans')
+                              _FormsNavGroup(
+                                label: item.label,
+                                icon: item.icon,
+                                active: _isActive(location, item.path),
+                                accentColor: _navAccentColor(item.pageKey),
+                                expanded: isFinanceExpanded,
+                                onHeaderTap: () {
+                                  ref
+                                      .read(
+                                        financeNavExpandedProvider.notifier,
+                                      )
+                                      .toggle();
+                                  context.go(item.path);
+                                },
+                                subItems: const [
+                                  _FormsNavSubItem(
+                                    label: 'CRM Finans',
+                                    path: '/finans',
+                                  ),
+                                  _FormsNavSubItem(
+                                    label: 'Bankalar / Hesaplar',
+                                    path: '/finans/akinsoft/bankalar',
+                                  ),
+                                  _FormsNavSubItem(
+                                    label: 'Kasa',
+                                    path: '/finans/akinsoft/kasa',
+                                  ),
+                                  _FormsNavSubItem(
+                                    label: 'Transferler',
+                                    path: '/finans/akinsoft/transferler',
+                                  ),
+                                  _FormsNavSubItem(
+                                    label: 'Masraf Faturaları',
+                                    path: '/finans/akinsoft/masraf',
+                                  ),
+                                ],
+                                matchedLocation: location,
+                              )
                             else
                               _SidebarItem(
                                 label: item.label,
@@ -191,12 +250,12 @@ class _DesktopShell extends ConsumerWidget {
                                 accentColor: _navAccentColor(item.pageKey),
                                 onTap: () => context.go(item.path),
                               ),
-                            const Gap(6),
+                            const Gap(4),
                           ],
                         ],
                       ),
                     ),
-                    const Gap(12),
+                    const Gap(10),
                     compact
                         ? _CompactAccountButton(
                             onTap: () => _showMobileAccountSheet(context, ref),
@@ -220,11 +279,16 @@ class _DesktopShell extends ConsumerWidget {
             child: Column(
               children: [
                 const _TopBar(),
-                Expanded(child: SelectionArea(child: child)),
+                Expanded(
+                  child: ClipRect(
+                    child: SelectionArea(child: child),
+                  ),
+                ),
               ],
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -259,7 +323,10 @@ class _MobileShell extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: SelectionArea(child: child),
+      body: DecoratedBox(
+        decoration: AppTheme.pageCanvas,
+        child: SelectionArea(child: child),
+      ),
       floatingActionButton: isBankUser
           ? null
           : FloatingActionButton(
@@ -303,7 +370,7 @@ class _MobileShell extends ConsumerWidget {
               ),
             _BottomItem(
               label: 'Menü',
-              icon: Icons.apps_rounded,
+              icon: Icons.apps_outlined,
               active: overflowActive,
               onTap: () =>
                   _showMobileModulesSheet(context, ref, allowedItems, location),
@@ -502,6 +569,24 @@ List<_FormsNavSubItem> _mobileNavSubItems(_NavItem item) {
       _FormsNavSubItem(label: 'Ayarlar', path: '/e-fatura/ayarlar'),
     ];
   }
+  if (item.pageKey == 'finans') {
+    return const [
+      _FormsNavSubItem(label: 'CRM Finans', path: '/finans'),
+      _FormsNavSubItem(
+        label: 'Bankalar / Hesaplar',
+        path: '/finans/akinsoft/bankalar',
+      ),
+      _FormsNavSubItem(label: 'Kasa', path: '/finans/akinsoft/kasa'),
+      _FormsNavSubItem(
+        label: 'Transferler',
+        path: '/finans/akinsoft/transferler',
+      ),
+      _FormsNavSubItem(
+        label: 'Masraf Faturaları',
+        path: '/finans/akinsoft/masraf',
+      ),
+    ];
+  }
   return const [];
 }
 
@@ -595,7 +680,7 @@ class _MobileModuleTile extends StatelessWidget {
                         ? Icons.check_circle_rounded
                         : Icons.chevron_right_rounded,
                     size: active ? 20 : 22,
-                    color: active ? accentColor : const Color(0xFF94A3B8),
+                    color: active ? accentColor : AppTheme.textMuted,
                   ),
                 ],
               ),
@@ -697,7 +782,7 @@ Future<void> _showMobileAccountSheet(
                     CircleAvatar(
                       radius: 18,
                       backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
-                      child: const Icon(
+                      child: Icon(
                         Icons.person_rounded,
                         color: AppTheme.primary,
                       ),
@@ -716,7 +801,7 @@ Future<void> _showMobileAccountSheet(
                           Text(
                             role == 'admin' ? 'Admin' : 'Personel',
                             style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: const Color(0xFF64748B)),
+                                ?.copyWith(color: AppTheme.textMuted),
                           ),
                         ],
                       ),
@@ -748,6 +833,20 @@ Future<void> _showMobileAccountSheet(
   );
 }
 
+/// Transparent wordmark — no chip/pill behind the logo in either theme.
+Widget _brandLogoImage({
+  required double height,
+  Alignment alignment = Alignment.centerLeft,
+}) {
+  return Image.asset(
+    'assets/images/logo_v2.png',
+    height: height,
+    fit: BoxFit.contain,
+    alignment: alignment,
+    filterQuality: FilterQuality.high,
+  );
+}
+
 class _BrandHeader extends StatelessWidget {
   const _BrandHeader({required this.onTap, required this.subtitle});
 
@@ -756,62 +855,25 @@ class _BrandHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Same horizontal inset as _SidebarItem (10) so wordmark lines up with nav icons.
     return InkWell(
       borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceMuted,
-          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-          border: Border.all(color: AppTheme.border),
-        ),
-        child: Row(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 4, 10, 2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 76,
-              height: 38,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                border: Border.all(color: AppTheme.border),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryDeep.withValues(alpha: 0.08),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+            _brandLogoImage(height: 32),
+            const Gap(4),
+            Text(
+              subtitle,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: AppTheme.sidebarTextMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w400,
+                letterSpacing: 0.2,
               ),
-              clipBehavior: Clip.antiAlias,
-              child: OverflowBox(
-                maxWidth: 76,
-                maxHeight: 76,
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  width: 76,
-                  height: 76,
-                  fit: BoxFit.cover,
-                ),
-              ),
-            ),
-            const Gap(12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Microvise',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-                ),
-                Text(
-                  subtitle,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-              ],
             ),
           ],
         ),
@@ -832,24 +894,11 @@ class _CompactBrandButton extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         onTap: onTap,
-        child: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceMuted,
-            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-            border: Border.all(color: AppTheme.border),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: OverflowBox(
-            maxWidth: 70,
-            maxHeight: 70,
-            child: Image.asset(
-              'assets/images/logo.png',
-              width: 70,
-              height: 70,
-              fit: BoxFit.cover,
-            ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: _brandLogoImage(
+            height: 28,
+            alignment: Alignment.center,
           ),
         ),
       ),
@@ -869,6 +918,8 @@ class _SidebarIconItem extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool active;
+  // Kept for call-site parity with expanded nav items (mobile accents).
+  // ignore: unused_field
   final Color accentColor;
   final VoidCallback onTap;
 
@@ -882,40 +933,12 @@ class _SidebarIconItem extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
           curve: Curves.easeOut,
-          height: 46,
-          decoration: BoxDecoration(
-            color: active
-                ? accentColor.withValues(alpha: 0.12)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-            border: Border.all(
-              color: active
-                  ? accentColor.withValues(alpha: 0.28)
-                  : Colors.transparent,
-            ),
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 21,
-                color: active ? accentColor : AppTheme.textMuted,
-              ),
-              if (active)
-                Positioned(
-                  right: 3,
-                  top: 12,
-                  bottom: 12,
-                  child: Container(
-                    width: 3,
-                    decoration: BoxDecoration(
-                      color: accentColor,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-            ],
+          height: 44,
+          decoration: AppTheme.sidebarNavDecoration(active: active),
+          child: Icon(
+            icon,
+            size: 20,
+            color: AppTheme.sidebarNavFg(active: active),
           ),
         ),
       ),
@@ -943,7 +966,7 @@ class _CompactAccountButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             border: Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
           ),
-          child: const Icon(
+          child: Icon(
             Icons.person_rounded,
             color: AppTheme.primary,
             size: 21,
@@ -965,8 +988,12 @@ class _TopBar extends StatelessWidget {
         height: 64,
         padding: const EdgeInsets.symmetric(horizontal: 18),
         decoration: BoxDecoration(
-          color: AppTheme.background.withValues(alpha: 0.92),
-          border: Border(bottom: BorderSide(color: AppTheme.border)),
+          color: AppTheme.isDark
+              ? AppTheme.surface.withValues(alpha: 0.72)
+              : AppTheme.surface.withValues(alpha: 0.94),
+          border: Border(
+            bottom: BorderSide(color: AppTheme.border.withValues(alpha: 0.45)),
+          ),
         ),
         child: Row(
           children: [
@@ -974,16 +1001,18 @@ class _TopBar extends StatelessWidget {
               height: 34,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                color: AppTheme.surface,
-                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                border: Border.all(color: AppTheme.border),
+                color: AppTheme.surface.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                border: Border.all(
+                  color: AppTheme.border.withValues(alpha: 0.4),
+                ),
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.monitor_rounded,
                     size: 16,
-                    color: AppTheme.primaryDark,
+                    color: AppTheme.primary,
                   ),
                   const Gap(8),
                   Text(
@@ -997,12 +1026,14 @@ class _TopBar extends StatelessWidget {
               ),
             ),
             const Spacer(),
+            const _ThemeModeControl(),
+            const Gap(6),
             IconButton(
               tooltip: 'Bildirimler',
               onPressed: () {},
-              icon: const Icon(
+              icon: Icon(
                 Icons.notifications_none_rounded,
-                color: Color(0xFF0F172A),
+                color: AppTheme.text,
               ),
             ),
             const Gap(6),
@@ -1010,6 +1041,84 @@ class _TopBar extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ThemeModeControl extends ConsumerWidget {
+  const _ThemeModeControl();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+
+    return MenuAnchor(
+      builder: (context, controller, child) => Tooltip(
+        message: 'Tema: ${themeModeLabelTr(mode)}',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+          onTap: () =>
+              controller.isOpen ? controller.close() : controller.open(),
+          child: Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: AppTheme.surface.withValues(alpha: 0.85),
+              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+              border: Border.all(color: AppTheme.border.withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  themeModeIcon(mode),
+                  size: 18,
+                  color: AppTheme.primary,
+                ),
+                const Gap(8),
+                Text(
+                  themeModeLabelTr(mode),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppTheme.text,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Gap(2),
+                Icon(
+                  Icons.expand_more_rounded,
+                  size: 18,
+                  color: AppTheme.textMuted,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      menuChildren: [
+        for (final option in const [
+          ThemeMode.light,
+          ThemeMode.dark,
+          ThemeMode.system,
+        ])
+          MenuItemButton(
+            onPressed: () => ref.read(themeModeProvider.notifier).setMode(option),
+            leadingIcon: Icon(
+              themeModeIcon(option),
+              size: 18,
+              color: mode == option ? AppTheme.primary : AppTheme.textSoft,
+            ),
+            trailingIcon: mode == option
+                ? Icon(Icons.check_rounded, size: 16, color: AppTheme.primary)
+                : null,
+            child: Text(
+              themeModeLabelTr(option),
+              style: TextStyle(
+                fontWeight: mode == option ? FontWeight.w700 : FontWeight.w500,
+                color: AppTheme.text,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -1025,16 +1134,16 @@ class _ProfileButton extends StatelessWidget {
           height: 40,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.border),
+            color: AppTheme.surface.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+            border: Border.all(color: AppTheme.border.withValues(alpha: 0.4)),
           ),
           child: Row(
             children: [
               CircleAvatar(
                 radius: 12,
                 backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
-                child: const Icon(
+                child: Icon(
                   Icons.person_rounded,
                   size: 16,
                   color: AppTheme.primary,
@@ -1067,76 +1176,36 @@ class _SidebarItem extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool active;
+  // ignore: unused_field
   final Color accentColor;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final fg = AppTheme.sidebarNavFg(active: active);
     return InkWell(
-      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+      borderRadius: BorderRadius.circular(AppTheme.radiusXs),
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         curve: Curves.easeOut,
-        height: 44,
+        height: 42,
+        decoration: AppTheme.sidebarNavDecoration(active: active),
         padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          color: active
-              ? Color.alphaBlend(
-                  accentColor.withValues(alpha: 0.10),
-                  AppTheme.surfaceMuted,
-                )
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-          border: Border.all(
-            color: active
-                ? accentColor.withValues(alpha: 0.24)
-                : Colors.transparent,
-          ),
-        ),
         child: Row(
           children: [
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: active
-                    ? accentColor.withValues(alpha: 0.14)
-                    : AppTheme.surfaceMuted,
-                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                border: Border.all(
-                  color: active
-                      ? accentColor.withValues(alpha: 0.24)
-                      : AppTheme.border,
-                ),
-              ),
-              child: Icon(
-                icon,
-                size: 18,
-                color: active
-                    ? accentColor
-                    : accentColor.withValues(alpha: 0.92),
-              ),
-            ),
+            Icon(icon, size: 19, color: fg),
             const Gap(10),
             Expanded(
               child: Text(
                 label,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w600,
-                  color: active ? accentColor : AppTheme.text,
+                  fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                  color: fg,
+                  fontSize: 13.5,
                 ),
               ),
             ),
-            if (active)
-              Container(
-                width: 3,
-                height: 20,
-                decoration: BoxDecoration(
-                  color: accentColor,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
           ],
         ),
       ),
@@ -1166,6 +1235,7 @@ class _FormsNavGroup extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool active;
+  // ignore: unused_field
   final Color accentColor;
   final bool expanded;
   final VoidCallback onHeaderTap;
@@ -1178,63 +1248,31 @@ class _FormsNavGroup extends StatelessWidget {
       (e) => _isActive(matchedLocation, e.path),
     );
     final isActive = active || anySubActive;
+    final fg = AppTheme.sidebarNavFg(active: isActive);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         InkWell(
-          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          borderRadius: BorderRadius.circular(AppTheme.radiusXs),
           onTap: onHeaderTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
             curve: Curves.easeOut,
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: isActive
-                  ? Color.alphaBlend(
-                      accentColor.withValues(alpha: 0.10),
-                      AppTheme.surfaceMuted,
-                    )
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-              border: Border.all(
-                color: isActive
-                    ? accentColor.withValues(alpha: 0.24)
-                    : Colors.transparent,
-              ),
-            ),
+            height: 42,
+            decoration: AppTheme.sidebarNavDecoration(active: isActive),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Row(
               children: [
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: isActive
-                        ? accentColor.withValues(alpha: 0.14)
-                        : AppTheme.surfaceMuted,
-                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                    border: Border.all(
-                      color: isActive
-                          ? accentColor.withValues(alpha: 0.24)
-                          : AppTheme.border,
-                    ),
-                  ),
-                  child: Icon(
-                    icon,
-                    size: 18,
-                    color: isActive
-                        ? accentColor
-                        : accentColor.withValues(alpha: 0.92),
-                  ),
-                ),
+                Icon(icon, size: 19, color: fg),
                 const Gap(10),
                 Expanded(
                   child: Text(
                     label,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
-                      color: isActive ? accentColor : AppTheme.text,
+                      fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                      color: fg,
+                      fontSize: 13.5,
                     ),
                   ),
                 ),
@@ -1242,9 +1280,8 @@ class _FormsNavGroup extends StatelessWidget {
                   expanded
                       ? Icons.expand_less_rounded
                       : Icons.expand_more_rounded,
-                  size: 20,
-                  color: (isActive ? accentColor : const Color(0xFF64748B))
-                      .withValues(alpha: 0.9),
+                  size: 18,
+                  color: fg,
                 ),
               ],
             ),
@@ -1253,21 +1290,13 @@ class _FormsNavGroup extends StatelessWidget {
         AnimatedCrossFade(
           firstChild: const SizedBox.shrink(),
           secondChild: Padding(
-            padding: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.only(top: 6),
             child: Container(
-              margin: const EdgeInsets.only(left: 10),
-              padding: const EdgeInsets.symmetric(vertical: 6),
+              margin: const EdgeInsets.only(left: 8),
+              padding: const EdgeInsets.symmetric(vertical: 4),
               decoration: BoxDecoration(
-                color: Color.alphaBlend(
-                  accentColor.withValues(alpha: 0.06),
-                  AppTheme.surfaceMuted,
-                ),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: isActive
-                      ? accentColor.withValues(alpha: 0.18)
-                      : AppTheme.border,
-                ),
+                color: AppTheme.sidebarText.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(AppTheme.radiusXs),
               ),
               child: Column(
                 children: [
@@ -1278,7 +1307,7 @@ class _FormsNavGroup extends StatelessWidget {
                       accentColor: accentColor,
                       onTap: () => context.go(item.path),
                     ),
-                    if (item != subItems.last) const Gap(6),
+                    if (item != subItems.last) const Gap(2),
                   ],
                 ],
               ),
@@ -1304,40 +1333,35 @@ class _SidebarSubItem extends StatelessWidget {
 
   final String label;
   final bool active;
+  // ignore: unused_field
   final Color accentColor;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final fg = active ? accentColor : const Color(0xFF334155);
+    final fg = AppTheme.sidebarNavFg(active: active);
 
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppTheme.radiusXs),
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         curve: Curves.easeOut,
-        height: 40,
-        margin: const EdgeInsets.only(left: 22),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: active
-              ? accentColor.withValues(alpha: 0.10)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: active
-                ? accentColor.withValues(alpha: 0.20)
-                : AppTheme.border,
-          ),
-        ),
+        height: 36,
+        margin: const EdgeInsets.only(left: 18),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: AppTheme.sidebarNavDecoration(active: active),
         child: Row(
           children: [
             Container(
-              width: 6,
-              height: 6,
+              width: 5,
+              height: 5,
               decoration: BoxDecoration(
-                color: fg.withValues(alpha: 0.9),
+                color: active
+                    ? (AppTheme.isDark
+                        ? AppTheme.primaryDark
+                        : AppTheme.sidebarText)
+                    : AppTheme.sidebarTextMuted.withValues(alpha: 0.55),
                 borderRadius: BorderRadius.circular(3),
               ),
             ),
@@ -1346,8 +1370,9 @@ class _SidebarSubItem extends StatelessWidget {
               child: Text(
                 label,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  fontWeight: active ? FontWeight.w600 : FontWeight.w400,
                   color: fg,
+                  fontSize: 12.5,
                 ),
               ),
             ),
@@ -1373,7 +1398,7 @@ class _BottomItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? AppTheme.primary : const Color(0xFF64748B);
+    final color = active ? AppTheme.primary : AppTheme.textMuted;
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -1409,15 +1434,6 @@ class _AccountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surface = Theme.of(context).cardTheme.color ?? AppTheme.surface;
-    final bgTop = Color.alphaBlend(
-      AppTheme.primary.withValues(alpha: 0.12),
-      surface,
-    );
-    final bgBottom = Color.alphaBlend(
-      AppTheme.accent.withValues(alpha: 0.08),
-      surface,
-    );
     final name = (profile?.fullName ?? '').trim();
     final role = profile?.role == 'admin'
         ? 'Admin'
@@ -1425,24 +1441,34 @@ class _AccountCard extends StatelessWidget {
         ? 'Banka Personeli'
         : 'Personel';
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [bgTop, bgBottom],
+        color: AppTheme.isDark
+            ? AppTheme.surfaceMuted.withValues(alpha: 0.55)
+            : AppTheme.sidebarText.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+        border: Border.all(
+          color: AppTheme.isDark
+              ? AppTheme.border.withValues(alpha: 0.65)
+              : AppTheme.sidebarText.withValues(alpha: 0.08),
         ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border),
       ),
       child: Row(
         children: [
           CircleAvatar(
-            radius: 18,
-            backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
-            child: const Icon(Icons.person_rounded, color: AppTheme.primary),
+            radius: 15,
+            backgroundColor: AppTheme.isDark
+                ? AppTheme.primary.withValues(alpha: 0.18)
+                : AppTheme.primary.withValues(alpha: 0.18),
+            child: Icon(
+              Icons.person_outline_rounded,
+              size: 17,
+              color: AppTheme.isDark
+                  ? AppTheme.primaryDark
+                  : AppTheme.sidebarText,
+            ),
           ),
-          const Gap(12),
+          const Gap(10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1450,16 +1476,19 @@ class _AccountCard extends StatelessWidget {
               children: [
                 Text(
                   name.isEmpty ? 'Hesap' : name,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.sidebarText,
+                    fontSize: 13,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   role,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.sidebarTextMuted,
+                    fontSize: 11,
                   ),
                 ),
               ],
@@ -1468,10 +1497,11 @@ class _AccountCard extends StatelessWidget {
           IconButton(
             tooltip: 'Çıkış Yap',
             onPressed: onSignOut,
-            icon: const Icon(
+            visualDensity: VisualDensity.compact,
+            icon: Icon(
               Icons.logout_rounded,
-              size: 18,
-              color: Color(0xFF0F172A),
+              size: 17,
+              color: AppTheme.sidebarTextMuted,
             ),
           ),
         ],
@@ -1483,31 +1513,31 @@ class _AccountCard extends StatelessWidget {
 Color _navAccentColor(String pageKey) {
   switch (pageKey) {
     case 'panel':
-      return AppTheme.primary;
+      return AppTheme.blue;
     case 'musteriler':
-      return AppTheme.accent;
+      return AppTheme.blue;
     case 'formlar':
-      return AppTheme.warning;
+      return AppTheme.orange;
     case 'is_emirleri':
-      return const Color(0xFF16A34A);
+      return AppTheme.green;
     case 'servis':
-      return const Color(0xFF0EA5E9);
+      return AppTheme.blue;
     case 'raporlar':
-      return const Color(0xFF7C3AED);
+      return AppTheme.purple;
     case 'urunler':
-      return const Color(0xFF2563EB);
+      return AppTheme.blue;
     case 'faturalama':
-      return const Color(0xFFF97316);
+      return AppTheme.orange;
     case 'kdv_analizi':
-      return const Color(0xFFDC2626);
+      return AppTheme.red;
     case 'finans':
-      return const Color(0xFF059669);
+      return AppTheme.green;
     case 'tanimlamalar':
-      return const Color(0xFF334155);
+      return AppTheme.sidebarTextMuted;
     case 'personel':
-      return const Color(0xFFDB2777);
+      return AppTheme.purple;
     default:
-      return AppTheme.primary;
+      return AppTheme.blue;
   }
 }
 
@@ -1529,7 +1559,7 @@ Future<void> _showQuickCreateSheet(BuildContext context) async {
           const Gap(10),
           _SheetItem(
             title: 'Yeni Müşteri',
-            icon: Icons.person_add_alt_1_rounded,
+            icon: Icons.person_add_alt_outlined,
             onTap: () {
               Navigator.of(context).pop();
               context.go('/musteriler?yeni=1');
@@ -1537,7 +1567,7 @@ Future<void> _showQuickCreateSheet(BuildContext context) async {
           ),
           _SheetItem(
             title: 'Yeni İş Emri',
-            icon: Icons.post_add_rounded,
+            icon: Icons.note_add_outlined,
             onTap: () {
               Navigator.of(context).pop();
               context.go('/is-emirleri?yeni=1');
@@ -1545,7 +1575,7 @@ Future<void> _showQuickCreateSheet(BuildContext context) async {
           ),
           _SheetItem(
             title: 'Yeni Servis Kaydı',
-            icon: Icons.handyman_rounded,
+            icon: Icons.handyman_outlined,
             onTap: () {
               Navigator.of(context).pop();
               context.go('/servis?yeni=1');
@@ -1629,85 +1659,85 @@ final _navItems = <_NavItem>[
   _NavItem(
     path: '/panel',
     label: 'Panel',
-    icon: Icons.dashboard_rounded,
+    icon: Icons.home_outlined,
     pageKey: 'panel',
   ),
   _NavItem(
     path: '/musteriler',
     label: 'Müşteriler',
-    icon: Icons.groups_rounded,
+    icon: Icons.groups_outlined,
     pageKey: 'musteriler',
   ),
   _NavItem(
     path: '/formlar',
     label: 'Formlar',
-    icon: Icons.description_rounded,
+    icon: Icons.article_outlined,
     pageKey: 'formlar',
   ),
   _NavItem(
     path: '/e-fatura',
     label: 'E-Fatura',
-    icon: Icons.request_quote_rounded,
+    icon: Icons.receipt_long_outlined,
     pageKey: 'e_fatura',
   ),
   _NavItem(
     path: '/belgeler',
     label: 'Belgeler',
-    icon: Icons.folder_copy_rounded,
+    icon: Icons.folder_outlined,
     pageKey: 'formlar',
   ),
   _NavItem(
     path: '/is-emirleri',
     label: 'İş Emirleri',
-    icon: Icons.view_kanban_rounded,
+    icon: Icons.view_kanban_outlined,
     pageKey: 'is_emirleri',
   ),
   _NavItem(
     path: '/servis',
     label: 'Servis',
-    icon: Icons.handyman_rounded,
+    icon: Icons.handyman_outlined,
     pageKey: 'servis',
   ),
   _NavItem(
     path: '/raporlar',
     label: 'Raporlar',
-    icon: Icons.bar_chart_rounded,
+    icon: Icons.bar_chart_outlined,
     pageKey: 'raporlar',
   ),
   _NavItem(
     path: '/urunler',
     label: 'Hat & Lisans',
-    icon: Icons.inventory_2_rounded,
+    icon: Icons.sim_card_outlined,
     pageKey: 'urunler',
   ),
   _NavItem(
     path: '/faturalama',
     label: 'Faturalama',
-    icon: Icons.receipt_long_rounded,
+    icon: Icons.payments_outlined,
     pageKey: 'faturalama',
   ),
   _NavItem(
     path: '/finans',
     label: 'Finans',
-    icon: Icons.account_balance_rounded,
+    icon: Icons.account_balance_wallet_outlined,
     pageKey: 'finans',
   ),
   _NavItem(
     path: '/kdv-analizi',
     label: 'KDV Analizi',
-    icon: Icons.donut_large_rounded,
+    icon: Icons.pie_chart_outline,
     pageKey: 'kdv_analizi',
   ),
   _NavItem(
     path: '/tanimlamalar',
     label: 'Tanımlamalar',
-    icon: Icons.tune_rounded,
+    icon: Icons.settings_outlined,
     pageKey: 'tanimlamalar',
   ),
   _NavItem(
     path: '/personel',
     label: 'Personel',
-    icon: Icons.badge_rounded,
+    icon: Icons.manage_accounts_outlined,
     pageKey: 'personel',
   ),
 ];
@@ -1716,19 +1746,19 @@ final _bankNavItems = <_NavItem>[
   const _NavItem(
     path: '/banka-panel',
     label: 'Panel',
-    icon: Icons.dashboard_rounded,
+    icon: Icons.home_outlined,
     pageKey: 'formlar',
   ),
   const _NavItem(
     path: '/formlar/basvuru',
     label: 'Başvuru',
-    icon: Icons.description_rounded,
+    icon: Icons.article_outlined,
     pageKey: 'formlar',
   ),
   const _NavItem(
     path: '/formlar/banka-rapor',
     label: 'Rapor',
-    icon: Icons.bar_chart_rounded,
+    icon: Icons.bar_chart_outlined,
     pageKey: 'formlar',
   ),
 ];

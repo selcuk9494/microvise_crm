@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../app/theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -423,7 +424,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                   ? 'Firma bilgilerini güncelleyin.'
                                   : 'Firma, iletişim ve temel cari bilgilerini girin.',
                               style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: const Color(0xFF64748B)),
+                                  ?.copyWith(color: AppTheme.textMuted),
                             ),
                           ],
                         ),

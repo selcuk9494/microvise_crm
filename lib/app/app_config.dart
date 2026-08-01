@@ -34,6 +34,7 @@ class AppConfig {
 
   static String? get apiBaseUrl {
     if (_envApiBaseUrl.isNotEmpty) return _envApiBaseUrl;
-    return 'https://crm.microvise.net/api';
+    // Electron / local_web: göreli /api. Cloud dart-define ile override edilir.
+    return '/api';
   }
 }

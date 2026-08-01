@@ -1,12 +1,20 @@
 {
   "name": "microvise_crm_web",
+  "productName": "Microvise CRM",
+  "version": "1.0.0",
   "private": true,
+  "description": "Microvise CRM — Flutter web + local API / Akınsoft bridge (Electron)",
+  "main": "electron/main.js",
   "dependencies": {
     "mssql": "^12.5.5",
     "pdfkit": "^0.17.2",
     "pg": "^8.16.3",
     "qrcode": "^1.5.4",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12"
   },
   "scripts": {
     "test:e-invoice": "node --test test/e_invoice_vkn_test.js",
@@ -15,6 +23,59 @@
     "local-web-dev": "bash ./scripts/local_web_run.sh",
     "local-web-dev-local-api": "bash ./scripts/local_web_dev_local_api.sh",
     "import-sicil": "node ./scripts/import_device_registries_from_xls.js ./dokuman/sicil.xls",
-    "akinsoft:probe": "node ./scripts/akinsoft_mssql_probe.js"
+    "akinsoft:probe": "node ./scripts/akinsoft_mssql_probe.js",
+    "electron:build-web": "flutter build web --release --pwa-strategy=none --dart-define=API_BASE_URL=/api --dart-define=DISABLE_SUPABASE=true",
+    "electron": "npm run electron:build-web && env -u ELECTRON_RUN_AS_NODE electron .",
+    "electron:dev": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "electron:mac": "bash ./scripts/electron_build_mac.sh",
+    "dist:mac": "npm run electron:build-web && env -u ELECTRON_RUN_AS_NODE electron-builder --mac"
+  },
+  "build": {
+    "appId": "net.microvise.crm",
+    "productName": "Microvise CRM",
+    "copyright": "Copyright © Microvise",
+    "directories": {
+      "output": "dist-electron",
+      "buildResources": "electron/build"
+    },
+    "files": [
+      "electron/**/*",
+      "scripts/local_server.js",
+      "scripts/akinsoft_finance_sync.js",
+      "api/**/*",
+      "assets/fonts/**/*",
+      "assets/images/**/*",
+      "build/web/**/*",
+      "package.json",
+      "node_modules/**/*",
+      "!node_modules/electron/**/*",
+      "!node_modules/electron-builder/**/*",
+      "!node_modules/electron-builder-squirrel-windows/**/*",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,test,tests,__tests__}"
+    ],
+    "asar": false,
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "Microvise CRM"
+    }
   }
 }

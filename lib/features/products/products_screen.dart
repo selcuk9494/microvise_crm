@@ -714,9 +714,8 @@ class ProductsScreen extends ConsumerWidget {
                                 label:
                                     Text(showPassive ? 'Kayıt: Tümü' : 'Kayıt: Aktif'),
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFF16A34A)
-                                      .withValues(alpha: 0.12),
-                                  foregroundColor: const Color(0xFF14532D),
+                                  backgroundColor: AppTheme.filterControlBg,
+                                    foregroundColor: AppTheme.filterControlFg,
                                   minimumSize: const Size(0, 40),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 14,
@@ -838,7 +837,7 @@ class _SectionHeader extends StatelessWidget {
       AppBadgeTone.success => AppTheme.success,
       AppBadgeTone.warning => AppTheme.warning,
       AppBadgeTone.error => AppTheme.error,
-      AppBadgeTone.neutral => const Color(0xFF64748B),
+      AppBadgeTone.neutral => AppTheme.textMuted,
       AppBadgeTone.primary => AppTheme.primary,
     };
     return Row(
@@ -1571,7 +1570,7 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                       return Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: AppTheme.surfaceMuted,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: AppTheme.border),
                         ),
@@ -1689,7 +1688,7 @@ class _LineRowState extends ConsumerState<_LineRow> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.border),
       ),
@@ -1718,7 +1717,7 @@ class _LineRowState extends ConsumerState<_LineRow> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF64748B),
+                          color: AppTheme.textMuted,
                         ),
                   ),
                 ),
@@ -1857,7 +1856,7 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.border),
       ),
@@ -1890,7 +1889,7 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF64748B),
+                          color: AppTheme.textMuted,
                         ),
                   ),
                 ),
@@ -2221,7 +2220,7 @@ Future<void> _extendLineAndQueueInvoice(
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                      ?.copyWith(color: AppTheme.textMuted),
                 ),
                 const Gap(12),
                 TextField(
@@ -2469,7 +2468,7 @@ Future<void> _extendLicenseAndQueueInvoice(
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                      ?.copyWith(color: AppTheme.textMuted),
                 ),
                 const Gap(12),
                 TextField(
@@ -2687,7 +2686,7 @@ class _Empty extends StatelessWidget {
         style: Theme.of(context)
             .textTheme
             .bodyMedium
-            ?.copyWith(color: const Color(0xFF64748B)),
+            ?.copyWith(color: AppTheme.textMuted),
       ),
     );
   }

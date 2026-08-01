@@ -22,6 +22,7 @@ import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../billing/invoice_queue_helper.dart';
 import '../customers/web_download_helper.dart'
@@ -3071,7 +3072,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
             return ListView.separated(
               padding: const EdgeInsets.only(bottom: 120),
               itemCount: filtered.length + 2,
-              separatorBuilder: (context, index) => const Gap(12),
+              separatorBuilder: (context, index) =>
+                  const Gap(AppDenseList.listGap),
               itemBuilder: (context, index) {
                 if (index == 0) return filterCard;
                 if (index == 1) return statsCard;
@@ -3120,7 +3122,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
           return ListView.separated(
             padding: const EdgeInsets.only(bottom: 96),
             itemCount: filtered.isEmpty ? 3 : filtered.length + 2,
-            separatorBuilder: (context, index) => const Gap(8),
+            separatorBuilder: (context, index) =>
+                const Gap(AppDenseList.listGap),
             itemBuilder: (context, index) {
               if (index == 0) return filterCard;
               if (index == 1) return statsCard;
@@ -4308,7 +4311,7 @@ class _BankApplicationFormDialogState
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: Icon(Icons.close_rounded),
                     ),
                   ],
                 ),
@@ -4316,7 +4319,7 @@ class _BankApplicationFormDialogState
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
+                    color: AppTheme.surfaceMuted,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: AppTheme.border),
                   ),
@@ -4586,7 +4589,7 @@ class _BankTextField extends StatelessWidget {
         labelText: label,
         hintText: hintText,
         filled: true,
-        fillColor: enabled ? Colors.white : const Color(0xFFF1F5F9),
+        fillColor: enabled ? AppTheme.surface : AppTheme.surfaceMuted,
         border: const OutlineInputBorder(),
       ),
     );
@@ -4632,11 +4635,11 @@ class _BankBusinessActivityField extends StatelessWidget {
               controller: textEditingController,
               focusNode: fieldFocusNode,
               enabled: enabled,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Meslek türü',
                 hintText: 'Örn: Market / Restoran / Eczane',
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: AppTheme.surface,
                 border: OutlineInputBorder(),
                 suffixIcon: Icon(Icons.search_rounded, size: 18),
               ),
@@ -4691,7 +4694,7 @@ class _BankReadOnlyField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         filled: true,
-        fillColor: const Color(0xFFF1F5F9),
+        fillColor: AppTheme.surfaceMuted,
         border: const OutlineInputBorder(),
       ),
       child: Text(
@@ -4717,7 +4720,7 @@ class _BankDocumentField extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.surface,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: hasFile ? AppTheme.success : AppTheme.borderStrong,
@@ -4784,7 +4787,7 @@ class _BankDateField extends StatelessWidget {
         decoration: InputDecoration(
           labelText: label,
           filled: true,
-          fillColor: Colors.white,
+          fillColor: AppTheme.surface,
           border: const OutlineInputBorder(),
           suffixIcon: const Icon(Icons.calendar_today_rounded, size: 18),
         ),
@@ -5893,7 +5896,7 @@ class _ApplicationFormDialogState
                 children: [
                   OutlinedButton.icon(
                     onPressed: _saving ? null : _pickSerialFromTracking,
-                    icon: const Icon(Icons.playlist_add_rounded, size: 18),
+                    icon: Icon(Icons.playlist_add_rounded, size: 18),
                     label: const Text('Seri Seç'),
                   ),
                   const Gap(10),
@@ -5977,7 +5980,7 @@ class _ApplicationFormDialogState
                             : Icons.pause_circle_filled_rounded,
                         color: isActive
                             ? const Color(0xFF16A34A)
-                            : const Color(0xFF64748B),
+                            : AppTheme.textMuted,
                       ),
                       const Gap(10),
                       Expanded(
@@ -6016,9 +6019,9 @@ class _ApplicationFormDialogState
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.info_outline_rounded,
-                      color: Color(0xFF64748B),
+                      color: AppTheme.textMuted,
                     ),
                     const Gap(10),
                     Expanded(
@@ -6174,7 +6177,7 @@ class _ApplicationFormDialogState
                         onPressed: _saving
                             ? null
                             : () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close_rounded),
+                        icon: Icon(Icons.close_rounded),
                       ),
                     ],
                   ),
@@ -6183,7 +6186,7 @@ class _ApplicationFormDialogState
                       ? Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
+                            color: AppTheme.surfaceMuted,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: AppTheme.border),
                           ),
@@ -6196,7 +6199,7 @@ class _ApplicationFormDialogState
                               child: Container(
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFF8FAFC),
+                                  color: AppTheme.surfaceMuted,
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(color: AppTheme.border),
                                 ),
@@ -6213,7 +6216,7 @@ class _ApplicationFormDialogState
                               child: Container(
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFF8FAFC),
+                                  color: AppTheme.surfaceMuted,
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(color: AppTheme.border),
                                 ),
@@ -6394,7 +6397,7 @@ class _SerialTrackingPickerDialogState
               TextField(
                 controller: _searchController,
                 onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   prefixIcon: Icon(Icons.search_rounded),
                   hintText: 'Sicil no veya ürün adı ara',
                 ),
@@ -6877,7 +6880,7 @@ class _ApplicationRecordCard extends StatelessWidget {
               Expanded(
                 flex: 36,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(0, 14, 18, 14),
+                  padding: const EdgeInsets.fromLTRB(0, 8, 12, 8),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -6888,29 +6891,34 @@ class _ApplicationRecordCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w800,
-                          fontSize: 14.5,
+                          fontSize: 13,
+                          height: 1.15,
                           decoration: record.isActive
                               ? TextDecoration.none
                               : TextDecoration.lineThrough,
                         ),
                       ),
-                      const Gap(5),
-                      Wrap(
-                        spacing: 4,
-                        runSpacing: 4,
-                        children: [
-                          if (record.businessActivityName?.trim().isNotEmpty ??
-                              false)
-                            _InfoChip(
-                              icon: Icons.storefront_rounded,
-                              text: record.businessActivityName!,
-                            ),
-                          if (record.brandModel.isNotEmpty)
-                            _InfoChip(
-                              icon: Icons.developer_board_rounded,
-                              text: record.brandModel,
-                            ),
-                        ],
+                      const Gap(4),
+                      SizedBox(
+                        height: 22,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: [
+                            if (record.businessActivityName?.trim().isNotEmpty ??
+                                false) ...[
+                              _InfoChip(
+                                icon: Icons.storefront_rounded,
+                                text: record.businessActivityName!,
+                              ),
+                              const Gap(4),
+                            ],
+                            if (record.brandModel.isNotEmpty)
+                              _InfoChip(
+                                icon: Icons.developer_board_rounded,
+                                text: record.brandModel,
+                              ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -6951,13 +6959,16 @@ class _ApplicationRecordCard extends StatelessWidget {
                 width: 154,
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
+                  child: AppDenseBadgeRow(
                     children: [
-                      AppBadge(label: approvalLabel, tone: approvalTone),
+                      AppBadge(
+                        label: approvalLabel,
+                        tone: approvalTone,
+                        dense: true,
+                      ),
                       if (record.isApproved)
                         AppBadge(
+                          dense: true,
                           label: record.hasApprovalDocument
                               ? 'Belge Var'
                               : 'Belge Yok',
@@ -7544,7 +7555,7 @@ class _ApplicationWorkOrderDialogState
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: Icon(Icons.close_rounded),
                     ),
                   ],
                 ),
@@ -7786,9 +7797,9 @@ class _FilterDateField extends StatelessWidget {
               if (onClear != null)
                 IconButton(
                   onPressed: onClear,
-                  icon: const Icon(Icons.close_rounded, size: 16),
+                  icon: Icon(Icons.close_rounded, size: 16),
                 ),
-              const Icon(Icons.calendar_today_rounded, size: 18),
+              Icon(Icons.calendar_today_rounded, size: 18),
               const Gap(8),
             ],
           ),
@@ -7904,7 +7915,7 @@ class _CompactStat extends StatelessWidget {
       duration: const Duration(milliseconds: 160),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: selected ? AppTheme.primarySoft : const Color(0xFFF8FAFC),
+        color: selected ? AppTheme.primarySoft : AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
           color: selected ? AppTheme.primary : AppTheme.border,
@@ -7955,36 +7966,7 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = highlighted ? AppTheme.success : AppTheme.textMuted;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: highlighted
-            ? AppTheme.success.withValues(alpha: 0.10)
-            : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: highlighted
-              ? AppTheme.success.withValues(alpha: 0.22)
-              : AppTheme.border,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 10, color: color),
-          const Gap(3),
-          Text(
-            text,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: highlighted ? AppTheme.success : null,
-              fontSize: 10.5,
-              height: 1.0,
-            ),
-          ),
-        ],
-      ),
-    );
+    return AppDenseInfoChip(icon: icon, text: text, color: color);
   }
 }
 
@@ -8147,7 +8129,7 @@ class _FormRow extends StatelessWidget {
         width: double.infinity,
         padding: EdgeInsets.all(isMobile ? 12 : 14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppTheme.surface,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: AppTheme.border),
         ),
@@ -8228,7 +8210,7 @@ class _ApplicationTextField extends StatelessWidget {
       decoration: InputDecoration(
         isDense: true,
         filled: true,
-        fillColor: enabled ? Colors.white : const Color(0xFFF1F5F9),
+        fillColor: enabled ? AppTheme.surface : AppTheme.surfaceMuted,
         border: const OutlineInputBorder(),
         hintText: hintText,
         contentPadding: const EdgeInsets.symmetric(
@@ -8270,7 +8252,7 @@ class _ApplicationDropdown<T> extends StatelessWidget {
       decoration: InputDecoration(
         isDense: true,
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AppTheme.surface,
         border: const OutlineInputBorder(),
         hintText: hintText,
         contentPadding: const EdgeInsets.symmetric(
@@ -8299,10 +8281,10 @@ class _DateField extends StatelessWidget {
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: InputDecorator(
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           isDense: true,
           filled: true,
-          fillColor: Colors.white,
+          fillColor: AppTheme.surface,
           border: OutlineInputBorder(),
           contentPadding: EdgeInsets.symmetric(horizontal: 15, vertical: 13),
           suffixIcon: Icon(Icons.calendar_today_rounded, size: 16),
@@ -8354,10 +8336,10 @@ class _BusinessActivityMultiSelectField extends StatelessWidget {
         }
       },
       child: InputDecorator(
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           isDense: true,
           filled: true,
-          fillColor: Colors.white,
+          fillColor: AppTheme.surface,
           border: OutlineInputBorder(),
           contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           suffixIcon: Icon(Icons.arrow_drop_down_rounded),
@@ -8730,7 +8712,7 @@ class _CustomerPickerField extends StatelessWidget {
             decoration: InputDecoration(
               isDense: true,
               filled: true,
-              fillColor: Colors.white,
+              fillColor: AppTheme.surface,
               border: const OutlineInputBorder(),
               hintText: 'Eski ya da yeni müşteri seçin',
               contentPadding: const EdgeInsets.symmetric(

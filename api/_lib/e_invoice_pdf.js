@@ -1,10 +1,31 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
 
 const MODULE_ROOT = path.resolve(__dirname, '../..');
+
+/** process.cwd() throws uv_cwd ENOENT when the launch directory was deleted. */
+function safeCwd() {
+  try {
+    const cwd = process.cwd();
+    if (cwd && fs.existsSync(cwd)) return cwd;
+  } catch (_) {
+    // ignored
+  }
+  return null;
+}
+
+function appRootCandidates() {
+  return [
+    process.env.MICROVISE_APP_ROOT,
+    MODULE_ROOT,
+    safeCwd(),
+    path.resolve(__dirname, '../..'),
+  ].filter(Boolean);
+}
 const PAGE = { width: 595.28, height: 841.89 };
 // Maliye çıktısındaki yaklaşık 16 mm yatay kenar boşlukları.
 const LEFT = 48;
@@ -25,6 +46,20 @@ const COLORS = {
 function text(value, fallback = '-') {
   const normalized = String(value ?? '').trim();
   return normalized || fallback;
+}
+
+/** Line açıklama: use only a real distinct note — never copy Mal/Hizmet name. */
+function distinctLineAciklama(adi, ...candidates) {
+  const name = String(adi || '')
+    .trim()
+    .toLocaleLowerCase('tr-TR');
+  for (const candidate of candidates) {
+    const value = String(candidate ?? '').trim();
+    if (!value) continue;
+    if (name && value.toLocaleLowerCase('tr-TR') === name) continue;
+    return value;
+  }
+  return '';
 }
 
 function parseAmount(value) {
@@ -148,20 +183,23 @@ function mergeLineItems({ officialItems, payloadItems, localItems }) {
     if (tax > 0 && Math.abs(total - tax) < 0.005 && computedTotal > tax) {
       total = computedTotal;
     }
+    const adi = text(
+      official.adi ||
+        official.description ||
+        payload.adi ||
+        local.description,
+      'Mal/Hizmet',
+    );
     rows.push({
-      adi: text(
-        official.adi ||
-          official.description ||
-          payload.adi ||
-          local.description,
-        'Mal/Hizmet',
-      ),
-      aciklama: text(
-        official.aciklama ||
-          official.description ||
-          payload.aciklama ||
-          local.description,
-        '',
+      adi,
+      // Do not fall back to description/name — empty açıklama stays blank.
+      aciklama: distinctLineAciklama(
+        adi,
+        official.aciklama,
+        payload.aciklama,
+        local.aciklama,
+        local.line_description,
+        local.notes,
       ),
       birimMiktari: qty,
       birimTurKod: pickUnit(
@@ -382,27 +420,102 @@ function descriptionBlockHeight(doc, description, resolvedPo) {
 
 function resolveAssetPath(...parts) {
   const relative = path.join(...parts);
-  const candidates = [
-    path.resolve(MODULE_ROOT, relative),
-    path.resolve(process.cwd(), relative),
-    path.resolve(__dirname, relative),
-  ];
-  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+  const candidates = [];
+  for (const root of appRootCandidates()) {
+    try {
+      candidates.push(path.resolve(String(root), relative));
+    } catch (_) {
+      // ignored
+    }
+  }
+  try {
+    candidates.push(path.resolve(__dirname, relative));
+  } catch (_) {
+    // ignored
+  }
+  return (
+    candidates.find((candidate) => {
+      try {
+        return Boolean(candidate && fs.existsSync(candidate));
+      } catch (_) {
+        return false;
+      }
+    }) || null
+  );
 }
 
 function resolveCompanyLogoPath(settings) {
   const candidates = [
     text(settings?.seller_logo_path, ''),
     text(settings?.seller_logo, ''),
+    resolveAssetPath('assets/images/logo_v2.png'),
     resolveAssetPath('assets/images/company_logo.png'),
   ].filter(Boolean);
   for (const candidate of candidates) {
-    const resolved = path.isAbsolute(candidate)
-      ? candidate
-      : resolveAssetPath(candidate) || path.resolve(process.cwd(), candidate);
-    if (resolved && fs.existsSync(resolved)) return resolved;
+    let resolved = null;
+    if (path.isAbsolute(candidate)) {
+      resolved = candidate;
+    } else {
+      resolved = resolveAssetPath(candidate);
+      if (!resolved) {
+        const cwd = safeCwd();
+        if (cwd) {
+          try {
+            resolved = path.resolve(cwd, candidate);
+          } catch (_) {
+            resolved = null;
+          }
+        }
+      }
+    }
+    if (resolved) {
+      try {
+        if (fs.existsSync(resolved)) return resolved;
+      } catch (_) {
+        // ignored
+      }
+    }
   }
   return null;
+}
+
+function getPdfOutputDir() {
+  const fromEnv = String(process.env.MICROVISE_PDF_DIR || '').trim();
+  const dir = fromEnv || path.join(os.tmpdir(), 'microvise-crm', 'pdfs');
+  fs.mkdirSync(dir, { recursive: true });
+  return path.resolve(dir);
+}
+
+function writeLocalEInvoicePdf(pdf, fileName) {
+  const safeName = String(fileName || 'e_fatura.pdf')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 120);
+  const finalName =
+    safeName.toLowerCase().endsWith('.pdf') && safeName
+      ? safeName
+      : `${safeName || 'e_fatura'}.pdf`;
+  const absolutePath = path.join(getPdfOutputDir(), finalName);
+  fs.writeFileSync(absolutePath, pdf);
+  return absolutePath;
+}
+
+function writeLocalExportZip(zipBytes, fileName) {
+  const safeName = String(fileName || 'e_faturalar.zip')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 120);
+  const finalName =
+    safeName.toLowerCase().endsWith('.zip') && safeName
+      ? safeName
+      : `${safeName || 'e_faturalar'}.zip`;
+  const absolutePath = path.join(getPdfOutputDir(), finalName);
+  fs.writeFileSync(absolutePath, zipBytes);
+  return absolutePath;
 }
 
 function drawParty(doc, title, party, x, y, width, height) {
@@ -485,7 +598,10 @@ function drawGrid(doc, y, height) {
   }
 }
 
-function rowHeight(doc, values, font, size) {
+function rowHeight(doc, values, font, size, layout = null) {
+  const extra = layout?.rowExtra ?? 3.5;
+  const maxH = layout?.rowMax ?? 16.5;
+  const minH = layout?.rowMin ?? 0;
   doc.font(font).fontSize(size);
   const tallest = values.reduce((max, value, index) => {
     const box = columnBox(index);
@@ -494,8 +610,9 @@ function rowHeight(doc, values, font, size) {
       doc.heightOfString(value, { width: box.width, lineGap: 0.6 }),
     );
   }, 0);
-  // Uzun isimler tek satırı şişirmesin; 15 kalem hedefi için tavan.
-  return Math.min(tallest + 3.5, 16.5);
+  // Uzun isimler tek satırı şişirmesin; çok kalemde tavan kompakt kalır.
+  // Az kalemde min yükseklik ile satırlar açılır.
+  return Math.max(minH, Math.min(tallest + extra, maxH));
 }
 
 const TABLE_HEADER_HEIGHT = 20;
@@ -503,6 +620,54 @@ const TABLE_HEADER_HEIGHT = 20;
 const TOTALS_BLOCK_HEIGHT = 96;
 // Devam sayfalarında içeriğin başladığı üst sınır.
 const CONTINUATION_TOP = 44;
+// Az kalemde (1–4) üstte yığılmayı azaltmak için açık yerleşim eşiği.
+// 5+ kalemde / çok sayfada kompakt Maliye yerleşimi korunur.
+const OPEN_LAYOUT_MAX_ITEMS = 4;
+
+/**
+ * Kalem sayısına göre dikey boşluklar.
+ * Az kalemde yalnızca bölüm aralıkları açılır; tabloya boş satır / ekstra
+ * ızgara çizgisi eklenmez — Maliye görünümü (yalnız gerçek satırlar) korunur.
+ */
+function resolvePageLayout(itemCount) {
+  const compact = {
+    boxTop: 108,
+    boxHeight: 98,
+    afterParties: 5,
+    metaHeight: 60,
+    afterMeta: 5,
+    listTitleTop: 5,
+    tableHeaderOffset: 18,
+    rowExtra: 3.5,
+    rowMax: 16.5,
+    rowMin: 11,
+    afterTable: 6,
+    totalsLineGap: 12.5,
+  };
+  const count = Math.max(0, Number(itemCount) || 0);
+  if (count > OPEN_LAYOUT_MAX_ITEMS) return compact;
+
+  // 1 kalem → t=1.0 (en açık), 4 kalem → t=0.25 (hafif açık)
+  const t =
+    count <= 0
+      ? 1
+      : (OPEN_LAYOUT_MAX_ITEMS + 1 - count) / OPEN_LAYOUT_MAX_ITEMS;
+  return {
+    boxTop: 108,
+    boxHeight: 98 + Math.round(10 * t),
+    afterParties: 5 + Math.round(14 * t),
+    metaHeight: 60 + Math.round(8 * t),
+    afterMeta: 5 + Math.round(14 * t),
+    listTitleTop: 5 + Math.round(8 * t),
+    tableHeaderOffset: 18 + Math.round(8 * t),
+    // Satır ölçüleri orijinal Maliye kompakt değerlerinde kalır.
+    rowExtra: 3.5,
+    rowMax: 16.5,
+    rowMin: 11,
+    afterTable: 6 + Math.round(18 * t),
+    totalsLineGap: 12.5 + 2.5 * t,
+  };
+}
 
 function drawTopBar(doc, createdAt) {
   doc
@@ -709,12 +874,13 @@ async function buildEInvoiceArchivePdf({
       { width: 310, align: 'left', ellipsis: true },
     );
 
-  const boxTop = 108;
+  const layout = resolvePageLayout(items.length);
+  const boxTop = layout.boxTop;
 
   const boxWidth = (WIDTH - 16) / 2;
   // Maliye şablonunda taraf kutuları sabit yükseklikte; uzun metin kutu içinde
-  // ellipsis ile sınırlandırılır ve takip eden blokları aşağı itmez.
-  const boxHeight = 98;
+  // ellipsis ile sınırlandırılır. Az kalemde kutu biraz uzar (açık yerleşim).
+  const boxHeight = layout.boxHeight;
   drawParty(doc, 'Tedarikçi Bilgileri', supplier, LEFT, boxTop, boxWidth, boxHeight);
   drawParty(
     doc,
@@ -726,10 +892,11 @@ async function buildEInvoiceArchivePdf({
     boxHeight,
   );
 
-  const metaTop = boxTop + boxHeight + 5;
-  const metaHeight = 60;
+  const metaTop = boxTop + boxHeight + layout.afterParties;
+  const metaHeight = layout.metaHeight;
   const metaMidX = LEFT + WIDTH / 2;
   const metaMidY = metaTop + metaHeight / 2;
+  const metaRowHeight = metaHeight / 2;
   doc
     .lineWidth(0.8)
     .roundedRect(LEFT, metaTop, WIDTH, metaHeight, 6)
@@ -751,6 +918,8 @@ async function buildEInvoiceArchivePdf({
     LEFT + 10,
     metaTop,
     metaMidX - LEFT - 20,
+    0,
+    metaRowHeight,
   );
   drawMeta(
     doc,
@@ -759,6 +928,8 @@ async function buildEInvoiceArchivePdf({
     metaMidX + 10,
     metaTop,
     RIGHT - metaMidX - 20,
+    0,
+    metaRowHeight,
   );
   drawMeta(
     doc,
@@ -770,6 +941,7 @@ async function buildEInvoiceArchivePdf({
     metaTop,
     metaMidX - LEFT - 20,
     1,
+    metaRowHeight,
   );
   drawMeta(
     doc,
@@ -779,9 +951,10 @@ async function buildEInvoiceArchivePdf({
     metaTop,
     RIGHT - metaMidX - 20,
     1,
+    metaRowHeight,
   );
 
-  const listTop = metaTop + metaHeight + 5;
+  const listTop = metaTop + metaHeight + layout.afterMeta;
   doc
     .lineWidth(0.7)
     .moveTo(LEFT, listTop)
@@ -792,9 +965,9 @@ async function buildEInvoiceArchivePdf({
     .font('InvoiceBold')
     .fontSize(9)
     .fillColor(COLORS.text)
-    .text('Mal/Hizmet Listesi', LEFT, listTop + 5);
+    .text('Mal/Hizmet Listesi', LEFT, listTop + layout.listTitleTop);
 
-  let y = drawTableHeader(doc, listTop + 18);
+  let y = drawTableHeader(doc, listTop + layout.tableHeaderOffset);
 
   const rows = items.map((item) => [
     text(item.adi),
@@ -859,7 +1032,7 @@ async function buildEInvoiceArchivePdf({
 
   let rowsOnPage = 0;
   for (const values of rows) {
-    const height = rowHeight(doc, values, 'Invoice', 6.4);
+    const height = rowHeight(doc, values, 'Invoice', 6.4, layout);
     // rowsOnPage kontrolü, tek başına sayfadan uzun satırlarda sonsuz döngüyü önler.
     if (rowsOnPage > 0 && y + height > tableBottom) {
       y = drawTableHeader(doc, startContinuationPage('Mal/Hizmet Listesi (devam)'));
@@ -872,7 +1045,9 @@ async function buildEInvoiceArchivePdf({
 
   // Toplamlar sağda, açıklama solda yan yana. Açıklama uzun diye
   // toplamları 2. sayfaya itme; gerekirse yalnız açıklama taşar.
-  const blockTopGap = 6;
+  // Az kalemde dikey yayılma yalnızca layout.afterTable / bölüm aralıklarıyla;
+  // boş ızgara satırı çizilmez.
+  const blockTopGap = layout.afterTable;
   if (y + blockTopGap + TOTALS_BLOCK_HEIGHT > tableBottom) {
     y = startContinuationPage('Fatura Toplamları') + 6;
   }
@@ -897,7 +1072,7 @@ async function buildEInvoiceArchivePdf({
       .fontSize(7.2)
       .fillColor(COLORS.text)
       .text(value, 438, y, { width: RIGHT - 438, align: 'right' });
-    y += 12.5;
+    y += layout.totalsLineGap;
   });
   doc
     .lineWidth(0.8)
@@ -1017,7 +1192,11 @@ async function buildEInvoiceArchivePdf({
 
 module.exports = {
   buildEInvoiceArchivePdf,
+  writeLocalEInvoicePdf,
+  writeLocalExportZip,
+  getPdfOutputDir,
   mergeLineItems,
+  distinctLineAciklama,
   parseAmount,
   firstPositiveAmount,
 };

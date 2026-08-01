@@ -29,6 +29,8 @@ class _AppCardState extends State<AppCard> {
   Widget build(BuildContext context) {
     final child = Padding(padding: widget.padding, child: widget.child);
     final clickable = widget.onTap != null;
+    final baseBorder =
+        widget.borderColor ?? AppTheme.border.withValues(alpha: AppTheme.isDark ? 0.9 : 0.65);
 
     final content = Material(
       type: MaterialType.transparency,
@@ -66,9 +68,9 @@ class _AppCardState extends State<AppCard> {
           border: Border.all(
             color: clickable && _hovered
                 ? (widget.borderColor ?? AppTheme.primary).withValues(
-                    alpha: 0.55,
+                    alpha: 0.35,
                   )
-                : (widget.borderColor ?? AppTheme.border),
+                : baseBorder,
           ),
           boxShadow: clickable && _hovered
               ? AppTheme.hoverShadow

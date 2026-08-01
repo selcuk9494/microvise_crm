@@ -18,6 +18,31 @@ String _localInvoiceNumber(dynamic value) {
   return text.replaceFirst(RegExp(r'^\d{9}-'), '');
 }
 
+String _productCurrencyFromJson(dynamic value) {
+  final text = (value?.toString() ?? '').trim();
+  if (text.isEmpty) return 'USD';
+  return text;
+}
+
+/// List UI only: shorten Maliye-style serials by stripping leading zeros.
+///
+/// Examples:
+/// - `2026-1-00000000024` → `2026-1-24`
+/// - `1200123456-2026-1-00000000024` (after local strip) → `2026-1-24`
+/// - `DA000123`, `SF…`, `AKN-…`, `STŞ-…` → unchanged
+String formatInvoiceNumberForDisplay(String? raw) {
+  final text = (raw ?? '').trim();
+  if (text.isEmpty) return text;
+
+  // year-branch-serial (optionally already without VKN prefix)
+  final maliye = RegExp(r'^(\d{4}-\d+-)(0*)(\d+)$').firstMatch(text);
+  if (maliye != null) {
+    return '${maliye.group(1)}${maliye.group(3)}';
+  }
+
+  return text;
+}
+
 // Fatura Modelleri
 class Invoice {
   final String id;
@@ -32,6 +57,8 @@ class Invoice {
   final String? poNumber;
   final String currency;
   final double exchangeRate;
+  /// true: formda girilen birim fiyatlar KDV dahil; kayıtta matrah+KDV ayrılır.
+  final bool pricesIncludeVat;
   final double subtotal;
   final double taxTotal;
   final double discountTotal;
@@ -47,6 +74,11 @@ class Invoice {
   final DateTime? eInvoiceSentAt;
   final String? erpInvoiceNumber;
   final String? akinsoftSourceId;
+  final String? akinsoftSourceCode;
+  /// Durable Akınsoft push state: synced | error | pending (null = derive).
+  final String? akinsoftSyncStatus;
+  final DateTime? akinsoftSyncedAt;
+  final String? akinsoftSyncError;
   final String? serviceRecordId;
   final String? workOrderId;
   final bool isActive;
@@ -67,6 +99,7 @@ class Invoice {
     this.poNumber,
     required this.currency,
     this.exchangeRate = 1.0,
+    this.pricesIncludeVat = false,
     this.subtotal = 0,
     this.taxTotal = 0,
     this.discountTotal = 0,
@@ -82,6 +115,10 @@ class Invoice {
     this.eInvoiceSentAt,
     this.erpInvoiceNumber,
     this.akinsoftSourceId,
+    this.akinsoftSourceCode,
+    this.akinsoftSyncStatus,
+    this.akinsoftSyncedAt,
+    this.akinsoftSyncError,
     this.serviceRecordId,
     this.workOrderId,
     this.isActive = true,
@@ -95,22 +132,71 @@ class Invoice {
   bool get isOpen => status == 'open' || status == 'partial';
   bool get isEInvoiceSent => eInvoiceStatus == 'sent';
   bool get isEInvoiceManual => eInvoiceStatus == 'manual';
-  bool get isEInvoiceClosed => isEInvoiceSent || isEInvoiceManual;
+  /// Test API gönderimi (veya test sonrası manuel kapatma).
+  /// Listede "Manuel Gönderildi" olarak gösterilir.
+  bool get isEInvoiceManualSent =>
+      eInvoiceStatus == 'manual_sent' ||
+      (eInvoiceStatus == 'sent' && eInvoiceEnvironment == 'test') ||
+      (eInvoiceStatus == 'manual' && eInvoiceEnvironment == 'test');
+  bool get isEInvoiceClosed =>
+      isEInvoiceSent || isEInvoiceManual || eInvoiceStatus == 'manual_sent';
+  bool get hasOfficialEInvoice =>
+      (eInvoiceNumber?.trim().isNotEmpty ?? false) ||
+      (eInvoiceUuid?.trim().isNotEmpty ?? false);
   bool get isLinkedToAkinsoft {
     if (akinsoftSourceId?.trim().isNotEmpty ?? false) return true;
-    if (erpInvoiceNumber?.trim().isNotEmpty ?? false) return true;
-    // Akınsoft’tan çekilmiş eski kayıtlar (eşleme/erp boş olsa bile).
-    final no = invoiceNumber.trim().toUpperCase();
+    // Yalnızca Akınsoft tarzı fatura no "bağlı" sayılır.
+    // erp_invoice_number CRM taslak (STŞ-...) tutabilir; onu bağlı sanma.
+    return Invoice._looksLikeAkinsoftInvoiceNumber(invoiceNumber);
+  }
+
+  /// Display-only short invoice number for list rows.
+  String get invoiceNumberDisplay =>
+      formatInvoiceNumberForDisplay(invoiceNumber);
+
+  /// Effective Akınsoft push badge state (durable field, else linked → synced).
+  String get akinsoftSyncStatusEffective {
+    final stored = (akinsoftSyncStatus ?? '').trim().toLowerCase();
+    if (stored == 'synced' || stored == 'error' || stored == 'pending') {
+      return stored;
+    }
+    if (isLinkedToAkinsoft) return 'synced';
+    return 'pending';
+  }
+
+  /// Canlı e-fatura var; Akınsoft’ta Maliye no / kayıt senkronu eksik.
+  bool get needsAkinsoftNumberSync {
+    if (!isEInvoiceSent) return false;
+    if (eInvoiceEnvironment != null && eInvoiceEnvironment != 'production') {
+      return false;
+    }
+    if (eInvoiceNumber?.trim().isEmpty ?? true) return false;
+    final official = _localInvoiceNumber(eInvoiceNumber);
+    if (official.isEmpty) return false;
+    final sourceCode = akinsoftSourceCode?.trim() ?? '';
+    if (akinsoftSourceId == null || akinsoftSourceId!.trim().isEmpty) {
+      return true;
+    }
+    if (Invoice._looksLikeAkinsoftInvoiceNumber(sourceCode)) return true;
+    if (sourceCode.isNotEmpty && sourceCode != official) return true;
+    return false;
+  }
+
+  static bool _looksLikeAkinsoftInvoiceNumber(String? value) {
+    final no = (value ?? '').trim().toUpperCase();
+    if (no.isEmpty) return false;
     return no.startsWith('DA') ||
         no.startsWith('SF') ||
         no.startsWith('AKN-') ||
         no.startsWith('MSF');
   }
-  bool canSendEInvoiceTo(String environment) =>
-      !isEInvoiceClosed ||
-      (eInvoiceStatus == 'sent' &&
-          eInvoiceEnvironment == 'test' &&
-          environment == 'production');
+  bool canSendEInvoiceTo(String environment) {
+    if (eInvoiceStatus == 'manual' || eInvoiceStatus == 'manual_sent') {
+      return false;
+    }
+    if (eInvoiceStatus != 'sent') return true;
+    return eInvoiceEnvironment == 'test' && environment == 'production';
+  }
 
   factory Invoice.fromJson(Map<String, dynamic> json) {
     return Invoice(
@@ -133,6 +219,8 @@ class Invoice {
       poNumber: json['po_number']?.toString(),
       currency: json['currency']?.toString() ?? 'TRY',
       exchangeRate: _jsonDouble(json['exchange_rate'], fallback: 1.0),
+      pricesIncludeVat: json['prices_include_vat'] == true ||
+          json['prices_include_vat']?.toString() == 'true',
       subtotal: _jsonDouble(
         json['effective_subtotal'],
         fallback: _jsonDouble(json['subtotal']),
@@ -169,6 +257,12 @@ class Invoice {
           : null,
       erpInvoiceNumber: json['erp_invoice_number']?.toString(),
       akinsoftSourceId: json['akinsoft_source_id']?.toString(),
+      akinsoftSourceCode: json['akinsoft_source_code']?.toString(),
+      akinsoftSyncStatus: json['akinsoft_sync_status']?.toString(),
+      akinsoftSyncedAt: json['akinsoft_synced_at'] != null
+          ? parseAppDateTime(json['akinsoft_synced_at'].toString())
+          : null,
+      akinsoftSyncError: json['akinsoft_sync_error']?.toString(),
       serviceRecordId: json['service_record_id']?.toString(),
       workOrderId: json['work_order_id']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
@@ -186,16 +280,16 @@ class Invoice {
     return {
       'invoice_type': invoiceType,
       'customer_id': customerId,
-      'invoice_date': invoiceDate.toIso8601String().substring(0, 10),
-      if (dueDate != null)
-        'due_date': dueDate!.toIso8601String().substring(0, 10),
+      'invoice_date': formatAppDateIso(invoiceDate),
+      if (dueDate != null) 'due_date': formatAppDateIso(dueDate!),
       if (irsaliyeNo != null && irsaliyeNo!.isNotEmpty)
         'irsaliye_no': irsaliyeNo,
       if (irsaliyeTarihi != null)
-        'irsaliye_tarihi': irsaliyeTarihi!.toIso8601String().substring(0, 10),
+        'irsaliye_tarihi': formatAppDateIso(irsaliyeTarihi!),
       if (poNumber != null && poNumber!.isNotEmpty) 'po_number': poNumber,
       'currency': currency,
       'exchange_rate': exchangeRate,
+      'prices_include_vat': pricesIncludeVat,
       'status': status,
       if (notes != null && notes!.isNotEmpty) 'notes': notes,
       if (serviceRecordId != null) 'service_record_id': serviceRecordId,
@@ -209,6 +303,7 @@ class InvoiceItem {
   final String invoiceId;
   final String? productId;
   final String description;
+  final String? notes;
   final double quantity;
   final String unit;
   final double unitPrice;
@@ -227,6 +322,7 @@ class InvoiceItem {
     required this.invoiceId,
     this.productId,
     required this.description,
+    this.notes,
     this.quantity = 1,
     this.unit = 'Adet',
     this.unitPrice = 0,
@@ -247,6 +343,10 @@ class InvoiceItem {
       invoiceId: json['invoice_id'].toString(),
       productId: json['product_id']?.toString(),
       description: json['description']?.toString() ?? '',
+      notes: () {
+        final raw = json['notes']?.toString().trim();
+        return (raw == null || raw.isEmpty) ? null : raw;
+      }(),
       quantity: _jsonDouble(json['quantity'], fallback: 1.0),
       unit: json['unit']?.toString() ?? 'Adet',
       unitPrice: _jsonDouble(json['unit_price']),
@@ -273,6 +373,7 @@ class InvoiceItem {
       'invoice_id': invoiceId,
       if (productId != null) 'product_id': productId,
       'description': description,
+      if (notes != null && notes!.isNotEmpty) 'notes': notes,
       'quantity': quantity,
       'unit': unit,
       'unit_price': unitPrice,
@@ -295,6 +396,7 @@ class InvoiceItem {
     String? invoiceId,
     String? productId,
     String? description,
+    String? notes,
     double? quantity,
     String? unit,
     double? unitPrice,
@@ -317,6 +419,7 @@ class InvoiceItem {
       invoiceId: invoiceId ?? this.invoiceId,
       productId: productId ?? this.productId,
       description: description ?? this.description,
+      notes: notes ?? this.notes,
       quantity: qty,
       unit: unit ?? this.unit,
       unitPrice: price,
@@ -424,7 +527,7 @@ class Product {
     this.purchasePrice = 0,
     this.salePrice = 0,
     this.taxRate = 20,
-    this.currency = 'TRY',
+    this.currency = 'USD',
     this.trackStock = false,
     this.minStock = 0,
     this.currentStock,
@@ -445,7 +548,7 @@ class Product {
       purchasePrice: _jsonDouble(json['purchase_price']),
       salePrice: _jsonDouble(json['sale_price']),
       taxRate: _jsonDouble(json['tax_rate'], fallback: 20),
-      currency: json['currency']?.toString() ?? 'TRY',
+      currency: _productCurrencyFromJson(json['currency']),
       trackStock: json['track_stock'] as bool? ?? false,
       minStock: _jsonDouble(json['min_stock']),
       currentStock: _jsonNullableDouble(json['current_stock']),

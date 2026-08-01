@@ -7,6 +7,7 @@ import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
 
 class SerialTrackingItem {
@@ -122,9 +123,8 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                   icon: const Icon(Icons.circle_rounded, size: 12),
                   label: Text(_showPassive ? 'Durum: Tümü' : 'Durum: Aktif'),
                   style: FilledButton.styleFrom(
-                    backgroundColor:
-                        const Color(0xFF7C3AED).withValues(alpha: 0.12),
-                    foregroundColor: const Color(0xFF4C1D95),
+                    backgroundColor: AppTheme.filterControlBg,
+                          foregroundColor: AppTheme.filterControlFg,
                     minimumSize: const Size(0, 40),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -158,20 +158,24 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                   child: Column(
                     children: [
                       Container(
-                        height: 42,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceMuted,
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(AppTheme.radiusMd),
-                          ),
-                          border:
-                              Border(bottom: BorderSide(color: AppTheme.border)),
+                        height: AppDenseList.headerH,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppDenseList.rowH,
                         ),
-                        child: Row(
-                          children: const [
+                        decoration: BoxDecoration(
+                          color: AppTheme.tableHeaderBg,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(AppTheme.radiusLg),
+                          ),
+                          border: Border(bottom: AppDenseList.hairline),
+                        ),
+                        child: const Row(
+                          children: [
                             SizedBox(width: 260, child: _HeaderCell('Sicil No')),
-                            SizedBox(width: 520, child: _HeaderCell('Ürün İsmi')),
+                            SizedBox(
+                              width: 520,
+                              child: _HeaderCell('Ürün İsmi'),
+                            ),
                             SizedBox(width: 120, child: _HeaderCell('Durum')),
                             Spacer(),
                             SizedBox(width: 120, child: _HeaderCell('İşlem')),
@@ -528,14 +532,22 @@ class _SerialTableRowState extends ConsumerState<_SerialTableRow> {
   Widget build(BuildContext context) {
     final item = widget.item;
     final badge = item.isActive
-        ? const AppBadge(label: 'Aktif', tone: AppBadgeTone.success)
-        : const AppBadge(label: 'Pasif', tone: AppBadgeTone.neutral);
+        ? const AppBadge(
+            label: 'Aktif',
+            tone: AppBadgeTone.success,
+            dense: true,
+          )
+        : const AppBadge(
+            label: 'Pasif',
+            tone: AppBadgeTone.neutral,
+            dense: true,
+          );
 
     return Container(
-      height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: AppDenseList.rowH),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppTheme.border)),
+        border: Border(bottom: AppDenseList.hairline),
       ),
       child: Row(
         children: [
@@ -546,9 +558,10 @@ class _SerialTableRowState extends ConsumerState<_SerialTableRow> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.primary,
-                  ),
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+                color: AppTheme.primary,
+              ),
             ),
           ),
           SizedBox(
@@ -558,8 +571,9 @@ class _SerialTableRowState extends ConsumerState<_SerialTableRow> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
+                color: AppTheme.textMuted,
+                fontSize: 12,
+              ),
             ),
           ),
           SizedBox(

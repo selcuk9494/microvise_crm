@@ -156,7 +156,7 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
     );
 
     bool matches(Map<String, dynamic> row) {
-      final hay = normalizeSearchText(
+      return matchesSearchQuery(
         [
           row['name'] ?? '',
           row['director_name'] ?? '',
@@ -168,8 +168,8 @@ final customersProvider = FutureProvider<CustomerPageData>((ref) async {
           row['phone_3'] ?? '',
           row['city'] ?? '',
         ].join(' '),
+        search,
       );
-      return hay.contains(searchNorm);
     }
 
     final filtered = allRows.where(matches).toList(growable: false);

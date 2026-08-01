@@ -418,7 +418,7 @@ class _CreateWorkOrderDialogState
                     Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: AppTheme.surfaceMuted,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: AppTheme.border),
                       ),
@@ -434,7 +434,7 @@ class _CreateWorkOrderDialogState
                             child: Text(
                               'Müşteriler yükleniyor…',
                               style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: const Color(0xFF64748B)),
+                                  ?.copyWith(color: AppTheme.textMuted),
                             ),
                           ),
                         ],

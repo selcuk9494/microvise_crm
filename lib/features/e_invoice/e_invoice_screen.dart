@@ -11,19 +11,24 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
+import '../../core/format/search_normalize.dart';
 import '../../core/platform/open_external_url.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../customers/customer_detail_screen.dart';
 import '../customers/customer_model.dart';
 import '../customers/customers_providers.dart';
 import '../invoices/invoice_model.dart';
 import '../invoices/invoice_providers.dart';
+import '../invoices/invoice_statement_pdf.dart';
 import '../invoices/invoice_statement_share.dart';
 import 'e_invoice_form_screen.dart';
 import 'e_invoice_official_url.dart';
 import 'e_invoice_pdf_share.dart';
 import 'e_invoice_print.dart';
+import 'e_invoice_whatsapp_share.dart';
 
 final eInvoiceSettingsProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
@@ -92,10 +97,26 @@ Uri _akinsoftUri(String path, [Map<String, String>? queryParameters]) {
       base.host == '127.0.0.1' ||
       base.host == 'localhost' ||
       base.host == '::1';
-  final uri = isLocalWeb && base.port != 4000
+  // Flutter web-server (ör. :3000/:8080) ayrı local_server (:4000) kullanır.
+  // Electron / local_server aynı origin’de /api/akinsoft/ kullanır.
+  final separateBridge =
+      isLocalWeb && (base.port == 3000 || base.port == 8080);
+  final uri = separateBridge
       ? Uri.parse('http://127.0.0.1:4000/api/akinsoft/')
       : base.resolve('/api/akinsoft/');
   return uri.resolve(normalizedPath).replace(queryParameters: queryParameters);
+}
+
+String _akinsoftBridgeError(Object error) {
+  final text = error.toString();
+  if (RegExp(
+    r'Connection refused|Failed host lookup|ClientException|SocketException|XMLHttpRequest',
+    caseSensitive: false,
+  ).hasMatch(text)) {
+    return 'Akınsoft API’ye ulaşılamadı ($error). '
+        'Yerelde PORT=4000 local_server çalıştığından emin olun.';
+  }
+  return 'Akınsoft’a gönderilemedi: $error';
 }
 
 const _defaultSettings = <String, dynamic>{
@@ -186,8 +207,12 @@ class EInvoiceScreen extends ConsumerWidget {
       body: Column(
         children: [
           _StatusStrip(settingsAsync: settingsAsync),
-          const Gap(12),
-          Expanded(child: child),
+          const Gap(8),
+          Expanded(
+            child: ClipRect(
+              child: child,
+            ),
+          ),
         ],
       ),
     );
@@ -206,15 +231,15 @@ class EInvoiceScreen extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             _TypeTile(
-              icon: Icons.north_east_rounded,
-              color: AppTheme.success,
+              icon: Icons.arrow_outward_outlined,
+              color: AppTheme.primary,
               title: 'Satış Faturası',
               subtitle: 'Müşteriye kesilecek e-fatura',
               onTap: () => Navigator.of(context).pop('sales'),
             ),
             const Gap(8),
             _TypeTile(
-              icon: Icons.south_west_rounded,
+              icon: Icons.south_west_outlined,
               color: AppTheme.warning,
               title: 'Alış Faturası',
               subtitle: 'Tedarikçi/cari borç kaydı',
@@ -249,10 +274,14 @@ class _StatusStrip extends StatelessWidget {
     final offline = (settings['_offline_error'] ?? '').toString().isNotEmpty;
 
     return AppCard(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      color: Color.alphaBlend(
+        AppTheme.primary.withValues(alpha: 0.03),
+        AppTheme.surface,
+      ),
       child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
+        spacing: 8,
+        runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           _InfoPill(
@@ -351,14 +380,16 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
           (invoice) =>
               _selectedInvoiceIds.contains(invoice.id) &&
               !invoice.isEInvoiceSent &&
-              !invoice.isEInvoiceManual,
+              !invoice.isEInvoiceManual &&
+              invoice.eInvoiceStatus != 'manual_sent',
         )
         .length;
     final selectedManualCount = items
         .where(
           (invoice) =>
               _selectedInvoiceIds.contains(invoice.id) &&
-              invoice.isEInvoiceManual,
+              invoice.isEInvoiceManual &&
+              invoice.eInvoiceEnvironment != 'test',
         )
         .length;
     final bulkManualUndo =
@@ -418,26 +449,39 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         if (loadingFilteredItems) const Gap(10),
         _MetricsRow(
           metrics: [
-            _Metric('Satış', sales.toString(), Icons.north_east_rounded),
-            _Metric('Alış', purchases.toString(), Icons.south_west_rounded),
+            _Metric(
+              'Satış',
+              sales.toString(),
+              Icons.arrow_outward_outlined,
+              AppTheme.metricBlue,
+            ),
+            _Metric(
+              'Alış',
+              purchases.toString(),
+              Icons.south_west_outlined,
+              AppTheme.metricOrange,
+            ),
             _Metric(
               'Açık Fatura',
               open.toString(),
-              Icons.pending_actions_rounded,
+              Icons.pending_actions_outlined,
+              AppTheme.metricYellow,
             ),
             _Metric(
               'TL Toplam',
               widget.moneyTry.format(tryTotal),
-              Icons.summarize_rounded,
+              Icons.payments_outlined,
+              AppTheme.primary,
             ),
             _Metric(
               'USD Toplam',
               usdMoney.format(usdTotal),
-              Icons.attach_money_rounded,
+              Icons.attach_money_outlined,
+              AppTheme.blueBright,
             ),
           ],
         ),
-        const Gap(12),
+        const Gap(8),
         _InvoiceFiltersCard(
           filter: _filter,
           customersAsync: customersAsync,
@@ -454,7 +498,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               : _pullAkinsoftData,
           pullingErp: _pullingAkinsoft,
         ),
-        const Gap(12),
+        const Gap(8),
         if (items.isEmpty)
           AppCard(
             child: Padding(
@@ -487,7 +531,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+                  padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       if (constraints.maxWidth < 700) {
@@ -642,7 +686,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                       Icons.picture_as_pdf_rounded,
                                       size: 18,
                                     ),
-                                    label: const Text('Toplu PDF'),
+                                    label: const Text('Toplu indir'),
                                   ),
                                   const Gap(8),
                                   OutlinedButton.icon(
@@ -945,22 +989,22 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                     if (constraints.maxWidth < 900) {
                       return Column(
                         children: [
-                          for (final invoice in visibleItems)
+                          for (var i = 0; i < visibleItems.length; i++)
                             _EInvoiceRow(
-                              invoice: invoice,
+                              index: i,
+                              invoice: visibleItems[i],
                               selected: _selectedInvoiceIds.contains(
-                                invoice.id,
+                                visibleItems[i].id,
                               ),
                               onSelectedChanged: _bulkDeleting
                                   ? null
                                   : (selected) {
+                                      final id = visibleItems[i].id;
                                       setState(() {
                                         if (selected) {
-                                          _selectedInvoiceIds.add(invoice.id);
+                                          _selectedInvoiceIds.add(id);
                                         } else {
-                                          _selectedInvoiceIds.remove(
-                                            invoice.id,
-                                          );
+                                          _selectedInvoiceIds.remove(id);
                                         }
                                       });
                                     },
@@ -976,45 +1020,48 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                         ],
                       );
                     }
-                    final tableWidth = constraints.maxWidth < 1180
-                        ? 1180.0
+                    final minTableWidth = AppInvoiceTableCols.fixedTotal + 260;
+                    final tableWidth = constraints.maxWidth < minTableWidth
+                        ? minTableWidth
                         : constraints.maxWidth;
-                    return SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: tableWidth,
-                        child: Column(
-                          children: [
-                            const _EInvoiceListHeader(),
-                            for (final invoice in visibleItems)
-                              _EInvoiceRow(
-                                invoice: invoice,
-                                selected: _selectedInvoiceIds.contains(
-                                  invoice.id,
+                    return ClipRect(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(
+                          width: tableWidth,
+                          child: Column(
+                            children: [
+                              const _EInvoiceListHeader(),
+                              for (var i = 0; i < visibleItems.length; i++)
+                                _EInvoiceRow(
+                                  index: i,
+                                  invoice: visibleItems[i],
+                                  selected: _selectedInvoiceIds.contains(
+                                    visibleItems[i].id,
+                                  ),
+                                  onSelectedChanged: _bulkDeleting
+                                      ? null
+                                      : (selected) {
+                                          final id = visibleItems[i].id;
+                                          setState(() {
+                                            if (selected) {
+                                              _selectedInvoiceIds.add(id);
+                                            } else {
+                                              _selectedInvoiceIds.remove(id);
+                                            }
+                                          });
+                                        },
                                 ),
-                                onSelectedChanged: _bulkDeleting
-                                    ? null
-                                    : (selected) {
-                                        setState(() {
-                                          if (selected) {
-                                            _selectedInvoiceIds.add(invoice.id);
-                                          } else {
-                                            _selectedInvoiceIds.remove(
-                                              invoice.id,
-                                            );
-                                          }
-                                        });
-                                      },
-                              ),
-                            if (hasHiddenItems)
-                              _LoadMoreInvoicesButton(
-                                visible: visibleItems.length,
-                                total: items.length,
-                                onPressed: () => setState(() {
-                                  _visibleInvoiceLimit += _invoiceRenderStep;
-                                }),
-                              ),
-                          ],
+                              if (hasHiddenItems)
+                                _LoadMoreInvoicesButton(
+                                  visible: visibleItems.length,
+                                  total: items.length,
+                                  onPressed: () => setState(() {
+                                    _visibleInvoiceLimit += _invoiceRenderStep;
+                                  }),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     );
@@ -1132,12 +1179,16 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               ? _localEInvoiceNumber(invoice.eInvoiceNumber!)
               : invoice.invoiceNumber.trim();
           final customer = (invoice.customerName ?? '').trim();
+          final localPath = archive['localPdfPath']?.toString().trim();
           downloads.add(
             EInvoicePdfDownload(
               url: pdfUrl,
               fileName: customer.isEmpty
                   ? '$number.pdf'
                   : '${number}_$customer.pdf',
+              localPath: (localPath != null && localPath.isNotEmpty)
+                  ? localPath
+                  : null,
             ),
           );
         } catch (error) {
@@ -1151,11 +1202,16 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         );
       }
 
-      final shared = await shareEInvoicePdfBundle(
-        files: downloads,
-        shareText: '${downloads.length} e-fatura PDF',
-      );
-      if (!shared) {
+      final downloaded = await downloadEInvoicePdfs(files: downloads);
+      if (!downloaded) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'PDF indirme başarısız; dosyalar tek tek açılıyor.',
+            ),
+          ),
+        );
         for (final item in downloads) {
           await openExternalUrl(item.url);
         }
@@ -1166,9 +1222,12 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            failures.isEmpty
-                ? '${downloads.length} PDF hazırlandı.'
-                : '${downloads.length} PDF hazırlandı, ${failures.length} fatura atlandı.',
+            !downloaded
+                ? 'İndirme başarısız; ${downloads.length} PDF ayrı açıldı'
+                      '${failures.isEmpty ? '.' : ', ${failures.length} atlandı.'}'
+                : failures.isEmpty
+                ? '${downloads.length} PDF dosya olarak indirildi.'
+                : '${downloads.length} PDF indirildi, ${failures.length} fatura atlandı.',
           ),
         ),
       );
@@ -1176,7 +1235,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Toplu PDF başarısız: $error')));
+      ).showSnackBar(SnackBar(content: Text('Toplu indir başarısız: $error')));
     } finally {
       if (mounted) setState(() => _bulkProcessing = false);
     }
@@ -1306,7 +1365,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Akınsoft’a gönderilemedi: $error')),
+        SnackBar(content: Text(_akinsoftBridgeError(error))),
       );
     } finally {
       if (mounted) setState(() => _bulkProcessing = false);
@@ -1431,7 +1490,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Akınsoft no güncelleme başarısız: $error')),
+        SnackBar(content: Text(_akinsoftBridgeError(error))),
       );
     } finally {
       if (mounted) setState(() => _bulkProcessing = false);
@@ -1445,7 +1504,13 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     final selected = visibleInvoices
         .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
         .where((invoice) => !invoice.isEInvoiceSent)
-        .where((invoice) => invoice.isEInvoiceManual != manual)
+        .where((invoice) => invoice.eInvoiceStatus != 'manual_sent')
+        .where(
+          (invoice) => manual
+              ? !invoice.isEInvoiceManual
+              : invoice.isEInvoiceManual &&
+                    invoice.eInvoiceEnvironment != 'test',
+        )
         .toList(growable: false);
     if (selected.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1537,16 +1602,20 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         .whereType<String>()
         .where((name) => name.isNotEmpty)
         .toSet();
+    final customerName = customerNames.length == 1
+        ? customerNames.first
+        : 'Seçili Faturalar';
+    final stamp = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
+    final settings = ref.read(eInvoiceSettingsProvider).value ?? const {};
     setState(() => _bulkProcessing = true);
     try {
       await shareInvoiceStatementPdf(
         title: 'Fatura Ekstresi',
-        customerName: customerNames.length == 1
-            ? customerNames.first
-            : 'Seçili Faturalar',
+        customerName: customerName,
         invoices: selected,
+        bankDetails: (settings['seller_bank_details'] ?? '').toString(),
         filename:
-            'fatura_ekstresi_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.pdf',
+            'fatura_ekstresi_${safeStatementFilePart(customerName)}_$stamp.pdf',
       );
     } catch (error) {
       if (!mounted) return;
@@ -1664,7 +1733,13 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               .toList(growable: false)
         : allSelected;
     final skippedManual = send
-        ? allSelected.where((invoice) => invoice.isEInvoiceManual).length
+        ? allSelected
+              .where(
+                (invoice) =>
+                    invoice.isEInvoiceManual ||
+                    invoice.eInvoiceStatus == 'manual_sent',
+              )
+              .length
         : 0;
     final skippedSent = send
         ? allSelected.length - selected.length - skippedManual
@@ -1697,14 +1772,18 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             builder: (context) => AlertDialog(
               title: Text(
                 isProduction
-                    ? 'Seçilenleri canlı API’ye gönder'
-                    : 'Seçilenleri test API’ye gönder',
+                    ? 'Canlı API’ye gönder'
+                    : 'Test API’ye gönder',
               ),
               content: Text(
-                '${selected.length} fatura için payload hazırlanıp '
-                '${isProduction ? 'canlı' : 'test'} API’ye gönderilsin mi?'
-                '${skippedSent > 0 ? '\n\nDaha önce gönderilmiş $skippedSent fatura atlanacak.' : ''}'
-                '${skippedManual > 0 ? '\n\nManuel kesildi işaretli $skippedManual fatura atlanacak (API’ye gönderilmez).' : ''}',
+                isProduction
+                    ? '${selected.length} fatura canlı (production) Maliye API’sine gönderilecek.\n\n'
+                        'Bu işlem geri alınamaz. Devam edilsin mi?'
+                        '${skippedSent > 0 ? '\n\nDaha önce gönderilmiş $skippedSent fatura atlanacak.' : ''}'
+                        '${skippedManual > 0 ? '\n\nManuel işaretli $skippedManual fatura atlanacak (API’ye gönderilmez).' : ''}'
+                    : '${selected.length} fatura için payload hazırlanıp test API’ye gönderilsin mi?'
+                        '${skippedSent > 0 ? '\n\nDaha önce gönderilmiş $skippedSent fatura atlanacak.' : ''}'
+                        '${skippedManual > 0 ? '\n\nManuel işaretli $skippedManual fatura atlanacak (API’ye gönderilmez).' : ''}',
               ),
               actions: [
                 TextButton(
@@ -1713,7 +1792,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                 ),
                 FilledButton(
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Gönder'),
+                  child: Text(isProduction ? 'Canlıya Gönder' : 'Gönder'),
                 ),
               ],
             ),
@@ -1875,24 +1954,36 @@ class _EInvoiceListHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 42,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: const BoxDecoration(
-        color: Color(0xFFF1F5F9),
-        border: Border(bottom: BorderSide(color: AppTheme.border)),
+      height: AppDenseList.headerH,
+      padding: const EdgeInsets.symmetric(horizontal: AppDenseList.rowH),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceMuted.withValues(alpha: 0.9),
+        border: Border(bottom: AppDenseList.hairline),
       ),
-      child: Row(
-        children: const [
-          SizedBox(width: 46),
-          Expanded(flex: 4, child: _InvoiceHeaderText('Cari / Fatura')),
-          Expanded(flex: 2, child: _InvoiceHeaderText('Tarih')),
-          Expanded(flex: 2, child: _InvoiceHeaderText('Tür')),
-          Expanded(flex: 2, child: _InvoiceHeaderText('Durum')),
+      child: const Row(
+        children: [
+          SizedBox(width: AppInvoiceTableCols.check),
+          Expanded(child: _InvoiceHeaderText('Cari / Fatura')),
           SizedBox(
-            width: 150,
+            width: AppInvoiceTableCols.date,
+            child: _InvoiceHeaderText('Tarih'),
+          ),
+          SizedBox(
+            width: AppInvoiceTableCols.type,
+            child: _InvoiceHeaderText('Tür'),
+          ),
+          SizedBox(
+            width: AppInvoiceTableCols.status,
+            child: _InvoiceHeaderText('Durum'),
+          ),
+          SizedBox(
+            width: AppInvoiceTableCols.amount,
             child: _InvoiceHeaderText('KDV Dahil', alignEnd: true),
           ),
-          SizedBox(width: 340, child: _InvoiceHeaderText('İşlemler')),
+          SizedBox(
+            width: AppInvoiceTableCols.actions,
+            child: _InvoiceHeaderText('İşlemler', alignEnd: true),
+          ),
         ],
       ),
     );
@@ -1927,6 +2018,10 @@ class _InvoiceFiltersCard extends StatelessWidget {
         : dateFormat.format(filter.endDate!);
     return AppCard(
       padding: const EdgeInsets.all(12),
+      color: Color.alphaBlend(
+        AppTheme.primary.withValues(alpha: 0.025),
+        AppTheme.surface,
+      ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 1050;
@@ -1961,7 +2056,8 @@ class _InvoiceFiltersCard extends StatelessWidget {
                 ('', 'E-Fatura: Tümü'),
                 ('not_sent', 'Gönderilmedi'),
                 ('sent', 'Gönderildi'),
-                ('manual', 'Manuel'),
+                ('manual_sent', 'Manuel Gönderildi'),
+                ('manual', 'Manuel Kesildi'),
               ])
                 FilterChip(
                   label: Text(option.$2),
@@ -2132,6 +2228,13 @@ class _InvoiceFiltersCard extends StatelessWidget {
                       ),
                     ),
                     DropdownMenuItem(
+                      value: 'manual_sent',
+                      child: Text(
+                        'Manuel gönderilenler',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    DropdownMenuItem(
                       value: 'manual',
                       child: Text(
                         'Manuel kesilenler',
@@ -2186,6 +2289,15 @@ class _InvoiceFiltersCard extends StatelessWidget {
             ),
           ];
           final pullButton = FilledButton.tonalIcon(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.softTint(AppTheme.primary, alpha: 0.14),
+              foregroundColor: AppTheme.softFg(AppTheme.primary),
+              iconColor: AppTheme.softFg(AppTheme.primary),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+              ),
+            ),
             onPressed: pullingErp ? null : onPullErp,
             icon: pullingErp
                 ? const SizedBox(
@@ -2344,12 +2456,12 @@ class _CustomerFilterDialogState extends State<_CustomerFilterDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final query = _normalizeCustomerSearch(_search.text);
+    final query = _search.text.trim();
     final filtered = query.isEmpty
         ? widget.customers.take(80).toList(growable: false)
         : widget.customers
-              .where((customer) {
-                final haystack = _normalizeCustomerSearch(
+              .where(
+                (customer) => matchesSearchQuery(
                   [
                     customer.name,
                     customer.vkn ?? '',
@@ -2357,9 +2469,9 @@ class _CustomerFilterDialogState extends State<_CustomerFilterDialog> {
                     customer.city ?? '',
                     customer.phone1 ?? '',
                   ].join(' '),
-                );
-                return haystack.contains(query);
-              })
+                  query,
+                ),
+              )
               .take(100)
               .toList(growable: false);
 
@@ -2468,17 +2580,6 @@ class _CustomerFilterDialogState extends State<_CustomerFilterDialog> {
   }
 }
 
-String _normalizeCustomerSearch(String value) {
-  return value
-      .toLowerCase()
-      .replaceAll('ı', 'i')
-      .replaceAll('ğ', 'g')
-      .replaceAll('ü', 'u')
-      .replaceAll('ş', 's')
-      .replaceAll('ö', 'o')
-      .replaceAll('ç', 'c');
-}
-
 String _customerInitials(String value) {
   final parts = value
       .trim()
@@ -2488,11 +2589,6 @@ String _customerInitials(String value) {
       .toList();
   if (parts.isEmpty) return '?';
   return parts.map((part) => part.characters.first.toUpperCase()).join();
-}
-
-String _safeFilePart(String value) {
-  final safe = value.trim().replaceAll(RegExp(r'[^a-zA-Z0-9._-]+'), '_');
-  return safe.isEmpty ? 'ekstre' : safe;
 }
 
 String _localEInvoiceNumber(String value) {
@@ -2522,11 +2618,13 @@ class _EInvoiceRow extends ConsumerStatefulWidget {
     required this.invoice,
     this.selected = false,
     this.onSelectedChanged,
+    this.index = 0,
   });
 
   final Invoice invoice;
   final bool selected;
   final ValueChanged<bool>? onSelectedChanged;
+  final int index;
 
   @override
   ConsumerState<_EInvoiceRow> createState() => _EInvoiceRowState();
@@ -2542,8 +2640,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     bool mobile = false,
   }) {
     final invoice = widget.invoice;
-    final alreadySent = invoice.isEInvoiceSent;
+    final alreadySent =
+        invoice.isEInvoiceSent || invoice.eInvoiceStatus == 'manual_sent';
     final isManual = invoice.isEInvoiceManual;
+    final isManualSent = invoice.eInvoiceStatus == 'manual_sent';
+    final canMarkManualSent =
+        isManualSent ||
+        (invoice.eInvoiceStatus == 'sent' &&
+            invoice.eInvoiceEnvironment == 'test');
 
     if (mobile) {
       final actions = <Widget>[
@@ -2553,24 +2657,38 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             tooltip: isManual
                 ? 'Manuel fatura işaretini geri al'
                 : 'Manuel fatura kesildi olarak işaretle',
-            icon: isManual ? Icons.undo_rounded : Icons.fact_check_rounded,
+            icon: isManual ? Icons.undo_outlined : Icons.verified_outlined,
             tone: isManual
                 ? _InvoiceActionTone.info
                 : _InvoiceActionTone.warning,
             onPressed: _busy ? null : _toggleManual,
           ),
+        if (canMarkManualSent)
+          _InvoiceLabeledAction(
+            label: isManualSent ? 'Geri al' : 'Man.Gön.',
+            tooltip: isManualSent
+                ? 'Manuel gönderildi işaretini geri al'
+                : 'Test sonrası manuel gönderildi olarak işaretle',
+            icon: isManualSent
+                ? Icons.undo_outlined
+                : Icons.mark_email_read_outlined,
+            tone: isManualSent
+                ? _InvoiceActionTone.info
+                : _InvoiceActionTone.primary,
+            onPressed: _busy ? null : _toggleManualSent,
+          ),
         if (alreadySent) ...[
           _InvoiceLabeledAction(
             label: 'PDF',
             tooltip: 'PDF oluştur / aç',
-            icon: Icons.picture_as_pdf_rounded,
+            icon: Icons.picture_as_pdf_outlined,
             tone: _InvoiceActionTone.danger,
             onPressed: _busy ? null : _printOfficialPdf,
           ),
           _InvoiceLabeledAction(
             label: 'Maliye',
             tooltip: 'Maliye sayfasını aç',
-            icon: Icons.account_balance_rounded,
+            icon: Icons.account_balance_outlined,
             tone: _InvoiceActionTone.info,
             onPressed: _busy ? null : _openMaliyeLink,
           ),
@@ -2578,31 +2696,35 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           _InvoiceLabeledAction(
             label: 'Yazdır',
             tooltip: 'PDF yazdır',
-            icon: Icons.print_rounded,
+            icon: Icons.print_outlined,
             onPressed: _busy ? null : _print,
           ),
         if (!invoice.isActive)
           _InvoiceLabeledAction(
             label: 'Sil',
             tooltip: 'Kalıcı sil',
-            icon: Icons.delete_forever_rounded,
+            icon: Icons.delete_outline_rounded,
             tone: _InvoiceActionTone.danger,
             onPressed: _busy ? null : _delete,
           ),
         _InvoiceLabeledAction(
           label: 'Gönder',
           tooltip: sendTooltip,
-          icon: _busy ? Icons.hourglass_top_rounded : Icons.send_rounded,
+          icon: _busy ? Icons.hourglass_top_outlined : Icons.send_outlined,
           tone: _InvoiceActionTone.primary,
           onPressed: _busy || !canSend ? null : () => _prepare(send: true),
         ),
-        if (!invoice.isLinkedToAkinsoft &&
+        if ((!invoice.isLinkedToAkinsoft || invoice.needsAkinsoftNumberSync) &&
             invoice.isActive &&
             invoice.status != 'cancelled')
           _InvoiceLabeledAction(
-            label: 'ERP',
-            tooltip: 'Akınsoft’a fatura gönder',
-            icon: Icons.upload_rounded,
+            label: invoice.needsAkinsoftNumberSync ? 'ERP No' : 'ERP',
+            tooltip: invoice.needsAkinsoftNumberSync
+                ? 'Akınsoft fatura numarasını Maliye no ile güncelle'
+                : 'Akınsoft’a fatura gönder',
+            icon: invoice.needsAkinsoftNumberSync
+                ? Icons.sync_outlined
+                : Icons.cloud_sync_outlined,
             tone: _InvoiceActionTone.success,
             onPressed: _busy ? null : _pushToAkinsoft,
           ),
@@ -2616,17 +2738,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 _statement();
               case 'payload':
                 _prepare(send: false);
-              case 'copy':
-                _copyPreview();
             }
           },
-          itemBuilder: (context) => const [
-            PopupMenuItem(value: 'statement', child: Text('Cari ekstre PDF')),
-            PopupMenuItem(
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'statement', child: Text('Cari ekstre PDF')),
+            const PopupMenuItem(
               value: 'payload',
               child: Text('Gönderim verisini hazırla'),
             ),
-            PopupMenuItem(value: 'copy', child: Text('Fatura özetini kopyala')),
           ],
           child: Container(
             width: 40,
@@ -2637,25 +2756,25 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               borderRadius: BorderRadius.circular(AppTheme.radiusSm),
               border: Border.all(color: AppTheme.border),
             ),
-            child: const Icon(
-              Icons.more_horiz_rounded,
+            child: Icon(
+              Icons.more_horiz_outlined,
               size: 20,
-              color: AppTheme.textSoft,
+              color: AppTheme.text,
             ),
           ),
         ),
         _InvoiceLabeledAction(
           label: 'Düzenle',
           tooltip: 'Düzenle',
-          icon: Icons.edit_rounded,
+          icon: Icons.edit_outlined,
           onPressed: _busy ? null : _edit,
         ),
         _InvoiceLabeledAction(
           label: invoice.isActive ? 'Pasif' : 'Aktif',
           tooltip: invoice.isActive ? 'Pasife al' : 'Tekrar aktifleştir',
           icon: invoice.isActive
-              ? Icons.visibility_off_rounded
-              : Icons.visibility_rounded,
+              ? Icons.visibility_off_outlined
+              : Icons.visibility_outlined,
           tone: invoice.isActive
               ? _InvoiceActionTone.warning
               : _InvoiceActionTone.success,
@@ -2664,98 +2783,136 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       ];
       final spaced = <Widget>[];
       for (var i = 0; i < actions.length; i++) {
-        if (i > 0) spaced.add(const Gap(6));
+        if (i > 0) spaced.add(const Gap(4));
         spaced.add(actions[i]);
       }
       return spaced;
     }
 
     final actions = <Widget>[
-      if (!invoice.isActive)
-        _InvoiceIconAction(
-          tooltip: 'Kalıcı sil',
-          icon: Icons.delete_forever_rounded,
-          tone: _InvoiceActionTone.danger,
-          onPressed: _busy ? null : _delete,
-        ),
-      if (!alreadySent)
-        _InvoiceIconAction(
-          tooltip: isManual
-              ? 'Manuel fatura işaretini geri al'
-              : 'Manuel fatura kesildi olarak işaretle',
-          icon: isManual ? Icons.undo_rounded : Icons.fact_check_rounded,
-          tone: isManual ? _InvoiceActionTone.info : _InvoiceActionTone.warning,
-          onPressed: _busy ? null : _toggleManual,
-        ),
-      if (alreadySent) ...[
-        _InvoiceIconAction(
-          tooltip: 'PDF oluştur / aç',
-          icon: Icons.picture_as_pdf_rounded,
-          tone: _InvoiceActionTone.danger,
-          onPressed: _busy ? null : _printOfficialPdf,
-        ),
-        _InvoiceIconAction(
-          tooltip: 'Maliye sayfasını aç',
-          icon: Icons.account_balance_rounded,
-          tone: _InvoiceActionTone.info,
-          onPressed: _busy ? null : _openMaliyeLink,
-        ),
-      ] else
-        _InvoiceIconAction(
-          tooltip: 'PDF yazdır',
-          icon: Icons.print_rounded,
-          onPressed: _busy ? null : _print,
-        ),
-      _InvoiceIconAction(
-        tooltip: 'Cari ekstre PDF',
-        icon: Icons.receipt_long_rounded,
-        onPressed: _busy ? null : _statement,
-      ),
-      _InvoiceIconAction(
-        tooltip: 'Gönderim verisini hazırla',
-        icon: Icons.code_rounded,
-        onPressed: _busy ? null : () => _prepare(send: false),
-      ),
       _InvoiceIconAction(
         tooltip: sendTooltip,
-        icon: _busy ? Icons.hourglass_top_rounded : Icons.send_rounded,
+        icon: _busy ? Icons.hourglass_top_outlined : Icons.send_outlined,
         tone: _InvoiceActionTone.primary,
         onPressed: _busy || !canSend ? null : () => _prepare(send: true),
       ),
-      _InvoiceIconAction(
-        tooltip: 'Fatura özetini kopyala',
-        icon: Icons.content_copy_rounded,
-        onPressed: _busy ? null : _copyPreview,
-      ),
-      if (!invoice.isLinkedToAkinsoft &&
+      if (alreadySent)
+        _InvoiceIconAction(
+          tooltip: 'PDF oluştur / aç',
+          icon: Icons.picture_as_pdf_outlined,
+          tone: _InvoiceActionTone.danger,
+          onPressed: _busy ? null : _printOfficialPdf,
+        )
+      else
+        _InvoiceIconAction(
+          tooltip: 'PDF yazdır',
+          icon: Icons.print_outlined,
+          onPressed: _busy ? null : _print,
+        ),
+      if ((!invoice.isLinkedToAkinsoft || invoice.needsAkinsoftNumberSync) &&
           invoice.isActive &&
           invoice.status != 'cancelled')
         _InvoiceIconAction(
-          tooltip: 'Akınsoft’a fatura gönder',
-          icon: Icons.upload_rounded,
+          tooltip: invoice.needsAkinsoftNumberSync
+              ? 'Akınsoft fatura numarasını Maliye no ile güncelle'
+              : 'Akınsoft’a fatura gönder',
+          icon: invoice.needsAkinsoftNumberSync
+              ? Icons.sync_outlined
+              : Icons.cloud_sync_outlined,
           tone: _InvoiceActionTone.success,
           onPressed: _busy ? null : _pushToAkinsoft,
         ),
       _InvoiceIconAction(
         tooltip: 'Düzenle',
-        icon: Icons.edit_rounded,
+        icon: Icons.edit_outlined,
         onPressed: _busy ? null : _edit,
       ),
-      _InvoiceIconAction(
-        tooltip: invoice.isActive ? 'Pasife al' : 'Tekrar aktifleştir',
-        icon: invoice.isActive
-            ? Icons.visibility_off_rounded
-            : Icons.visibility_rounded,
-        tone: invoice.isActive
-            ? _InvoiceActionTone.warning
-            : _InvoiceActionTone.success,
-        onPressed: _busy ? null : _toggleActive,
+      PopupMenuButton<String>(
+        tooltip: 'Diğer işlemler',
+        enabled: !_busy,
+        padding: EdgeInsets.zero,
+        offset: const Offset(0, 36),
+        onSelected: (value) {
+          switch (value) {
+            case 'manual':
+              _toggleManual();
+            case 'manual_sent':
+              _toggleManualSent();
+            case 'maliye':
+              _openMaliyeLink();
+            case 'statement':
+              _statement();
+            case 'payload':
+              _prepare(send: false);
+            case 'active':
+              _toggleActive();
+            case 'delete':
+              _delete();
+          }
+        },
+        itemBuilder: (context) => [
+          if (!alreadySent)
+            PopupMenuItem(
+              value: 'manual',
+              child: Text(
+                isManual
+                    ? 'Manuel işareti geri al'
+                    : 'Manuel fatura kesildi',
+              ),
+            ),
+          if (canMarkManualSent)
+            PopupMenuItem(
+              value: 'manual_sent',
+              child: Text(
+                isManualSent
+                    ? 'Manuel gönderildi işaretini geri al'
+                    : 'Manuel Gönderildi olarak işaretle',
+              ),
+            ),
+          if (alreadySent)
+            const PopupMenuItem(
+              value: 'maliye',
+              child: Text('Maliye sayfasını aç'),
+            ),
+          const PopupMenuItem(
+            value: 'statement',
+            child: Text('Cari ekstre PDF'),
+          ),
+          const PopupMenuItem(
+            value: 'payload',
+            child: Text('Gönderim verisini hazırla'),
+          ),
+          PopupMenuItem(
+            value: 'active',
+            child: Text(invoice.isActive ? 'Pasife al' : 'Aktifleştir'),
+          ),
+          if (!invoice.isActive)
+            const PopupMenuItem(
+              value: 'delete',
+              child: Text('Kalıcı sil'),
+            ),
+        ],
+        child: Container(
+          width: AppDenseList.action,
+          height: AppDenseList.action,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceMuted.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+            border: Border.all(color: AppTheme.border.withValues(alpha: 0.55)),
+          ),
+          child: Icon(
+            Icons.more_horiz_outlined,
+            size: AppDenseList.actionIcon,
+            color: AppTheme.textSoft,
+          ),
+        ),
       ),
     ];
     if (!withGaps) return actions;
     final spaced = <Widget>[];
     for (var i = 0; i < actions.length; i++) {
-      if (i > 0) spaced.add(const Gap(4));
+      if (i > 0) spaced.add(const Gap(2));
       spaced.add(actions[i]);
     }
     return spaced;
@@ -2765,11 +2922,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   Widget build(BuildContext context) {
     final invoice = widget.invoice;
     final settings = ref.watch(eInvoiceSettingsProvider).value ?? const {};
-    final alreadySent = invoice.isEInvoiceSent;
+    final alreadySent =
+        invoice.isEInvoiceSent || invoice.eInvoiceStatus == 'manual_sent';
     final environment = (settings['environment'] ?? 'test').toString();
     final canSend = invoice.canSendEInvoiceTo(environment);
     final sendTooltip = invoice.isEInvoiceManual
         ? 'Manuel fatura olarak işaretli; API gönderimi kapalı'
+        : invoice.eInvoiceStatus == 'manual_sent'
+        ? 'Manuel gönderildi olarak işaretli; canlı API gönderimi kapalı'
         : alreadySent &&
               invoice.eInvoiceEnvironment == 'test' &&
               environment == 'production'
@@ -2789,128 +2949,172 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       return _buildCompactRow(context, invoice, money, sendTooltip, canSend);
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppTheme.border)),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppDenseList.rowFill(widget.index, selected: widget.selected),
+        border: Border(bottom: AppDenseList.hairline),
       ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 46,
-            child: Checkbox(
-              value: widget.selected,
-              onChanged: widget.onSelectedChanged == null
-                  ? null
-                  : (value) => widget.onSelectedChanged!(value ?? false),
-            ),
-          ),
-          Expanded(
-            flex: 4,
-            child: Row(
-              children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color:
-                        (invoice.invoiceType == 'sales'
-                                ? AppTheme.success
-                                : AppTheme.warning)
-                            .withValues(alpha: invoice.isActive ? 0.12 : 0.06),
-                    borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-                  ),
-                  child: Icon(
-                    invoice.invoiceType == 'sales'
-                        ? Icons.north_east_rounded
-                        : Icons.south_west_rounded,
-                    color: invoice.isActive
-                        ? (invoice.invoiceType == 'sales'
-                              ? AppTheme.success
-                              : AppTheme.warning)
-                        : AppTheme.textMuted,
-                    size: 18,
-                  ),
+      child: SizedBox(
+        height: AppDenseList.rowHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppDenseList.rowH),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: AppInvoiceTableCols.check,
+                child: Checkbox(
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  value: widget.selected,
+                  onChanged: widget.onSelectedChanged == null
+                      ? null
+                      : (value) => widget.onSelectedChanged!(value ?? false),
                 ),
-                const Gap(10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        invoice.customerName ?? 'Cari',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      Text(
-                        invoice.invoiceNumber,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              DateFormat('dd.MM.yyyy').format(invoice.invoiceDate),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              invoice.invoiceType == 'sales' ? 'Satış' : 'Alış',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Wrap(
-              spacing: 4,
-              runSpacing: 4,
-              children: [
-                AppBadge(
-                  label: invoice.isActive
-                      ? _statusLabel(invoice.status)
-                      : 'Pasif',
-                  tone: invoice.isActive
-                      ? _statusTone(invoice.status)
-                      : AppBadgeTone.neutral,
-                ),
-                AppBadge(
-                  label: _eInvoiceStatusLabel(invoice.eInvoiceStatus),
-                  tone: _eInvoiceStatusTone(invoice.eInvoiceStatus),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 150,
-            child: Text(
-              money.format(invoice.grandTotal),
-              textAlign: TextAlign.end,
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-          ),
-          SizedBox(
-            width: 360,
-            child: Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 4,
-              runSpacing: 4,
-              children: _buildInvoiceActions(
-                sendTooltip: sendTooltip,
-                canSend: canSend,
               ),
-            ),
+              Expanded(
+                child: Row(
+                  children: [
+                    AppDenseLeadingIcon(
+                      icon: invoice.invoiceType == 'sales'
+                          ? Icons.arrow_outward_outlined
+                          : Icons.south_west_outlined,
+                      color: invoice.invoiceType == 'sales'
+                          ? AppTheme.primary
+                          : AppTheme.warning,
+                      active: invoice.isActive,
+                    ),
+                    const Gap(AppInvoiceTableCols.leadingGap),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            invoice.customerName ?? 'Cari',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(
+                                  fontSize: 12.5,
+                                  height: 1.1,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.text,
+                                ),
+                          ),
+                          Tooltip(
+                            message: invoice.invoiceNumber,
+                            waitDuration: const Duration(milliseconds: 250),
+                            child: Text(
+                              invoice.invoiceNumberDisplay,
+                              maxLines: 1,
+                              softWrap: false,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    fontSize: 11.5,
+                                    height: 1.1,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textSoft,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: AppInvoiceTableCols.date,
+                child: Text(
+                  DateFormat('dd.MM.yyyy').format(invoice.invoiceDate),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSoft,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: AppInvoiceTableCols.type,
+                child: Text(
+                  invoice.invoiceType == 'sales' ? 'Satış' : 'Alış',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSoft,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: AppInvoiceTableCols.status,
+                child: AppDenseBadgeRow(
+                  children: [
+                    AppBadge(
+                      dense: true,
+                      label: invoice.isActive
+                          ? _statusLabel(invoice.status)
+                          : 'Pasif',
+                      tone: invoice.isActive
+                          ? _statusTone(invoice.status)
+                          : AppBadgeTone.neutral,
+                    ),
+                    AppBadge(
+                      dense: true,
+                      label: _eInvoiceStatusLabel(invoice),
+                      tone: _eInvoiceStatusTone(invoice),
+                    ),
+                    Tooltip(
+                      message: invoice.akinsoftSyncStatusEffective == 'error' &&
+                              (invoice.akinsoftSyncError?.trim().isNotEmpty ??
+                                  false)
+                          ? invoice.akinsoftSyncError!.trim()
+                          : _akinsoftSyncStatusLabel(invoice),
+                      waitDuration: const Duration(milliseconds: 250),
+                      child: AppBadge(
+                        dense: true,
+                        label: _akinsoftSyncStatusLabel(invoice),
+                        tone: _akinsoftSyncStatusTone(invoice),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: AppInvoiceTableCols.amount,
+                child: Text(
+                  money.format(invoice.grandTotal),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: AppInvoiceTableCols.actions,
+                height: AppDenseList.action,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: _buildInvoiceActions(
+                      sendTooltip: sendTooltip,
+                      canSend: canSend,
+                      withGaps: true,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -2923,9 +3127,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     bool canSend,
   ) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppTheme.border)),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppDenseList.rowFill(widget.index, selected: widget.selected),
+        border: Border(bottom: AppDenseList.hairline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2934,34 +3139,21 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             children: [
               Checkbox(
                 visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 value: widget.selected,
                 onChanged: widget.onSelectedChanged == null
                     ? null
                     : (value) => widget.onSelectedChanged!(value ?? false),
               ),
-              const Gap(6),
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color:
-                      (invoice.invoiceType == 'sales'
-                              ? AppTheme.success
-                              : AppTheme.warning)
-                          .withValues(alpha: invoice.isActive ? 0.12 : 0.06),
-                  borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-                ),
-                child: Icon(
-                  invoice.invoiceType == 'sales'
-                      ? Icons.north_east_rounded
-                      : Icons.south_west_rounded,
-                  color: invoice.isActive
-                      ? (invoice.invoiceType == 'sales'
-                            ? AppTheme.success
-                            : AppTheme.warning)
-                      : AppTheme.textMuted,
-                  size: 18,
-                ),
+              const Gap(4),
+              AppDenseLeadingIcon(
+                icon: invoice.invoiceType == 'sales'
+                    ? Icons.arrow_outward_outlined
+                    : Icons.south_west_outlined,
+                color: invoice.invoiceType == 'sales'
+                    ? AppTheme.primary
+                    : AppTheme.warning,
+                active: invoice.isActive,
               ),
               const Gap(8),
               Expanded(
@@ -2972,13 +3164,26 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                       invoice.customerName ?? 'Cari',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontSize: 13.5,
+                        height: 1.15,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                    Text(
-                      invoice.invoiceNumber,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
+                    Tooltip(
+                      message: invoice.invoiceNumber,
+                      waitDuration: const Duration(milliseconds: 250),
+                      child: Text(
+                        invoice.invoiceNumberDisplay,
+                        maxLines: 1,
+                        softWrap: false,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontSize: 12,
+                          height: 1.15,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textSoft,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -2986,12 +3191,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             ],
           ),
           const Gap(8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          AppDenseBadgeRow(
             children: [
               AppBadge(
+                dense: true,
                 label: invoice.isActive
                     ? _statusLabel(invoice.status)
                     : 'Pasif',
@@ -3000,30 +3203,62 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                     : AppBadgeTone.neutral,
               ),
               AppBadge(
-                label: _eInvoiceStatusLabel(invoice.eInvoiceStatus),
-                tone: _eInvoiceStatusTone(invoice.eInvoiceStatus),
+                dense: true,
+                label: _eInvoiceStatusLabel(invoice),
+                tone: _eInvoiceStatusTone(invoice),
               ),
+              Tooltip(
+                message: invoice.akinsoftSyncStatusEffective == 'error' &&
+                        (invoice.akinsoftSyncError?.trim().isNotEmpty ?? false)
+                    ? invoice.akinsoftSyncError!.trim()
+                    : _akinsoftSyncStatusLabel(invoice),
+                waitDuration: const Duration(milliseconds: 250),
+                child: AppBadge(
+                  dense: true,
+                  label: _akinsoftSyncStatusLabel(invoice),
+                  tone: _akinsoftSyncStatusTone(invoice),
+                ),
+              ),
+            ],
+          ),
+          const Gap(6),
+          Wrap(
+            spacing: 10,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
               Text(
                 DateFormat('dd.MM.yyyy').format(invoice.invoiceDate),
-                style: Theme.of(context).textTheme.bodySmall,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               Text(
                 invoice.invoiceType == 'sales' ? 'Satış' : 'Alış',
-                style: Theme.of(context).textTheme.bodySmall,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               Text(
                 money.format(invoice.grandTotal),
-                style: Theme.of(context).textTheme.titleSmall,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ],
           ),
           const Gap(8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
+          SizedBox(
+            height: AppDenseList.action,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
               children: _buildInvoiceActions(
                 sendTooltip: sendTooltip,
                 canSend: canSend,
+                withGaps: true,
                 mobile: true,
               ),
             ),
@@ -3184,7 +3419,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   }
 
   Future<void> _toggleManual() async {
-    if (widget.invoice.isEInvoiceSent) return;
+    if (widget.invoice.isEInvoiceSent ||
+        widget.invoice.eInvoiceStatus == 'manual_sent') {
+      return;
+    }
     final marking = !widget.invoice.isEInvoiceManual;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -3223,7 +3461,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           'filters': [
             {'col': 'id', 'op': 'eq', 'value': widget.invoice.id},
           ],
-          'values': {'e_invoice_status': marking ? 'manual' : 'not_sent'},
+          'values': {
+            'e_invoice_status': marking
+                ? 'manual'
+                : (widget.invoice.eInvoiceEnvironment == 'test'
+                      ? 'sent'
+                      : 'not_sent'),
+          },
         },
       );
       ref.invalidate(invoicesProvider);
@@ -3241,6 +3485,81 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Manuel durum güncellenemedi: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _toggleManualSent() async {
+    final invoice = widget.invoice;
+    final isMarked = invoice.eInvoiceStatus == 'manual_sent';
+    final canMark =
+        isMarked ||
+        (invoice.eInvoiceStatus == 'sent' &&
+            invoice.eInvoiceEnvironment == 'test');
+    if (!canMark) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          isMarked
+              ? 'Manuel gönderildi işaretini geri al'
+              : 'Manuel Gönderildi',
+        ),
+        content: Text(
+          isMarked
+              ? '${invoice.invoiceNumber} numaralı faturanın manuel gönderildi işareti geri alınsın mı? Fatura tekrar canlı API’ye gönderilebilir hale gelir.'
+              : '${invoice.invoiceNumber} numaralı fatura test API sonrası manuel gönderildi olarak işaretlensin mi? Canlı API gönderimi kapanır; test gönderim kaydı korunur.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(isMarked ? 'Geri al' : 'İşaretle'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    setState(() => _busy = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'invoices',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': invoice.id},
+          ],
+          'values': {
+            'e_invoice_status': isMarked ? 'sent' : 'manual_sent',
+            if (!isMarked) 'e_invoice_environment': 'test',
+          },
+        },
+      );
+      ref.invalidate(invoicesProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isMarked
+                ? '${invoice.invoiceNumber} manuel gönderildi işareti geri alındı.'
+                : '${invoice.invoiceNumber} Manuel Gönderildi olarak işaretlendi.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Manuel gönderildi durumu güncellenemedi: $error')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -3357,8 +3676,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         );
       }
       final opened = await _shareOrOpenPdf(invoice, pdfUrl);
-      if (!mounted || opened) return;
-      await _showLinkFallbackDialog('Oluşturulan PDF', pdfUrl);
+      if (!mounted) return;
+      if (!opened) {
+        await _showLinkFallbackDialog('Oluşturulan PDF', pdfUrl);
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('PDF hazır.')),
+      );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3369,9 +3694,76 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     }
   }
 
+  // ignore: unused_element
+  Future<void> _sendWhatsAppPdf() async {
+    final invoice = await _loadInvoiceDetail();
+    if (invoice == null) return;
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('WhatsApp için sunucu bağlantısı gerekli.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      final archive = await apiClient.postJson(
+        '/e-invoice',
+        body: {'action': 'archive', 'invoiceId': invoice.id, 'force': true},
+      );
+      ref.invalidate(invoicesProvider);
+      final pdfUrl = archive['pdfUrl']?.toString().trim() ?? '';
+      if (pdfUrl.isEmpty) {
+        throw StateError(
+          archive['error']?.toString().trim().isNotEmpty == true
+              ? archive['error'].toString()
+              : 'PDF bağlantısı oluşturulamadı.',
+        );
+      }
+      if (!mounted) return;
+      await _sendWhatsAppPdfWithUrl(invoice, pdfUrl);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('WhatsApp gönderimi başarısız: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  // ignore: unused_element
+  Future<void> _sendWhatsAppPdfWithUrl(Invoice invoice, String pdfUrl) async {
+    CustomerDetail? customer;
+    final customerId = invoice.customerId.trim();
+    if (customerId.isNotEmpty) {
+      try {
+        customer = await ref.read(customerDetailProvider(customerId).future);
+      } catch (_) {
+        customer = null;
+      }
+    }
+    if (!mounted) return;
+    await shareEInvoicePdfWithWhatsApp(
+      context: context,
+      invoice: invoice,
+      pdfUrl: pdfUrl,
+      customer: customer,
+    );
+  }
+
   /// Mobilde imzalı URL yerine PDF dosyasını paylaşır; paylaşım metninde
   /// fatura numarası ve müşteri adı görünür.
   Future<bool> _shareOrOpenPdf(Invoice invoice, String pdfUrl) async {
+    // Electron/yerel: open-pdf köprüsü shell.openPath ile açar; bulut URL gerekmez.
+    if (isLocalOpenPdfUrl(pdfUrl)) {
+      return openExternalUrl(pdfUrl);
+    }
+
     final number = (invoice.eInvoiceNumber?.trim().isNotEmpty ?? false)
         ? _localEInvoiceNumber(invoice.eInvoiceNumber!)
         : invoice.invoiceNumber.trim();
@@ -3430,14 +3822,18 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     setState(() => _busy = true);
     try {
       final invoice = widget.invoice;
+      final customerName = invoice.customerName?.trim().isNotEmpty == true
+          ? invoice.customerName!.trim()
+          : 'Cari';
+      final stamp = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
+      final settings = ref.read(eInvoiceSettingsProvider).value ?? const {};
       await shareInvoiceStatementPdf(
         title: 'Fatura Ekstresi',
-        customerName: invoice.customerName?.trim().isNotEmpty == true
-            ? invoice.customerName!.trim()
-            : 'Cari',
+        customerName: customerName,
         invoices: [invoice],
+        bankDetails: (settings['seller_bank_details'] ?? '').toString(),
         filename:
-            'fatura_ekstresi_${_safeFilePart(invoice.invoiceNumber)}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.pdf',
+            'fatura_ekstresi_${safeStatementFilePart(customerName)}_${safeStatementFilePart(invoice.invoiceNumber, fallback: 'fatura')}_$stamp.pdf',
       );
     } catch (error) {
       if (!mounted) return;
@@ -3452,6 +3848,37 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   Future<void> _prepare({required bool send}) async {
     final apiClient = ref.read(apiClientProvider);
     if (apiClient == null) return;
+
+    if (send) {
+      final settings = ref.read(eInvoiceSettingsProvider).value ?? const {};
+      final isProduction =
+          (settings['environment'] ?? 'test').toString() == 'production';
+      if (isProduction) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Canlı API’ye gönder'),
+            content: Text(
+              '${widget.invoice.invoiceNumber} numaralı fatura '
+              'canlı (production) Maliye API’sine gönderilecek.\n\n'
+              'Bu işlem geri alınamaz. Devam edilsin mi?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Vazgeç'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Canlıya Gönder'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true) return;
+      }
+    }
+
     setState(() => _busy = true);
     try {
       final response = await apiClient.postJson(
@@ -3504,6 +3931,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     }
   }
 
+  // ignore: unused_element
   Future<void> _copyPreview() async {
     final invoice = widget.invoice;
     await Clipboard.setData(
@@ -3520,7 +3948,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
 
   Future<void> _pushToAkinsoft() async {
     final invoice = widget.invoice;
-    if (invoice.isLinkedToAkinsoft) {
+    final syncNumber = invoice.needsAkinsoftNumberSync;
+    if (!syncNumber && invoice.isLinkedToAkinsoft) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bu fatura zaten Akınsoft ile eşleşmiş.')),
       );
@@ -3529,11 +3958,19 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Akınsoft’a fatura gönder'),
+        title: Text(
+          syncNumber
+              ? 'Akınsoft fatura no güncelle'
+              : 'Akınsoft’a fatura gönder',
+        ),
         content: Text(
-          '${invoice.invoiceNumber} numaralı fatura Akınsoft’a yeni kayıt '
-          'olarak yazılsın mı?\n\n'
-          'Cari yoksa eklenir; stok eşleşmezse kalem açıklama olarak yazılır.',
+          syncNumber
+              ? '${invoice.invoiceNumber} için Akınsoft kaydı Maliye e-fatura '
+                  'numarasına güncellensin mi?\n\n'
+                  'Akınsoft’ta yoksa Maliye numarasıyla yeni oluşturulur.'
+              : '${invoice.invoiceNumber} numaralı fatura Akınsoft’a yeni kayıt '
+                  'olarak yazılsın mı?\n\n'
+                  'Cari yoksa eklenir; stok eşleşmezse kalem açıklama olarak yazılır.',
         ),
         actions: [
           TextButton(
@@ -3542,7 +3979,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Gönder'),
+            child: Text(syncNumber ? 'Güncelle' : 'Gönder'),
           ),
         ],
       ),
@@ -3554,7 +3991,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       final settings = await ref.read(eInvoiceSettingsProvider.future);
       final response = await http
           .post(
-            _akinsoftUri('push-invoices'),
+            _akinsoftUri(syncNumber ? 'push-invoice-numbers' : 'push-invoices'),
             headers: {'Content-Type': 'application/json; charset=utf-8'},
             body: jsonEncode({
               ...settings,
@@ -3581,6 +4018,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             ok
                 ? (reason?.isNotEmpty == true
                       ? '${invoice.invoiceNumber}: $reason'
+                      : syncNumber
+                      ? '${invoice.invoiceNumber} Akınsoft no güncellendi.'
                       : '${invoice.invoiceNumber} Akınsoft’a yazıldı.')
                 : '${invoice.invoiceNumber} gönderilemedi: ${reason ?? 'bilinmeyen hata'}',
           ),
@@ -3589,7 +4028,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Akınsoft’a gönderilemedi: $error')),
+        SnackBar(content: Text(_akinsoftBridgeError(error))),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -3616,24 +4055,42 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     };
   }
 
-  String _eInvoiceStatusLabel(String status) {
-    return switch (status) {
-      'sent' => 'E-Fatura Gönderildi',
-      'manual' => 'Manuel Kesildi',
-      'prepared' => 'E-Fatura Hazır',
-      'failed' => 'E-Fatura Hatalı',
-      'cancelled' => 'E-Fatura İptal',
-      _ => 'E-Fatura Gönderilmedi',
+  String _eInvoiceStatusLabel(Invoice invoice) {
+    if (invoice.isEInvoiceManualSent) return 'E-Fat. manuel';
+    return switch (invoice.eInvoiceStatus) {
+      'sent' => 'E-Fat. gönderildi',
+      'manual' => 'E-Fat. manuel',
+      'prepared' => 'E-Fat. hazır',
+      'failed' => 'E-Fat. hatalı',
+      'cancelled' => 'E-Fat. iptal',
+      _ => 'E-Fat. yok',
     };
   }
 
-  AppBadgeTone _eInvoiceStatusTone(String status) {
-    return switch (status) {
+  AppBadgeTone _eInvoiceStatusTone(Invoice invoice) {
+    if (invoice.isEInvoiceManualSent) return AppBadgeTone.primary;
+    return switch (invoice.eInvoiceStatus) {
       'sent' => AppBadgeTone.success,
       'manual' => AppBadgeTone.warning,
       'prepared' => AppBadgeTone.warning,
       'failed' => AppBadgeTone.error,
       'cancelled' => AppBadgeTone.neutral,
+      _ => AppBadgeTone.neutral,
+    };
+  }
+
+  String _akinsoftSyncStatusLabel(Invoice invoice) {
+    return switch (invoice.akinsoftSyncStatusEffective) {
+      'synced' => 'ERP gönderildi',
+      'error' => 'Akınsoft hata',
+      _ => 'Akınsoft yok',
+    };
+  }
+
+  AppBadgeTone _akinsoftSyncStatusTone(Invoice invoice) {
+    return switch (invoice.akinsoftSyncStatusEffective) {
+      'synced' => AppBadgeTone.success,
+      'error' => AppBadgeTone.error,
       _ => AppBadgeTone.neutral,
     };
   }
@@ -3722,19 +4179,27 @@ class _InvoiceIconAction extends StatelessWidget {
       waitDuration: const Duration(milliseconds: 250),
       child: IconButton(
         visualDensity: VisualDensity.compact,
-        constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(
+          width: AppDenseList.action,
+          height: AppDenseList.action,
+        ),
         style: IconButton.styleFrom(
           backgroundColor: enabled ? colors.background : AppTheme.surfaceMuted,
           foregroundColor: enabled ? colors.foreground : AppTheme.textMuted,
           disabledBackgroundColor: AppTheme.surfaceMuted,
           disabledForegroundColor: AppTheme.textMuted,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-            side: BorderSide(color: enabled ? colors.border : AppTheme.border),
+            borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+            side: BorderSide(
+              color: enabled
+                  ? colors.border.withValues(alpha: 0.55)
+                  : AppTheme.border.withValues(alpha: 0.4),
+            ),
           ),
         ),
         onPressed: onPressed,
-        icon: Icon(icon, size: 18),
+        icon: Icon(icon, size: AppDenseList.actionIcon),
       ),
     );
   }
@@ -3749,28 +4214,28 @@ class _InvoiceIconAction extends StatelessWidget {
         border: AppTheme.primary,
       ),
       _InvoiceActionTone.success => (
-        background: const Color(0xFFECFDF5),
-        foreground: const Color(0xFF047857),
-        border: const Color(0xFFA7F3D0),
+        background: AppTheme.softTint(AppTheme.success, alpha: 0.16),
+        foreground: AppTheme.softFg(AppTheme.success),
+        border: AppTheme.softBorder(AppTheme.success, alpha: 0.32),
       ),
       _InvoiceActionTone.warning => (
-        background: const Color(0xFFFFFBEB),
-        foreground: const Color(0xFFB45309),
-        border: const Color(0xFFFDE68A),
+        background: AppTheme.softTint(AppTheme.warning, alpha: 0.16),
+        foreground: AppTheme.softFg(AppTheme.warning),
+        border: AppTheme.softBorder(AppTheme.warning, alpha: 0.32),
       ),
       _InvoiceActionTone.danger => (
-        background: const Color(0xFFFFF1F2),
-        foreground: AppTheme.error,
-        border: const Color(0xFFFECDD3),
+        background: AppTheme.softTint(AppTheme.error, alpha: 0.14),
+        foreground: AppTheme.softFg(AppTheme.error),
+        border: AppTheme.softBorder(AppTheme.error, alpha: 0.30),
       ),
       _InvoiceActionTone.info => (
-        background: AppTheme.primarySoft,
-        foreground: AppTheme.primaryDark,
-        border: const Color(0xFFBFDBFE),
+        background: AppTheme.softTint(AppTheme.primary, alpha: 0.14),
+        foreground: AppTheme.softFg(AppTheme.primary),
+        border: AppTheme.softBorder(AppTheme.primary, alpha: 0.28),
       ),
       _InvoiceActionTone.neutral => (
         background: AppTheme.surfaceMuted,
-        foreground: AppTheme.textSoft,
+        foreground: AppTheme.text,
         border: AppTheme.border,
       ),
     };
@@ -3792,6 +4257,48 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
   String _query = '';
   String _group = '';
   String _subGroup = '';
+  String? _editingPriceProductId;
+  bool _pullingErp = false;
+
+  Future<void> _pullAkinsoftProducts() async {
+    setState(() => _pullingErp = true);
+    try {
+      final settings = await ref.read(eInvoiceSettingsProvider.future);
+      final payload = {...settings, 'limit': 2000};
+      final response = await http
+          .post(
+            _akinsoftUri('pull'),
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(minutes: 5));
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception('Beklenmeyen veri çekme yanıtı.');
+      }
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          decoded['ok'] != true) {
+        throw Exception(decoded['error'] ?? 'Veri çekme başarısız.');
+      }
+      decoded['_settingsPayload'] = payload;
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => _AkinsoftPullDialog(data: decoded),
+      );
+      ref.invalidate(productsProvider(null));
+      ref.invalidate(invoicesProvider);
+      ref.invalidate(customersProvider);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ERP stok/hizmet çekilemedi: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _pullingErp = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3833,6 +4340,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                 product.description,
                 group,
                 subGroup,
+                product.productType,
               ].whereType<String>().join(' ').toLowerCase();
               return haystack.contains(q);
             }).toList()..sort((a, b) {
@@ -3857,7 +4365,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                     onChanged: (value) => setState(() => _query = value),
                     decoration: const InputDecoration(
                       prefixIcon: Icon(Icons.search_rounded),
-                      hintText: 'Stok kodu, ürün adı, grup ara',
+                      hintText: 'Stok kodu, ürün/hizmet adı, grup ara',
                     ),
                   ),
                 ),
@@ -3903,6 +4411,20 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                   ),
                 ),
                 const Gap(10),
+                FilledButton.tonalIcon(
+                  onPressed: _pullingErp ? null : _pullAkinsoftProducts,
+                  icon: _pullingErp
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cloud_download_rounded, size: 18),
+                  label: Text(
+                    _pullingErp ? 'Çekiliyor…' : 'ERP’den Çek',
+                  ),
+                ),
+                const Gap(10),
                 FilledButton.icon(
                   onPressed: () => _showProductDialog(context, ref),
                   icon: const Icon(Icons.add_rounded, size: 18),
@@ -3926,8 +4448,8 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                     Container(
                       height: 42,
                       padding: const EdgeInsets.symmetric(horizontal: 14),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF1F5F9),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceMuted,
                         border: Border(
                           bottom: BorderSide(color: AppTheme.border),
                         ),
@@ -3935,7 +4457,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                       child: Row(
                         children: const [
                           SizedBox(
-                            width: 120,
+                            width: 100,
                             child: _InvoiceHeaderText('Kod'),
                           ),
                           Expanded(flex: 3, child: _InvoiceHeaderText('Stok')),
@@ -3945,10 +4467,14 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                             child: _InvoiceHeaderText('Alt Grup'),
                           ),
                           SizedBox(
-                            width: 92,
+                            width: 72,
                             child: _InvoiceHeaderText('Birim'),
                           ),
-                          SizedBox(width: 92, child: _InvoiceHeaderText('KDV')),
+                          SizedBox(
+                            width: 300,
+                            child: _InvoiceHeaderText('Fiyat (USD)'),
+                          ),
+                          SizedBox(width: 64, child: _InvoiceHeaderText('KDV')),
                           SizedBox(width: 100),
                         ],
                       ),
@@ -3959,7 +4485,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                           horizontal: 14,
                           vertical: 9,
                         ),
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           border: Border(
                             bottom: BorderSide(color: AppTheme.border),
                           ),
@@ -3967,7 +4493,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                         child: Row(
                           children: [
                             SizedBox(
-                              width: 120,
+                              width: 100,
                               child: Text(
                                 product.code ?? '-',
                                 maxLines: 1,
@@ -4002,9 +4528,56 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            SizedBox(width: 92, child: Text(product.unit)),
+                            SizedBox(width: 72, child: Text(product.unit)),
                             SizedBox(
-                              width: 92,
+                              width: 300,
+                              child: _InlineStockPriceCell(
+                                product: product,
+                                editing:
+                                    _editingPriceProductId == product.id,
+                                onStartEdit: () => setState(
+                                  () => _editingPriceProductId = product.id,
+                                ),
+                                onCancelEdit: () => setState(
+                                  () => _editingPriceProductId = null,
+                                ),
+                                onSave: ({
+                                  required double exclusiveSalePrice,
+                                  required String currency,
+                                }) async {
+                                  final apiClient = ref.read(
+                                    apiClientProvider,
+                                  );
+                                  if (apiClient == null) {
+                                    throw Exception('API bağlantısı yok.');
+                                  }
+                                  await apiClient.postJson(
+                                    '/mutate',
+                                    body: {
+                                      'op': 'upsert',
+                                      'table': 'products',
+                                      'returning': 'row',
+                                      'values': {
+                                        'id': product.id,
+                                        'name': product.name,
+                                        'sale_price': exclusiveSalePrice,
+                                        'currency': currency,
+                                        'tax_rate': product.taxRate,
+                                        'is_active': true,
+                                      },
+                                    },
+                                  );
+                                  ref.invalidate(productsProvider(null));
+                                  if (mounted) {
+                                    setState(
+                                      () => _editingPriceProductId = null,
+                                    );
+                                  }
+                                },
+                              ),
+                            ),
+                            SizedBox(
+                              width: 64,
                               child: Text(
                                 '%${product.taxRate.toStringAsFixed(0)}',
                               ),
@@ -4012,9 +4585,15 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                             SizedBox(
                               width: 100,
                               child: TextButton.icon(
-                                onPressed: () =>
-                                    _showProductDialog(context, ref, product),
-                                icon: const Icon(Icons.edit_rounded, size: 16),
+                                onPressed: () => _showProductDialog(
+                                  context,
+                                  ref,
+                                  product,
+                                ),
+                                icon: const Icon(
+                                  Icons.edit_rounded,
+                                  size: 16,
+                                ),
                                 label: const Text('Düzenle'),
                               ),
                             ),
@@ -4055,11 +4634,14 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
     final minStock = TextEditingController(
       text: (product?.minStock ?? 0).toStringAsFixed(0),
     );
-    String currency = product?.currency ?? 'TRY';
+    String currency = product == null
+        ? 'USD'
+        : _stockSaleCurrency(product);
     String unit = product?.unit ?? 'Adet';
     String type = product?.productType ?? 'product';
     double taxRate = product?.taxRate ?? 20;
     bool trackStock = product?.trackStock ?? true;
+    bool pricesIncludeVat = false;
     bool saving = false;
 
     await showDialog<void>(
@@ -4176,12 +4758,36 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
-                          decoration: const InputDecoration(
-                            labelText: 'Satış Fiyatı',
+                          decoration: InputDecoration(
+                            labelText: pricesIncludeVat
+                                ? 'Satış Fiyatı (KDV dahil)'
+                                : 'Satış Fiyatı (KDV hariç)',
                           ),
                         ),
                       ),
                     ],
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: const Text('Satış fiyatı KDV dahil'),
+                    subtitle: Text(
+                      pricesIncludeVat
+                          ? 'Girilen satış fiyatı KDV dahil; kayıt KDV hariç tutulur'
+                          : 'Girilen satış fiyatı KDV hariç (fatura ile uyumlu)',
+                    ),
+                    value: pricesIncludeVat,
+                    onChanged: (value) {
+                      if (value == pricesIncludeVat) return;
+                      final current = _parseDecimal(sale.text);
+                      if (taxRate > 0 && current > 0) {
+                        final converted = pricesIncludeVat
+                            ? current / (1 + taxRate / 100)
+                            : current * (1 + taxRate / 100);
+                        sale.text = _roundMoney(converted).toStringAsFixed(2);
+                      }
+                      setState(() => pricesIncludeVat = value);
+                    },
                   ),
                   const Gap(10),
                   Row(
@@ -4190,11 +4796,11 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                         child: DropdownButtonFormField<String>(
                           initialValue: currency,
                           items: const [
-                            DropdownMenuItem(value: 'TRY', child: Text('TL')),
                             DropdownMenuItem(value: 'USD', child: Text('USD')),
+                            DropdownMenuItem(value: 'TRY', child: Text('TL')),
                           ],
                           onChanged: (v) =>
-                              setState(() => currency = v ?? 'TRY'),
+                              setState(() => currency = v ?? 'USD'),
                           decoration: const InputDecoration(
                             labelText: 'Para Birimi',
                           ),
@@ -4282,6 +4888,10 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                       }
                       setState(() => saving = true);
                       try {
+                        final enteredSale = _parseDecimal(sale.text);
+                        final exclusiveSale = pricesIncludeVat && taxRate > 0
+                            ? enteredSale / (1 + taxRate / 100)
+                            : enteredSale;
                         await apiClient.postJson(
                           '/mutate',
                           body: {
@@ -4309,7 +4919,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                               'product_type': type,
                               'unit': unit,
                               'purchase_price': _parseDecimal(purchase.text),
-                              'sale_price': _parseDecimal(sale.text),
+                              'sale_price': _roundMoney(exclusiveSale),
                               'currency': currency,
                               'tax_rate': taxRate,
                               'track_stock': trackStock,
@@ -4501,12 +5111,15 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
         invoicesProvider(InvoiceFilter(customerId: balance.customerId)).future,
       );
       if (!mounted) return;
+      final settings = ref.read(eInvoiceSettingsProvider).value ?? const {};
+      final stamp = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
       await shareInvoiceStatementPdf(
         title: 'Cari Hesap Ekstresi',
         customerName: balance.name,
         invoices: invoices,
+        bankDetails: (settings['seller_bank_details'] ?? '').toString(),
         filename:
-            'cari_ekstresi_${_safeFilePart(balance.name)}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.pdf',
+            'cari_ekstresi_${safeStatementFilePart(balance.name)}_$stamp.pdf',
       );
     } catch (error) {
       if (!mounted) return;
@@ -4700,26 +5313,26 @@ class _AccountsSummaryGrid extends StatelessWidget {
           _AccountSummaryCard(
             title: 'Cari Sayısı',
             value: totalAccounts.toString(),
-            icon: Icons.groups_rounded,
+            icon: Icons.groups_outlined,
             color: AppTheme.primary,
           ),
           _AccountSummaryCard(
             title: 'Alacak',
             value: money.format(receivable),
-            icon: Icons.trending_up_rounded,
-            color: AppTheme.success,
+            icon: Icons.arrow_outward_outlined,
+            color: AppTheme.primary,
           ),
           _AccountSummaryCard(
             title: 'Borç',
             value: money.format(payable),
-            icon: Icons.trending_down_rounded,
+            icon: Icons.south_west_outlined,
             color: AppTheme.error,
           ),
           _AccountSummaryCard(
             title: 'Satış / Tahsilat',
             value: '${money.format(sales)} / ${money.format(collections)}',
-            icon: Icons.receipt_long_rounded,
-            color: const Color(0xFF229ED3),
+            icon: Icons.receipt_long_outlined,
+            color: AppTheme.blueBright,
           ),
         ];
 
@@ -4759,11 +5372,8 @@ class _AccountSummaryCard extends StatelessWidget {
           Container(
             width: 38,
             height: 38,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-            ),
-            child: Icon(icon, color: color, size: 19),
+            decoration: AppTheme.categoryIconWell(color, radius: 10),
+            child: Icon(icon, color: AppTheme.categoryIconFg(color), size: 19),
           ),
           const Gap(10),
           Expanded(
@@ -4795,8 +5405,8 @@ class _AccountsTableHeader extends StatelessWidget {
     return Container(
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: const BoxDecoration(
-        color: Color(0xFFF1F5F9),
+      decoration: BoxDecoration(
+        color: AppTheme.tableHeaderBg,
         border: Border(bottom: BorderSide(color: AppTheme.border)),
       ),
       child: Row(
@@ -4856,7 +5466,7 @@ class _AccountTableRow extends StatelessWidget {
     final positive = balance.balance >= 0;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: AppTheme.border)),
       ),
       child: Row(
@@ -5187,7 +5797,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                   const Gap(10),
                   Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.account_balance_wallet_rounded,
                         size: 15,
                         color: AppTheme.textSoft,
@@ -5330,7 +5940,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                             AppTheme.radiusMd,
                           ),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.storage_rounded,
                           color: AppTheme.primary,
                           size: 20,
@@ -6435,20 +7045,22 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
         .whereType<Map>()
         .map((item) => item.cast<String, dynamic>())
         .toList();
-    final customerQuery = _normalizeCustomerSearch(_invoiceCustomerQuery);
+    final customerQuery = _invoiceCustomerQuery.trim();
     final customerFilteredInvoices = customerQuery.isEmpty
         ? invoices
-        : invoices.where((item) {
-            final haystack = _normalizeCustomerSearch(
-              [
-                item['customerName'],
-                item['customerCode'],
-                item['taxNumber'],
-                item['invoiceNumber'],
-              ].whereType<Object>().join(' '),
-            );
-            return haystack.contains(customerQuery);
-          }).toList();
+        : invoices
+              .where(
+                (item) => matchesSearchQuery(
+                  [
+                    item['customerName'],
+                    item['customerCode'],
+                    item['taxNumber'],
+                    item['invoiceNumber'],
+                  ].whereType<Object>().join(' '),
+                  customerQuery,
+                ),
+              )
+              .toList();
     final selectedInvoiceRows = invoices
         .where(
           (item) => _selectedInvoices.contains(item['sourceId']?.toString()),
@@ -6494,10 +7106,14 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                             : (counts['products'] as num?)?.toInt() ?? 0);
                     final unchanged =
                         (counts['productsUnchanged'] as num?)?.toInt() ?? 0;
+                    final hizmet = (counts['hizmet'] as num?)?.toInt() ?? 0;
+                    final base = hizmet > 0
+                        ? '$selected stok/hizmet'
+                        : '$selected stok';
                     if (unchanged > 0) {
-                      return '$selected stok aktarılacak · $unchanged değişmedi';
+                      return '$base aktarılacak · $unchanged değişmedi';
                     }
-                    return '$selected stok';
+                    return base;
                   }(),
                   tone: AppBadgeTone.success,
                 ),
@@ -7171,7 +7787,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                             ? const Center(child: Text('Cari bulunamadı.'))
                             : ListView.separated(
                                 itemCount: customers.length,
-                                separatorBuilder: (_, _) => const Divider(
+                                separatorBuilder: (_, _) => Divider(
                                   height: 1,
                                   color: AppTheme.border,
                                 ),
@@ -7327,9 +7943,10 @@ class _InvoiceSelectionSection extends StatelessWidget {
       ..selection = TextSelection.collapsed(offset: customerQuery.length);
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.surface,
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: AppTheme.border.withValues(alpha: 0.72)),
+        boxShadow: AppTheme.cardShadow,
       ),
       child: Column(
         children: [
@@ -7415,7 +8032,7 @@ class _InvoiceSelectionSection extends StatelessWidget {
           Container(
             height: 40,
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            color: const Color(0xFFF1F5F9),
+            color: AppTheme.surfaceMuted,
             child: const Row(
               children: [
                 SizedBox(width: 46),
@@ -7436,7 +8053,7 @@ class _InvoiceSelectionSection extends StatelessWidget {
               shrinkWrap: true,
               itemCount: invoices.length,
               separatorBuilder: (_, _) =>
-                  const Divider(height: 1, color: AppTheme.border),
+                  Divider(height: 1, color: AppTheme.border),
               itemBuilder: (context, index) {
                 final invoice = invoices[index];
                 final id = invoice['sourceId']?.toString() ?? '';
@@ -7698,12 +8315,13 @@ class _AnalysisTableCard extends StatelessWidget {
     final error = (row['error'] ?? '').toString();
     final tableTitle = '${row['schemaName']}.${row['tableName']}';
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: AppTheme.border.withValues(alpha: 0.72)),
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        color: Colors.white,
+        color: AppTheme.surface,
+        boxShadow: AppTheme.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -7725,7 +8343,7 @@ class _AnalysisTableCard extends StatelessWidget {
           ),
           if (error.isNotEmpty) ...[
             const Gap(8),
-            Text(error, style: const TextStyle(color: AppTheme.error)),
+            Text(error, style: TextStyle(color: AppTheme.error)),
           ] else ...[
             const Gap(8),
             Wrap(
@@ -7881,21 +8499,28 @@ class _MetricsRow extends StatelessWidget {
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 900;
         return GridView.count(
-          crossAxisCount: wide ? 4 : 2,
-          childAspectRatio: wide ? 3.3 : 2.2,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
+          crossAxisCount: wide ? 5 : 2,
+          childAspectRatio: wide ? 3.8 : 2.6,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           children: [
             for (final metric in metrics)
               AppCard(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                color: Color.alphaBlend(
+                  metric.accent.withValues(alpha: 0.08),
+                  AppTheme.surface,
+                ),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                      backgroundColor: AppTheme.primary.withValues(alpha: 0.10),
-                      child: Icon(metric.icon, color: AppTheme.primary),
+                    AppDenseLeadingIcon(
+                      icon: metric.icon,
+                      color: metric.accent,
                     ),
                     const Gap(10),
                     Expanded(
@@ -7905,13 +8530,23 @@ class _MetricsRow extends StatelessWidget {
                         children: [
                           Text(
                             metric.label,
-                            style: Theme.of(context).textTheme.bodySmall,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: AppTheme.textMuted,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 11,
+                                ),
                           ),
                           Text(
                             metric.value,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleMedium,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                  height: 1.15,
+                                ),
                           ),
                         ],
                       ),
@@ -7927,11 +8562,12 @@ class _MetricsRow extends StatelessWidget {
 }
 
 class _Metric {
-  const _Metric(this.label, this.value, this.icon);
+  const _Metric(this.label, this.value, this.icon, this.accent);
 
   final String label;
   final String value;
   final IconData icon;
+  final Color accent;
 }
 
 class _InfoPill extends StatelessWidget {
@@ -7947,23 +8583,24 @@ class _InfoPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fg = AppTheme.softFg(color);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        border: Border.all(color: color.withValues(alpha: 0.20)),
+        color: AppTheme.softTint(color, alpha: 0.11),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.softBorder(color, alpha: 0.12)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: color),
+          Icon(icon, size: 15, color: fg),
           const Gap(6),
           Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
+              color: fg,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -7986,7 +8623,281 @@ class _ErrorCard extends StatelessWidget {
 }
 
 double _parseDecimal(String value) {
-  return double.tryParse(value.replaceAll('.', '').replaceAll(',', '.')) ??
-      double.tryParse(value.replaceAll(',', '.')) ??
-      0;
+  final trimmed = value.trim().replaceAll(' ', '');
+  if (trimmed.isEmpty) return 0;
+  // TR: 1.234,56 — mixed separators → strip thousands dots
+  if (trimmed.contains(',') && trimmed.contains('.')) {
+    return double.tryParse(trimmed.replaceAll('.', '').replaceAll(',', '.')) ??
+        0;
+  }
+  // TR decimal comma: 12,50
+  if (trimmed.contains(',')) {
+    return double.tryParse(trimmed.replaceAll(',', '.')) ?? 0;
+  }
+  // Plain / US: 12.50
+  return double.tryParse(trimmed) ?? 0;
+}
+
+double _roundMoney(double value) => (value * 100).roundToDouble() / 100;
+
+/// Stock/hizmet sale currency: empty or legacy unset TRY (0 price) → USD.
+String _stockSaleCurrency(Product product) {
+  final value = product.currency.trim().toUpperCase();
+  if (value.isEmpty) return 'USD';
+  if (value == 'TRY' && product.salePrice == 0) return 'USD';
+  if (value == 'USD' || value == 'TRY' || value == 'EUR' || value == 'GBP') {
+    return value;
+  }
+  return 'USD';
+}
+
+String _currencySymbol(String currency) {
+  return switch (currency.trim().toUpperCase()) {
+    'TRY' => '₺',
+    'USD' => '\$',
+    'EUR' => '€',
+    'GBP' => '£',
+    final code when code.isNotEmpty => '$code ',
+    _ => '\$',
+  };
+}
+
+String _formatProductMoney(double amount, String currency) {
+  final code = currency.trim().toUpperCase();
+  final effective = code.isEmpty ? 'USD' : code;
+  return NumberFormat.currency(
+    locale: 'tr_TR',
+    symbol: _currencySymbol(effective),
+    decimalDigits: 2,
+  ).format(amount);
+}
+
+class _InlineStockPriceCell extends StatefulWidget {
+  const _InlineStockPriceCell({
+    required this.product,
+    required this.editing,
+    required this.onStartEdit,
+    required this.onCancelEdit,
+    required this.onSave,
+  });
+
+  final Product product;
+  final bool editing;
+  final VoidCallback onStartEdit;
+  final VoidCallback onCancelEdit;
+  final Future<void> Function({
+    required double exclusiveSalePrice,
+    required String currency,
+  })
+  onSave;
+
+  @override
+  State<_InlineStockPriceCell> createState() => _InlineStockPriceCellState();
+}
+
+class _InlineStockPriceCellState extends State<_InlineStockPriceCell> {
+  late final TextEditingController _controller;
+  late String _currency;
+  bool _pricesIncludeVat = false;
+  bool _saving = false;
+
+  Product get _product => widget.product;
+
+  @override
+  void initState() {
+    super.initState();
+    _currency = _stockSaleCurrency(_product);
+    _controller = TextEditingController(
+      text: _product.salePrice.toStringAsFixed(2),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _InlineStockPriceCell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.editing && !oldWidget.editing) {
+      _currency = _stockSaleCurrency(widget.product);
+      _pricesIncludeVat = false;
+      _controller.text = widget.product.salePrice.toStringAsFixed(2);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _controller.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _controller.text.length,
+        );
+      });
+    }
+    if (!widget.editing &&
+        (oldWidget.product.salePrice != widget.product.salePrice ||
+            oldWidget.product.currency != widget.product.currency)) {
+      _currency = _stockSaleCurrency(widget.product);
+      _controller.text = widget.product.salePrice.toStringAsFixed(2);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final entered = _parseDecimal(_controller.text);
+      final taxRate = _product.taxRate;
+      final exclusive = _pricesIncludeVat && taxRate > 0
+          ? entered / (1 + taxRate / 100)
+          : entered;
+      await widget.onSave(
+        exclusiveSalePrice: _roundMoney(exclusive),
+        currency: _currency == 'TRY' ? 'TRY' : _currency,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Fiyat: ${_formatProductMoney(_roundMoney(exclusive), _currency)}',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fiyat kaydedilemedi: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final displayCurrency = _stockSaleCurrency(_product);
+    if (!widget.editing) {
+      return InkWell(
+        onTap: widget.onStartEdit,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          child: Text(
+            _formatProductMoney(_product.salePrice, displayCurrency),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.2,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                autofocus: true,
+                enabled: !_saving,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                  height: 1.2,
+                ),
+                decoration: const InputDecoration(
+                  isDense: false,
+                  hintText: '0.00',
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => _submit(),
+              ),
+            ),
+            const Gap(8),
+            SizedBox(
+              width: 88,
+              child: DropdownButtonFormField<String>(
+                initialValue: _currency,
+                isDense: true,
+                items: const [
+                  DropdownMenuItem(value: 'USD', child: Text('USD')),
+                  DropdownMenuItem(value: 'TRY', child: Text('TL')),
+                ],
+                onChanged: _saving
+                    ? null
+                    : (v) => setState(() => _currency = v ?? 'USD'),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+            const Gap(4),
+            IconButton(
+              tooltip: 'Kaydet',
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              onPressed: _saving ? null : _submit,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.check_rounded, size: 22),
+            ),
+            IconButton(
+              tooltip: 'İptal',
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              onPressed: _saving ? null : widget.onCancelEdit,
+              icon: const Icon(Icons.close_rounded, size: 20),
+            ),
+          ],
+        ),
+        const Gap(4),
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: Text(
+            _pricesIncludeVat ? 'KDV dahil' : 'KDV hariç',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          value: _pricesIncludeVat,
+          onChanged: _saving
+              ? null
+              : (value) {
+                  if (value == _pricesIncludeVat) return;
+                  final current = _parseDecimal(_controller.text);
+                  final taxRate = _product.taxRate;
+                  if (taxRate > 0 && current > 0) {
+                    final converted = _pricesIncludeVat
+                        ? current / (1 + taxRate / 100)
+                        : current * (1 + taxRate / 100);
+                    _controller.text = _roundMoney(converted).toStringAsFixed(2);
+                  }
+                  setState(() => _pricesIncludeVat = value);
+                },
+        ),
+      ],
+    );
+  }
 }

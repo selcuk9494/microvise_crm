@@ -476,7 +476,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                                     style: Theme.of(sheetContext)
                                         .textTheme
                                         .bodySmall
-                                        ?.copyWith(color: const Color(0xFF64748B)),
+                                        ?.copyWith(color: AppTheme.textMuted),
                                   ),
                               ],
                             ),
@@ -1050,7 +1050,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.92,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.background,
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
@@ -1126,7 +1126,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                   style: Theme.of(context)
                       .textTheme
                       .bodyMedium
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                      ?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
             ),
@@ -1163,7 +1163,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
-                    ?.copyWith(color: const Color(0xFF64748B)),
+                    ?.copyWith(color: AppTheme.textMuted),
               ),
             ],
           ),
@@ -1393,7 +1393,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
-                    ?.copyWith(color: const Color(0xFF64748B)),
+                    ?.copyWith(color: AppTheme.textMuted),
               ),
               const Gap(6),
               Column(
@@ -1403,17 +1403,17 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: AppTheme.surfaceMuted,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: AppTheme.border),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.place_rounded,
                             size: 18,
-                            color: Color(0xFF64748B),
+                            color: AppTheme.textMuted,
                           ),
                           const Gap(10),
                           Expanded(
@@ -1434,7 +1434,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                                     style: Theme.of(context)
                                         .textTheme
                                         .bodySmall
-                                        ?.copyWith(color: const Color(0xFF64748B)),
+                                        ?.copyWith(color: AppTheme.textMuted),
                                   ),
                                 ],
                                 if ((item.address ?? '').trim().isNotEmpty) ...[
@@ -1444,7 +1444,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                                     style: Theme.of(context)
                                         .textTheme
                                         .bodySmall
-                                        ?.copyWith(color: const Color(0xFF64748B)),
+                                        ?.copyWith(color: AppTheme.textMuted),
                                   ),
                                 ],
                               ],
@@ -1608,7 +1608,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _saving ? null : () => _updateStatus('open'),
-                    icon: const Icon(Icons.undo_rounded, size: 18),
+                    icon: Icon(Icons.undo_rounded, size: 18),
                     label: const Text('Açığa Al'),
                   ),
                 ),
@@ -1677,7 +1677,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                      ?.copyWith(color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -1713,14 +1713,14 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: AppTheme.surfaceMuted,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: AppTheme.border),
               ),
               child: Row(
                 children: [
                   Icon(Icons.info_outline_rounded,
-                      size: 18, color: const Color(0xFF64748B)),
+                      size: 18, color: AppTheme.textMuted),
                   const Gap(10),
                   Expanded(
                     child: Text(
@@ -1728,7 +1728,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                       style: Theme.of(context)
                           .textTheme
                           .bodySmall
-                          ?.copyWith(color: const Color(0xFF64748B)),
+                          ?.copyWith(color: AppTheme.textMuted),
                     ),
                   ),
                 ],
@@ -1789,7 +1789,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             style: Theme.of(context)
                 .textTheme
                 .bodySmall
-                ?.copyWith(color: const Color(0xFF64748B)),
+                ?.copyWith(color: AppTheme.textMuted),
           ),
         ],
       ),
@@ -2005,7 +2005,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
               const Gap(10),
               TextField(
                 controller: _lineSimController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'SIM Numarası',
                   hintText: '89...',
                 ),
@@ -2018,7 +2018,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
               Text(
                 'Personel sadece stoktan hat seçebilir.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF64748B),
+                      color: AppTheme.textMuted,
                     ),
               ),
             ],
@@ -2074,7 +2074,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                           _notesController.text = selected.name;
                         }
                       },
-                decoration: const InputDecoration(labelText: 'Seçim'),
+                decoration: InputDecoration(labelText: 'Seçim'),
               );
             },
             loading: () => const SizedBox.shrink(),
@@ -2257,7 +2257,7 @@ class _InfoRow extends StatelessWidget {
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: const Color(0xFF64748B)),
+                      ?.copyWith(color: AppTheme.textMuted),
                 ),
                 const Gap(12),
                 ListTile(
@@ -2314,14 +2314,14 @@ class _InfoRow extends StatelessWidget {
 
     return Row(
       children: [
-        Icon(icon, size: 16, color: iconColor ?? const Color(0xFF64748B)),
+        Icon(icon, size: 16, color: iconColor ?? AppTheme.textMuted),
         const Gap(10),
         Text(
           '$label:',
           style: Theme.of(context)
               .textTheme
               .bodySmall
-              ?.copyWith(color: labelColor ?? const Color(0xFF64748B)),
+              ?.copyWith(color: labelColor ?? AppTheme.textMuted),
         ),
         const Gap(8),
         Expanded(
@@ -2476,7 +2476,7 @@ class _PaymentRowState extends State<_PaymentRow> {
               flex: 5,
               child: TextField(
                 controller: widget.draft.descriptionController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Açıklama',
                   hintText: 'Örn: Kurulum tahsilatı',
                 ),
@@ -2489,14 +2489,14 @@ class _PaymentRowState extends State<_PaymentRow> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
+              color: AppTheme.surfaceMuted,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.swap_horiz_rounded,
-                    size: 14, color: const Color(0xFF64748B)),
+                    size: 14, color: AppTheme.textMuted),
                 const Gap(6),
                 Text(
                   '${widget.money.format(tryAmount)} TL',

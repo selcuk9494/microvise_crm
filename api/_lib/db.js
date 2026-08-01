@@ -1,4 +1,8 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// Keep Postgres `date` as YYYY-MM-DD strings. Default JS Date (UTC midnight)
+// JSON-serializes to ...T00:00:00.000Z and shifts calendar day in UTC+3 UIs.
+types.setTypeParser(types.builtins.DATE, (value) => value);
 
 let pool;
 

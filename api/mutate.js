@@ -31,6 +31,7 @@ const {
   ensureFinanceTables,
   ensureApplicationFormsApprovalColumns,
   ensureApplicationFormActivityLogsTable,
+  ensureInvoicePricesIncludeVatColumn,
 } = require('./_lib/schema');
 const {
   handleCors,
@@ -1136,6 +1137,8 @@ module.exports = async (req, res) => {
           'invoice_items table is missing. Run migrations (0003/0005/0012) or set ALLOW_SCHEMA_AUTO_CREATE=true in non-production.',
         );
       }
+      columnsCache.delete('invoice_items');
+      columnsMetaCache.delete('invoice_items');
     }
     if (table === 'fault_forms') {
       await ensureFaultFormsTable();
@@ -1185,6 +1188,11 @@ module.exports = async (req, res) => {
     }
     if (table === 'finance_accounts' || table === 'finance_transactions') {
       await ensureFinanceTables();
+    }
+    if (table === 'invoices') {
+      await ensureInvoicePricesIncludeVatColumn();
+      columnsCache.delete('invoices');
+      columnsMetaCache.delete('invoices');
     }
 
     const bankCustomerCreate =

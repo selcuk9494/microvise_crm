@@ -10,6 +10,7 @@ import '../../core/format/currency_format.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../billing/invoice_queue_helper.dart';
 import '../customers/customer_form_dialog.dart';
@@ -503,7 +504,7 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
           return ListView.separated(
             padding: const EdgeInsets.only(bottom: 120),
             itemCount: filtered.isEmpty ? 3 : filtered.length + 2,
-            separatorBuilder: (_, _) => const Gap(12),
+            separatorBuilder: (_, _) => const Gap(AppDenseList.listGap),
             itemBuilder: (context, index) {
               if (index == 0) return filterCard;
               if (index == 1) return statsCard;
@@ -627,178 +628,77 @@ class _TransferRecordCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.sizeOf(context).width < 900;
     final dateText = DateFormat('d MMM y', 'tr_TR').format(record.transferDate);
     final badgeLabel = record.isActive ? 'KDV 15' : 'Pasif';
     final badgeTone = record.isActive
         ? AppBadgeTone.primary
         : AppBadgeTone.neutral;
 
-    return AppCard(
-      padding: EdgeInsets.fromLTRB(
-        isMobile ? 10 : 12,
-        10,
-        isMobile ? 10 : 12,
-        12,
+    return AppDenseListCard(
+      leading: AppDenseLeadingIcon(
+        icon: Icons.swap_horiz_rounded,
+        color: AppTheme.primary,
+        active: record.isActive,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: record.isActive
-                      ? AppTheme.primary.withValues(alpha: 0.12)
-                      : AppTheme.surfaceMuted,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-                ),
-                child: Icon(
-                  Icons.swap_horiz_rounded,
-                  color: record.isActive
-                      ? AppTheme.primary
-                      : AppTheme.textMuted,
-                  size: 18,
-                ),
-              ),
-              const Gap(8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${record.transferorName} → ${record.transfereeName}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    Text(
-                      (record.brandModel ?? '').trim().isEmpty
-                          ? 'Devir formu'
-                          : record.brandModel!.trim(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-              const Gap(8),
-              AppBadge(label: badgeLabel, tone: badgeTone),
-            ],
+      title: '${record.transferorName} → ${record.transfereeName}',
+      subtitle: (record.brandModel ?? '').trim().isEmpty
+          ? 'Devir formu'
+          : record.brandModel!.trim(),
+      titleStruck: !record.isActive,
+      badge: AppBadge(label: badgeLabel, tone: badgeTone, dense: true),
+      meta: [
+        AppDenseInfoChip(icon: Icons.calendar_today_rounded, text: dateText),
+        if ((record.rowNumber ?? '').trim().isNotEmpty)
+          AppDenseInfoChip(
+            icon: Icons.tag_rounded,
+            text: 'Sıra: ${record.rowNumber!.trim()}',
           ),
-          const Gap(8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              _TransferInfoChip(
-                icon: Icons.calendar_today_rounded,
-                text: dateText,
-              ),
-              if ((record.rowNumber ?? '').trim().isNotEmpty)
-                _TransferInfoChip(
-                  icon: Icons.tag_rounded,
-                  text: 'Sıra: ${record.rowNumber!.trim()}',
-                ),
-              if ((record.deviceSerialNo ?? '').trim().isNotEmpty)
-                _TransferInfoChip(
-                  icon: Icons.badge_rounded,
-                  text: record.deviceSerialNo!.trim(),
-                ),
-              FormDocumentMetaChip(document: record.document),
-            ],
+        if ((record.deviceSerialNo ?? '').trim().isNotEmpty)
+          AppDenseInfoChip(
+            icon: Icons.badge_rounded,
+            text: record.deviceSerialNo!.trim(),
           ),
-          const Gap(8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                FormRecordIconAction(
-                  tooltip: 'Yazdır',
-                  onPressed: onPrint,
-                  icon: Icons.print_rounded,
-                ),
-                const Gap(4),
-                FormDocumentActions(
-                  document: record.document,
-                  onUpload: onUploadDocument,
-                  onDownload: onDownloadDocument,
-                  onDelete: onDeleteDocument,
-                ),
-                if (canEdit) const Gap(4),
-                if (canEdit)
-                  FormRecordIconAction(
-                    tooltip: 'Düzenle',
-                    onPressed: onEdit,
-                    icon: Icons.edit_rounded,
-                  ),
-                if (canEdit) const Gap(4),
-                if (canEdit)
-                  FormRecordIconAction(
-                    tooltip: 'Kopya',
-                    onPressed: onDuplicate,
-                    icon: Icons.content_copy_rounded,
-                  ),
-                if (canArchive && onToggleActive != null) const Gap(4),
-                if (canArchive && onToggleActive != null)
-                  FormRecordIconAction(
-                    tooltip: record.isActive ? 'Pasife Al' : 'Aktifleştir',
-                    onPressed: onToggleActive,
-                    icon: record.isActive
-                        ? Icons.archive_outlined
-                        : Icons.restore_rounded,
-                  ),
-                if (canDeletePermanently && onDeletePermanently != null)
-                  const Gap(4),
-                if (canDeletePermanently && onDeletePermanently != null)
-                  FormRecordIconAction(
-                    tooltip: 'Kalıcı Sil',
-                    onPressed: onDeletePermanently,
-                    icon: Icons.delete_forever_rounded,
-                  ),
-              ],
-            ),
+        FormDocumentMetaChip(document: record.document),
+      ],
+      actions: [
+        FormRecordIconAction(
+          tooltip: 'Yazdır',
+          onPressed: onPrint,
+          icon: Icons.print_rounded,
+        ),
+        FormDocumentActions(
+          document: record.document,
+          onUpload: onUploadDocument,
+          onDownload: onDownloadDocument,
+          onDelete: onDeleteDocument,
+        ),
+        if (canEdit)
+          FormRecordIconAction(
+            tooltip: 'Düzenle',
+            onPressed: onEdit,
+            icon: Icons.edit_rounded,
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TransferInfoChip extends StatelessWidget {
-  const _TransferInfoChip({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: const Color(0xFF64748B)),
-          const Gap(6),
-          Text(
-            text,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF475569)),
+        if (canEdit)
+          FormRecordIconAction(
+            tooltip: 'Kopya',
+            onPressed: onDuplicate,
+            icon: Icons.content_copy_rounded,
           ),
-        ],
-      ),
+        if (canArchive && onToggleActive != null)
+          FormRecordIconAction(
+            tooltip: record.isActive ? 'Pasife Al' : 'Aktifleştir',
+            onPressed: onToggleActive,
+            icon: record.isActive
+                ? Icons.archive_outlined
+                : Icons.restore_rounded,
+          ),
+        if (canDeletePermanently && onDeletePermanently != null)
+          FormRecordIconAction(
+            tooltip: 'Kalıcı Sil',
+            onPressed: onDeletePermanently,
+            icon: Icons.delete_forever_rounded,
+          ),
+      ],
     );
   }
 }

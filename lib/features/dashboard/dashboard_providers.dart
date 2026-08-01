@@ -169,7 +169,7 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
   });
 
   final todayWorkOrders = await _count(client, 'work_orders', filters: {
-    'scheduled_date': appNow().toIso8601String().substring(0, 10),
+    'scheduled_date': formatAppDateIso(appNow()),
     'is_active': true,
   });
 

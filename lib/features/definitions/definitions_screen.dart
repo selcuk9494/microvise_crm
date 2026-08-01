@@ -839,7 +839,7 @@ class _BrandRowState extends ConsumerState<_BrandRow> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -997,7 +997,7 @@ class _ModelRowState extends ConsumerState<_ModelRow> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -1018,7 +1018,7 @@ class _ModelRowState extends ConsumerState<_ModelRow> {
                 Text(
                   m.brandName ?? '—',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
                 ),
               ],
@@ -1549,7 +1549,7 @@ class _RegionColorsTab extends ConsumerWidget {
                     Text(
                       'Arka plan hazır renkler',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF64748B),
+                        color: AppTheme.textMuted,
                       ),
                     ),
                     const Gap(8),
@@ -1580,7 +1580,7 @@ class _RegionColorsTab extends ConsumerWidget {
                     Text(
                       'Çerçeve hazır renkler',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF64748B),
+                        color: AppTheme.textMuted,
                       ),
                     ),
                     const Gap(8),
@@ -1744,7 +1744,7 @@ class _RegionColorsTab extends ConsumerWidget {
                                   '${it.bgColor} • ${it.borderColor}',
                                   style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(
-                                        color: const Color(0xFF64748B),
+                                        color: AppTheme.textMuted,
                                       ),
                                 ),
                               ],
@@ -1937,7 +1937,7 @@ class _WorkOrderCloseNoteRowState
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -2254,7 +2254,7 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -2285,7 +2285,7 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
                   Text(
                     t.description!,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF64748B),
+                      color: AppTheme.textMuted,
                     ),
                   ),
                 ],
@@ -2542,7 +2542,7 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: r.isDefault ? AppTheme.primary : AppTheme.border,
@@ -2843,7 +2843,7 @@ class _SoftwareCompanyRowState extends ConsumerState<_SoftwareCompanyRow> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -3149,7 +3149,7 @@ class _BusinessActivityTypeRowState
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -3898,7 +3898,7 @@ class _ServiceTypesCard<T> extends StatelessWidget {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: AppTheme.border),
-                        color: const Color(0xFFF8FAFC),
+                        color: AppTheme.surfaceMuted,
                       ),
                       child: Row(
                         children: [
@@ -4186,7 +4186,7 @@ class _Empty extends StatelessWidget {
         text,
         style: Theme.of(
           context,
-        ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+        ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
       ),
     );
   }

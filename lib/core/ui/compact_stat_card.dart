@@ -19,27 +19,31 @@ class CompactStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final soft = Color.alphaBlend(
+      color.withValues(alpha: 0.06),
+      AppTheme.surface,
+    );
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-        border: Border.all(color: AppTheme.border),
+        color: soft,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: AppTheme.border.withValues(alpha: 0.45)),
         boxShadow: AppTheme.cardShadow,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 34,
-            height: 34,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+              color: AppTheme.softTint(color, alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
             ),
-            child: Icon(icon, size: 18, color: color),
+            child: Icon(icon, size: 18, color: AppTheme.softFg(color)),
           ),
-          const Gap(10),
+          const Gap(12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,

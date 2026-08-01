@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/format/search_normalize.dart';
 import 'invoice_model.dart';
 import 'invoice_statement_pdf.dart';
 
@@ -13,11 +14,13 @@ Future<void> shareInvoiceStatementPdf({
   required String customerName,
   required List<Invoice> invoices,
   required String filename,
+  String? bankDetails,
 }) async {
   final bytes = await buildInvoiceStatementPdfBytes(
     title: title,
     customerName: customerName,
     invoices: invoices,
+    bankDetails: bankDetails,
   );
   final dir = await getTemporaryDirectory();
   final safeName = _safeFilename(filename);
@@ -45,5 +48,15 @@ Future<void> shareInvoiceStatementPdf({
 
 String _safeFilename(String input) {
   final trimmed = input.trim().isEmpty ? 'ekstre.pdf' : input.trim();
-  return trimmed.replaceAll(RegExp(r'[^a-zA-Z0-9._-]+'), '_');
+  final dot = trimmed.lastIndexOf('.');
+  final stem = dot > 0 ? trimmed.substring(0, dot) : trimmed;
+  final ext = dot > 0 ? trimmed.substring(dot) : '';
+  final safeStem = normalizeSearchText(stem)
+      .replaceAll(RegExp(r'[^a-z0-9._-]+'), '_')
+      .replaceAll(RegExp(r'_+'), '_')
+      .replaceAll(RegExp(r'^_|_$'), '');
+  final safeExt = ext
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9.]'), '');
+  return '${safeStem.isEmpty ? 'ekstre' : safeStem}${safeExt.isEmpty ? '.pdf' : safeExt}';
 }

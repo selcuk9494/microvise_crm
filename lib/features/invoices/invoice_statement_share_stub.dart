@@ -5,6 +5,7 @@ Future<void> shareInvoiceStatementPdf({
   required String customerName,
   required List<Invoice> invoices,
   required String filename,
+  String? bankDetails,
 }) async {
   throw UnsupportedError('PDF paylaşımı bu platformda desteklenmiyor.');
 }

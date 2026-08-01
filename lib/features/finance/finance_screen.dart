@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
@@ -259,6 +260,8 @@ class FinanceScreen extends ConsumerWidget {
             data: (accounts) => _FinanceSummary(accounts: accounts),
           ),
           const Gap(12),
+          const _AkinsoftFinanceShortcuts(),
+          const Gap(12),
           accountsAsync.when(
             loading: () => const SizedBox.shrink(),
             error: (_, _) => const SizedBox.shrink(),
@@ -296,6 +299,105 @@ class FinanceScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AkinsoftFinanceShortcuts extends StatelessWidget {
+  const _AkinsoftFinanceShortcuts();
+
+  @override
+  Widget build(BuildContext context) {
+    final items = const [
+      (
+        label: 'Bankalar / Hesaplar',
+        subtitle: 'Wolvox BANKA_ADI + BANKA_HESAP',
+        path: '/finans/akinsoft/bankalar',
+        icon: Icons.account_balance_rounded,
+      ),
+      (
+        label: 'Kasa',
+        subtitle: 'Wolvox KASA',
+        path: '/finans/akinsoft/kasa',
+        icon: Icons.point_of_sale_rounded,
+      ),
+      (
+        label: 'Transferler',
+        subtitle: 'Banka ↔ banka / kasa',
+        path: '/finans/akinsoft/transferler',
+        icon: Icons.swap_horiz_rounded,
+      ),
+      (
+        label: 'Masraf Faturaları',
+        subtitle: 'MSF · FATURA_DURUMU=7',
+        path: '/finans/akinsoft/masraf',
+        icon: Icons.receipt_long_rounded,
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Akınsoft Finans (canlı senkron)',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        const Gap(8),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final item in items)
+              InkWell(
+                onTap: () => context.go(item.path),
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                child: Ink(
+                  width: 240,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surface,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                    border: Border.all(
+                      color: AppTheme.border.withValues(alpha: 0.8),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(item.icon, size: 20, color: AppTheme.primary),
+                      const Gap(10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.label,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            Text(
+                              item.subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(color: AppTheme.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right_rounded, size: 18),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

@@ -110,7 +110,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                             Text(
                               'Ürün bulunmuyor',
                               style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: const Color(0xFF64748B)),
+                                  ?.copyWith(color: AppTheme.textMuted),
                             ),
                           ],
                         ),
@@ -138,7 +138,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 child: Text(
                   'Ürünler yüklenemedi',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
                 ),
               ),
@@ -456,7 +456,7 @@ class _ProductCard extends StatelessWidget {
                           product.code!,
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(
-                                color: const Color(0xFF64748B),
+                                color: AppTheme.textMuted,
                                 fontFamily: 'monospace',
                               ),
                         ),
@@ -506,7 +506,7 @@ class _ProductCard extends StatelessWidget {
                 Text(
                   '%${product.taxRate.toInt()} KDV',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
+                    color: AppTheme.textMuted,
                   ),
                 ),
               ],
