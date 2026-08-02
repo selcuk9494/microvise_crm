@@ -2581,7 +2581,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                     _CompactStat(
                       label: 'Toplam',
                       value: records.length.toString(),
-                      icon: Icons.description_outlined,
+                      icon: Icons.description_rounded,
                     ),
                     _CompactStat(
                       label: 'Filtrelenen',
@@ -2838,7 +2838,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                           leading: Icon(
                                             _approvalFilter == 'approved'
                                                 ? Icons.verified_rounded
-                                                : Icons.verified_outlined,
+                                                : Icons.verified_rounded,
                                           ),
                                           title: Text(
                                             'Onaylanmış ($approvedCount)',
@@ -5978,9 +5978,7 @@ class _ApplicationFormDialogState
                         isActive
                             ? Icons.check_circle_rounded
                             : Icons.pause_circle_filled_rounded,
-                        color: isActive
-                            ? const Color(0xFF16A34A)
-                            : AppTheme.textMuted,
+                        color: isActive ? AppTheme.success : AppTheme.textMuted,
                       ),
                       const Gap(10),
                       Expanded(
@@ -6019,10 +6017,7 @@ class _ApplicationFormDialogState
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.info_outline_rounded,
-                      color: AppTheme.textMuted,
-                    ),
+                    Icon(Icons.info_outline_rounded, color: AppTheme.textMuted),
                     const Gap(10),
                     Expanded(
                       child: Text(
@@ -6441,7 +6436,7 @@ class _SerialTrackingPickerDialogState
                                           : Icons.radio_button_off_rounded,
                                       color: selected
                                           ? AppTheme.primary
-                                          : const Color(0xFF94A3B8),
+                                          : AppTheme.textMuted,
                                     ),
                                   ),
                             title: Text(
@@ -6740,12 +6735,15 @@ class _ApplicationRecordCard extends StatelessWidget {
     final canDelete =
         !record.isActive && canDeletePermanently && !record.isApproved;
 
+    // Not const: AppTheme.softTint reads the current brightness so the
+    // pastel card backgrounds stay visible (instead of near-invisible
+    // pale-on-dark) when the app is in Dark tema.
     final backgrounds = [
-      const Color(0xFFF0F9FF),
-      const Color(0xFFECFDF5),
-      const Color(0xFFFFFBEB),
-      const Color(0xFFFDF2F8),
-      const Color(0xFFF5F3FF),
+      AppTheme.softTint(AppTheme.blue, alpha: 0.10),
+      AppTheme.softTint(AppTheme.green, alpha: 0.10),
+      AppTheme.softTint(AppTheme.orange, alpha: 0.10),
+      AppTheme.softTint(const Color(0xFFEC4899), alpha: 0.10),
+      AppTheme.softTint(AppTheme.purple, alpha: 0.10),
     ];
     final backgroundColor = record.isActive
         ? backgrounds[colorIndex % backgrounds.length]
@@ -6904,7 +6902,9 @@ class _ApplicationRecordCard extends StatelessWidget {
                         child: ListView(
                           scrollDirection: Axis.horizontal,
                           children: [
-                            if (record.businessActivityName?.trim().isNotEmpty ??
+                            if (record.businessActivityName
+                                    ?.trim()
+                                    .isNotEmpty ??
                                 false) ...[
                               _InfoChip(
                                 icon: Icons.storefront_rounded,
@@ -8203,7 +8203,7 @@ class _ApplicationTextField extends StatelessWidget {
       readOnly: readOnly,
       enabled: enabled,
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-        color: const Color(0xFF111827),
+        color: AppTheme.text,
         fontWeight: FontWeight.w600,
         fontSize: 14,
       ),
@@ -8245,7 +8245,7 @@ class _ApplicationDropdown<T> extends StatelessWidget {
       onChanged: onChanged,
       validator: validator,
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-        color: const Color(0xFF111827),
+        color: AppTheme.text,
         fontWeight: FontWeight.w600,
         fontSize: 14,
       ),
@@ -8292,7 +8292,7 @@ class _DateField extends StatelessWidget {
         child: Text(
           format.format(value),
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-            color: const Color(0xFF111827),
+            color: AppTheme.text,
             fontWeight: FontWeight.w600,
             fontSize: 13.5,
           ),
@@ -8351,7 +8351,7 @@ class _BusinessActivityMultiSelectField extends StatelessWidget {
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
             color: selectedItems.isEmpty
                 ? AppTheme.textMuted
-                : const Color(0xFF111827),
+                : AppTheme.text,
             fontWeight: FontWeight.w600,
             fontSize: 13.5,
           ),
@@ -8705,7 +8705,7 @@ class _CustomerPickerField extends StatelessWidget {
                 : null,
             onTap: onPickCustomer,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: const Color(0xFF111827),
+              color: AppTheme.text,
               fontWeight: FontWeight.w600,
               fontSize: 13,
             ),

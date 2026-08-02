@@ -1446,8 +1446,16 @@ async function deliverBuiltArchivePdf({
     ],
   );
 
-  let pdfUrl = buildLocalOpenPdfUrl(localPdfPath);
-  if (!pdfUrl && storedPdf && !localOnly && hasSupabaseStorageConfig()) {
+  // Yerel open-pdf yalnızca Electron/local-first; bulut istemcilerine (mobil/web)
+  // asla /tmp veya /api/_local/open-pdf dönme.
+  let pdfUrl = null;
+  if (localOnly) {
+    pdfUrl = buildLocalOpenPdfUrl(localPdfPath);
+  } else if (
+    storedPdf &&
+    hasSupabaseStorageConfig() &&
+    storedPdf.bucket !== localPdfBucket
+  ) {
     try {
       pdfUrl = await createEInvoicePdfSignedUrl(
         storedPdf.bucket,
@@ -1875,8 +1883,9 @@ async function handler(req, res) {
         const bucket = cleanText(invoice.e_invoice_pdf_bucket);
         const objectPath = cleanText(invoice.e_invoice_pdf_path);
 
-        // Yerel arşiv: temp dosya varsa doğrudan aç; yoksa CRM verisinden üret.
-        if (localOnly || bucket === localPdfBucket) {
+        // Yerel arşiv yalnızca Electron/local-first. Bulutta localPdfBucket
+        // (eski /tmp yolu) varsa imzalı URL yerine aşağıda yeniden üret.
+        if (localOnly) {
           let localPdfPath = null;
           let pdfBuffer = null;
           if (
@@ -1943,7 +1952,7 @@ async function handler(req, res) {
           });
         }
 
-        if (hasSupabaseStorageConfig()) {
+        if (hasSupabaseStorageConfig() && bucket !== localPdfBucket) {
           try {
             const pdfUrl = await createEInvoicePdfSignedUrl(
               bucket,

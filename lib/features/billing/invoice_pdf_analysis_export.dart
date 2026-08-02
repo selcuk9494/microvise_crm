@@ -49,7 +49,8 @@ Future<Uint8List> buildInvoicePdfAnalysisExcelBytes(
       excel.TextCellValue(row.currency),
       excel.TextCellValue(row.invoiceTotal.toStringAsFixed(2)),
       ...vatRates.map(
-        (rate) => excel.TextCellValue(row.taxAmountForRate(rate).toStringAsFixed(2)),
+        (rate) =>
+            excel.TextCellValue(row.taxAmountForRate(rate).toStringAsFixed(2)),
       ),
       excel.TextCellValue(row.totalTaxAmount.toStringAsFixed(2)),
     ]);
@@ -70,15 +71,8 @@ Future<Uint8List> buildInvoicePdfAnalysisExcelBytes(
   if (rows.isNotEmpty) {
     sheet.appendRow([excel.TextCellValue('')]);
     rowIndex += 1;
-    sheet.appendRow([
-      excel.TextCellValue('Dip Toplam - KDV Oranina Gore'),
-    ]);
-    _applyRowStyle(
-      sheet,
-      rowIndex: rowIndex,
-      columnCount: 1,
-      style: boldStyle,
-    );
+    sheet.appendRow([excel.TextCellValue('Dip Toplam - KDV Oranina Gore')]);
+    _applyRowStyle(sheet, rowIndex: rowIndex, columnCount: 1, style: boldStyle);
     rowIndex += 1;
     sheet.appendRow([
       excel.TextCellValue('Para Birimi'),
@@ -90,12 +84,7 @@ Future<Uint8List> buildInvoicePdfAnalysisExcelBytes(
       excel.TextCellValue('Vergili Toplam'),
       excel.TextCellValue('TL Karsiligi'),
     ]);
-    _applyRowStyle(
-      sheet,
-      rowIndex: rowIndex,
-      columnCount: 8,
-      style: boldStyle,
-    );
+    _applyRowStyle(sheet, rowIndex: rowIndex, columnCount: 8, style: boldStyle);
     rowIndex += 1;
     for (final summary in summaries) {
       sheet.appendRow([
@@ -122,36 +111,66 @@ Future<Uint8List> buildInvoicePdfAnalysisExcelBytes(
       ]);
       final current = rowIndex;
       sheet
-          .cell(excel.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: current))
-          .cellStyle = tlHighlightStyle;
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: 3,
+                  rowIndex: current,
+                ),
+              )
+              .cellStyle =
+          tlHighlightStyle;
       sheet
-          .cell(excel.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: current))
-          .cellStyle = tlHighlightStyle;
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: 5,
+                  rowIndex: current,
+                ),
+              )
+              .cellStyle =
+          tlHighlightStyle;
       sheet
-          .cell(excel.CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: current))
-          .cellStyle = tlHighlightStyle;
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: 7,
+                  rowIndex: current,
+                ),
+              )
+              .cellStyle =
+          tlHighlightStyle;
       rowIndex += 1;
     }
     sheet.appendRow(_buildExcelRateSummaryTotalsRow(summaries));
     final totalRow = rowIndex;
-    _applyRowStyle(
-      sheet,
-      rowIndex: totalRow,
-      columnCount: 8,
-      style: boldStyle,
-    );
+    _applyRowStyle(sheet, rowIndex: totalRow, columnCount: 8, style: boldStyle);
     sheet
-        .cell(excel.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: totalRow))
-        .cellStyle = tlHighlightStyle;
+            .cell(
+              excel.CellIndex.indexByColumnRow(
+                columnIndex: 3,
+                rowIndex: totalRow,
+              ),
+            )
+            .cellStyle =
+        tlHighlightStyle;
     sheet
-        .cell(excel.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: totalRow))
-        .cellStyle = tlHighlightStyle;
+            .cell(
+              excel.CellIndex.indexByColumnRow(
+                columnIndex: 5,
+                rowIndex: totalRow,
+              ),
+            )
+            .cellStyle =
+        tlHighlightStyle;
     sheet
-        .cell(excel.CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: totalRow))
-        .cellStyle = tlHighlightStyle;
+            .cell(
+              excel.CellIndex.indexByColumnRow(
+                columnIndex: 7,
+                rowIndex: totalRow,
+              ),
+            )
+            .cellStyle =
+        tlHighlightStyle;
     rowIndex += 1;
   }
-
 
   final bytes = file.encode();
   return Uint8List.fromList(bytes ?? const <int>[]);
@@ -222,9 +241,7 @@ Future<Uint8List> buildInvoicePdfAnalysisPdfBytes(
             fontSize: 10,
           ),
           cellStyle: const pw.TextStyle(fontSize: 9),
-          headerDecoration: const pw.BoxDecoration(
-            color: PdfColors.grey200,
-          ),
+          headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
           cellAlignment: pw.Alignment.centerLeft,
           headers: [
             'Fatura No',
@@ -291,7 +308,9 @@ List<String> _buildPdfBaseTotalsRow(
     '',
     '',
     _sumBaseAmounts(rows).toStringAsFixed(2),
-    ...vatRates.map((rate) => _sumBaseAmountsForRate(rows, rate).toStringAsFixed(2)),
+    ...vatRates.map(
+      (rate) => _sumBaseAmountsForRate(rows, rate).toStringAsFixed(2),
+    ),
     '',
   ];
 }
@@ -341,10 +360,7 @@ List<_RateSummary> _buildRateSummaries(
 }
 
 class _RateSummary {
-  _RateSummary({
-    required this.currency,
-    required this.taxRate,
-  });
+  _RateSummary({required this.currency, required this.taxRate});
 
   final String currency;
   final double taxRate;
@@ -453,7 +469,9 @@ pw.Widget _buildPdfRateSummaryTable(List<_RateSummary> summaries) {
   );
 }
 
-List<excel.CellValue> _buildExcelRateSummaryTotalsRow(List<_RateSummary> summaries) {
+List<excel.CellValue> _buildExcelRateSummaryTotalsRow(
+  List<_RateSummary> summaries,
+) {
   return [
     excel.TextCellValue('Toplam'),
     excel.TextCellValue(''),
@@ -496,8 +514,12 @@ double _computeTlEquivalent(
   if (invoiceDate == null) return 0;
   for (final rule in fxRules) {
     final sameCurrency = rule.currency.toUpperCase() == currency.toUpperCase();
-    final startsOk = !_normalizeDate(invoiceDate).isBefore(_normalizeDate(rule.startDate));
-    final endsOk = !_normalizeDate(invoiceDate).isAfter(_normalizeDate(rule.endDate));
+    final startsOk = !_normalizeDate(
+      invoiceDate,
+    ).isBefore(_normalizeDate(rule.startDate));
+    final endsOk = !_normalizeDate(
+      invoiceDate,
+    ).isAfter(_normalizeDate(rule.endDate));
     if (sameCurrency && startsOk && endsOk) {
       return amount * rule.rateToTry;
     }
@@ -505,13 +527,17 @@ double _computeTlEquivalent(
   return 0;
 }
 
-DateTime _normalizeDate(DateTime value) => DateTime(value.year, value.month, value.day);
+DateTime _normalizeDate(DateTime value) =>
+    DateTime(value.year, value.month, value.day);
 
 double _sumBaseAmounts(List<InvoicePdfAnalysisListRow> rows) {
   return rows.fold<double>(0, (sum, row) => sum + row.totalBaseAmount);
 }
 
-double _sumBaseAmountsForRate(List<InvoicePdfAnalysisListRow> rows, double rate) {
+double _sumBaseAmountsForRate(
+  List<InvoicePdfAnalysisListRow> rows,
+  double rate,
+) {
   return rows.fold<double>(0, (sum, row) => sum + row.baseAmountForRate(rate));
 }
 
@@ -535,21 +561,20 @@ void _applyRowStyle(
 }) {
   for (var columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
     sheet
-        .cell(
-          excel.CellIndex.indexByColumnRow(
-            columnIndex: columnIndex,
-            rowIndex: rowIndex,
-          ),
-        )
-        .cellStyle = style;
+            .cell(
+              excel.CellIndex.indexByColumnRow(
+                columnIndex: columnIndex,
+                rowIndex: rowIndex,
+              ),
+            )
+            .cellStyle =
+        style;
   }
 }
 
 List<double> _collectVatRates(List<InvoicePdfAnalysisListRow> rows) {
   final rates = <double>{
-    for (final row in rows)
-      ...row.vatBreakdowns.map((item) => item.taxRate),
-  }.toList(growable: false)
-    ..sort();
+    for (final row in rows) ...row.vatBreakdowns.map((item) => item.taxRate),
+  }.toList(growable: false)..sort();
   return rates;
 }

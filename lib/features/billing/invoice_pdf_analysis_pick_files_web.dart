@@ -4,10 +4,7 @@ import 'dart:html' as html;
 import 'dart:typed_data';
 
 class PickedPdfFile {
-  const PickedPdfFile({
-    required this.name,
-    required this.bytes,
-  });
+  const PickedPdfFile({required this.name, required this.bytes});
 
   final String name;
   final List<int> bytes;
@@ -22,10 +19,7 @@ Future<List<PickedPdfFile>> pickInvoicePdfFiles() async {
 
   try {
     input.click();
-    await Future.any([
-      input.onChange.first,
-      input.onInput.first,
-    ]);
+    await Future.any([input.onChange.first, input.onInput.first]);
     final files = input.files;
     if (files == null || files.isEmpty) return const [];
 

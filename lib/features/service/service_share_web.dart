@@ -10,22 +10,19 @@ Future<void> shareServicePdf({
   required ServiceDetail detail,
   required List<String> accessoryNames,
 }) async {
-  final bytes = await buildServicePdfBytes(detail: detail, accessoryNames: accessoryNames);
+  final bytes = await buildServicePdfBytes(
+    detail: detail,
+    accessoryNames: accessoryNames,
+  );
 
   final filename = _safeFilename(
     'servis_${detail.id}_${DateTime.now().toIso8601String().substring(0, 10)}.pdf',
   );
 
   try {
-    await Share.shareXFiles(
-      [
-        XFile.fromData(
-          bytes,
-          mimeType: 'application/pdf',
-          name: filename,
-        ),
-      ],
-    );
+    await Share.shareXFiles([
+      XFile.fromData(bytes, mimeType: 'application/pdf', name: filename),
+    ]);
     return;
   } catch (_) {}
 

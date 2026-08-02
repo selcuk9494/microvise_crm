@@ -30,15 +30,9 @@ Future<void> shareWorkOrderPdf({
   );
 
   try {
-    await Share.shareXFiles(
-      [
-        XFile.fromData(
-          bytes,
-          mimeType: 'application/pdf',
-          name: filename,
-        ),
-      ],
-    );
+    await Share.shareXFiles([
+      XFile.fromData(bytes, mimeType: 'application/pdf', name: filename),
+    ]);
     return;
   } catch (_) {}
 

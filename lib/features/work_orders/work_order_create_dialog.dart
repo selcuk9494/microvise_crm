@@ -803,18 +803,9 @@ class _CreateWorkOrderDialogState
     return DropdownButtonFormField<bool?>(
       initialValue: _paymentRequired,
       items: const [
-        DropdownMenuItem<bool?>(
-          value: null,
-          child: Text('Seçiniz'),
-        ),
-        DropdownMenuItem<bool?>(
-          value: true,
-          child: Text('Ödeme alınacak'),
-        ),
-        DropdownMenuItem<bool?>(
-          value: false,
-          child: Text('Ödeme alınmayacak'),
-        ),
+        DropdownMenuItem<bool?>(value: null, child: Text('Seçiniz')),
+        DropdownMenuItem<bool?>(value: true, child: Text('Ödeme alınacak')),
+        DropdownMenuItem<bool?>(value: false, child: Text('Ödeme alınmayacak')),
       ],
       validator: (v) => v == null ? 'Ödeme seçimi zorunlu.' : null,
       onChanged: _saving ? null : (v) => setState(() => _paymentRequired = v),
@@ -826,17 +817,15 @@ class _CreateWorkOrderDialogState
     return DropdownButtonFormField<String>(
       initialValue: _selectedStatus,
       items: const [
-        DropdownMenuItem<String>(
-          value: 'open',
-          child: Text('Açık'),
-        ),
+        DropdownMenuItem<String>(value: 'open', child: Text('Açık')),
         DropdownMenuItem<String>(
           value: 'approval_pending',
           child: Text('Onay Bekliyor'),
         ),
       ],
-      onChanged:
-          _saving ? null : (v) => setState(() => _selectedStatus = v ?? 'open'),
+      onChanged: _saving
+          ? null
+          : (v) => setState(() => _selectedStatus = v ?? 'open'),
       decoration: const InputDecoration(labelText: 'Durum'),
     );
   }
@@ -958,7 +947,9 @@ class _CreateWorkOrderDialogState
         ..._users.map(
           (u) => DropdownMenuItem<String?>(
             value: u.id,
-            child: Text((u.fullName ?? '').trim().isEmpty ? u.id : u.fullName!.trim()),
+            child: Text(
+              (u.fullName ?? '').trim().isEmpty ? u.id : u.fullName!.trim(),
+            ),
           ),
         ),
       ],

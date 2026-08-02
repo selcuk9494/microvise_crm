@@ -7,7 +7,9 @@ final authStateProvider = StreamProvider<void>((ref) {
 });
 
 final apiAccessTokenProvider =
-    NotifierProvider<ApiAccessTokenNotifier, String?>(ApiAccessTokenNotifier.new);
+    NotifierProvider<ApiAccessTokenNotifier, String?>(
+      ApiAccessTokenNotifier.new,
+    );
 
 class ApiAccessTokenNotifier extends Notifier<String?> {
   @override

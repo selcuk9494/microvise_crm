@@ -32,7 +32,11 @@ Future<bool> printApplicationFormsBulk(
   if (records.isEmpty) return false;
   final resolved = settings ?? ApplicationFormPrintSettings.defaults;
 
-  final base = _buildPrintableHtml(records.first, kind: kind, settings: resolved);
+  final base = _buildPrintableHtml(
+    records.first,
+    kind: kind,
+    settings: resolved,
+  );
   final (prefix, suffix) = _splitHtmlAroundBody(base);
 
   final pages = records
@@ -51,10 +55,7 @@ Future<bool> printApplicationFormsBulk(
   return true;
 }
 
-void _openInNewTab(
-  String htmlContent, {
-  required Duration revokeAfter,
-}) {
+void _openInNewTab(String htmlContent, {required Duration revokeAfter}) {
   final blob = html.Blob([htmlContent], 'text/html');
   final url = html.Url.createObjectUrlFromBlob(blob);
   try {
@@ -70,9 +71,15 @@ void _openInNewTab(
 }
 
 String _extractBody(String input) {
-  final openMatch = RegExp(r'<body[^>]*>', caseSensitive: false).firstMatch(input);
+  final openMatch = RegExp(
+    r'<body[^>]*>',
+    caseSensitive: false,
+  ).firstMatch(input);
   if (openMatch == null) return '';
-  final closeMatches = RegExp(r'</body\s*>', caseSensitive: false).allMatches(input);
+  final closeMatches = RegExp(
+    r'</body\s*>',
+    caseSensitive: false,
+  ).allMatches(input);
   if (closeMatches.isEmpty) return '';
   final closeIndex = closeMatches.last.start;
   final start = openMatch.end;
@@ -81,9 +88,15 @@ String _extractBody(String input) {
 }
 
 (String, String) _splitHtmlAroundBody(String input) {
-  final openMatch = RegExp(r'<body[^>]*>', caseSensitive: false).firstMatch(input);
+  final openMatch = RegExp(
+    r'<body[^>]*>',
+    caseSensitive: false,
+  ).firstMatch(input);
   if (openMatch == null) return (input, '');
-  final closeMatches = RegExp(r'</body\s*>', caseSensitive: false).allMatches(input);
+  final closeMatches = RegExp(
+    r'</body\s*>',
+    caseSensitive: false,
+  ).allMatches(input);
   if (closeMatches.isEmpty) return (input, '');
   final closeIndex = closeMatches.last.start;
   final start = openMatch.end;

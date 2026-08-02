@@ -9,6 +9,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/empty_state_card.dart';
 import '../../core/utils/app_time.dart';
 
 class WorkOrderPaymentItem {
@@ -37,7 +38,7 @@ class WorkOrderPaymentItem {
     final amount = amountRaw is num
         ? amountRaw.toDouble()
         : double.tryParse(amountRaw?.toString().replaceAll(',', '.') ?? '') ??
-            0.0;
+              0.0;
     return WorkOrderPaymentItem(
       id: json['id']?.toString() ?? '',
       workOrderId: json['work_order_id']?.toString(),
@@ -53,41 +54,45 @@ class WorkOrderPaymentItem {
   }
 }
 
-final workOrderPaymentsProvider = FutureProvider.family<
-    List<WorkOrderPaymentItem>,
-    ({String from, String to})>((ref, range) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient != null) {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: {
-        'resource': 'work_order_payments',
-        'from': range.from,
-        'to': range.to,
-      },
-    );
-    return ((response['items'] as List?) ?? const [])
-        .whereType<Map>()
-        .map((e) => e.cast<String, dynamic>())
-        .map(WorkOrderPaymentItem.fromJson)
-        .toList(growable: false);
-  }
+final workOrderPaymentsProvider =
+    FutureProvider.family<
+      List<WorkOrderPaymentItem>,
+      ({String from, String to})
+    >((ref, range) async {
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {
+            'resource': 'work_order_payments',
+            'from': range.from,
+            'to': range.to,
+          },
+        );
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .map(WorkOrderPaymentItem.fromJson)
+            .toList(growable: false);
+      }
 
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
 
-  final rows = await client
-      .from('payments')
-      .select('id,work_order_id,customer_id,amount,currency,paid_at,is_active')
-      .eq('is_active', true)
-      .gte('paid_at', '${range.from}T00:00:00')
-      .lte('paid_at', '${range.to}T23:59:59')
-      .order('paid_at', ascending: false);
+      final rows = await client
+          .from('payments')
+          .select(
+            'id,work_order_id,customer_id,amount,currency,paid_at,is_active',
+          )
+          .eq('is_active', true)
+          .gte('paid_at', '${range.from}T00:00:00')
+          .lte('paid_at', '${range.to}T23:59:59')
+          .order('paid_at', ascending: false);
 
-  return (rows as List)
-      .map((e) => WorkOrderPaymentItem.fromJson(e as Map<String, dynamic>))
-      .toList(growable: false);
-});
+      return (rows as List)
+          .map((e) => WorkOrderPaymentItem.fromJson(e as Map<String, dynamic>))
+          .toList(growable: false);
+    });
 
 class WorkOrderPaymentsScreen extends ConsumerStatefulWidget {
   const WorkOrderPaymentsScreen({super.key});
@@ -97,7 +102,8 @@ class WorkOrderPaymentsScreen extends ConsumerStatefulWidget {
       _WorkOrderPaymentsScreenState();
 }
 
-class _WorkOrderPaymentsScreenState extends ConsumerState<WorkOrderPaymentsScreen> {
+class _WorkOrderPaymentsScreenState
+    extends ConsumerState<WorkOrderPaymentsScreen> {
   DateTime _from = DateTime.now();
   DateTime _to = DateTime.now();
 
@@ -105,8 +111,9 @@ class _WorkOrderPaymentsScreenState extends ConsumerState<WorkOrderPaymentsScree
   Widget build(BuildContext context) {
     final fromStr = DateFormat('yyyy-MM-dd').format(_from);
     final toStr = DateFormat('yyyy-MM-dd').format(_to);
-    final paymentsAsync =
-        ref.watch(workOrderPaymentsProvider((from: fromStr, to: toStr)));
+    final paymentsAsync = ref.watch(
+      workOrderPaymentsProvider((from: fromStr, to: toStr)),
+    );
 
     return AppPageLayout(
       title: 'Tahsilatlar',
@@ -195,11 +202,7 @@ class _WorkOrderPaymentsScreenState extends ConsumerState<WorkOrderPaymentsScree
                 );
 
                 return wide
-                    ? Row(
-                        children: [
-                          Expanded(child: controls),
-                        ],
-                      )
+                    ? Row(children: [Expanded(child: controls)])
                     : controls;
               },
             ),
@@ -209,8 +212,10 @@ class _WorkOrderPaymentsScreenState extends ConsumerState<WorkOrderPaymentsScree
             child: paymentsAsync.when(
               data: (items) {
                 if (items.isEmpty) {
-                  return const AppCard(
-                    child: Center(child: Text('Kayıt bulunamadı.')),
+                  return const EmptyStateCard(
+                    icon: Icons.payments_rounded,
+                    title: 'Kayıt bulunamadı',
+                    message: 'Seçili tarih aralığında tahsilat yok.',
                   );
                 }
 
@@ -247,25 +252,24 @@ class _WorkOrderPaymentsScreenState extends ConsumerState<WorkOrderPaymentsScree
                         padding: EdgeInsets.zero,
                         itemCount: items.length,
                         separatorBuilder: (context, index) => const Gap(10),
-                        itemBuilder: (context, index) => _PaymentRow(
-                          item: items[index],
-                        ),
+                        itemBuilder: (context, index) =>
+                            _PaymentRow(item: items[index]),
                       ),
                     ),
                   ],
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => AppCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    'Tahsilatlar yüklenemedi: $error',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: AppTheme.textMuted),
+              error: (error, _) => EmptyStateCard(
+                icon: Icons.cloud_off_rounded,
+                title: 'Tahsilatlar yüklenemedi',
+                message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
+                action: OutlinedButton.icon(
+                  onPressed: () => ref.invalidate(
+                    workOrderPaymentsProvider((from: fromStr, to: toStr)),
                   ),
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Tekrar Dene'),
                 ),
               ),
             ),
@@ -285,8 +289,10 @@ class _PaymentRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final paidAt = item.paidAt == null
         ? null
-        : DateFormat('d MMM y HH:mm', 'tr_TR')
-            .format(AppTime.toTr(item.paidAt!));
+        : DateFormat(
+            'd MMM y HH:mm',
+            'tr_TR',
+          ).format(AppTime.toTr(item.paidAt!));
 
     return AppCard(
       padding: const EdgeInsets.all(14),
@@ -298,15 +304,17 @@ class _PaymentRow extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppTheme.primary.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
+              border: Border.all(
+                color: AppTheme.primary.withValues(alpha: 0.18),
+              ),
             ),
             child: Center(
               child: Text(
                 item.currency,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      color: AppTheme.primary,
-                    ),
+                  fontWeight: FontWeight.w900,
+                  color: AppTheme.primary,
+                ),
               ),
             ),
           ),
@@ -317,9 +325,9 @@ class _PaymentRow extends StatelessWidget {
               children: [
                 Text(
                   '${item.amount.toStringAsFixed(2)} ${item.currency}',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900),
                 ),
                 const Gap(4),
                 Text(
@@ -333,10 +341,9 @@ class _PaymentRow extends StatelessWidget {
                   ].whereType<String>().join(' • '),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: AppTheme.textMuted),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -345,10 +352,9 @@ class _PaymentRow extends StatelessWidget {
             const Gap(10),
             Text(
               paidAt,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: AppTheme.textMuted),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             ),
           ],
         ],

@@ -129,39 +129,39 @@ Color _parseHexColor(String hex) {
 
 final workOrderRegionThemeProvider =
     FutureProvider<WorkOrderRegionThemeResolver>((ref) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient == null) return WorkOrderRegionThemeResolver.defaults();
-  try {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: const {'resource': 'definition_region_colors'},
-    );
-    final maps = ((response['items'] as List?) ?? const [])
-        .whereType<Map>()
-        .map((e) => e.cast<String, dynamic>())
-        .toList(growable: false);
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient == null) return WorkOrderRegionThemeResolver.defaults();
+      try {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: const {'resource': 'definition_region_colors'},
+        );
+        final maps = ((response['items'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .toList(growable: false);
 
-    final base = <String, WorkOrderRegionColor>{
-      for (final e in WorkOrderRegionThemeResolver.defaults().items) e.regionKey: e,
-    };
+        final base = <String, WorkOrderRegionColor>{
+          for (final e in WorkOrderRegionThemeResolver.defaults().items)
+            e.regionKey: e,
+        };
 
-    for (final m in maps) {
-      final key = (m['region_key'] ?? '').toString().trim();
-      if (key.isEmpty) continue;
-      final label = (m['label'] ?? key).toString();
-      final bg = _parseHexColor((m['bg_color'] ?? '').toString());
-      final border = _parseHexColor((m['border_color'] ?? '').toString());
-      base[key] = WorkOrderRegionColor(
-        regionKey: key,
-        label: label,
-        bgColor: bg,
-        borderColor: border,
-      );
-    }
+        for (final m in maps) {
+          final key = (m['region_key'] ?? '').toString().trim();
+          if (key.isEmpty) continue;
+          final label = (m['label'] ?? key).toString();
+          final bg = _parseHexColor((m['bg_color'] ?? '').toString());
+          final border = _parseHexColor((m['border_color'] ?? '').toString());
+          base[key] = WorkOrderRegionColor(
+            regionKey: key,
+            label: label,
+            bgColor: bg,
+            borderColor: border,
+          );
+        }
 
-    return WorkOrderRegionThemeResolver(base);
-  } catch (_) {
-    return WorkOrderRegionThemeResolver.defaults();
-  }
-});
-
+        return WorkOrderRegionThemeResolver(base);
+      } catch (_) {
+        return WorkOrderRegionThemeResolver.defaults();
+      }
+    });

@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart';
+
 class AppConfig {
   static const _defaultSupabaseUrl = 'https://xvbczyhvmmcvqezjjpbn.supabase.co';
   static const _defaultSupabasePublishableKey =
       'sb_publishable_H5LsiU6dSi-8ymL9rYBjIg_NPzJ8hAq';
+  static const _defaultApiBaseUrl = 'https://crm.microvise.net/api';
   static const _envSupabasePublishableKey = String.fromEnvironment(
     'SUPABASE_PUBLISHABLE_KEY',
     defaultValue: '',
@@ -34,7 +37,8 @@ class AppConfig {
 
   static String? get apiBaseUrl {
     if (_envApiBaseUrl.isNotEmpty) return _envApiBaseUrl;
-    // Electron / local_web: göreli /api. Cloud dart-define ile override edilir.
-    return '/api';
+    // Web (Electron / same-origin): relative /api. Native mobile needs absolute URL.
+    if (kIsWeb) return '/api';
+    return _defaultApiBaseUrl;
   }
 }

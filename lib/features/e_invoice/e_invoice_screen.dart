@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +18,7 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/empty_state_card.dart';
 import '../customers/customer_detail_screen.dart';
 import '../customers/customer_model.dart';
 import '../customers/customers_providers.dart';
@@ -57,12 +59,12 @@ String _friendlyPdfError(Object error) {
 
 /// PDF aç/indir: force yalnızca yeniden üretimi ister; Maliye yenilemez.
 Map<String, dynamic> _archivePdfRequestBody(String invoiceId) => {
-      'action': 'archive',
-      'invoiceId': invoiceId,
-      'force': true,
-      'includePdf': true,
-      'refreshOfficial': false,
-    };
+  'action': 'archive',
+  'invoiceId': invoiceId,
+  'force': true,
+  'includePdf': true,
+  'refreshOfficial': false,
+};
 
 final eInvoiceSettingsProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
@@ -133,8 +135,7 @@ Uri _akinsoftUri(String path, [Map<String, String>? queryParameters]) {
       base.host == '::1';
   // Flutter web-server (ör. :3000/:8080) ayrı local_server (:4000) kullanır.
   // Electron / local_server aynı origin’de /api/akinsoft/ kullanır.
-  final separateBridge =
-      isLocalWeb && (base.port == 3000 || base.port == 8080);
+  final separateBridge = isLocalWeb && (base.port == 3000 || base.port == 8080);
   final uri = separateBridge
       ? Uri.parse('http://127.0.0.1:4000/api/akinsoft/')
       : base.resolve('/api/akinsoft/');
@@ -242,11 +243,7 @@ class EInvoiceScreen extends ConsumerWidget {
         children: [
           _StatusStrip(settingsAsync: settingsAsync),
           const Gap(8),
-          Expanded(
-            child: ClipRect(
-              child: child,
-            ),
-          ),
+          Expanded(child: ClipRect(child: child)),
         ],
       ),
     );
@@ -265,7 +262,7 @@ class EInvoiceScreen extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             _TypeTile(
-              icon: Icons.arrow_outward_outlined,
+              icon: Icons.arrow_outward_rounded,
               color: AppTheme.primary,
               title: 'Satış Faturası',
               subtitle: 'Müşteriye kesilecek e-fatura',
@@ -273,7 +270,7 @@ class EInvoiceScreen extends ConsumerWidget {
             ),
             const Gap(8),
             _TypeTile(
-              icon: Icons.south_west_outlined,
+              icon: Icons.south_west_rounded,
               color: AppTheme.warning,
               title: 'Alış Faturası',
               subtitle: 'Tedarikçi/cari borç kaydı',
@@ -391,7 +388,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     }
     if (invoicesAsync.hasError && _lastInvoices.isEmpty) {
       return _ErrorCard(
-        message: 'Faturalar yüklenemedi: ${invoicesAsync.error}',
+        message: 'Faturalar yüklenemedi.',
+        onRetry: () => ref.invalidate(invoicesProvider(_filter)),
       );
     }
     final items = invoicesAsync.hasValue
@@ -486,31 +484,31 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             _Metric(
               'Satış',
               sales.toString(),
-              Icons.arrow_outward_outlined,
+              Icons.arrow_outward_rounded,
               AppTheme.metricBlue,
             ),
             _Metric(
               'Alış',
               purchases.toString(),
-              Icons.south_west_outlined,
+              Icons.south_west_rounded,
               AppTheme.blueBright,
             ),
             _Metric(
               'Açık Fatura',
               open.toString(),
-              Icons.pending_actions_outlined,
+              Icons.pending_actions_rounded,
               open > 0 ? AppTheme.metricAmber : AppTheme.metricBlue,
             ),
             _Metric(
               'TL Toplam',
               widget.moneyTry.format(tryTotal),
-              Icons.payments_outlined,
+              Icons.payments_rounded,
               AppTheme.primary,
             ),
             _Metric(
               'USD Toplam',
               usdMoney.format(usdTotal),
-              Icons.attach_money_outlined,
+              Icons.attach_money_rounded,
               AppTheme.primaryDark,
             ),
           ],
@@ -1243,9 +1241,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'PDF indirme başarısız; dosyalar tek tek açılıyor.',
-            ),
+            content: Text('PDF indirme başarısız; dosyalar tek tek açılıyor.'),
           ),
         );
         for (final item in downloads) {
@@ -1272,7 +1268,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Toplu indir başarısız: ${_friendlyPdfError(error)}')),
+        SnackBar(
+          content: Text('Toplu indir başarısız: ${_friendlyPdfError(error)}'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _bulkProcessing = false);
@@ -1402,9 +1400,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_akinsoftBridgeError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_akinsoftBridgeError(error))));
     } finally {
       if (mounted) setState(() => _bulkProcessing = false);
     }
@@ -1527,9 +1525,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_akinsoftBridgeError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_akinsoftBridgeError(error))));
     } finally {
       if (mounted) setState(() => _bulkProcessing = false);
     }
@@ -1809,19 +1807,17 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             context: context,
             builder: (context) => AlertDialog(
               title: Text(
-                isProduction
-                    ? 'Canlı API’ye gönder'
-                    : 'Test API’ye gönder',
+                isProduction ? 'Canlı API’ye gönder' : 'Test API’ye gönder',
               ),
               content: Text(
                 isProduction
                     ? '${selected.length} fatura canlı (production) Maliye API’sine gönderilecek.\n\n'
-                        'Bu işlem geri alınamaz. Devam edilsin mi?'
-                        '${skippedSent > 0 ? '\n\nDaha önce gönderilmiş $skippedSent fatura atlanacak.' : ''}'
-                        '${skippedManual > 0 ? '\n\nManuel işaretli $skippedManual fatura atlanacak (API’ye gönderilmez).' : ''}'
+                          'Bu işlem geri alınamaz. Devam edilsin mi?'
+                          '${skippedSent > 0 ? '\n\nDaha önce gönderilmiş $skippedSent fatura atlanacak.' : ''}'
+                          '${skippedManual > 0 ? '\n\nManuel işaretli $skippedManual fatura atlanacak (API’ye gönderilmez).' : ''}'
                     : '${selected.length} fatura için payload hazırlanıp test API’ye gönderilsin mi?'
-                        '${skippedSent > 0 ? '\n\nDaha önce gönderilmiş $skippedSent fatura atlanacak.' : ''}'
-                        '${skippedManual > 0 ? '\n\nManuel işaretli $skippedManual fatura atlanacak (API’ye gönderilmez).' : ''}',
+                          '${skippedSent > 0 ? '\n\nDaha önce gönderilmiş $skippedSent fatura atlanacak.' : ''}'
+                          '${skippedManual > 0 ? '\n\nManuel işaretli $skippedManual fatura atlanacak (API’ye gönderilmez).' : ''}',
               ),
               actions: [
                 TextButton(
@@ -2692,21 +2688,21 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       final actions = <Widget>[
         _InvoiceIconAction(
           tooltip: sendTooltip,
-          icon: _busy ? Icons.hourglass_top_outlined : Icons.send_outlined,
+          icon: _busy ? Icons.hourglass_top_rounded : Icons.send_rounded,
           tone: _InvoiceActionTone.primary,
           onPressed: _busy || !canSend ? null : () => _prepare(send: true),
         ),
         if (alreadySent)
           _InvoiceIconAction(
             tooltip: 'PDF oluştur / aç',
-            icon: Icons.picture_as_pdf_outlined,
+            icon: Icons.picture_as_pdf_rounded,
             tone: _InvoiceActionTone.danger,
             onPressed: _busy ? null : _printOfficialPdf,
           )
         else
           _InvoiceIconAction(
             tooltip: 'PDF yazdır',
-            icon: Icons.print_outlined,
+            icon: Icons.print_rounded,
             onPressed: _busy ? null : _print,
           ),
         if ((!invoice.isLinkedToAkinsoft || invoice.needsAkinsoftNumberSync) &&
@@ -2717,14 +2713,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 ? 'Akınsoft fatura numarasını Maliye no ile güncelle'
                 : 'Akınsoft’a fatura gönder',
             icon: invoice.needsAkinsoftNumberSync
-                ? Icons.sync_outlined
-                : Icons.cloud_sync_outlined,
+                ? Icons.sync_rounded
+                : Icons.cloud_sync_rounded,
             tone: _InvoiceActionTone.success,
             onPressed: _busy ? null : _pushToAkinsoft,
           ),
         _InvoiceIconAction(
           tooltip: 'Düzenle',
-          icon: Icons.edit_outlined,
+          icon: Icons.edit_rounded,
           onPressed: _busy ? null : _edit,
         ),
         PopupMenuButton<String>(
@@ -2755,9 +2751,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               PopupMenuItem(
                 value: 'manual',
                 child: Text(
-                  isManual
-                      ? 'Manuel işareti geri al'
-                      : 'Manuel fatura kesildi',
+                  isManual ? 'Manuel işareti geri al' : 'Manuel fatura kesildi',
                 ),
               ),
             if (canMarkManualSent)
@@ -2787,10 +2781,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               child: Text(invoice.isActive ? 'Pasife al' : 'Aktifleştir'),
             ),
             if (!invoice.isActive)
-              const PopupMenuItem(
-                value: 'delete',
-                child: Text('Kalıcı sil'),
-              ),
+              const PopupMenuItem(value: 'delete', child: Text('Kalıcı sil')),
           ],
           child: Container(
             width: AppDenseList.action + 4,
@@ -2804,7 +2795,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               ),
             ),
             child: Icon(
-              Icons.more_horiz_outlined,
+              Icons.more_horiz_rounded,
               size: AppDenseList.actionIcon,
               color: AppTheme.textSoft,
             ),
@@ -2822,21 +2813,21 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     final actions = <Widget>[
       _InvoiceIconAction(
         tooltip: sendTooltip,
-        icon: _busy ? Icons.hourglass_top_outlined : Icons.send_outlined,
+        icon: _busy ? Icons.hourglass_top_rounded : Icons.send_rounded,
         tone: _InvoiceActionTone.primary,
         onPressed: _busy || !canSend ? null : () => _prepare(send: true),
       ),
       if (alreadySent)
         _InvoiceIconAction(
           tooltip: 'PDF oluştur / aç',
-          icon: Icons.picture_as_pdf_outlined,
+          icon: Icons.picture_as_pdf_rounded,
           tone: _InvoiceActionTone.danger,
           onPressed: _busy ? null : _printOfficialPdf,
         )
       else
         _InvoiceIconAction(
           tooltip: 'PDF yazdır',
-          icon: Icons.print_outlined,
+          icon: Icons.print_rounded,
           onPressed: _busy ? null : _print,
         ),
       if ((!invoice.isLinkedToAkinsoft || invoice.needsAkinsoftNumberSync) &&
@@ -2847,14 +2838,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               ? 'Akınsoft fatura numarasını Maliye no ile güncelle'
               : 'Akınsoft’a fatura gönder',
           icon: invoice.needsAkinsoftNumberSync
-              ? Icons.sync_outlined
-              : Icons.cloud_sync_outlined,
+              ? Icons.sync_rounded
+              : Icons.cloud_sync_rounded,
           tone: _InvoiceActionTone.success,
           onPressed: _busy ? null : _pushToAkinsoft,
         ),
       _InvoiceIconAction(
         tooltip: 'Düzenle',
-        icon: Icons.edit_outlined,
+        icon: Icons.edit_rounded,
         onPressed: _busy ? null : _edit,
       ),
       PopupMenuButton<String>(
@@ -2885,9 +2876,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             PopupMenuItem(
               value: 'manual',
               child: Text(
-                isManual
-                    ? 'Manuel işareti geri al'
-                    : 'Manuel fatura kesildi',
+                isManual ? 'Manuel işareti geri al' : 'Manuel fatura kesildi',
               ),
             ),
           if (canMarkManualSent)
@@ -2917,10 +2906,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             child: Text(invoice.isActive ? 'Pasife al' : 'Aktifleştir'),
           ),
           if (!invoice.isActive)
-            const PopupMenuItem(
-              value: 'delete',
-              child: Text('Kalıcı sil'),
-            ),
+            const PopupMenuItem(value: 'delete', child: Text('Kalıcı sil')),
         ],
         child: Container(
           width: AppDenseList.action,
@@ -2932,7 +2918,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             border: Border.all(color: AppTheme.border.withValues(alpha: 0.55)),
           ),
           child: Icon(
-            Icons.more_horiz_outlined,
+            Icons.more_horiz_rounded,
             size: AppDenseList.actionIcon,
             color: AppTheme.textSoft,
           ),
@@ -3007,8 +2993,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   children: [
                     AppDenseLeadingIcon(
                       icon: invoice.invoiceType == 'sales'
-                          ? Icons.arrow_outward_outlined
-                          : Icons.south_west_outlined,
+                          ? Icons.arrow_outward_rounded
+                          : Icons.south_west_rounded,
                       color: invoice.invoiceType == 'sales'
                           ? AppTheme.primary
                           : AppTheme.warning,
@@ -3099,7 +3085,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                       tone: _eInvoiceStatusTone(invoice),
                     ),
                     Tooltip(
-                      message: invoice.akinsoftSyncStatusEffective == 'error' &&
+                      message:
+                          invoice.akinsoftSyncStatusEffective == 'error' &&
                               (invoice.akinsoftSyncError?.trim().isNotEmpty ??
                                   false)
                           ? invoice.akinsoftSyncError!.trim()
@@ -3215,8 +3202,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                           ),
                           const Gap(8),
                           Text(
-                            DateFormat('d MMM yyyy', 'tr_TR')
-                                .format(invoice.invoiceDate),
+                            DateFormat(
+                              'd MMM yyyy',
+                              'tr_TR',
+                            ).format(invoice.invoiceDate),
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
                                   fontSize: 12,
@@ -3258,11 +3247,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                     ),
                   ),
                 ),
-                AppBadge(
-                  dense: true,
-                  label: statusLabel,
-                  tone: statusTone,
-                ),
+                AppBadge(dense: true, label: statusLabel, tone: statusTone),
                 if (syncError) ...[
                   const Gap(6),
                   Tooltip(
@@ -3586,7 +3571,9 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Manuel gönderildi durumu güncellenemedi: $error')),
+        SnackBar(
+          content: Text('Manuel gönderildi durumu güncellenemedi: $error'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -3710,20 +3697,27 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       );
       if (!mounted) return;
       if (!opened) {
-        if (pdfUrl.isNotEmpty) {
+        // Mobilde yerel open-pdf /tmp yolu anlamsız; yalnızca http(s) göster.
+        final canShowLink =
+            pdfUrl.isNotEmpty &&
+            !isLocalOpenPdfUrl(pdfUrl) &&
+            (pdfUrl.startsWith('https://') || pdfUrl.startsWith('http://'));
+        if (canShowLink) {
           await _showLinkFallbackDialog('Oluşturulan PDF', pdfUrl);
           return;
         }
         throw Exception('PDF paylaşılamadı.');
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PDF hazır.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('PDF hazır.')));
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Oluşturulan PDF açılamadı: ${_friendlyPdfError(error)}'),
+          content: Text(
+            'Oluşturulan PDF açılamadı: ${_friendlyPdfError(error)}',
+          ),
         ),
       );
     } finally {
@@ -3772,7 +3766,9 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('WhatsApp gönderimi başarısız: ${_friendlyPdfError(error)}'),
+          content: Text(
+            'WhatsApp gönderimi başarısız: ${_friendlyPdfError(error)}',
+          ),
         ),
       );
     } finally {
@@ -3812,8 +3808,9 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     String pdfUrl, {
     String? pdfBase64,
   }) async {
-    // Electron/yerel: open-pdf köprüsü shell.openPath ile açar; bulut URL gerekmez.
-    if (isLocalOpenPdfUrl(pdfUrl)) {
+    // Electron/web: open-pdf köprüsü shell.openPath ile açar. Mobilde bu URL
+    // geçersizdir; pdfBase64 / https ile devam et.
+    if (kIsWeb && isLocalOpenPdfUrl(pdfUrl)) {
       return openExternalUrl(pdfUrl);
     }
 
@@ -3826,9 +3823,11 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         ? '$number.pdf'
         : '${number}_$customer.pdf';
 
+    final shareUrl = isLocalOpenPdfUrl(pdfUrl) ? '' : pdfUrl;
+
     try {
       if (await shareEInvoicePdf(
-        url: pdfUrl,
+        url: shareUrl,
         fileName: fileName,
         shareText: shareText,
         pdfBase64: pdfBase64,
@@ -3838,8 +3837,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     } catch (_) {
       // Paylaşım başarısızsa bağlantıyı açmaya geri düşülür.
     }
-    if (pdfUrl.trim().isEmpty) return false;
-    return openExternalUrl(pdfUrl);
+    if (shareUrl.trim().isEmpty) return false;
+    return openExternalUrl(shareUrl);
   }
 
   Future<Invoice?> _loadInvoiceDetail() async {
@@ -4021,11 +4020,11 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         content: Text(
           syncNumber
               ? '${invoice.invoiceNumber} için Akınsoft kaydı Maliye e-fatura '
-                  'numarasına güncellensin mi?\n\n'
-                  'Akınsoft’ta yoksa Maliye numarasıyla yeni oluşturulur.'
+                    'numarasına güncellensin mi?\n\n'
+                    'Akınsoft’ta yoksa Maliye numarasıyla yeni oluşturulur.'
               : '${invoice.invoiceNumber} numaralı fatura Akınsoft’a yeni kayıt '
-                  'olarak yazılsın mı?\n\n'
-                  'Cari yoksa eklenir; stok eşleşmezse kalem açıklama olarak yazılır.',
+                    'olarak yazılsın mı?\n\n'
+                    'Cari yoksa eklenir; stok eşleşmezse kalem açıklama olarak yazılır.',
         ),
         actions: [
           TextButton(
@@ -4082,9 +4081,9 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_akinsoftBridgeError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_akinsoftBridgeError(error))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -4414,9 +4413,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.cloud_download_rounded, size: 18),
-                  label: Text(
-                    _pullingErp ? 'Çekiliyor…' : 'ERP’den Çek',
-                  ),
+                  label: Text(_pullingErp ? 'Çekiliyor…' : 'ERP’den Çek'),
                 ),
                 const Gap(10),
                 FilledButton.icon(
@@ -4527,47 +4524,47 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                               width: 300,
                               child: _InlineStockPriceCell(
                                 product: product,
-                                editing:
-                                    _editingPriceProductId == product.id,
+                                editing: _editingPriceProductId == product.id,
                                 onStartEdit: () => setState(
                                   () => _editingPriceProductId = product.id,
                                 ),
                                 onCancelEdit: () => setState(
                                   () => _editingPriceProductId = null,
                                 ),
-                                onSave: ({
-                                  required double exclusiveSalePrice,
-                                  required String currency,
-                                }) async {
-                                  final apiClient = ref.read(
-                                    apiClientProvider,
-                                  );
-                                  if (apiClient == null) {
-                                    throw Exception('API bağlantısı yok.');
-                                  }
-                                  await apiClient.postJson(
-                                    '/mutate',
-                                    body: {
-                                      'op': 'upsert',
-                                      'table': 'products',
-                                      'returning': 'row',
-                                      'values': {
-                                        'id': product.id,
-                                        'name': product.name,
-                                        'sale_price': exclusiveSalePrice,
-                                        'currency': currency,
-                                        'tax_rate': product.taxRate,
-                                        'is_active': true,
-                                      },
+                                onSave:
+                                    ({
+                                      required double exclusiveSalePrice,
+                                      required String currency,
+                                    }) async {
+                                      final apiClient = ref.read(
+                                        apiClientProvider,
+                                      );
+                                      if (apiClient == null) {
+                                        throw Exception('API bağlantısı yok.');
+                                      }
+                                      await apiClient.postJson(
+                                        '/mutate',
+                                        body: {
+                                          'op': 'upsert',
+                                          'table': 'products',
+                                          'returning': 'row',
+                                          'values': {
+                                            'id': product.id,
+                                            'name': product.name,
+                                            'sale_price': exclusiveSalePrice,
+                                            'currency': currency,
+                                            'tax_rate': product.taxRate,
+                                            'is_active': true,
+                                          },
+                                        },
+                                      );
+                                      ref.invalidate(productsProvider(null));
+                                      if (mounted) {
+                                        setState(
+                                          () => _editingPriceProductId = null,
+                                        );
+                                      }
                                     },
-                                  );
-                                  ref.invalidate(productsProvider(null));
-                                  if (mounted) {
-                                    setState(
-                                      () => _editingPriceProductId = null,
-                                    );
-                                  }
-                                },
                               ),
                             ),
                             SizedBox(
@@ -4579,15 +4576,9 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                             SizedBox(
                               width: 100,
                               child: TextButton.icon(
-                                onPressed: () => _showProductDialog(
-                                  context,
-                                  ref,
-                                  product,
-                                ),
-                                icon: const Icon(
-                                  Icons.edit_rounded,
-                                  size: 16,
-                                ),
+                                onPressed: () =>
+                                    _showProductDialog(context, ref, product),
+                                icon: const Icon(Icons.edit_rounded, size: 16),
                                 label: const Text('Düzenle'),
                               ),
                             ),
@@ -4601,7 +4592,10 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _ErrorCard(message: 'Stoklar yüklenemedi: $error'),
+      error: (error, _) => _ErrorCard(
+        message: 'Stoklar yüklenemedi.',
+        onRetry: () => ref.invalidate(productsProvider(null)),
+      ),
     );
   }
 
@@ -4628,9 +4622,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
     final minStock = TextEditingController(
       text: (product?.minStock ?? 0).toStringAsFixed(0),
     );
-    String currency = product == null
-        ? 'USD'
-        : _stockSaleCurrency(product);
+    String currency = product == null ? 'USD' : _stockSaleCurrency(product);
     String unit = product?.unit ?? 'Adet';
     String type = product?.productType ?? 'product';
     double taxRate = product?.taxRate ?? 20;
@@ -5037,18 +5029,16 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
             ),
             const Gap(12),
             if (balances.isEmpty)
-              const AppCard(
-                child: Padding(
-                  padding: EdgeInsets.all(18),
-                  child: Text('Cari hareket yok.'),
-                ),
+              const EmptyStateCard(
+                icon: Icons.account_balance_wallet_rounded,
+                title: 'Cari hareket yok',
+                message: 'Henüz kayıtlı bir cari hesap hareketi bulunmuyor.',
               )
             else if (filtered.isEmpty)
-              const AppCard(
-                child: Padding(
-                  padding: EdgeInsets.all(18),
-                  child: Text('Arama ile eşleşen cari bulunamadı.'),
-                ),
+              const EmptyStateCard(
+                icon: Icons.search_off_rounded,
+                title: 'Sonuç bulunamadı',
+                message: 'Arama ile eşleşen cari bulunamadı.',
               )
             else
               AppCard(
@@ -5093,8 +5083,10 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) =>
-          _ErrorCard(message: 'Cari hesap yüklenemedi: $error'),
+      error: (error, _) => _ErrorCard(
+        message: 'Cari hesap yüklenemedi.',
+        onRetry: () => ref.invalidate(accountBalancesProvider),
+      ),
     );
   }
 
@@ -5246,31 +5238,47 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
             FilledButton(
               onPressed: () async {
                 final apiClient = ref.read(apiClientProvider);
-                if (apiClient == null || customerId == null) return;
-                await apiClient.postJson(
-                  '/mutate',
-                  body: {
-                    'op': 'upsert',
-                    'table': 'transactions',
-                    'returning': 'row',
-                    'values': {
-                      'customer_id': customerId,
-                      'transaction_type': type,
-                      'amount': _parseDecimal(amount.text),
-                      'currency': currency,
-                      'exchange_rate': 1,
-                      'payment_method': method,
-                      'transaction_date': DateTime.now()
-                          .toIso8601String()
-                          .substring(0, 10),
-                      'description': desc.text.trim().isEmpty
-                          ? null
-                          : desc.text.trim(),
+                if (apiClient == null) return;
+                if (customerId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Lütfen bir cari seçin.')),
+                  );
+                  return;
+                }
+                try {
+                  await apiClient.postJson(
+                    '/mutate',
+                    body: {
+                      'op': 'upsert',
+                      'table': 'transactions',
+                      'returning': 'row',
+                      'values': {
+                        'customer_id': customerId,
+                        'transaction_type': type,
+                        'amount': _parseDecimal(amount.text),
+                        'currency': currency,
+                        'exchange_rate': 1,
+                        'payment_method': method,
+                        'transaction_date': DateTime.now()
+                            .toIso8601String()
+                            .substring(0, 10),
+                        'description': desc.text.trim().isEmpty
+                            ? null
+                            : desc.text.trim(),
+                      },
                     },
-                  },
-                );
-                ref.invalidate(accountBalancesProvider);
-                if (context.mounted) Navigator.of(context).pop();
+                  );
+                  ref.invalidate(accountBalancesProvider);
+                  if (context.mounted) Navigator.of(context).pop();
+                } catch (_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Kaydedilemedi. Lütfen tekrar deneyin.'),
+                      ),
+                    );
+                  }
+                }
               },
               child: const Text('Kaydet'),
             ),
@@ -5307,25 +5315,25 @@ class _AccountsSummaryGrid extends StatelessWidget {
           _AccountSummaryCard(
             title: 'Cari Sayısı',
             value: totalAccounts.toString(),
-            icon: Icons.groups_outlined,
+            icon: Icons.groups_rounded,
             color: AppTheme.primary,
           ),
           _AccountSummaryCard(
             title: 'Alacak',
             value: money.format(receivable),
-            icon: Icons.arrow_outward_outlined,
+            icon: Icons.arrow_outward_rounded,
             color: AppTheme.primary,
           ),
           _AccountSummaryCard(
             title: 'Borç',
             value: money.format(payable),
-            icon: Icons.south_west_outlined,
+            icon: Icons.south_west_rounded,
             color: AppTheme.error,
           ),
           _AccountSummaryCard(
             title: 'Satış / Tahsilat',
             value: '${money.format(sales)} / ${money.format(collections)}',
-            icon: Icons.receipt_long_outlined,
+            icon: Icons.receipt_long_rounded,
             color: AppTheme.blueBright,
           ),
         ];
@@ -6151,7 +6159,10 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _ErrorCard(message: 'Ayarlar yüklenemedi: $error'),
+      error: (error, _) => _ErrorCard(
+        message: 'Ayarlar yüklenemedi.',
+        onRetry: () => ref.invalidate(eInvoiceSettingsProvider),
+      ),
     );
   }
 
@@ -6573,7 +6584,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                     Positioned.fill(
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.78),
+                          color: AppTheme.surface.withValues(alpha: 0.92),
                           borderRadius: BorderRadius.circular(
                             AppTheme.radiusMd,
                           ),
@@ -7781,10 +7792,8 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                             ? const Center(child: Text('Cari bulunamadı.'))
                             : ListView.separated(
                                 itemCount: customers.length,
-                                separatorBuilder: (_, _) => Divider(
-                                  height: 1,
-                                  color: AppTheme.border,
-                                ),
+                                separatorBuilder: (_, _) =>
+                                    Divider(height: 1, color: AppTheme.border),
                                 itemBuilder: (context, index) {
                                   final customer = customers[index];
                                   final id = customer['id']?.toString() ?? '';
@@ -8507,7 +8516,9 @@ class _MetricsRow extends StatelessWidget {
                   vertical: 10,
                 ),
                 color: Color.alphaBlend(
-                  metric.accent.withValues(alpha: AppTheme.isDark ? 0.10 : 0.08),
+                  metric.accent.withValues(
+                    alpha: AppTheme.isDark ? 0.10 : 0.08,
+                  ),
                   AppTheme.surface,
                 ),
                 child: Row(
@@ -8604,14 +8615,24 @@ class _InfoPill extends StatelessWidget {
 }
 
 class _ErrorCard extends StatelessWidget {
-  const _ErrorCard({required this.message});
+  const _ErrorCard({required this.message, this.onRetry});
 
   final String message;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
-      child: Padding(padding: const EdgeInsets.all(16), child: Text(message)),
+    return EmptyStateCard(
+      icon: Icons.error_outline_rounded,
+      title: 'Bir şeyler ters gitti',
+      message: message,
+      action: onRetry == null
+          ? null
+          : OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Tekrar Dene'),
+            ),
     );
   }
 }
@@ -8758,9 +8779,9 @@ class _InlineStockPriceCellState extends State<_InlineStockPriceCell> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fiyat kaydedilemedi: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Fiyat kaydedilemedi: $error')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -8871,9 +8892,9 @@ class _InlineStockPriceCellState extends State<_InlineStockPriceCell> {
           dense: true,
           title: Text(
             _pricesIncludeVat ? 'KDV dahil' : 'KDV hariç',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           value: _pricesIncludeVat,
           onChanged: _saving
@@ -8886,7 +8907,9 @@ class _InlineStockPriceCellState extends State<_InlineStockPriceCell> {
                     final converted = _pricesIncludeVat
                         ? current / (1 + taxRate / 100)
                         : current * (1 + taxRate / 100);
-                    _controller.text = _roundMoney(converted).toStringAsFixed(2);
+                    _controller.text = _roundMoney(
+                      converted,
+                    ).toStringAsFixed(2);
                   }
                   setState(() => _pricesIncludeVat = value);
                 },

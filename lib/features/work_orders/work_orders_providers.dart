@@ -65,24 +65,20 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     if (apiClient == null) return const [];
     try {
       final response = await apiClient
-          .getJson(
-            '/work-orders',
-            queryParameters: {'pageSize': '$pageSize'},
-          )
+          .getJson('/work-orders', queryParameters: {'pageSize': '$pageSize'})
           .timeout(const Duration(seconds: 30));
       return await _mapApiWorkOrdersWithPaymentFallback(response['items']);
     } on TimeoutException {
       final response = await apiClient
-          .getJson(
-            '/work-orders',
-            queryParameters: {'pageSize': '$pageSize'},
-          )
+          .getJson('/work-orders', queryParameters: {'pageSize': '$pageSize'})
           .timeout(const Duration(seconds: 30));
       return await _mapApiWorkOrdersWithPaymentFallback(response['items']);
     }
   }
 
-  Future<List<WorkOrder>> _mapApiWorkOrdersWithPaymentFallback(Object? raw) async {
+  Future<List<WorkOrder>> _mapApiWorkOrdersWithPaymentFallback(
+    Object? raw,
+  ) async {
     final maps = ((raw as List?) ?? const [])
         .whereType<Map>()
         .map((e) => e.cast<String, dynamic>())
@@ -90,7 +86,9 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
 
     if (maps.isEmpty) return const [];
 
-    final hasPaymentRequired = maps.any((m) => m.containsKey('payment_required'));
+    final hasPaymentRequired = maps.any(
+      (m) => m.containsKey('payment_required'),
+    );
     if (hasPaymentRequired) {
       return maps.map(WorkOrder.fromJson).toList(growable: false);
     }
@@ -130,7 +128,8 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
         .map(
           (m) => WorkOrder.fromJson({
             ...m,
-            if (m['id'] != null) 'payment_required': paymentById[m['id']?.toString()],
+            if (m['id'] != null)
+              'payment_required': paymentById[m['id']?.toString()],
           }),
         )
         .toList(growable: false);
@@ -162,20 +161,22 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     } catch (e) {
       final message = e.toString();
       if (!message.contains('payment_required')) rethrow;
-      var fallback = client.from('work_orders').select(
-            baseSelect.replaceAll('payment_required,', ''),
-          );
+      var fallback = client
+          .from('work_orders')
+          .select(baseSelect.replaceAll('payment_required,', ''));
       if (!isAdmin) {
         final userId = client.auth.currentUser?.id;
         if (userId == null) return const [];
         fallback = fallback.eq('assigned_to', userId);
       }
-      rows = await fallback.order('sort_order').order('created_at', ascending: false);
+      rows = await fallback
+          .order('sort_order')
+          .order('created_at', ascending: false);
     }
 
-    final rawRows = (rows as List)
-        .cast<Map<String, dynamic>>()
-        .toList(growable: false);
+    final rawRows = (rows as List).cast<Map<String, dynamic>>().toList(
+      growable: false,
+    );
     final doneIds = rawRows
         .where((row) => row['status']?.toString() == 'done')
         .map((row) => row['id']?.toString())
@@ -185,14 +186,14 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     final paymentRows = doneIds.isEmpty
         ? const <Map<String, dynamic>>[]
         : await client
-            .from('payments')
-            .select(
-              'work_order_id,amount,currency,description,paid_at,payment_method,is_active',
-            )
-            .eq('is_active', true)
-            .inFilter('work_order_id', doneIds)
-            .order('paid_at', ascending: false)
-            .then((value) => (value as List).cast<Map<String, dynamic>>());
+              .from('payments')
+              .select(
+                'work_order_id,amount,currency,description,paid_at,payment_method,is_active',
+              )
+              .eq('is_active', true)
+              .inFilter('work_order_id', doneIds)
+              .order('paid_at', ascending: false)
+              .then((value) => (value as List).cast<Map<String, dynamic>>());
 
     final paymentsByWorkOrder = <String, List<Map<String, dynamic>>>{};
     for (final row in paymentRows) {
@@ -205,20 +206,22 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
       );
     }
 
-    final items = rawRows.map((map) {
-      final customers = map['customers'] as Map<String, dynamic>?;
-      final branches = map['branches'] as Map<String, dynamic>?;
-      final workOrderTypes =
-          map['work_order_types'] as Map<String, dynamic>?;
-      final workOrderId = map['id']?.toString() ?? '';
-      return WorkOrder.fromJson({
-        ...map,
-        'customer_name': customers?['name'],
-        'branch_name': branches?['name'],
-        'work_order_type_name': workOrderTypes?['name'],
-        'payments': paymentsByWorkOrder[workOrderId] ?? const [],
-      });
-    }).toList(growable: false);
+    final items = rawRows
+        .map((map) {
+          final customers = map['customers'] as Map<String, dynamic>?;
+          final branches = map['branches'] as Map<String, dynamic>?;
+          final workOrderTypes =
+              map['work_order_types'] as Map<String, dynamic>?;
+          final workOrderId = map['id']?.toString() ?? '';
+          return WorkOrder.fromJson({
+            ...map,
+            'customer_name': customers?['name'],
+            'branch_name': branches?['name'],
+            'work_order_type_name': workOrderTypes?['name'],
+            'payments': paymentsByWorkOrder[workOrderId] ?? const [],
+          });
+        })
+        .toList(growable: false);
 
     final statusRank = {'open': 0, 'in_progress': 1, 'done': 2};
     final sortedItems = [...items]
@@ -266,8 +269,9 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
     _liveRefreshInFlight = true;
     try {
       final apiClient = ref.read(apiClientProvider);
-      final items =
-          apiClient != null ? await _fetchApi(pageSize: 200) : await _fetchSupabase();
+      final items = apiClient != null
+          ? await _fetchApi(pageSize: 200)
+          : await _fetchSupabase();
       if (!ref.mounted) return;
       state = AsyncData(items);
       await _persistCache(items);
@@ -593,7 +597,10 @@ class WorkOrdersBoardNotifier extends AsyncNotifier<List<WorkOrder>> {
   Future<void> deleteWorkOrder(String workOrderId) async {
     final current = state.asData?.value;
     if (current == null) return;
-    final next = [for (final w in current) if (w.id != workOrderId) w];
+    final next = [
+      for (final w in current)
+        if (w.id != workOrderId) w,
+    ];
     state = AsyncData(next);
     unawaited(_persistCache(next));
 

@@ -49,10 +49,9 @@ Future<Uint8List> buildInvoiceStatementPdfBytes({
   final created = generatedAt ?? DateTime.now();
   final ordered = [...invoices]
     ..sort((a, b) => a.invoiceDate.compareTo(b.invoiceDate));
-  final resolvedBank =
-      (bankDetails ?? '').trim().isNotEmpty
-          ? bankDetails!.trim()
-          : kDefaultSellerBankDetails;
+  final resolvedBank = (bankDetails ?? '').trim().isNotEmpty
+      ? bankDetails!.trim()
+      : kDefaultSellerBankDetails;
 
   String amount(Invoice invoice, double value) {
     final symbol = switch (invoice.currency) {
@@ -221,7 +220,9 @@ Future<Uint8List> buildInvoiceStatementPdfBytes({
         children: [
           for (var i = 0; i < lines.length; i++)
             pw.Padding(
-              padding: pw.EdgeInsets.only(bottom: i == lines.length - 1 ? 0 : 2),
+              padding: pw.EdgeInsets.only(
+                bottom: i == lines.length - 1 ? 0 : 2,
+              ),
               child: pw.Text(
                 lines[i],
                 style: i == 0 ? labelStyle() : valueStyle(),

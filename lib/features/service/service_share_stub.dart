@@ -6,4 +6,3 @@ Future<void> shareServicePdf({
 }) async {
   throw UnsupportedError('PDF paylaşımı bu platformda desteklenmiyor.');
 }
-

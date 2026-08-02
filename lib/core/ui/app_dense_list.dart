@@ -9,8 +9,10 @@ class AppDenseList {
   static const double rowH = 8;
   static const double headerH = 38;
   static const double leading = 28;
+
   /// Tap target for dense row action buttons (send / PDF / edit / ⋯).
   static const double action = 32;
+
   /// Glyph size inside [action] buttons (outlined icons need a touch more size).
   static const double actionIcon = 18;
   static const double listGap = 8;

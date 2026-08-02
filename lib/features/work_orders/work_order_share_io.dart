@@ -39,10 +39,7 @@ Future<void> shareWorkOrderPdf({
     final dpr = view?.devicePixelRatio ?? 1.0;
     final size = view == null
         ? const Size(1, 1)
-        : Size(
-            view.physicalSize.width / dpr,
-            view.physicalSize.height / dpr,
-          );
+        : Size(view.physicalSize.width / dpr, view.physicalSize.height / dpr);
     final maxX = math.max<double>(size.width - 20, 0);
     final maxY = math.max<double>(size.height - 20, 0);
     final origin = Rect.fromLTWH(
@@ -51,14 +48,11 @@ Future<void> shareWorkOrderPdf({
       20,
       20,
     );
-    await Share.shareXFiles(
-      [XFile(file.path, mimeType: 'application/pdf', name: filename)],
-      sharePositionOrigin: origin,
-    );
+    await Share.shareXFiles([
+      XFile(file.path, mimeType: 'application/pdf', name: filename),
+    ], sharePositionOrigin: origin);
   } catch (e) {
-    throw Exception(
-      'PDF paylaşımı açılamadı. Hata: $e',
-    );
+    throw Exception('PDF paylaşımı açılamadı. Hata: $e');
   }
 }
 

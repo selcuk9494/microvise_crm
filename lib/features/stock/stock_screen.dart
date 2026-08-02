@@ -123,23 +123,25 @@ class _StockScreenState extends ConsumerState<StockScreen> {
               .toList();
 
           final serialQuery = _serialSearchController.text.trim().toLowerCase();
-          final filteredSerialRecords = serialRecords.where((record) {
-            final matchesStatus = switch (_serialStatusFilter) {
-              'available' => record.isActive && !record.isConsumed,
-              'consumed' => record.isConsumed,
-              'passive' => !record.isActive,
-              _ => true,
-            };
-            if (!matchesStatus) return false;
-            if (serialQuery.isEmpty) return true;
-            final haystack = [
-              record.serialNumber,
-              record.productName ?? '',
-              record.productCode ?? '',
-              record.notes ?? '',
-            ].join(' ').toLowerCase();
-            return haystack.contains(serialQuery);
-          }).toList(growable: false);
+          final filteredSerialRecords = serialRecords
+              .where((record) {
+                final matchesStatus = switch (_serialStatusFilter) {
+                  'available' => record.isActive && !record.isConsumed,
+                  'consumed' => record.isConsumed,
+                  'passive' => !record.isActive,
+                  _ => true,
+                };
+                if (!matchesStatus) return false;
+                if (serialQuery.isEmpty) return true;
+                final haystack = [
+                  record.serialNumber,
+                  record.productName ?? '',
+                  record.productCode ?? '',
+                  record.notes ?? '',
+                ].join(' ').toLowerCase();
+                return haystack.contains(serialQuery);
+              })
+              .toList(growable: false);
 
           return ListView(
             padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -264,10 +266,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                     SegmentedButton<String>(
                       segments: const [
                         ButtonSegment(value: 'all', label: Text('Tümü')),
-                        ButtonSegment(
-                          value: 'available',
-                          label: Text('Hazır'),
-                        ),
+                        ButtonSegment(value: 'available', label: Text('Hazır')),
                         ButtonSegment(
                           value: 'consumed',
                           label: Text('Kullanıldı'),
@@ -317,23 +316,22 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                                   : _dateTime.format(record.createdAt!),
                               onEdit: record.isConsumed
                                   ? null
-                                  : () => _showEditSerialDialog(
-                                        context,
-                                        record,
-                                      ),
+                                  : () =>
+                                        _showEditSerialDialog(context, record),
                               onDelete: (!record.isActive || record.isConsumed)
                                   ? null
                                   : () => _toggleSerialInventoryActive(
-                                        context,
-                                        record,
-                                        false,
-                                      ),
-                              onRestore: (!record.isActive && !record.isConsumed)
+                                      context,
+                                      record,
+                                      false,
+                                    ),
+                              onRestore:
+                                  (!record.isActive && !record.isConsumed)
                                   ? () => _toggleSerialInventoryActive(
-                                        context,
-                                        record,
-                                        true,
-                                      )
+                                      context,
+                                      record,
+                                      true,
+                                    )
                                   : null,
                             ),
                           ),
@@ -526,7 +524,9 @@ class _StockScreenState extends ConsumerState<StockScreen> {
     final stocks = stocksAsync.value ?? [];
     if (stocks.isEmpty) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('Seri stok için önce stok takipli ürün oluşturun')),
+        const SnackBar(
+          content: Text('Seri stok için önce stok takipli ürün oluşturun'),
+        ),
       );
       return;
     }
@@ -560,7 +560,8 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                         ),
                       )
                       .toList(growable: false),
-                  onChanged: (value) => setState(() => selectedProductId = value),
+                  onChanged: (value) =>
+                      setState(() => selectedProductId = value),
                   decoration: const InputDecoration(labelText: 'Ürün'),
                 ),
                 const Gap(12),
@@ -623,20 +624,23 @@ class _StockScreenState extends ConsumerState<StockScreen> {
 
                       try {
                         final userId = client.auth.currentUser?.id;
-                        await client.from('product_serial_inventory').insert(
-                          serialNumbers
-                              .map(
-                                (serial) => {
-                                  'product_id': productId,
-                                  'serial_number': serial,
-                                  'notes': notesController.text.trim().isEmpty
-                                      ? null
-                                      : notesController.text.trim(),
-                                  'created_by': userId,
-                                },
-                              )
-                              .toList(growable: false),
-                        );
+                        await client
+                            .from('product_serial_inventory')
+                            .insert(
+                              serialNumbers
+                                  .map(
+                                    (serial) => {
+                                      'product_id': productId,
+                                      'serial_number': serial,
+                                      'notes':
+                                          notesController.text.trim().isEmpty
+                                          ? null
+                                          : notesController.text.trim(),
+                                      'created_by': userId,
+                                    },
+                                  )
+                                  .toList(growable: false),
+                            );
                         await client.from('stock_movements').insert({
                           'product_id': productId,
                           'movement_type': 'in',
@@ -651,7 +655,9 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                       } catch (error) {
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Seri stok kaydedilemedi: $error')),
+                          SnackBar(
+                            content: Text('Seri stok kaydedilemedi: $error'),
+                          ),
                         );
                         setState(() => saving = false);
                       }
@@ -701,15 +707,17 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                   record.productCode?.trim().isNotEmpty == true
                       ? '${record.productCode} - ${record.productName ?? ''}'
                       : (record.productName ?? 'Ürün'),
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const Gap(12),
                 TextField(
                   controller: serialController,
                   textCapitalization: TextCapitalization.characters,
-                  decoration: const InputDecoration(labelText: 'Sicil Numarası'),
+                  decoration: const InputDecoration(
+                    labelText: 'Sicil Numarası',
+                  ),
                 ),
                 const Gap(12),
                 TextField(
@@ -764,9 +772,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                         if (!context.mounted) return;
                         messenger.showSnackBar(
                           SnackBar(
-                            content: Text(
-                              'Seri kaydı güncellenemedi: $error',
-                            ),
+                            content: Text('Seri kaydı güncellenemedi: $error'),
                           ),
                         );
                         setState(() => saving = false);
@@ -1078,7 +1084,10 @@ class _SerialInventoryRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: statusColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(999),

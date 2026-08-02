@@ -13,6 +13,7 @@ import '../../core/api/api_client.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/empty_state_card.dart';
 import '../application_forms/application_form_model.dart';
 import '../application_forms/application_form_screen.dart';
 import '../customers/web_download_helper.dart'
@@ -76,8 +77,21 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
       ],
       body: recordsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) =>
-            Center(child: Text('Belgeler yüklenemedi: $error')),
+        error: (error, _) => EmptyStateCard(
+          icon: Icons.cloud_off_rounded,
+          title: 'Belgeler yüklenemedi',
+          message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
+          action: OutlinedButton.icon(
+            onPressed: () {
+              ref.invalidate(applicationFormsProvider);
+              ref.invalidate(scrapFormsProvider);
+              ref.invalidate(faultFormsProvider);
+              ref.invalidate(transferFormsProvider);
+            },
+            icon: const Icon(Icons.refresh_rounded, size: 16),
+            label: const Text('Tekrar Dene'),
+          ),
+        ),
         data: (records) {
           final formItems = <_DocumentItem>[
             ...((scrapAsync.asData?.value ?? const <ScrapFormRecord>[]).expand(
@@ -238,11 +252,10 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
         ),
         const Gap(12),
         if (items.isEmpty)
-          const AppCard(
-            child: Padding(
-              padding: EdgeInsets.all(18),
-              child: Center(child: Text('Filtreye uygun belge bulunamadı.')),
-            ),
+          const EmptyStateCard(
+            icon: Icons.folder_off_rounded,
+            title: 'Belge bulunamadı',
+            message: 'Filtrelerinize uyan bir belge yok.',
           )
         else
           for (final item in items) ...[

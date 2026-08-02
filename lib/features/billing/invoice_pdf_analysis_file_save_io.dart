@@ -29,8 +29,7 @@ Future<void> saveAnalysisFile({
     20,
   );
 
-  await Share.shareXFiles(
-    [XFile(file.path, mimeType: mimeType, name: filename)],
-    sharePositionOrigin: origin,
-  );
+  await Share.shareXFiles([
+    XFile(file.path, mimeType: mimeType, name: filename),
+  ], sharePositionOrigin: origin);
 }

@@ -104,8 +104,9 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
   @override
   void initState() {
     super.initState();
-    _searchController =
-        TextEditingController(text: ref.read(lineStockSearchProvider));
+    _searchController = TextEditingController(
+      text: ref.read(lineStockSearchProvider),
+    );
   }
 
   @override
@@ -118,7 +119,9 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
     if (!kIsWeb) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Dışarı aktarma web üzerinde desteklenir.')),
+        const SnackBar(
+          content: Text('Dışarı aktarma web üzerinde desteklenir.'),
+        ),
       );
       return;
     }
@@ -155,9 +158,9 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
     final client = ref.read(supabaseClientProvider);
     if (apiClient == null && client == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bağlantı bulunamadı.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bağlantı bulunamadı.')));
       return;
     }
 
@@ -221,7 +224,13 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
     }
 
     final opIndex = idxAny(['operator', 'operatör']);
-    final numberIndex = idxAny(['line_number', 'number', 'hat_no', 'hat_numarasi', 'hat']);
+    final numberIndex = idxAny([
+      'line_number',
+      'number',
+      'hat_no',
+      'hat_numarasi',
+      'hat',
+    ]);
     final simIndex = idxAny(['sim_number', 'sim_no', 'sim']);
     final activeIndex = idxAny(['is_active', 'aktif']);
     final statusIndex = idxAny(['status', 'durum']);
@@ -231,7 +240,9 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
     if (numberIndex < 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Excel kolonları bulunamadı: line_number')),
+        const SnackBar(
+          content: Text('Excel kolonları bulunamadı: line_number'),
+        ),
       );
       return;
     }
@@ -251,8 +262,8 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
 
       final isActive = activeIndex < 0
           ? statusNorm == 'passive'
-              ? false
-              : true
+                ? false
+                : true
           : _toBool(cellString(row, activeIndex), defaultValue: true);
 
       final createdAtIso = createdAtIndex < 0
@@ -286,10 +297,9 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
             body: {'op': 'upsert', 'table': 'line_stock', 'values': values},
           );
         } else {
-          await client!.from('line_stock').upsert(
-                values,
-                onConflict: 'line_number_norm',
-              );
+          await client!
+              .from('line_stock')
+              .upsert(values, onConflict: 'line_number_norm');
         }
         imported += 1;
       } catch (e) {
@@ -314,9 +324,13 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
     if (apiClient == null) return;
 
     final operatorController = TextEditingController(
-      text: initial == null ? 'turkcell' : normalizeOperator(initial.operatorName),
+      text: initial == null
+          ? 'turkcell'
+          : normalizeOperator(initial.operatorName),
     );
-    final lineController = TextEditingController(text: initial?.lineNumber ?? '');
+    final lineController = TextEditingController(
+      text: initial?.lineNumber ?? '',
+    );
     final simController = TextEditingController(text: initial?.simNumber ?? '');
     bool isActive = initial?.isActive ?? true;
     bool saving = false;
@@ -334,10 +348,15 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                 DropdownButtonFormField<String>(
                   initialValue: operatorController.text,
                   items: const [
-                    DropdownMenuItem(value: 'turkcell', child: Text('TURKCELL')),
+                    DropdownMenuItem(
+                      value: 'turkcell',
+                      child: Text('TURKCELL'),
+                    ),
                     DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
                   ],
-                  onChanged: saving ? null : (v) => operatorController.text = v ?? 'turkcell',
+                  onChanged: saving
+                      ? null
+                      : (v) => operatorController.text = v ?? 'turkcell',
                   decoration: const InputDecoration(labelText: 'Operatör'),
                 ),
                 const Gap(10),
@@ -354,7 +373,9 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: isActive,
-                  onChanged: saving ? null : (v) => setState(() => isActive = v),
+                  onChanged: saving
+                      ? null
+                      : (v) => setState(() => isActive = v),
                   title: const Text('Aktif'),
                 ),
               ],
@@ -373,8 +394,9 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                       if (lineNumber.isEmpty) return;
                       setState(() => saving = true);
                       try {
-                        final profile =
-                            await ref.read(currentUserProfileProvider.future);
+                        final profile = await ref.read(
+                          currentUserProfileProvider.future,
+                        );
                         await apiClient.postJson(
                           '/mutate',
                           body: {
@@ -382,7 +404,9 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                             'table': 'line_stock',
                             'values': {
                               if (initial != null) 'id': initial.id,
-                              'operator': normalizeOperator(operatorController.text),
+                              'operator': normalizeOperator(
+                                operatorController.text,
+                              ),
                               'line_number': lineNumber,
                               'sim_number': simController.text.trim().isEmpty
                                   ? null
@@ -396,9 +420,9 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                         Navigator.of(context).pop(true);
                       } catch (e) {
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Hata: $e')),
-                        );
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text('Hata: $e')));
                         setState(() => saving = false);
                       }
                     },
@@ -472,7 +496,8 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
         content: Text(
           [
             item.lineNumber,
-            if ((item.simNumber ?? '').trim().isNotEmpty) 'SIM: ${item.simNumber}',
+            if ((item.simNumber ?? '').trim().isNotEmpty)
+              'SIM: ${item.simNumber}',
           ].join('\n'),
         ),
         actions: [
@@ -508,7 +533,9 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
 
     final totalCount = items.length;
     final activeCount = items.where((e) => e.isActive).length;
-    final availableCount = items.where((e) => e.isActive && !e.isConsumed).length;
+    final availableCount = items
+        .where((e) => e.isActive && !e.isConsumed)
+        .length;
     final consumedCount = items.where((e) => e.isConsumed).length;
 
     return Padding(
@@ -538,15 +565,24 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                   child: DropdownButtonFormField<String>(
                     initialValue: status,
                     items: const [
-                      DropdownMenuItem(value: 'available', child: Text('Hazır')),
-                      DropdownMenuItem(value: 'consumed', child: Text('Kullanıldı')),
+                      DropdownMenuItem(
+                        value: 'available',
+                        child: Text('Hazır'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'consumed',
+                        child: Text('Kullanıldı'),
+                      ),
                       DropdownMenuItem(value: 'passive', child: Text('Pasif')),
                       DropdownMenuItem(value: 'all', child: Text('Tümü')),
                     ],
                     onChanged: (v) => ref
                         .read(lineStockStatusProvider.notifier)
                         .set(v ?? 'all'),
-                    decoration: const InputDecoration(labelText: 'Durum', isDense: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Durum',
+                      isDense: true,
+                    ),
                   ),
                 );
 
@@ -555,14 +591,23 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                   child: DropdownButtonFormField<String>(
                     initialValue: operatorName,
                     items: const [
-                      DropdownMenuItem(value: 'all', child: Text('Tüm Operatörler')),
-                      DropdownMenuItem(value: 'turkcell', child: Text('TURKCELL')),
+                      DropdownMenuItem(
+                        value: 'all',
+                        child: Text('Tüm Operatörler'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'turkcell',
+                        child: Text('TURKCELL'),
+                      ),
                       DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
                     ],
                     onChanged: (v) => ref
                         .read(lineStockOperatorProvider.notifier)
                         .set(v ?? 'all'),
-                    decoration: const InputDecoration(labelText: 'Operatör', isDense: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Operatör',
+                      isDense: true,
+                    ),
                   ),
                 );
 
@@ -577,7 +622,9 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                   );
                   if (picked == null) return;
                   if (from) {
-                    ref.read(lineStockConsumedFromProvider.notifier).set(picked);
+                    ref
+                        .read(lineStockConsumedFromProvider.notifier)
+                        .set(picked);
                   } else {
                     ref.read(lineStockConsumedToProvider.notifier).set(picked);
                   }
@@ -615,8 +662,12 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                       IconButton(
                         tooltip: 'Tarih Temizle',
                         onPressed: () {
-                          ref.read(lineStockConsumedFromProvider.notifier).clear();
-                          ref.read(lineStockConsumedToProvider.notifier).clear();
+                          ref
+                              .read(lineStockConsumedFromProvider.notifier)
+                              .clear();
+                          ref
+                              .read(lineStockConsumedToProvider.notifier)
+                              .clear();
                           ref.invalidate(lineStockProvider);
                         },
                         icon: const Icon(Icons.clear_rounded),
@@ -736,15 +787,21 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                       final opLabel = op == 'turkcell'
                           ? 'TURKCELL'
                           : op == 'telsim'
-                              ? 'TELSİM'
-                              : (item.operatorName.trim().isEmpty ? '-' : item.operatorName);
+                          ? 'TELSİM'
+                          : (item.operatorName.trim().isEmpty
+                                ? '-'
+                                : item.operatorName);
                       final isAvailable = item.isActive && !item.isConsumed;
-                      final consumedCustomer = (item.consumedCustomerName ?? '').trim();
-                      final consumedWorkOrder = (item.consumedWorkOrderTitle ?? '').trim();
+                      final consumedCustomer = (item.consumedCustomerName ?? '')
+                          .trim();
+                      final consumedWorkOrder =
+                          (item.consumedWorkOrderTitle ?? '').trim();
                       final consumedAtText = item.consumedAt == null
                           ? ''
-                          : DateFormat('d MMM y HH:mm', 'tr_TR')
-                              .format(AppTime.toTr(item.consumedAt!));
+                          : DateFormat(
+                              'd MMM y HH:mm',
+                              'tr_TR',
+                            ).format(AppTime.toTr(item.consumedAt!));
                       return Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
@@ -762,12 +819,15 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                                   Text(
                                     [
                                       item.lineNumber,
-                                      if ((item.simNumber ?? '').trim().isNotEmpty)
+                                      if ((item.simNumber ?? '')
+                                          .trim()
+                                          .isNotEmpty)
                                         'SIM: ${item.simNumber}',
                                     ].join(' • '),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(
                                           fontWeight: FontWeight.w800,
                                           color: const Color(0xFF0F172A),
                                         ),
@@ -803,16 +863,20 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                               tone: op == 'turkcell'
                                   ? AppBadgeTone.primary
                                   : op == 'telsim'
-                                      ? AppBadgeTone.warning
-                                      : AppBadgeTone.neutral,
+                                  ? AppBadgeTone.warning
+                                  : AppBadgeTone.neutral,
                               dense: true,
                             ),
                             const Gap(6),
                             AppBadge(
-                              label: isAvailable ? 'Hazır' : (item.isConsumed ? 'Kullanıldı' : 'Pasif'),
+                              label: isAvailable
+                                  ? 'Hazır'
+                                  : (item.isConsumed ? 'Kullanıldı' : 'Pasif'),
                               tone: isAvailable
                                   ? AppBadgeTone.success
-                                  : (item.isConsumed ? AppBadgeTone.warning : AppBadgeTone.neutral),
+                                  : (item.isConsumed
+                                        ? AppBadgeTone.warning
+                                        : AppBadgeTone.neutral),
                               dense: true,
                             ),
                             const Gap(8),
@@ -897,10 +961,9 @@ class _Empty extends StatelessWidget {
           padding: const EdgeInsets.all(20),
           child: Text(
             text,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: AppTheme.textMuted),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
           ),
         ),
       ),

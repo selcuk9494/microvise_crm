@@ -20,11 +20,14 @@ import '../stock/line_stock.dart';
 import '../subscriptions/subscriptions_screen.dart';
 import '../work_orders/work_order_detail_sheet.dart';
 import '../work_orders/work_order_model.dart';
+import '../work_orders/work_order_status_ui.dart';
 import 'customer_form_dialog.dart';
 import 'customers_providers.dart';
 
-final customerDetailProvider =
-    FutureProvider.family<CustomerDetail, String>((ref, customerId) async {
+final customerDetailProvider = FutureProvider.family<CustomerDetail, String>((
+  ref,
+  customerId,
+) async {
   final apiClient = ref.watch(apiClientProvider);
   if (apiClient != null) {
     final row = await apiClient.getJson(
@@ -53,8 +56,10 @@ final customerDetailProvider =
   return CustomerDetail.fromJson(row);
 });
 
-final customerLinesProvider =
-    FutureProvider.family<List<CustomerLine>, String>((ref, customerId) async {
+final customerLinesProvider = FutureProvider.family<List<CustomerLine>, String>((
+  ref,
+  customerId,
+) async {
   final apiClient = ref.watch(apiClientProvider);
   if (apiClient != null) {
     final response = await apiClient.getJson(
@@ -75,7 +80,9 @@ final customerLinesProvider =
   if (client == null) return const [];
   final rows = await client
       .from('lines')
-      .select('id,label,number,sim_number,operator,starts_at,ends_at,expires_at,is_active')
+      .select(
+        'id,label,number,sim_number,operator,starts_at,ends_at,expires_at,is_active',
+      )
       .eq('customer_id', customerId)
       .order('created_at', ascending: false);
   return (rows as List)
@@ -84,100 +91,115 @@ final customerLinesProvider =
 });
 
 final customerLicensesProvider =
-    FutureProvider.family<List<CustomerLicense>, String>((ref, customerId) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient != null) {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: {
-        'resource': 'customer_licenses',
-        'customerId': customerId,
-        'showPassive': 'false',
-      },
-    );
-    return ((response['items'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(CustomerLicense.fromJson)
-        .toList(growable: false);
-  }
+    FutureProvider.family<List<CustomerLicense>, String>((
+      ref,
+      customerId,
+    ) async {
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {
+            'resource': 'customer_licenses',
+            'customerId': customerId,
+            'showPassive': 'false',
+          },
+        );
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(CustomerLicense.fromJson)
+            .toList(growable: false);
+      }
 
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
-  final rows = await client
-      .from('licenses')
-      .select(
-        'id,name,license_type,software_company_id,registry_number,starts_at,ends_at,expires_at,is_active,software_companies(name)',
-      )
-      .eq('customer_id', customerId)
-      .order('created_at', ascending: false);
-  return (rows as List)
-      .map((e) => CustomerLicense.fromJson(e as Map<String, dynamic>))
-      .toList(growable: false);
-});
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
+      final rows = await client
+          .from('licenses')
+          .select(
+            'id,name,license_type,software_company_id,registry_number,starts_at,ends_at,expires_at,is_active,software_companies(name)',
+          )
+          .eq('customer_id', customerId)
+          .order('created_at', ascending: false);
+      return (rows as List)
+          .map((e) => CustomerLicense.fromJson(e as Map<String, dynamic>))
+          .toList(growable: false);
+    });
 
 final customerDeviceRegistriesProvider =
-    FutureProvider.family<List<CustomerDeviceRegistry>, String>((ref, customerId) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient != null) {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: {
-        'resource': 'customer_device_registries',
-        'customerId': customerId,
-      },
-    );
-    return ((response['items'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(CustomerDeviceRegistry.fromJson)
-        .toList(growable: false);
-  }
+    FutureProvider.family<List<CustomerDeviceRegistry>, String>((
+      ref,
+      customerId,
+    ) async {
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {
+            'resource': 'customer_device_registries',
+            'customerId': customerId,
+          },
+        );
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(CustomerDeviceRegistry.fromJson)
+            .toList(growable: false);
+      }
 
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
-  final rows = await client
-      .from('device_registries')
-      .select(
-        'id,registry_number,model,customer_id,application_form_id,is_active,assigned_at,released_at,created_at',
-      )
-      .eq('customer_id', customerId)
-      .order('created_at', ascending: false);
-  return (rows as List)
-      .map((e) => CustomerDeviceRegistry.fromJson(e as Map<String, dynamic>))
-      .toList(growable: false);
-});
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
+      final rows = await client
+          .from('device_registries')
+          .select(
+            'id,registry_number,model,customer_id,application_form_id,is_active,assigned_at,released_at,created_at',
+          )
+          .eq('customer_id', customerId)
+          .order('created_at', ascending: false);
+      return (rows as List)
+          .map(
+            (e) => CustomerDeviceRegistry.fromJson(e as Map<String, dynamic>),
+          )
+          .toList(growable: false);
+    });
 
 final customerBranchesProvider =
-    FutureProvider.family<List<CustomerBranch>, String>((ref, customerId) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient != null) {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: {
-        'resource': 'customer_branches',
-        'customerId': customerId,
-      },
-    );
-    return ((response['items'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(CustomerBranch.fromJson)
-        .toList(growable: false);
-  }
+    FutureProvider.family<List<CustomerBranch>, String>((
+      ref,
+      customerId,
+    ) async {
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {
+            'resource': 'customer_branches',
+            'customerId': customerId,
+          },
+        );
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(CustomerBranch.fromJson)
+            .toList(growable: false);
+      }
 
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
 
-  final rows = await client
-      .from('branches')
-      .select('id,name,city,address,phone,location_lat,location_lng,is_active,created_at')
-      .eq('customer_id', customerId)
-      .order('created_at', ascending: false);
+      final rows = await client
+          .from('branches')
+          .select(
+            'id,name,city,address,phone,location_lat,location_lng,is_active,created_at',
+          )
+          .eq('customer_id', customerId)
+          .order('created_at', ascending: false);
 
-  return (rows as List)
-      .map((e) => CustomerBranch.fromJson(e as Map<String, dynamic>))
-      .toList(growable: false);
-});
+      return (rows as List)
+          .map((e) => CustomerBranch.fromJson(e as Map<String, dynamic>))
+          .toList(growable: false);
+    });
 
-final customersForTransferProvider = FutureProvider<List<_CustomerOption>>((ref) async {
+final customersForTransferProvider = FutureProvider<List<_CustomerOption>>((
+  ref,
+) async {
   final apiClient = ref.watch(apiClientProvider);
   if (apiClient != null) {
     final response = await apiClient.getJson(
@@ -203,8 +225,10 @@ final customersForTransferProvider = FutureProvider<List<_CustomerOption>>((ref)
       .toList(growable: false);
 });
 
-final customerWorkOrdersProvider =
-    FutureProvider.family<List<WorkOrder>, String>((ref, customerId) async {
+final customerWorkOrdersProvider = FutureProvider.family<List<WorkOrder>, String>((
+  ref,
+  customerId,
+) async {
   final apiClient = ref.watch(apiClientProvider);
   if (apiClient != null) {
     final response = await apiClient.getJson(
@@ -287,10 +311,9 @@ class CustomerDetailScreen extends ConsumerWidget {
                   const Gap(10),
                   Text(
                     'Yetki, bağlantı veya kayıt kontrolü yapın.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: AppTheme.textMuted),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
                   ),
                   const Gap(14),
                   FilledButton(
@@ -352,9 +375,7 @@ class _Content extends ConsumerWidget {
                               const Gap(10),
                               Text(
                                 detail.city!,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
+                                style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(color: AppTheme.textMuted),
                               ),
                             ],
@@ -412,8 +433,10 @@ class _Content extends ConsumerWidget {
                     const TabBar(
                       isScrollable: true,
                       tabAlignment: TabAlignment.start,
-                      labelPadding:
-                          EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      labelPadding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       tabs: [
                         Tab(text: 'Genel'),
                         Tab(text: 'Şubeler'),
@@ -460,24 +483,37 @@ class _GeneralTab extends ConsumerWidget {
     final branchesAsync = ref.watch(customerBranchesProvider(detail.id));
     final linesAsync = ref.watch(customerLinesProvider(detail.id));
     final licensesAsync = ref.watch(customerLicensesProvider(detail.id));
-    final deviceRegistriesAsync =
-        ref.watch(customerDeviceRegistriesProvider(detail.id));
+    final deviceRegistriesAsync = ref.watch(
+      customerDeviceRegistriesProvider(detail.id),
+    );
     final workOrdersAsync = ref.watch(customerWorkOrdersProvider(detail.id));
 
-    int countActive<T>(AsyncValue<List<T>> value, bool Function(T item) isActive) {
+    int countActive<T>(
+      AsyncValue<List<T>> value,
+      bool Function(T item) isActive,
+    ) {
       return value.maybeWhen(
         data: (items) => items.where(isActive).length,
         orElse: () => 0,
       );
     }
 
-    final branchesCount =
-        branchesAsync.maybeWhen(data: (v) => v.length, orElse: () => 0);
-    final activeLines = countActive<CustomerLine>(linesAsync, (e) => e.isActive);
-    final activeLicenses =
-        countActive<CustomerLicense>(licensesAsync, (e) => e.isActive);
-    final openWorkOrders =
-        countActive<WorkOrder>(workOrdersAsync, (e) => e.status != 'done');
+    final branchesCount = branchesAsync.maybeWhen(
+      data: (v) => v.length,
+      orElse: () => 0,
+    );
+    final activeLines = countActive<CustomerLine>(
+      linesAsync,
+      (e) => e.isActive,
+    );
+    final activeLicenses = countActive<CustomerLicense>(
+      licensesAsync,
+      (e) => e.isActive,
+    );
+    final openWorkOrders = countActive<WorkOrder>(
+      workOrdersAsync,
+      (e) => e.status != 'done',
+    );
     final deviceCount = countActive<CustomerDeviceRegistry>(
       deviceRegistriesAsync,
       (e) => e.isActive,
@@ -492,7 +528,10 @@ class _GeneralTab extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Genel Bilgiler', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Genel Bilgiler',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const Gap(14),
           Wrap(
             spacing: 12,
@@ -580,10 +619,9 @@ class _GeneralTab extends ConsumerWidget {
               ),
               child: Text(
                 detail.notes!,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: const Color(0xFF0F172A)),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF0F172A),
+                ),
               ),
             ),
           ],
@@ -627,7 +665,9 @@ class _QuickStat extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppTheme.primary.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
+                border: Border.all(
+                  color: AppTheme.primary.withValues(alpha: 0.18),
+                ),
               ),
               child: Icon(icon, color: AppTheme.primary, size: 18),
             ),
@@ -639,15 +679,14 @@ class _QuickStat extends StatelessWidget {
                   Text(
                     value,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                   Text(
                     label,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: AppTheme.textMuted),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ],
               ),
@@ -682,7 +721,11 @@ class _BranchesTab extends ConsumerWidget {
               ),
               FilledButton.icon(
                 onPressed: () async {
-                  await _showAddBranchDialog(context, ref, customerId: customerId);
+                  await _showAddBranchDialog(
+                    context,
+                    ref,
+                    customerId: customerId,
+                  );
                   ref.invalidate(customerBranchesProvider(customerId));
                 },
                 icon: const Icon(Icons.add_rounded, size: 18),
@@ -695,12 +738,15 @@ class _BranchesTab extends ConsumerWidget {
             child: branchesAsync.when(
               data: (branches) {
                 if (branches.isEmpty) {
-                  return const _TabEmpty(text: 'Bu müşteriye ait şube bulunamadı.');
+                  return const _TabEmpty(
+                    text: 'Bu müşteriye ait şube bulunamadı.',
+                  );
                 }
                 return ListView.separated(
                   itemCount: branches.length,
                   separatorBuilder: (_, _) => const Gap(10),
-                  itemBuilder: (context, index) => _BranchItem(branch: branches[index]),
+                  itemBuilder: (context, index) =>
+                      _BranchItem(branch: branches[index]),
                 );
               },
               loading: () => const _ListSkeleton(),
@@ -723,7 +769,9 @@ class _LinesTab extends ConsumerWidget {
     final linesAsync = ref.watch(customerLinesProvider(customerId));
     final isAdmin = ref.watch(isAdminProvider);
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
-    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
+    final canArchive = ref.watch(
+      hasActionAccessProvider(kActionArchiveRecords),
+    );
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -738,7 +786,11 @@ class _LinesTab extends ConsumerWidget {
               ),
               FilledButton.icon(
                 onPressed: () async {
-                  await _showSellLineDialog(context, ref, customerId: customerId);
+                  await _showSellLineDialog(
+                    context,
+                    ref,
+                    customerId: customerId,
+                  );
                   ref.invalidate(customerLinesProvider(customerId));
                 },
                 icon: const Icon(Icons.add_rounded, size: 18),
@@ -751,7 +803,9 @@ class _LinesTab extends ConsumerWidget {
             child: linesAsync.when(
               data: (lines) {
                 if (lines.isEmpty) {
-                  return const _TabEmpty(text: 'Bu müşteriye ait hat bulunamadı.');
+                  return const _TabEmpty(
+                    text: 'Bu müşteriye ait hat bulunamadı.',
+                  );
                 }
                 return ListView.separated(
                   itemCount: lines.length,
@@ -784,7 +838,9 @@ class _LicensesTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final licensesAsync = ref.watch(customerLicensesProvider(customerId));
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
-    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
+    final canArchive = ref.watch(
+      hasActionAccessProvider(kActionArchiveRecords),
+    );
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -799,7 +855,11 @@ class _LicensesTab extends ConsumerWidget {
               ),
               FilledButton.icon(
                 onPressed: () async {
-                  await _showSellGmp3Dialog(context, ref, customerId: customerId);
+                  await _showSellGmp3Dialog(
+                    context,
+                    ref,
+                    customerId: customerId,
+                  );
                   ref.invalidate(customerLicensesProvider(customerId));
                 },
                 icon: const Icon(Icons.add_rounded, size: 18),
@@ -811,9 +871,13 @@ class _LicensesTab extends ConsumerWidget {
           Expanded(
             child: licensesAsync.when(
               data: (items) {
-                final gmp3 = items.where((e) => e.licenseType == 'gmp3').toList();
+                final gmp3 = items
+                    .where((e) => e.licenseType == 'gmp3')
+                    .toList();
                 if (gmp3.isEmpty) {
-                  return const _TabEmpty(text: 'Bu müşteriye ait GMP3 lisansı bulunamadı.');
+                  return const _TabEmpty(
+                    text: 'Bu müşteriye ait GMP3 lisansı bulunamadı.',
+                  );
                 }
                 return Scrollbar(
                   thumbVisibility: true,
@@ -848,7 +912,8 @@ class _DeviceRegistriesTab extends ConsumerStatefulWidget {
   final String customerId;
 
   @override
-  ConsumerState<_DeviceRegistriesTab> createState() => _DeviceRegistriesTabState();
+  ConsumerState<_DeviceRegistriesTab> createState() =>
+      _DeviceRegistriesTabState();
 }
 
 class _DeviceRegistriesTabState extends ConsumerState<_DeviceRegistriesTab> {
@@ -890,7 +955,9 @@ class _DeviceRegistriesTabState extends ConsumerState<_DeviceRegistriesTab> {
     setState(() => _importing = true);
     try {
       final excel = Excel.decodeBytes(Uint8List.fromList(bytes));
-      final sheet = excel.tables.values.isEmpty ? null : excel.tables.values.first;
+      final sheet = excel.tables.values.isEmpty
+          ? null
+          : excel.tables.values.first;
       if (sheet == null || sheet.rows.isEmpty) {
         throw Exception('Excel okunamadı.');
       }
@@ -946,7 +1013,9 @@ class _DeviceRegistriesTabState extends ConsumerState<_DeviceRegistriesTab> {
 
       for (var r = 1; r < sheet.rows.length; r++) {
         final row = sheet.rows[r];
-        final sicil = _cellText(row.length > sicilIndex ? row[sicilIndex] : null);
+        final sicil = _cellText(
+          row.length > sicilIndex ? row[sicilIndex] : null,
+        );
         final vkn = _cellText(row.length > vknIndex ? row[vknIndex] : null);
         final model = modelIndex == null
             ? ''
@@ -975,7 +1044,11 @@ class _DeviceRegistriesTabState extends ConsumerState<_DeviceRegistriesTab> {
         if (apiClient != null) {
           await apiClient.postJson(
             '/mutate',
-            body: {'op': 'upsert', 'table': 'device_registries', 'values': values},
+            body: {
+              'op': 'upsert',
+              'table': 'device_registries',
+              'values': values,
+            },
           );
         } else {
           await client!.from('device_registries').upsert(values);
@@ -994,9 +1067,9 @@ class _DeviceRegistriesTabState extends ConsumerState<_DeviceRegistriesTab> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('İçe aktarma hatası: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('İçe aktarma hatası: $e')));
     } finally {
       if (mounted) setState(() => _importing = false);
     }
@@ -1004,12 +1077,16 @@ class _DeviceRegistriesTabState extends ConsumerState<_DeviceRegistriesTab> {
 
   @override
   Widget build(BuildContext context) {
-    final itemsAsync =
-        ref.watch(customerDeviceRegistriesProvider(widget.customerId));
+    final itemsAsync = ref.watch(
+      customerDeviceRegistriesProvider(widget.customerId),
+    );
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
-    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
-    final canDeletePermanently =
-        ref.watch(hasActionAccessProvider(kActionDeleteRecords));
+    final canArchive = ref.watch(
+      hasActionAccessProvider(kActionArchiveRecords),
+    );
+    final canDeletePermanently = ref.watch(
+      hasActionAccessProvider(kActionDeleteRecords),
+    );
     final canTransfer = ref.watch(isAdminProvider);
 
     return Padding(
@@ -1103,19 +1180,15 @@ class _WorkOrdersTab extends ConsumerWidget {
       child: workOrdersAsync.when(
         data: (items) {
           if (items.isEmpty) {
-            return const _TabEmpty(text: 'Bu müşteriye ait iş emri bulunamadı.');
+            return const _TabEmpty(
+              text: 'Bu müşteriye ait iş emri bulunamadı.',
+            );
           }
           return ListView.separated(
             itemCount: items.length,
             separatorBuilder: (_, _) => const Gap(10),
             itemBuilder: (context, index) {
               final w = items[index];
-              final status = switch (w.status) {
-                'open' => ('Açık', AppBadgeTone.warning),
-                'in_progress' => ('Devam Ediyor', AppBadgeTone.primary),
-                'done' => ('Tamamlandı', AppBadgeTone.success),
-                _ => ('Bilinmiyor', AppBadgeTone.neutral),
-              };
               final when = w.scheduledDate == null
                   ? 'Planlanmadı'
                   : DateFormat('d MMM', 'tr_TR').format(w.scheduledDate!);
@@ -1134,7 +1207,8 @@ class _WorkOrdersTab extends ConsumerWidget {
                         children: [
                           Text(
                             w.title,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
                                   fontWeight: FontWeight.w700,
                                   decoration: w.isActive
                                       ? TextDecoration.none
@@ -1154,7 +1228,7 @@ class _WorkOrdersTab extends ConsumerWidget {
                         ],
                       ),
                     ),
-                    AppBadge(label: status.$1, tone: status.$2),
+                    workOrderStatusBadge(w.status),
                   ],
                 ),
               );
@@ -1186,7 +1260,8 @@ class _DeviceRegistryItem extends ConsumerStatefulWidget {
   final bool canTransfer;
 
   @override
-  ConsumerState<_DeviceRegistryItem> createState() => _DeviceRegistryItemState();
+  ConsumerState<_DeviceRegistryItem> createState() =>
+      _DeviceRegistryItemState();
 }
 
 class _DeviceRegistryItemState extends ConsumerState<_DeviceRegistryItem> {
@@ -1216,10 +1291,13 @@ class _DeviceRegistryItemState extends ConsumerState<_DeviceRegistryItem> {
           },
         );
       } else {
-        await client!.from('device_registries').update({
-          'is_active': active,
-          'released_at': active ? null : DateTime.now().toIso8601String(),
-        }).eq('id', widget.registry.id);
+        await client!
+            .from('device_registries')
+            .update({
+              'is_active': active,
+              'released_at': active ? null : DateTime.now().toIso8601String(),
+            })
+            .eq('id', widget.registry.id);
       }
       ref.invalidate(customerDeviceRegistriesProvider(widget.customerId));
     } finally {
@@ -1231,9 +1309,9 @@ class _DeviceRegistryItemState extends ConsumerState<_DeviceRegistryItem> {
     if (!widget.canDeletePermanently) return;
     if (widget.registry.isActive) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Önce kaydı pasife alın.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Önce kaydı pasife alın.')));
       return;
     }
 
@@ -1267,10 +1345,17 @@ class _DeviceRegistryItemState extends ConsumerState<_DeviceRegistryItem> {
       if (apiClient != null) {
         await apiClient.postJson(
           '/mutate',
-          body: {'op': 'delete', 'table': 'device_registries', 'id': widget.registry.id},
+          body: {
+            'op': 'delete',
+            'table': 'device_registries',
+            'id': widget.registry.id,
+          },
         );
       } else {
-        await client!.from('device_registries').delete().eq('id', widget.registry.id);
+        await client!
+            .from('device_registries')
+            .delete()
+            .eq('id', widget.registry.id);
       }
       ref.invalidate(customerDeviceRegistriesProvider(widget.customerId));
     } finally {
@@ -1296,7 +1381,9 @@ class _DeviceRegistryItemState extends ConsumerState<_DeviceRegistryItem> {
     if (!widget.canTransfer) return;
     final customers = await ref.read(customersForTransferProvider.future);
     if (!mounted) return;
-    final activeCustomers = customers.where((c) => c.isActive).toList(growable: false);
+    final activeCustomers = customers
+        .where((c) => c.isActive)
+        .toList(growable: false);
     final selected = await showDialog<_CustomerOption>(
       context: context,
       builder: (context) => _CustomerTransferDialog(items: activeCustomers),
@@ -1327,12 +1414,15 @@ class _DeviceRegistryItemState extends ConsumerState<_DeviceRegistryItem> {
           },
         );
       } else {
-        await client!.from('device_registries').update({
-          'customer_id': selected.id,
-          'assigned_at': DateTime.now().toIso8601String(),
-          'released_at': null,
-          'is_active': true,
-        }).eq('id', widget.registry.id);
+        await client!
+            .from('device_registries')
+            .update({
+              'customer_id': selected.id,
+              'assigned_at': DateTime.now().toIso8601String(),
+              'released_at': null,
+              'is_active': true,
+            })
+            .eq('id', widget.registry.id);
       }
       ref.invalidate(customerDeviceRegistriesProvider(widget.customerId));
       ref.invalidate(customerDeviceRegistriesProvider(selected.id));
@@ -1370,20 +1460,19 @@ class _DeviceRegistryItemState extends ConsumerState<_DeviceRegistryItem> {
                 Text(
                   item.registryNumber,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: item.isActive
-                            ? TextDecoration.none
-                            : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    decoration: item.isActive
+                        ? TextDecoration.none
+                        : TextDecoration.lineThrough,
+                  ),
                 ),
                 if (subtitle.isNotEmpty) ...[
                   const Gap(4),
                   Text(
                     subtitle,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: AppTheme.textMuted),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ],
               ],
@@ -1399,7 +1488,9 @@ class _DeviceRegistryItemState extends ConsumerState<_DeviceRegistryItem> {
                 builder: (context, controller, _) => OutlinedButton(
                   onPressed: _busy
                       ? null
-                      : () => controller.isOpen ? controller.close() : controller.open(),
+                      : () => controller.isOpen
+                            ? controller.close()
+                            : controller.open(),
                   child: _busy
                       ? const SizedBox(
                           width: 16,
@@ -1421,7 +1512,9 @@ class _DeviceRegistryItemState extends ConsumerState<_DeviceRegistryItem> {
                     ),
                   if (widget.canArchive)
                     MenuItemButton(
-                      onPressed: _busy ? null : () => _setActive(!item.isActive),
+                      onPressed: _busy
+                          ? null
+                          : () => _setActive(!item.isActive),
                       child: Text(item.isActive ? 'Pasife Al' : 'Aktifleştir'),
                     ),
                   if (widget.canDeletePermanently)
@@ -1460,8 +1553,9 @@ class _DeviceRegistryEditDialogState
   @override
   void initState() {
     super.initState();
-    _registryController =
-        TextEditingController(text: widget.initial?.registryNumber ?? '');
+    _registryController = TextEditingController(
+      text: widget.initial?.registryNumber ?? '',
+    );
     _modelController = TextEditingController(text: widget.initial?.model ?? '');
   }
 
@@ -1483,7 +1577,9 @@ class _DeviceRegistryEditDialogState
       final values = <String, dynamic>{
         if (widget.initial != null) 'id': widget.initial!.id,
         'registry_number': _registryController.text.trim(),
-        'model': _modelController.text.trim().isEmpty ? null : _modelController.text.trim(),
+        'model': _modelController.text.trim().isEmpty
+            ? null
+            : _modelController.text.trim(),
         'customer_id': widget.customerId,
         'is_active': true,
         'assigned_at': DateTime.now().toIso8601String(),
@@ -1493,22 +1589,29 @@ class _DeviceRegistryEditDialogState
       if (apiClient != null) {
         await apiClient.postJson(
           '/mutate',
-          body: {'op': 'upsert', 'table': 'device_registries', 'values': values},
+          body: {
+            'op': 'upsert',
+            'table': 'device_registries',
+            'values': values,
+          },
         );
       } else {
         if (widget.initial == null) {
           await client!.from('device_registries').insert(values);
         } else {
-          await client!.from('device_registries').update(values).eq('id', widget.initial!.id);
+          await client!
+              .from('device_registries')
+              .update(values)
+              .eq('id', widget.initial!.id);
         }
       }
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kaydedilemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Kaydedilemedi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1539,7 +1642,9 @@ class _DeviceRegistryEditDialogState
                       ),
                     ),
                     IconButton(
-                      onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(false),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -1548,7 +1653,8 @@ class _DeviceRegistryEditDialogState
                 TextFormField(
                   controller: _registryController,
                   decoration: const InputDecoration(labelText: 'Sicil No'),
-                  validator: (v) => (v ?? '').trim().isEmpty ? 'Sicil girin.' : null,
+                  validator: (v) =>
+                      (v ?? '').trim().isEmpty ? 'Sicil girin.' : null,
                 ),
                 const Gap(12),
                 TextFormField(
@@ -1560,7 +1666,9 @@ class _DeviceRegistryEditDialogState
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(false),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -1589,7 +1697,8 @@ class _CustomerTransferDialog extends StatefulWidget {
   final List<_CustomerOption> items;
 
   @override
-  State<_CustomerTransferDialog> createState() => _CustomerTransferDialogState();
+  State<_CustomerTransferDialog> createState() =>
+      _CustomerTransferDialogState();
 }
 
 class _CustomerTransferDialogState extends State<_CustomerTransferDialog> {
@@ -1607,10 +1716,7 @@ class _CustomerTransferDialogState extends State<_CustomerTransferDialog> {
             child: Text('Müşteri seç'),
           ),
           ...widget.items.map(
-            (c) => DropdownMenuItem<String?>(
-              value: c.id,
-              child: Text(c.name),
-            ),
+            (c) => DropdownMenuItem<String?>(value: c.id, child: Text(c.name)),
           ),
         ],
         onChanged: (value) => setState(() => _selectedId = value),
@@ -1654,10 +1760,9 @@ class _PillText extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: Theme.of(context)
-            .textTheme
-            .bodySmall
-            ?.copyWith(color: AppTheme.textMuted),
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
       ),
     );
   }
@@ -1696,16 +1801,18 @@ class _BranchItem extends StatelessWidget {
                 child: Text(
                   title,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: branch.isActive
-                            ? TextDecoration.none
-                            : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    decoration: branch.isActive
+                        ? TextDecoration.none
+                        : TextDecoration.lineThrough,
+                  ),
                 ),
               ),
               AppBadge(
                 label: branch.isActive ? 'Aktif' : 'Pasif',
-                tone: branch.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
+                tone: branch.isActive
+                    ? AppBadgeTone.success
+                    : AppBadgeTone.neutral,
               ),
             ],
           ),
@@ -1713,30 +1820,27 @@ class _BranchItem extends StatelessWidget {
             const Gap(6),
             Text(
               subtitle,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: AppTheme.textMuted),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             ),
           ],
           if (branch.address?.trim().isNotEmpty ?? false) ...[
             const Gap(8),
             Text(
               branch.address!,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: const Color(0xFF475569)),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF475569)),
             ),
           ],
           if (location != null) ...[
             const Gap(8),
             Text(
               'Konum: $location',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: const Color(0xFF94A3B8)),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF94A3B8)),
             ),
           ],
         ],
@@ -1778,7 +1882,12 @@ class _LineItemState extends ConsumerState<_LineItem> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await _showEditLineDialog(context, ref, customerId: widget.customerId, line: line);
+      await _showEditLineDialog(
+        context,
+        ref,
+        customerId: widget.customerId,
+        line: line,
+      );
       ref.invalidate(customerLinesProvider(widget.customerId));
       ref.invalidate(customersProvider);
       ref.invalidate(linesProvider);
@@ -1827,16 +1936,19 @@ class _LineItemState extends ConsumerState<_LineItem> {
           },
         );
       } else {
-        await client!.from('lines').update({'is_active': false}).eq('id', line.id);
+        await client!
+            .from('lines')
+            .update({'is_active': false})
+            .eq('id', line.id);
       }
 
       ref.invalidate(customerLinesProvider(widget.customerId));
       ref.invalidate(customersProvider);
       ref.invalidate(linesProvider);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat silindi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hat silindi.')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1852,27 +1964,27 @@ class _LineItemState extends ConsumerState<_LineItem> {
     final tone = !line.isActive
         ? AppBadgeTone.neutral
         : endsAt == null
-            ? AppBadgeTone.neutral
-            : endsAt.isBefore(now)
-                ? AppBadgeTone.error
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? AppBadgeTone.warning
-                    : AppBadgeTone.success;
+        ? AppBadgeTone.neutral
+        : endsAt.isBefore(now)
+        ? AppBadgeTone.error
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? AppBadgeTone.warning
+        : AppBadgeTone.success;
 
     final statusLabel = !line.isActive
         ? 'Pasif'
         : endsAt == null
-            ? 'Tarihsiz'
-            : endsAt.isBefore(now)
-                ? 'Bitmiş'
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? 'Yaklaşıyor'
-                    : 'Aktif';
+        ? 'Tarihsiz'
+        : endsAt.isBefore(now)
+        ? 'Bitmiş'
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? 'Yaklaşıyor'
+        : 'Aktif';
 
     final period = (startsAt == null && endsAt == null)
         ? null
         : '${startsAt == null ? '—' : DateFormat('d MMM y', 'tr_TR').format(startsAt)}'
-            ' → ${endsAt == null ? '—' : DateFormat('d MMM y', 'tr_TR').format(endsAt)}';
+              ' → ${endsAt == null ? '—' : DateFormat('d MMM y', 'tr_TR').format(endsAt)}';
 
     final subtitle = [
       if (line.number?.trim().isNotEmpty ?? false) 'Hat: ${line.number}',
@@ -1900,30 +2012,28 @@ class _LineItemState extends ConsumerState<_LineItem> {
                       ? line.label!
                       : (line.number ?? 'Hat'),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: line.isActive
-                            ? TextDecoration.none
-                            : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    decoration: line.isActive
+                        ? TextDecoration.none
+                        : TextDecoration.lineThrough,
+                  ),
                 ),
                 if (subtitle.isNotEmpty) ...[
                   const Gap(4),
                   Text(
                     subtitle,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: AppTheme.textMuted),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ],
                 if (period != null) ...[
                   const Gap(4),
                   Text(
                     period,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: const Color(0xFF94A3B8)),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF94A3B8),
+                    ),
                   ),
                 ],
               ],
@@ -1934,15 +2044,17 @@ class _LineItemState extends ConsumerState<_LineItem> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               AppBadge(label: statusLabel, tone: tone),
-              if (widget.canTransfer || widget.canEdit || widget.canArchive) ...[
+              if (widget.canTransfer ||
+                  widget.canEdit ||
+                  widget.canArchive) ...[
                 const Gap(8),
                 MenuAnchor(
                   builder: (context, controller, _) => OutlinedButton(
                     onPressed: _busy
                         ? null
                         : () => controller.isOpen
-                            ? controller.close()
-                            : controller.open(),
+                              ? controller.close()
+                              : controller.open(),
                     child: _busy
                         ? const SizedBox(
                             width: 16,
@@ -1974,7 +2086,9 @@ class _LineItemState extends ConsumerState<_LineItem> {
                               lineId: line.id,
                               fromCustomerId: widget.customerId,
                             );
-                            ref.invalidate(customerLinesProvider(widget.customerId));
+                            ref.invalidate(
+                              customerLinesProvider(widget.customerId),
+                            );
                             ref.invalidate(customersProvider);
                             ref.invalidate(linesProvider);
                           } finally {
@@ -1995,7 +2109,9 @@ class _LineItemState extends ConsumerState<_LineItem> {
                               customerId: widget.customerId,
                               currentEndsAt: line.endsAt,
                             );
-                            ref.invalidate(customerLinesProvider(widget.customerId));
+                            ref.invalidate(
+                              customerLinesProvider(widget.customerId),
+                            );
                             ref.invalidate(customersProvider);
                             ref.invalidate(linesProvider);
                           } finally {
@@ -2105,9 +2221,9 @@ class _LicenseItemState extends ConsumerState<_LicenseItem> {
       ref.invalidate(customersProvider);
       ref.invalidate(licensesProvider);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('GMP3 lisansı silindi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('GMP3 lisansı silindi.')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -2122,27 +2238,27 @@ class _LicenseItemState extends ConsumerState<_LicenseItem> {
     final tone = !license.isActive
         ? AppBadgeTone.neutral
         : endsAt == null
-            ? AppBadgeTone.neutral
-            : endsAt.isBefore(now)
-                ? AppBadgeTone.error
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? AppBadgeTone.warning
-                    : AppBadgeTone.success;
+        ? AppBadgeTone.neutral
+        : endsAt.isBefore(now)
+        ? AppBadgeTone.error
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? AppBadgeTone.warning
+        : AppBadgeTone.success;
 
     final label = !license.isActive
         ? 'Pasif'
         : endsAt == null
-            ? 'Tarihsiz'
-            : endsAt.isBefore(now)
-                ? 'Bitmiş'
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? 'Yaklaşıyor'
-                    : 'Aktif';
+        ? 'Tarihsiz'
+        : endsAt.isBefore(now)
+        ? 'Bitmiş'
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? 'Yaklaşıyor'
+        : 'Aktif';
 
     final period = (license.startsAt == null && license.endsAt == null)
         ? null
         : '${license.startsAt == null ? '—' : DateFormat('d MMM y', 'tr_TR').format(license.startsAt!)}'
-            ' → ${license.endsAt == null ? '—' : DateFormat('d MMM y', 'tr_TR').format(license.endsAt!)}';
+              ' → ${license.endsAt == null ? '—' : DateFormat('d MMM y', 'tr_TR').format(license.endsAt!)}';
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -2160,20 +2276,19 @@ class _LicenseItemState extends ConsumerState<_LicenseItem> {
                 Text(
                   license.name,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: license.isActive
-                            ? TextDecoration.none
-                            : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    decoration: license.isActive
+                        ? TextDecoration.none
+                        : TextDecoration.lineThrough,
+                  ),
                 ),
                 if (period != null) ...[
                   const Gap(4),
                   Text(
                     period,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: AppTheme.textMuted),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ],
                 if ((license.softwareCompanyName ?? '').trim().isNotEmpty ||
@@ -2186,10 +2301,9 @@ class _LicenseItemState extends ConsumerState<_LicenseItem> {
                       if ((license.registryNumber ?? '').trim().isNotEmpty)
                         'Sicil: ${license.registryNumber}',
                     ].join(' • '),
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: AppTheme.textMuted),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ],
               ],
@@ -2207,8 +2321,8 @@ class _LicenseItemState extends ConsumerState<_LicenseItem> {
                     onPressed: _busy
                         ? null
                         : () => controller.isOpen
-                            ? controller.close()
-                            : controller.open(),
+                              ? controller.close()
+                              : controller.open(),
                     child: _busy
                         ? const SizedBox(
                             width: 16,
@@ -2242,7 +2356,9 @@ class _LicenseItemState extends ConsumerState<_LicenseItem> {
                               currentEndsAt: license.endsAt,
                               name: license.name,
                             );
-                            ref.invalidate(customerLicensesProvider(widget.customerId));
+                            ref.invalidate(
+                              customerLicensesProvider(widget.customerId),
+                            );
                             ref.invalidate(customersProvider);
                             ref.invalidate(licensesProvider);
                           } finally {
@@ -2319,9 +2435,15 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
       await client.from('branches').insert({
         'customer_id': widget.customerId,
         'name': _nameController.text.trim(),
-        'city': _cityController.text.trim().isEmpty ? null : _cityController.text.trim(),
-        'address': _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
-        'phone': _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
+        'city': _cityController.text.trim().isEmpty
+            ? null
+            : _cityController.text.trim(),
+        'address': _addressController.text.trim().isEmpty
+            ? null
+            : _addressController.text.trim(),
+        'phone': _phoneController.text.trim().isEmpty
+            ? null
+            : _phoneController.text.trim(),
         'location_lat': lat,
         'location_lng': lng,
         'is_active': true,
@@ -2329,14 +2451,14 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
 
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Şube eklendi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Şube eklendi.')));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Şube eklenemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Şube eklenemedi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -2367,7 +2489,9 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -2383,7 +2507,8 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
                           hintText: 'Örn: Merkez',
                         ),
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) return 'Şube ismi gerekli.';
+                          if (v == null || v.trim().isEmpty)
+                            return 'Şube ismi gerekli.';
                           return null;
                         },
                       ),
@@ -2458,7 +2583,9 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -2541,7 +2668,9 @@ class _EditLineDialogState extends ConsumerState<_EditLineDialog> {
     _labelController = TextEditingController(text: (l.label ?? '').trim());
     _numberController = TextEditingController(text: (l.number ?? '').trim());
     _simController = TextEditingController(text: (l.simNumber ?? '').trim());
-    _operator = (l.operator ?? 'turkcell').trim().isEmpty ? 'turkcell' : (l.operator ?? 'turkcell').trim();
+    _operator = (l.operator ?? 'turkcell').trim().isEmpty
+        ? 'turkcell'
+        : (l.operator ?? 'turkcell').trim();
     _start = l.startsAt;
     _end = l.endsAt;
   }
@@ -2627,14 +2756,14 @@ class _EditLineDialogState extends ConsumerState<_EditLineDialog> {
 
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat güncellendi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hat güncellendi.')));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat güncellenemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hat güncellenemedi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -2666,7 +2795,9 @@ class _EditLineDialogState extends ConsumerState<_EditLineDialog> {
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -2679,16 +2810,22 @@ class _EditLineDialogState extends ConsumerState<_EditLineDialog> {
                     labelText: 'Hat No',
                     border: OutlineInputBorder(),
                   ),
-                  validator: (v) => (v ?? '').trim().isEmpty ? 'Hat no gerekli.' : null,
+                  validator: (v) =>
+                      (v ?? '').trim().isEmpty ? 'Hat no gerekli.' : null,
                 ),
                 const Gap(12),
                 DropdownButtonFormField<String>(
                   initialValue: _operator,
                   items: const [
-                    DropdownMenuItem(value: 'turkcell', child: Text('TURKCELL')),
+                    DropdownMenuItem(
+                      value: 'turkcell',
+                      child: Text('TURKCELL'),
+                    ),
                     DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
                   ],
-                  onChanged: _saving ? null : (v) => setState(() => _operator = v ?? 'turkcell'),
+                  onChanged: _saving
+                      ? null
+                      : (v) => setState(() => _operator = v ?? 'turkcell'),
                   decoration: const InputDecoration(
                     labelText: 'Operatör',
                     border: OutlineInputBorder(),
@@ -2717,7 +2854,9 @@ class _EditLineDialogState extends ConsumerState<_EditLineDialog> {
                       child: OutlinedButton.icon(
                         onPressed: _saving ? null : _pickStart,
                         icon: const Icon(Icons.date_range_rounded),
-                        label: Text(_start == null ? 'Başlangıç' : df.format(_start!)),
+                        label: Text(
+                          _start == null ? 'Başlangıç' : df.format(_start!),
+                        ),
                       ),
                     ),
                     const Gap(12),
@@ -2735,7 +2874,9 @@ class _EditLineDialogState extends ConsumerState<_EditLineDialog> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -2879,10 +3020,12 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
           final entered = normalizeDigits(_numberController.text.trim());
           if (entered.isNotEmpty) {
             final available = await ref.read(lineStockAvailableProvider.future);
-            final matched = available.where((e) {
-              final n = normalizeDigits(e.lineNumber);
-              return n.isNotEmpty && n == entered;
-            }).toList(growable: false);
+            final matched = available
+                .where((e) {
+                  final n = normalizeDigits(e.lineNumber);
+                  return n.isNotEmpty && n == entered;
+                })
+                .toList(growable: false);
             if (matched.isNotEmpty) {
               stockId = matched.first.id;
             }
@@ -2913,10 +3056,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
       } else {
         final inserted = await client!
             .from('lines')
-            .insert({
-              ...linePayload,
-              'created_by': client.auth.currentUser?.id,
-            })
+            .insert({...linePayload, 'created_by': client.auth.currentUser?.id})
             .select('id')
             .single();
         lineId = inserted['id']?.toString();
@@ -2927,10 +3067,12 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
           final entered = normalizeDigits(_numberController.text.trim());
           if (entered.isNotEmpty) {
             final available = await ref.read(lineStockAvailableProvider.future);
-            final matched = available.where((e) {
-              final n = normalizeDigits(e.lineNumber);
-              return n.isNotEmpty && n == entered;
-            }).toList(growable: false);
+            final matched = available
+                .where((e) {
+                  final n = normalizeDigits(e.lineNumber);
+                  return n.isNotEmpty && n == entered;
+                })
+                .toList(growable: false);
             if (matched.isNotEmpty) {
               stockId = matched.first.id;
             }
@@ -2957,17 +3099,15 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
 
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat kaydedildi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hat kaydedildi.')));
     } catch (e) {
       if (!mounted) return;
       final msg = e is Exception
           ? e.toString().replaceFirst('Exception: ', '')
           : 'Hat kaydedilemedi.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg)),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -2975,12 +3115,17 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final branchesAsync = ref.watch(customerBranchesProvider(widget.customerId));
+    final branchesAsync = ref.watch(
+      customerBranchesProvider(widget.customerId),
+    );
     final lineStockAsync = ref.watch(lineStockAvailableProvider);
     final isAdmin = ref.watch(isAdminProvider);
     final now = DateTime.now();
     final startText = DateFormat('d MMM y', 'tr_TR').format(now);
-    final endText = DateFormat('d MMM y', 'tr_TR').format(DateTime(now.year, 12, 31));
+    final endText = DateFormat(
+      'd MMM y',
+      'tr_TR',
+    ).format(DateTime(now.year, 12, 31));
 
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
@@ -3005,7 +3150,9 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -3026,7 +3173,9 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                         ),
                       ),
                     ],
-                    onChanged: _saving ? null : (v) => setState(() => _branchId = v),
+                    onChanged: _saving
+                        ? null
+                        : (v) => setState(() => _branchId = v),
                     decoration: const InputDecoration(labelText: 'Şube'),
                   ),
                   loading: () => const SizedBox.shrink(),
@@ -3061,14 +3210,16 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                             List<LineStockItem> filtered() {
                               final needle = q.trim().toLowerCase();
                               if (needle.isEmpty) return available;
-                              return available.where((e) {
-                                final hay = [
-                                  e.lineNumber,
-                                  e.simNumber ?? '',
-                                  e.operatorName,
-                                ].join(' ').toLowerCase();
-                                return hay.contains(needle);
-                              }).toList(growable: false);
+                              return available
+                                  .where((e) {
+                                    final hay = [
+                                      e.lineNumber,
+                                      e.simNumber ?? '',
+                                      e.operatorName,
+                                    ].join(' ').toLowerCase();
+                                    return hay.contains(needle);
+                                  })
+                                  .toList(growable: false);
                             }
 
                             final list = filtered();
@@ -3077,18 +3228,25 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                                 padding: EdgeInsets.only(
                                   left: 16,
                                   right: 16,
-                                  bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+                                  bottom:
+                                      MediaQuery.viewInsetsOf(context).bottom +
+                                      16,
                                   top: 8,
                                 ),
                                 child: SizedBox(
-                                  height: MediaQuery.sizeOf(context).height * 0.72,
+                                  height:
+                                      MediaQuery.sizeOf(context).height * 0.72,
                                   child: Column(
                                     children: [
                                       TextField(
-                                        onChanged: (v) => setSheetState(() => q = v),
+                                        onChanged: (v) =>
+                                            setSheetState(() => q = v),
                                         decoration: const InputDecoration(
-                                          prefixIcon: Icon(Icons.search_rounded),
-                                          hintText: 'Ara (hat, sim, operatör...)',
+                                          prefixIcon: Icon(
+                                            Icons.search_rounded,
+                                          ),
+                                          hintText:
+                                              'Ara (hat, sim, operatör...)',
                                         ),
                                       ),
                                       const Gap(10),
@@ -3096,9 +3254,15 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                                         child: ListView(
                                           children: [
                                             ListTile(
-                                              leading: const Icon(Icons.clear_rounded),
-                                              title: const Text('Seçimi temizle'),
-                                              onTap: () => Navigator.of(context).pop(null),
+                                              leading: const Icon(
+                                                Icons.clear_rounded,
+                                              ),
+                                              title: const Text(
+                                                'Seçimi temizle',
+                                              ),
+                                              onTap: () => Navigator.of(
+                                                context,
+                                              ).pop(null),
                                             ),
                                             const Divider(height: 1),
                                             for (final s in list)
@@ -3106,17 +3270,31 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                                                 title: Text(s.lineNumber),
                                                 subtitle: Text(
                                                   [
-                                                    normalizeOperator(s.operatorName) == 'turkcell'
-                                                        ? 'TURKCELL'
-                                                        : normalizeOperator(s.operatorName) ==
-                                                                'telsim'
+                                                        normalizeOperator(
+                                                                  s.operatorName,
+                                                                ) ==
+                                                                'turkcell'
+                                                            ? 'TURKCELL'
+                                                            : normalizeOperator(
+                                                                    s.operatorName,
+                                                                  ) ==
+                                                                  'telsim'
                                                             ? 'TELSİM'
                                                             : s.operatorName,
-                                                    if ((s.simNumber ?? '').trim().isNotEmpty)
-                                                      'SIM: ${s.simNumber}',
-                                                  ].where((e) => e.trim().isNotEmpty).join(' • '),
+                                                        if ((s.simNumber ?? '')
+                                                            .trim()
+                                                            .isNotEmpty)
+                                                          'SIM: ${s.simNumber}',
+                                                      ]
+                                                      .where(
+                                                        (e) =>
+                                                            e.trim().isNotEmpty,
+                                                      )
+                                                      .join(' • '),
                                                 ),
-                                                onTap: () => Navigator.of(context).pop(s),
+                                                onTap: () => Navigator.of(
+                                                  context,
+                                                ).pop(s),
                                               ),
                                             if (list.isEmpty)
                                               const Padding(
@@ -3151,14 +3329,20 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         OutlinedButton.icon(
-                          onPressed: _saving || available.isEmpty ? null : openPicker,
+                          onPressed: _saving || available.isEmpty
+                              ? null
+                              : openPicker,
                           icon: const Icon(Icons.search_rounded),
                           label: Text(
                             selected == null
-                                ? (available.isEmpty ? 'Stok yok' : 'Stoktan seç (arama)')
+                                ? (available.isEmpty
+                                      ? 'Stok yok'
+                                      : 'Stoktan seç (arama)')
                                 : [
                                     selected.lineNumber,
-                                    if ((selected.simNumber ?? '').trim().isNotEmpty)
+                                    if ((selected.simNumber ?? '')
+                                        .trim()
+                                        .isNotEmpty)
                                       'SIM: ${selected.simNumber}',
                                   ].join(' • '),
                           ),
@@ -3179,7 +3363,8 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                     hintText: '90555...',
                   ),
                   validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Hat numarası gerekli.';
+                    if (v == null || v.trim().isEmpty)
+                      return 'Hat numarası gerekli.';
                     return null;
                   },
                   onChanged: _saving || !isAdmin
@@ -3190,15 +3375,18 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                 DropdownButtonFormField<String>(
                   initialValue: _operator,
                   items: const [
-                    DropdownMenuItem(value: 'turkcell', child: Text('TURKCELL')),
+                    DropdownMenuItem(
+                      value: 'turkcell',
+                      child: Text('TURKCELL'),
+                    ),
                     DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
                   ],
                   onChanged: _saving || !isAdmin
                       ? null
                       : (v) => setState(() {
-                            _operator = v;
-                            _selectedLineStockId = null;
-                          }),
+                          _operator = v;
+                          _selectedLineStockId = null;
+                        }),
                   decoration: const InputDecoration(
                     labelText: 'Operatör',
                     border: OutlineInputBorder(),
@@ -3239,9 +3427,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                         ),
                         child: Text(
                           'Başlangıç: $startText\nBitiş: $endText',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
+                          style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: const Color(0xFF475569)),
                         ),
                       ),
@@ -3253,7 +3439,9 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -3305,7 +3493,8 @@ Future<void> _showEditGmp3Dialog(
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (context) => _EditGmp3Dialog(customerId: customerId, license: license),
+    builder: (context) =>
+        _EditGmp3Dialog(customerId: customerId, license: license),
   );
 }
 
@@ -3332,8 +3521,9 @@ class _EditGmp3DialogState extends ConsumerState<_EditGmp3Dialog> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.license.name);
-    _registryController =
-        TextEditingController(text: (widget.license.registryNumber ?? '').trim());
+    _registryController = TextEditingController(
+      text: (widget.license.registryNumber ?? '').trim(),
+    );
     _start = widget.license.startsAt;
     _end = widget.license.endsAt;
     _selectedSoftwareCompanyId = widget.license.softwareCompanyId;
@@ -3382,9 +3572,9 @@ class _EditGmp3DialogState extends ConsumerState<_EditGmp3Dialog> {
     if (!ok) return;
 
     if ((_selectedSoftwareCompanyId ?? '').trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Yazılım firması seçin.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Yazılım firması seçin.')));
       return;
     }
 
@@ -3418,7 +3608,10 @@ class _EditGmp3DialogState extends ConsumerState<_EditGmp3Dialog> {
           },
         );
       } else {
-        await client!.from('licenses').update(values).eq('id', widget.license.id);
+        await client!
+            .from('licenses')
+            .update(values)
+            .eq('id', widget.license.id);
       }
 
       if (!mounted) return;
@@ -3464,7 +3657,9 @@ class _EditGmp3DialogState extends ConsumerState<_EditGmp3Dialog> {
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -3482,19 +3677,22 @@ class _EditGmp3DialogState extends ConsumerState<_EditGmp3Dialog> {
                 const Gap(12),
                 companiesAsync.when(
                   data: (items) {
-                    final active =
-                        items.where((e) => e.isActive).toList(growable: false);
+                    final active = items
+                        .where((e) => e.isActive)
+                        .toList(growable: false);
                     if (active.isEmpty) {
                       return Text(
                         'Yazılım firması tanımlanmamış.',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: AppTheme.textMuted),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.textMuted,
+                        ),
                       );
                     }
-                    final initialValue = (_selectedSoftwareCompanyId != null &&
-                            active.any((e) => e.id == _selectedSoftwareCompanyId))
+                    final initialValue =
+                        (_selectedSoftwareCompanyId != null &&
+                            active.any(
+                              (e) => e.id == _selectedSoftwareCompanyId,
+                            ))
                         ? _selectedSoftwareCompanyId
                         : active.first.id;
                     return DropdownButtonFormField<String>(
@@ -3505,7 +3703,8 @@ class _EditGmp3DialogState extends ConsumerState<_EditGmp3Dialog> {
                       ],
                       onChanged: _saving
                           ? null
-                          : (v) => setState(() => _selectedSoftwareCompanyId = v),
+                          : (v) =>
+                                setState(() => _selectedSoftwareCompanyId = v),
                       decoration: const InputDecoration(
                         labelText: 'Yazılım Firması',
                         border: OutlineInputBorder(),
@@ -3520,10 +3719,9 @@ class _EditGmp3DialogState extends ConsumerState<_EditGmp3Dialog> {
                   ),
                   error: (error, stackTrace) => Text(
                     'Yazılım firmaları yüklenemedi.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: AppTheme.textMuted),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ),
                 const Gap(12),
@@ -3541,7 +3739,9 @@ class _EditGmp3DialogState extends ConsumerState<_EditGmp3Dialog> {
                       child: OutlinedButton.icon(
                         onPressed: _saving ? null : _pickStart,
                         icon: const Icon(Icons.date_range_rounded),
-                        label: Text(_start == null ? 'Başlangıç' : df.format(_start!)),
+                        label: Text(
+                          _start == null ? 'Başlangıç' : df.format(_start!),
+                        ),
                       ),
                     ),
                     const Gap(12),
@@ -3559,7 +3759,9 @@ class _EditGmp3DialogState extends ConsumerState<_EditGmp3Dialog> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -3618,9 +3820,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
     if (!ok) return;
 
     if ((_selectedSoftwareCompanyId ?? '').trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Yazılım firması seçin.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Yazılım firması seçin.')));
       return;
     }
 
@@ -3703,9 +3905,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
 
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('GMP3 lisansı kaydedildi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('GMP3 lisansı kaydedildi.')));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3720,10 +3922,14 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final startText = DateFormat('d MMM y', 'tr_TR').format(now);
-    final endText = DateFormat('d MMM y', 'tr_TR').format(DateTime(now.year, 12, 31));
+    final endText = DateFormat(
+      'd MMM y',
+      'tr_TR',
+    ).format(DateTime(now.year, 12, 31));
     final companiesAsync = ref.watch(softwareCompaniesProvider);
-    final registriesAsync =
-        ref.watch(customerDeviceRegistriesProvider(widget.customerId));
+    final registriesAsync = ref.watch(
+      customerDeviceRegistriesProvider(widget.customerId),
+    );
 
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
@@ -3748,7 +3954,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -3760,38 +3968,43 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
                     labelText: 'Lisans Adı',
                     hintText: 'Örn: GMP3 Lisansı',
                   ),
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty ? 'Lisans adı gerekli.' : null,
+                  validator: (v) => v == null || v.trim().isEmpty
+                      ? 'Lisans adı gerekli.'
+                      : null,
                 ),
                 const Gap(12),
                 companiesAsync.when(
                   data: (items) {
-                    final active =
-                        items.where((e) => e.isActive).toList(growable: false);
+                    final active = items
+                        .where((e) => e.isActive)
+                        .toList(growable: false);
                     if (active.isEmpty) {
                       return Text(
                         'Yazılım firması tanımlanmamış.',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: AppTheme.textMuted),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.textMuted,
+                        ),
                       );
                     }
                     if (_selectedSoftwareCompanyId == null) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         if (!mounted) return;
-                        setState(() => _selectedSoftwareCompanyId = active.first.id);
+                        setState(
+                          () => _selectedSoftwareCompanyId = active.first.id,
+                        );
                       });
                     }
                     return DropdownButtonFormField<String>(
-                      initialValue: _selectedSoftwareCompanyId ?? active.first.id,
+                      initialValue:
+                          _selectedSoftwareCompanyId ?? active.first.id,
                       items: [
                         for (final c in active)
                           DropdownMenuItem(value: c.id, child: Text(c.name)),
                       ],
                       onChanged: _saving
                           ? null
-                          : (v) => setState(() => _selectedSoftwareCompanyId = v),
+                          : (v) =>
+                                setState(() => _selectedSoftwareCompanyId = v),
                       decoration: const InputDecoration(
                         labelText: 'Yazılım Firması',
                         border: OutlineInputBorder(),
@@ -3806,10 +4019,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
                   ),
                   error: (error, stackTrace) => Text(
                     'Yazılım firmaları yüklenemedi.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: AppTheme.textMuted),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ),
                 const Gap(12),
@@ -3823,7 +4035,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
                 const Gap(10),
                 registriesAsync.when(
                   data: (items) {
-                    final active = items.where((e) => e.isActive).toList(growable: false);
+                    final active = items
+                        .where((e) => e.isActive)
+                        .toList(growable: false);
                     if (active.isEmpty) return const SizedBox.shrink();
                     return DropdownButtonFormField<String?>(
                       initialValue: null,
@@ -3867,10 +4081,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
                   ),
                   child: Text(
                     'Başlangıç: $startText\nBitiş: $endText',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: const Color(0xFF475569)),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF475569),
+                    ),
                   ),
                 ),
                 const Gap(18),
@@ -3878,7 +4091,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -3940,17 +4155,20 @@ Future<void> _showTransferLineDialog(
     'transferred_by': client.auth.currentUser?.id,
   });
 
-  await client.from('lines').update({
-    'customer_id': selected.id,
-    'branch_id': null,
-    'transferred_at': DateTime.now().toIso8601String(),
-    'transferred_by': client.auth.currentUser?.id,
-  }).eq('id', lineId);
+  await client
+      .from('lines')
+      .update({
+        'customer_id': selected.id,
+        'branch_id': null,
+        'transferred_at': DateTime.now().toIso8601String(),
+        'transferred_by': client.auth.currentUser?.id,
+      })
+      .eq('id', lineId);
 
   if (context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Hat devredildi.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Hat devredildi.')));
   }
 }
 
@@ -3965,16 +4183,17 @@ Future<void> _extendLineAndQueueInvoice(
   if (client == null) return;
 
   final now = DateTime.now();
-  final baseYear =
-      (currentEndsAt != null && currentEndsAt.isAfter(now)) ? currentEndsAt.year : now.year;
+  final baseYear = (currentEndsAt != null && currentEndsAt.isAfter(now))
+      ? currentEndsAt.year
+      : now.year;
   final newEnd = DateTime(baseYear + 1, 12, 31);
   final newEndStr = newEnd.toIso8601String().substring(0, 10);
 
   try {
-    await client.from('lines').update({
-      'ends_at': newEndStr,
-      'expires_at': newEndStr,
-    }).eq('id', lineId);
+    await client
+        .from('lines')
+        .update({'ends_at': newEndStr, 'expires_at': newEndStr})
+        .eq('id', lineId);
 
     try {
       await client.from('invoice_items').insert({
@@ -3990,7 +4209,9 @@ Future<void> _extendLineAndQueueInvoice(
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Hat uzatıldı; fatura listesi için migration 0003 gerekli.'),
+            content: Text(
+              'Hat uzatıldı; fatura listesi için migration 0003 gerekli.',
+            ),
           ),
         );
       }
@@ -3999,14 +4220,16 @@ Future<void> _extendLineAndQueueInvoice(
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat uzatıldı ve fatura listesine eklendi.')),
+        const SnackBar(
+          content: Text('Hat uzatıldı ve fatura listesine eklendi.'),
+        ),
       );
     }
   } catch (_) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat uzatılamadı.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hat uzatılamadı.')));
     }
   }
 }
@@ -4023,16 +4246,17 @@ Future<void> _extendGmp3AndQueueInvoice(
   if (client == null) return;
 
   final now = DateTime.now();
-  final baseYear =
-      (currentEndsAt != null && currentEndsAt.isAfter(now)) ? currentEndsAt.year : now.year;
+  final baseYear = (currentEndsAt != null && currentEndsAt.isAfter(now))
+      ? currentEndsAt.year
+      : now.year;
   final newEnd = DateTime(baseYear + 1, 12, 31);
   final newEndStr = newEnd.toIso8601String().substring(0, 10);
 
   try {
-    await client.from('licenses').update({
-      'ends_at': newEndStr,
-      'expires_at': newEndStr,
-    }).eq('id', licenseId);
+    await client
+        .from('licenses')
+        .update({'ends_at': newEndStr, 'expires_at': newEndStr})
+        .eq('id', licenseId);
 
     try {
       await client.from('invoice_items').insert({
@@ -4048,7 +4272,9 @@ Future<void> _extendGmp3AndQueueInvoice(
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('GMP3 uzatıldı; fatura listesi için migration 0003 gerekli.'),
+            content: Text(
+              'GMP3 uzatıldı; fatura listesi için migration 0003 gerekli.',
+            ),
           ),
         );
       }
@@ -4057,14 +4283,16 @@ Future<void> _extendGmp3AndQueueInvoice(
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('GMP3 uzatıldı ve fatura listesine eklendi.')),
+        const SnackBar(
+          content: Text('GMP3 uzatıldı ve fatura listesine eklendi.'),
+        ),
       );
     }
   } catch (_) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('GMP3 uzatılamadı.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('GMP3 uzatılamadı.')));
     }
   }
 }
@@ -4200,22 +4428,22 @@ class _ExpiryItem extends StatelessWidget {
     final tone = !active
         ? AppBadgeTone.neutral
         : expiresAt == null
-            ? AppBadgeTone.neutral
-            : expiresAt!.isBefore(now)
-                ? AppBadgeTone.error
-                : expiresAt!.isBefore(now.add(const Duration(days: 30)))
-                    ? AppBadgeTone.warning
-                    : AppBadgeTone.success;
+        ? AppBadgeTone.neutral
+        : expiresAt!.isBefore(now)
+        ? AppBadgeTone.error
+        : expiresAt!.isBefore(now.add(const Duration(days: 30)))
+        ? AppBadgeTone.warning
+        : AppBadgeTone.success;
 
     final label = !active
         ? 'Pasif'
         : expiresAt == null
-            ? 'Tarihsiz'
-            : expiresAt!.isBefore(now)
-                ? 'Bitmiş'
-                : expiresAt!.isBefore(now.add(const Duration(days: 30)))
-                    ? 'Yaklaşıyor'
-                    : 'Aktif';
+        ? 'Tarihsiz'
+        : expiresAt!.isBefore(now)
+        ? 'Bitmiş'
+        : expiresAt!.isBefore(now.add(const Duration(days: 30)))
+        ? 'Yaklaşıyor'
+        : 'Aktif';
 
     final dateText = expiresAt == null
         ? '—'
@@ -4237,10 +4465,11 @@ class _ExpiryItem extends StatelessWidget {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        decoration:
-                            active ? TextDecoration.none : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w600,
+                    decoration: active
+                        ? TextDecoration.none
+                        : TextDecoration.lineThrough,
+                  ),
                 ),
                 const Gap(3),
                 Row(
@@ -4249,9 +4478,7 @@ class _ExpiryItem extends StatelessWidget {
                       Expanded(
                         child: Text(
                           subtitle!,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
+                          style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: AppTheme.textMuted),
                         ),
                       )
@@ -4259,19 +4486,16 @@ class _ExpiryItem extends StatelessWidget {
                       Expanded(
                         child: Text(
                           dateText,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
+                          style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: AppTheme.textMuted),
                         ),
                       ),
                     if (subtitle != null)
                       Text(
                         dateText,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: const Color(0xFF94A3B8)),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF94A3B8),
+                        ),
                       ),
                   ],
                 ),
@@ -4287,7 +4511,11 @@ class _ExpiryItem extends StatelessWidget {
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value, this.copyable = false});
+  const _InfoRow({
+    required this.label,
+    required this.value,
+    this.copyable = false,
+  });
 
   final String label;
   final String value;
@@ -4301,9 +4529,9 @@ class _InfoRow extends StatelessWidget {
     Future<void> copy() async {
       await Clipboard.setData(ClipboardData(text: v));
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kopyalandı.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Kopyalandı.')));
     }
 
     String normalizeDigits(String input) {
@@ -4335,14 +4563,16 @@ class _InfoRow extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: Theme.of(sheetContext).textTheme.titleMedium),
+                Text(
+                  label,
+                  style: Theme.of(sheetContext).textTheme.titleMedium,
+                ),
                 const Gap(4),
                 Text(
                   v,
-                  style: Theme.of(sheetContext)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: AppTheme.textMuted),
+                  style: Theme.of(
+                    sheetContext,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
                 const Gap(12),
                 ListTile(
@@ -4352,7 +4582,10 @@ class _InfoRow extends StatelessWidget {
                   onTap: () async {
                     Navigator.of(sheetContext).pop();
                     final uri = Uri(scheme: 'tel', path: tel.isEmpty ? v : tel);
-                    final ok = await launchUrl(uri, mode: LaunchMode.platformDefault);
+                    final ok = await launchUrl(
+                      uri,
+                      mode: LaunchMode.platformDefault,
+                    );
                     if (!ok && parentContext.mounted) {
                       ScaffoldMessenger.of(parentContext).showSnackBar(
                         const SnackBar(content: Text('Arama açılamadı.')),
@@ -4373,7 +4606,10 @@ class _InfoRow extends StatelessWidget {
                       return;
                     }
                     final url = Uri.parse('https://wa.me/$wa');
-                    final ok = await launchUrl(url, mode: LaunchMode.externalApplication);
+                    final ok = await launchUrl(
+                      url,
+                      mode: LaunchMode.externalApplication,
+                    );
                     if (!ok && parentContext.mounted) {
                       ScaffoldMessenger.of(parentContext).showSnackBar(
                         const SnackBar(content: Text('WhatsApp açılamadı.')),
@@ -4404,9 +4640,9 @@ class _InfoRow extends StatelessWidget {
           child: Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppTheme.textMuted,
-                  fontWeight: FontWeight.w600,
-                ),
+              color: AppTheme.textMuted,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
         Expanded(
@@ -4420,16 +4656,16 @@ class _InfoRow extends StatelessWidget {
                     child: Text(
                       value,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 )
               : Text(
                   value,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
         ),
         if (canCopy) ...[
@@ -4455,10 +4691,9 @@ class _TabEmpty extends StatelessWidget {
     return Center(
       child: Text(
         text,
-        style: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.copyWith(color: AppTheme.textMuted),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
       ),
     );
   }
@@ -4474,10 +4709,9 @@ class _TabError extends StatelessWidget {
     return Center(
       child: Text(
         text,
-        style: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.copyWith(color: AppTheme.textMuted),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
       ),
     );
   }
@@ -4554,8 +4788,7 @@ class CustomerDetail {
       city: json['city']?.toString(),
       address: json['address']?.toString(),
       countryCode: (json['country_code'] ?? 'XCT').toString(),
-      country:
-          (json['country'] ?? 'Kuzey Kıbrıs Türk Cumhuriyeti').toString(),
+      country: (json['country'] ?? 'Kuzey Kıbrıs Türk Cumhuriyeti').toString(),
       directorName: json['director_name']?.toString(),
       email: json['email']?.toString(),
       vkn: json['vkn']?.toString(),
@@ -4568,7 +4801,8 @@ class CustomerDetail {
       phone3: json['phone_3']?.toString(),
       phone3Title: json['phone_3_title']?.toString(),
       isActive: (json['is_active'] as bool?) ?? true,
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+      createdAt:
+          DateTime.tryParse(json['created_at']?.toString() ?? '') ??
           DateTime.now(),
     );
   }
@@ -4603,7 +4837,8 @@ class CustomerLine {
       simNumber: json['sim_number']?.toString(),
       operator: json['operator']?.toString(),
       startsAt: DateTime.tryParse(json['starts_at']?.toString() ?? ''),
-      endsAt: DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
+      endsAt:
+          DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
           DateTime.tryParse(json['expires_at']?.toString() ?? ''),
       isActive: (json['is_active'] as bool?) ?? true,
     );
@@ -4634,19 +4869,20 @@ class CustomerLicense {
   final bool isActive;
 
   factory CustomerLicense.fromJson(Map<String, dynamic> json) {
-    final softwareCompanies =
-        (json['software_companies'] as Map?)?.cast<String, dynamic>();
+    final softwareCompanies = (json['software_companies'] as Map?)
+        ?.cast<String, dynamic>();
     return CustomerLicense(
       id: json['id'].toString(),
       name: (json['name'] ?? '').toString(),
       licenseType: (json['license_type'] ?? 'gmp3').toString(),
       softwareCompanyId: json['software_company_id']?.toString(),
-      softwareCompanyName: (json['software_company_name'] ??
-              softwareCompanies?['name'])
-          ?.toString(),
+      softwareCompanyName:
+          (json['software_company_name'] ?? softwareCompanies?['name'])
+              ?.toString(),
       registryNumber: json['registry_number']?.toString(),
       startsAt: DateTime.tryParse(json['starts_at']?.toString() ?? ''),
-      endsAt: DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
+      endsAt:
+          DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
           DateTime.tryParse(json['expires_at']?.toString() ?? ''),
       isActive: (json['is_active'] as bool?) ?? true,
     );
@@ -4711,7 +4947,9 @@ class CustomerWorkOrder {
       id: json['id'].toString(),
       title: (json['title'] ?? '').toString(),
       status: (json['status'] ?? 'open').toString(),
-      scheduledDate: DateTime.tryParse(json['scheduled_date']?.toString() ?? ''),
+      scheduledDate: DateTime.tryParse(
+        json['scheduled_date']?.toString() ?? '',
+      ),
       isActive: (json['is_active'] as bool?) ?? true,
     );
   }

@@ -22,16 +22,19 @@ class ApiClient {
   Uri _buildUri(String path, [Map<String, String>? queryParameters]) {
     if (baseUrl.startsWith('http://') || baseUrl.startsWith('https://')) {
       final normalizedBase = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
-      final uri = Uri.parse(normalizedBase)
-          .resolve(path.startsWith('/') ? path.substring(1) : path);
+      final uri = Uri.parse(
+        normalizedBase,
+      ).resolve(path.startsWith('/') ? path.substring(1) : path);
       return uri.replace(queryParameters: queryParameters);
     }
 
     if (kIsWeb && baseUrl.startsWith('/')) {
-      final uri =
-          Uri.base.resolve(baseUrl.endsWith('/') ? baseUrl : '$baseUrl/');
-      final resolved =
-          uri.resolve(path.startsWith('/') ? path.substring(1) : path);
+      final uri = Uri.base.resolve(
+        baseUrl.endsWith('/') ? baseUrl : '$baseUrl/',
+      );
+      final resolved = uri.resolve(
+        path.startsWith('/') ? path.substring(1) : path,
+      );
       return resolved.replace(queryParameters: queryParameters);
     }
 

@@ -39,11 +39,14 @@ class SubscriptionsFiltersNotifier extends Notifier<SubscriptionsFilters> {
   }
 
   void setSoftwareCompanyId(String? value) {
-    state = state.copyWith(softwareCompanyId: (value ?? '').trim().isEmpty ? 'all' : value);
+    state = state.copyWith(
+      softwareCompanyId: (value ?? '').trim().isEmpty ? 'all' : value,
+    );
   }
 }
 
 enum SubscriptionStatusFilter { all, active, expiringSoon, expired }
+
 enum LineOperatorFilter { all, turkcell, telsim }
 
 class SubscriptionsFilters {
@@ -162,8 +165,8 @@ class License {
       expiresAt!.isBefore(DateTime.now().add(const Duration(days: 30)));
 
   factory License.fromJson(Map<String, dynamic> json) {
-    final softwareCompany =
-        (json['software_companies'] as Map?)?.cast<String, dynamic>();
+    final softwareCompany = (json['software_companies'] as Map?)
+        ?.cast<String, dynamic>();
     return License(
       id: json['id'].toString(),
       customerId: json['customer_id'].toString(),
@@ -240,7 +243,8 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
     return lines
         .where((line) {
           final query = normalizeSearchText(filters.query);
-          final matchesQuery = query.isEmpty ||
+          final matchesQuery =
+              query.isEmpty ||
               normalizeSearchText(line.number).contains(query) ||
               normalizeSearchText(line.simNumber ?? '').contains(query) ||
               normalizeSearchText(line.customerName ?? '').contains(query);
@@ -252,7 +256,8 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
           };
           final matchesStatus = switch (filters.status) {
             SubscriptionStatusFilter.all => true,
-            SubscriptionStatusFilter.active => !line.isExpired && !line.isExpiringSoon,
+            SubscriptionStatusFilter.active =>
+              !line.isExpired && !line.isExpiringSoon,
             SubscriptionStatusFilter.expiringSoon => line.isExpiringSoon,
             SubscriptionStatusFilter.expired => line.isExpired,
           };
@@ -261,15 +266,20 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
         .toList(growable: false);
   }
 
-  List<License> _filterLicenses(List<License> licenses, SubscriptionsFilters filters) {
+  List<License> _filterLicenses(
+    List<License> licenses,
+    SubscriptionsFilters filters,
+  ) {
     return licenses
         .where((license) {
           final query = normalizeSearchText(filters.query);
-          final matchesQuery = query.isEmpty ||
+          final matchesQuery =
+              query.isEmpty ||
               normalizeSearchText(license.name).contains(query) ||
               normalizeSearchText(license.licenseType).contains(query) ||
               normalizeSearchText(license.customerName ?? '').contains(query);
-          final matchesCompany = filters.softwareCompanyId == 'all' ||
+          final matchesCompany =
+              filters.softwareCompanyId == 'all' ||
               (license.softwareCompanyId ?? '') == filters.softwareCompanyId;
           final matchesStatus = switch (filters.status) {
             SubscriptionStatusFilter.all => true,
@@ -290,7 +300,9 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
     if (!kIsWeb) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Dışarı aktarma web üzerinde desteklenir.')),
+        const SnackBar(
+          content: Text('Dışarı aktarma web üzerinde desteklenir.'),
+        ),
       );
       return;
     }
@@ -313,8 +325,18 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
         _cell(l.number),
         _cell(_operatorLabel(l.operator)),
         _cell(l.simNumber ?? ''),
-        _cell(l.expiresAt == null ? '' : l.expiresAt!.toIso8601String().substring(0, 10)),
-        _cell(l.isExpired ? 'expired' : l.isExpiringSoon ? 'expiring_soon' : 'active'),
+        _cell(
+          l.expiresAt == null
+              ? ''
+              : l.expiresAt!.toIso8601String().substring(0, 10),
+        ),
+        _cell(
+          l.isExpired
+              ? 'expired'
+              : l.isExpiringSoon
+              ? 'expiring_soon'
+              : 'active',
+        ),
       ]);
     }
 
@@ -332,10 +354,28 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
         _cell(lic.customerName ?? ''),
         _cell(lic.name),
         _cell(lic.softwareCompanyName ?? ''),
-        _cell(lic.startsAt == null ? '' : lic.startsAt!.toIso8601String().substring(0, 10)),
-        _cell(lic.endsAt == null ? '' : lic.endsAt!.toIso8601String().substring(0, 10)),
-        _cell(lic.expiresAt == null ? '' : lic.expiresAt!.toIso8601String().substring(0, 10)),
-        _cell(lic.isExpired ? 'expired' : lic.isExpiringSoon ? 'expiring_soon' : 'active'),
+        _cell(
+          lic.startsAt == null
+              ? ''
+              : lic.startsAt!.toIso8601String().substring(0, 10),
+        ),
+        _cell(
+          lic.endsAt == null
+              ? ''
+              : lic.endsAt!.toIso8601String().substring(0, 10),
+        ),
+        _cell(
+          lic.expiresAt == null
+              ? ''
+              : lic.expiresAt!.toIso8601String().substring(0, 10),
+        ),
+        _cell(
+          lic.isExpired
+              ? 'expired'
+              : lic.isExpiringSoon
+              ? 'expiring_soon'
+              : 'active',
+        ),
       ]);
     }
 
@@ -368,7 +408,8 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
     final filteredLines = _filterLines(lines, filters);
     final filteredLicenses = _filterLicenses(licenses, filters);
 
-    final companies = companiesAsync.asData?.value
+    final companies =
+        companiesAsync.asData?.value
             .where((e) => e.isActive)
             .toList(growable: false) ??
         const <SoftwareCompanyDefinition>[];
@@ -389,12 +430,10 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
     final turkcellAllCount = lines
         .where((e) => (e.operator ?? '').trim().toLowerCase() == 'turkcell')
         .length;
-    final telsimAllCount = lines
-        .where((e) {
-          final op = (e.operator ?? '').trim().toLowerCase();
-          return op == 'telsim' || op == 'vodafone';
-        })
-        .length;
+    final telsimAllCount = lines.where((e) {
+      final op = (e.operator ?? '').trim().toLowerCase();
+      return op == 'telsim' || op == 'vodafone';
+    }).length;
 
     return AppPageLayout(
       title: 'Hat & Lisans Takibi',
@@ -426,19 +465,13 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
             },
             itemBuilder: (context) {
               final items = <PopupMenuEntry<String>>[
-                const PopupMenuItem(
-                  value: 'all',
-                  child: Text('Tümü'),
-                ),
+                const PopupMenuItem(value: 'all', child: Text('Tümü')),
               ];
               for (final c in companies) {
                 final count = gmp3Counts[c.id] ?? 0;
                 if (count == 0) continue;
                 items.add(
-                  PopupMenuItem(
-                    value: c.id,
-                    child: Text('${c.name} ($count)'),
-                  ),
+                  PopupMenuItem(value: c.id, child: Text('${c.name} ($count)')),
                 );
               }
               final unknownCount = gmp3Counts['unknown'] ?? 0;
@@ -456,8 +489,8 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
               label: filters.softwareCompanyId == 'all'
                   ? 'Firma: Tümü'
                   : filters.softwareCompanyId == 'unknown'
-                      ? 'Firma: Belirsiz'
-                      : 'Firma: ${companyNameById[filters.softwareCompanyId] ?? 'Seçili'}',
+                  ? 'Firma: Belirsiz'
+                  : 'Firma: ${companyNameById[filters.softwareCompanyId] ?? 'Seçili'}',
               tone: AppBadgeTone.neutral,
             ),
           ),
@@ -476,7 +509,10 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
           tooltip: 'Dışarı Aktar',
           onSelected: (value) async {
             if (value == 'export') {
-              await _exportExcel(lines: filteredLines, licenses: filteredLicenses);
+              await _exportExcel(
+                lines: filteredLines,
+                licenses: filteredLicenses,
+              );
             }
           },
           itemBuilder: (context) => const [
@@ -560,59 +596,61 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
                   ),
                 );
 
-                final statusField = DropdownButtonFormField<SubscriptionStatusFilter>(
-                  initialValue: filters.status,
-                  items: const [
-                    DropdownMenuItem(
-                      value: SubscriptionStatusFilter.all,
-                      child: Text('Tüm Durumlar'),
-                    ),
-                    DropdownMenuItem(
-                      value: SubscriptionStatusFilter.active,
-                      child: Text('Aktif'),
-                    ),
-                    DropdownMenuItem(
-                      value: SubscriptionStatusFilter.expiringSoon,
-                      child: Text('Yakında Dolacak'),
-                    ),
-                    DropdownMenuItem(
-                      value: SubscriptionStatusFilter.expired,
-                      child: Text('Süresi Doldu'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    ref
-                        .read(subscriptionsFiltersProvider.notifier)
-                        .setStatus(value);
-                  },
-                  decoration: const InputDecoration(labelText: 'Durum'),
-                );
+                final statusField =
+                    DropdownButtonFormField<SubscriptionStatusFilter>(
+                      initialValue: filters.status,
+                      items: const [
+                        DropdownMenuItem(
+                          value: SubscriptionStatusFilter.all,
+                          child: Text('Tüm Durumlar'),
+                        ),
+                        DropdownMenuItem(
+                          value: SubscriptionStatusFilter.active,
+                          child: Text('Aktif'),
+                        ),
+                        DropdownMenuItem(
+                          value: SubscriptionStatusFilter.expiringSoon,
+                          child: Text('Yakında Dolacak'),
+                        ),
+                        DropdownMenuItem(
+                          value: SubscriptionStatusFilter.expired,
+                          child: Text('Süresi Doldu'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        ref
+                            .read(subscriptionsFiltersProvider.notifier)
+                            .setStatus(value);
+                      },
+                      decoration: const InputDecoration(labelText: 'Durum'),
+                    );
 
-                final operatorField = DropdownButtonFormField<LineOperatorFilter>(
-                  initialValue: filters.operator,
-                  items: const [
-                    DropdownMenuItem(
-                      value: LineOperatorFilter.all,
-                      child: Text('Tüm Operatörler'),
-                    ),
-                    DropdownMenuItem(
-                      value: LineOperatorFilter.turkcell,
-                      child: Text('TURKCELL'),
-                    ),
-                    DropdownMenuItem(
-                      value: LineOperatorFilter.telsim,
-                      child: Text('TELSİM'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    ref
-                        .read(subscriptionsFiltersProvider.notifier)
-                        .setOperator(value);
-                  },
-                  decoration: const InputDecoration(labelText: 'Operatör'),
-                );
+                final operatorField =
+                    DropdownButtonFormField<LineOperatorFilter>(
+                      initialValue: filters.operator,
+                      items: const [
+                        DropdownMenuItem(
+                          value: LineOperatorFilter.all,
+                          child: Text('Tüm Operatörler'),
+                        ),
+                        DropdownMenuItem(
+                          value: LineOperatorFilter.turkcell,
+                          child: Text('TURKCELL'),
+                        ),
+                        DropdownMenuItem(
+                          value: LineOperatorFilter.telsim,
+                          child: Text('TELSİM'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        ref
+                            .read(subscriptionsFiltersProvider.notifier)
+                            .setOperator(value);
+                      },
+                      decoration: const InputDecoration(labelText: 'Operatör'),
+                    );
 
                 final companyField = DropdownButtonFormField<String>(
                   initialValue: filters.softwareCompanyId,
@@ -635,7 +673,9 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
                         .read(subscriptionsFiltersProvider.notifier)
                         .setSoftwareCompanyId(value);
                   },
-                  decoration: const InputDecoration(labelText: 'Yazılım Firması'),
+                  decoration: const InputDecoration(
+                    labelText: 'Yazılım Firması',
+                  ),
                 );
 
                 if (isNarrow) {
@@ -710,7 +750,9 @@ class _LinesTab extends ConsumerWidget {
     final linesAsync = ref.watch(linesProvider);
     final filters = ref.watch(subscriptionsFiltersProvider);
     final canEdit = ref.watch(hasActionAccessProvider(kActionEditRecords));
-    final canArchive = ref.watch(hasActionAccessProvider(kActionArchiveRecords));
+    final canArchive = ref.watch(
+      hasActionAccessProvider(kActionArchiveRecords),
+    );
 
     return linesAsync.when(
       data: (lines) {
@@ -781,76 +823,76 @@ class _LinesTab extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(2, 0, 2, 120),
             children: [
-            // Summary
-            Row(
-              children: [
-                Expanded(
-                  child: _SummaryCard(
-                    title: 'Toplam',
-                    value: filteredLines.length.toString(),
-                    color: AppTheme.primary,
+              // Summary
+              Row(
+                children: [
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Toplam',
+                      value: filteredLines.length.toString(),
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                  const Gap(12),
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Süresi Dolan',
+                      value: expired.length.toString(),
+                      color: AppTheme.error,
+                    ),
+                  ),
+                  const Gap(12),
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Yaklaşan',
+                      value: expiringSoon.length.toString(),
+                      color: AppTheme.warning,
+                    ),
+                  ),
+                ],
+              ),
+              const Gap(16),
+              if (expired.isNotEmpty) ...[
+                _SectionHeader(title: 'Süresi Dolanlar', color: AppTheme.error),
+                const Gap(8),
+                ...expired.map(
+                  (l) => _LineCard(
+                    line: l,
+                    dateFormat: dateFormat,
+                    canEdit: canEdit,
+                    canArchive: canArchive,
                   ),
                 ),
-                const Gap(12),
-                Expanded(
-                  child: _SummaryCard(
-                    title: 'Süresi Dolan',
-                    value: expired.length.toString(),
-                    color: AppTheme.error,
+                const Gap(16),
+              ],
+              if (expiringSoon.isNotEmpty) ...[
+                _SectionHeader(
+                  title: '30 Gün İçinde Dolacaklar',
+                  color: AppTheme.warning,
+                ),
+                const Gap(8),
+                ...expiringSoon.map(
+                  (l) => _LineCard(
+                    line: l,
+                    dateFormat: dateFormat,
+                    canEdit: canEdit,
+                    canArchive: canArchive,
                   ),
                 ),
-                const Gap(12),
-                Expanded(
-                  child: _SummaryCard(
-                    title: 'Yaklaşan',
-                    value: expiringSoon.length.toString(),
-                    color: AppTheme.warning,
+                const Gap(16),
+              ],
+              if (active.isNotEmpty) ...[
+                _SectionHeader(title: 'Aktif Hatlar', color: AppTheme.success),
+                const Gap(8),
+                ...active.map(
+                  (l) => _LineCard(
+                    line: l,
+                    dateFormat: dateFormat,
+                    canEdit: canEdit,
+                    canArchive: canArchive,
                   ),
                 ),
               ],
-            ),
-            const Gap(16),
-            if (expired.isNotEmpty) ...[
-              _SectionHeader(title: 'Süresi Dolanlar', color: AppTheme.error),
-              const Gap(8),
-              ...expired.map(
-                (l) => _LineCard(
-                  line: l,
-                  dateFormat: dateFormat,
-                  canEdit: canEdit,
-                  canArchive: canArchive,
-                ),
-              ),
-              const Gap(16),
-            ],
-            if (expiringSoon.isNotEmpty) ...[
-              _SectionHeader(
-                title: '30 Gün İçinde Dolacaklar',
-                color: AppTheme.warning,
-              ),
-              const Gap(8),
-              ...expiringSoon.map(
-                (l) => _LineCard(
-                  line: l,
-                  dateFormat: dateFormat,
-                  canEdit: canEdit,
-                  canArchive: canArchive,
-                ),
-              ),
-              const Gap(16),
-            ],
-            if (active.isNotEmpty) ...[
-              _SectionHeader(title: 'Aktif Hatlar', color: AppTheme.success),
-              const Gap(8),
-              ...active.map(
-                (l) => _LineCard(
-                  line: l,
-                  dateFormat: dateFormat,
-                  canEdit: canEdit,
-                  canArchive: canArchive,
-                ),
-              ),
-            ],
             ],
           ),
         );
@@ -883,11 +925,12 @@ class _LicensesTab extends ConsumerWidget {
                   license.licenseType.toLowerCase().contains(query) ||
                   (license.customerName?.toLowerCase().contains(query) ??
                       false);
-              final matchesCompany = filters.softwareCompanyId == 'all' ||
+              final matchesCompany =
+                  filters.softwareCompanyId == 'all' ||
                   (filters.softwareCompanyId == 'unknown'
                       ? (license.softwareCompanyId ?? '').trim().isEmpty
                       : (license.softwareCompanyId ?? '') ==
-                          filters.softwareCompanyId);
+                            filters.softwareCompanyId);
               final matchesStatus = switch (filters.status) {
                 SubscriptionStatusFilter.all => true,
                 SubscriptionStatusFilter.active =>
@@ -943,60 +986,63 @@ class _LicensesTab extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(2, 0, 2, 120),
             children: [
-            Row(
-              children: [
-                Expanded(
-                  child: _SummaryCard(
-                    title: 'Toplam',
-                    value: filteredLicenses.length.toString(),
-                    color: AppTheme.primary,
+              Row(
+                children: [
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Toplam',
+                      value: filteredLicenses.length.toString(),
+                      color: AppTheme.primary,
+                    ),
                   ),
+                  const Gap(12),
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Süresi Dolan',
+                      value: expired.length.toString(),
+                      color: AppTheme.error,
+                    ),
+                  ),
+                  const Gap(12),
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Yaklaşan',
+                      value: expiringSoon.length.toString(),
+                      color: AppTheme.warning,
+                    ),
+                  ),
+                ],
+              ),
+              const Gap(16),
+              if (expired.isNotEmpty) ...[
+                _SectionHeader(title: 'Süresi Dolanlar', color: AppTheme.error),
+                const Gap(8),
+                ...expired.map(
+                  (l) => _LicenseCard(license: l, dateFormat: dateFormat),
                 ),
-                const Gap(12),
-                Expanded(
-                  child: _SummaryCard(
-                    title: 'Süresi Dolan',
-                    value: expired.length.toString(),
-                    color: AppTheme.error,
-                  ),
+                const Gap(16),
+              ],
+              if (expiringSoon.isNotEmpty) ...[
+                _SectionHeader(
+                  title: '30 Gün İçinde Dolacaklar',
+                  color: AppTheme.warning,
                 ),
-                const Gap(12),
-                Expanded(
-                  child: _SummaryCard(
-                    title: 'Yaklaşan',
-                    value: expiringSoon.length.toString(),
-                    color: AppTheme.warning,
-                  ),
+                const Gap(8),
+                ...expiringSoon.map(
+                  (l) => _LicenseCard(license: l, dateFormat: dateFormat),
+                ),
+                const Gap(16),
+              ],
+              if (active.isNotEmpty) ...[
+                _SectionHeader(
+                  title: 'Aktif Lisanslar',
+                  color: AppTheme.success,
+                ),
+                const Gap(8),
+                ...active.map(
+                  (l) => _LicenseCard(license: l, dateFormat: dateFormat),
                 ),
               ],
-            ),
-            const Gap(16),
-            if (expired.isNotEmpty) ...[
-              _SectionHeader(title: 'Süresi Dolanlar', color: AppTheme.error),
-              const Gap(8),
-              ...expired.map(
-                (l) => _LicenseCard(license: l, dateFormat: dateFormat),
-              ),
-              const Gap(16),
-            ],
-            if (expiringSoon.isNotEmpty) ...[
-              _SectionHeader(
-                title: '30 Gün İçinde Dolacaklar',
-                color: AppTheme.warning,
-              ),
-              const Gap(8),
-              ...expiringSoon.map(
-                (l) => _LicenseCard(license: l, dateFormat: dateFormat),
-              ),
-              const Gap(16),
-            ],
-            if (active.isNotEmpty) ...[
-              _SectionHeader(title: 'Aktif Lisanslar', color: AppTheme.success),
-              const Gap(8),
-              ...active.map(
-                (l) => _LicenseCard(license: l, dateFormat: dateFormat),
-              ),
-            ],
             ],
           ),
         );
@@ -1228,8 +1274,8 @@ class _LineCardState extends ConsumerState<_LineCard> {
     final (statusLabel, statusTone) = line.isExpired
         ? ('Süresi Doldu', AppBadgeTone.error)
         : line.isExpiringSoon
-            ? ('Yakında Dolacak', AppBadgeTone.warning)
-            : ('Aktif', AppBadgeTone.success);
+        ? ('Yakında Dolacak', AppBadgeTone.warning)
+        : ('Aktif', AppBadgeTone.success);
 
     final details = <String>[
       if ((line.simNumber ?? '').trim().isNotEmpty) 'SIM: ${line.simNumber}',
@@ -1265,23 +1311,23 @@ class _LineCardState extends ConsumerState<_LineCard> {
                   Text(
                     line.number,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const Gap(2),
                   Text(
                     line.customerName ?? '-',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.textMuted,
-                        ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                   if (details.isNotEmpty) ...[
                     const Gap(2),
                     Text(
                       details,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFF94A3B8),
-                          ),
+                        color: const Color(0xFF94A3B8),
+                      ),
                     ),
                   ],
                   if (line.expiresAt != null) ...[
@@ -1289,8 +1335,8 @@ class _LineCardState extends ConsumerState<_LineCard> {
                     Text(
                       'Bitiş: ${widget.dateFormat.format(line.expiresAt!)}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFF94A3B8),
-                          ),
+                        color: const Color(0xFF94A3B8),
+                      ),
                     ),
                   ],
                 ],
@@ -1319,8 +1365,8 @@ class _LineCardState extends ConsumerState<_LineCard> {
                       onPressed: _busy
                           ? null
                           : () => controller.isOpen
-                              ? controller.close()
-                              : controller.open(),
+                                ? controller.close()
+                                : controller.open(),
                       child: _busy
                           ? const SizedBox(
                               width: 16,
@@ -1400,11 +1446,13 @@ class _LicenseCard extends StatelessWidget {
                   const Gap(2),
                   Text(
                     license.customerName ?? '-',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textMuted,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
-                  if ((license.softwareCompanyName ?? '').trim().isNotEmpty) ...[
+                  if ((license.softwareCompanyName ?? '')
+                      .trim()
+                      .isNotEmpty) ...[
                     const Gap(2),
                     Text(
                       'Firma: ${license.softwareCompanyName}',
@@ -1455,7 +1503,8 @@ class _EditLineFromListDialog extends ConsumerStatefulWidget {
       _EditLineFromListDialogState();
 }
 
-class _EditLineFromListDialogState extends ConsumerState<_EditLineFromListDialog> {
+class _EditLineFromListDialogState
+    extends ConsumerState<_EditLineFromListDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _numberController;
   late final TextEditingController _simController;
@@ -1526,7 +1575,9 @@ class _EditLineFromListDialogState extends ConsumerState<_EditLineFromListDialog
     try {
       final values = <String, dynamic>{
         'number': _numberController.text.trim(),
-        'sim_number': _simController.text.trim().isEmpty ? null : _simController.text.trim(),
+        'sim_number': _simController.text.trim().isEmpty
+            ? null
+            : _simController.text.trim(),
         'operator': _operator,
         'starts_at': _start == null ? null : _isoDate(_start!),
         'ends_at': _end == null ? null : _isoDate(_end!),
@@ -1552,9 +1603,9 @@ class _EditLineFromListDialogState extends ConsumerState<_EditLineFromListDialog
       ref.invalidate(linesProvider);
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat güncellendi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hat güncellendi.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1585,7 +1636,9 @@ class _EditLineFromListDialogState extends ConsumerState<_EditLineFromListDialog
                       ),
                     ),
                     IconButton(
-                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -1605,10 +1658,15 @@ class _EditLineFromListDialogState extends ConsumerState<_EditLineFromListDialog
                 DropdownButtonFormField<String>(
                   initialValue: _operator,
                   items: const [
-                    DropdownMenuItem(value: 'turkcell', child: Text('TURKCELL')),
+                    DropdownMenuItem(
+                      value: 'turkcell',
+                      child: Text('TURKCELL'),
+                    ),
                     DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
                   ],
-                  onChanged: _saving ? null : (v) => setState(() => _operator = v ?? 'turkcell'),
+                  onChanged: _saving
+                      ? null
+                      : (v) => setState(() => _operator = v ?? 'turkcell'),
                   decoration: const InputDecoration(
                     labelText: 'Operatör',
                     border: OutlineInputBorder(),
@@ -1629,7 +1687,9 @@ class _EditLineFromListDialogState extends ConsumerState<_EditLineFromListDialog
                       child: OutlinedButton.icon(
                         onPressed: _saving ? null : _pickStart,
                         icon: const Icon(Icons.date_range_rounded),
-                        label: Text(_start == null ? 'Başlangıç' : df.format(_start!)),
+                        label: Text(
+                          _start == null ? 'Başlangıç' : df.format(_start!),
+                        ),
                       ),
                     ),
                     const Gap(12),
@@ -1647,7 +1707,9 @@ class _EditLineFromListDialogState extends ConsumerState<_EditLineFromListDialog
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),

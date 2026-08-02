@@ -52,7 +52,9 @@ String normalizeOperator(String? value) {
 }
 
 final lineStockSearchProvider =
-    NotifierProvider<LineStockSearchNotifier, String>(LineStockSearchNotifier.new);
+    NotifierProvider<LineStockSearchNotifier, String>(
+      LineStockSearchNotifier.new,
+    );
 
 class LineStockSearchNotifier extends Notifier<String> {
   @override
@@ -62,7 +64,9 @@ class LineStockSearchNotifier extends Notifier<String> {
 }
 
 final lineStockStatusProvider =
-    NotifierProvider<LineStockStatusNotifier, String>(LineStockStatusNotifier.new);
+    NotifierProvider<LineStockStatusNotifier, String>(
+      LineStockStatusNotifier.new,
+    );
 
 class LineStockStatusNotifier extends Notifier<String> {
   @override
@@ -73,7 +77,8 @@ class LineStockStatusNotifier extends Notifier<String> {
 
 final lineStockConsumedFromProvider =
     NotifierProvider<LineStockConsumedFromNotifier, DateTime?>(
-        LineStockConsumedFromNotifier.new);
+      LineStockConsumedFromNotifier.new,
+    );
 
 class LineStockConsumedFromNotifier extends Notifier<DateTime?> {
   @override
@@ -86,7 +91,8 @@ class LineStockConsumedFromNotifier extends Notifier<DateTime?> {
 
 final lineStockConsumedToProvider =
     NotifierProvider<LineStockConsumedToNotifier, DateTime?>(
-        LineStockConsumedToNotifier.new);
+      LineStockConsumedToNotifier.new,
+    );
 
 class LineStockConsumedToNotifier extends Notifier<DateTime?> {
   @override
@@ -98,7 +104,9 @@ class LineStockConsumedToNotifier extends Notifier<DateTime?> {
 }
 
 final lineStockOperatorProvider =
-    NotifierProvider<LineStockOperatorNotifier, String>(LineStockOperatorNotifier.new);
+    NotifierProvider<LineStockOperatorNotifier, String>(
+      LineStockOperatorNotifier.new,
+    );
 
 class LineStockOperatorNotifier extends Notifier<String> {
   @override
@@ -107,7 +115,9 @@ class LineStockOperatorNotifier extends Notifier<String> {
   void set(String value) => state = value.trim().isEmpty ? 'all' : value.trim();
 }
 
-final lineStockProvider = FutureProvider.autoDispose<List<LineStockItem>>((ref) async {
+final lineStockProvider = FutureProvider.autoDispose<List<LineStockItem>>((
+  ref,
+) async {
   final apiClient = ref.watch(apiClientProvider);
   final search = ref.watch(lineStockSearchProvider).trim();
   final status = ref.watch(lineStockStatusProvider).trim();
@@ -129,7 +139,8 @@ final lineStockProvider = FutureProvider.autoDispose<List<LineStockItem>>((ref) 
         if (search.isNotEmpty) 'search': search,
         if (status.isNotEmpty) 'status': status,
         if (operatorName != 'all') 'operator': operatorName,
-        if (isoDate(consumedFrom) != null) 'consumedFrom': isoDate(consumedFrom)!,
+        if (isoDate(consumedFrom) != null)
+          'consumedFrom': isoDate(consumedFrom)!,
         if (isoDate(consumedTo) != null) 'consumedTo': isoDate(consumedTo)!,
         'limit': '5000',
       },
@@ -145,7 +156,9 @@ final lineStockProvider = FutureProvider.autoDispose<List<LineStockItem>>((ref) 
   if (client == null) return const [];
   final rows = await client
       .from('line_stock')
-      .select('id,operator,line_number,sim_number,is_active,consumed_at,created_at')
+      .select(
+        'id,operator,line_number,sim_number,is_active,consumed_at,created_at',
+      )
       .order('created_at', ascending: false)
       .limit(5000);
 
@@ -158,7 +171,9 @@ final lineStockProvider = FutureProvider.autoDispose<List<LineStockItem>>((ref) 
   final opNorm = operatorName == 'all' ? null : normalizeOperator(operatorName);
   final fromDate = isoDate(consumedFrom);
   final toDate = isoDate(consumedTo);
-  final from = fromDate == null ? null : DateTime.tryParse('${fromDate}T00:00:00Z');
+  final from = fromDate == null
+      ? null
+      : DateTime.tryParse('${fromDate}T00:00:00Z');
   final to = toDate == null ? null : DateTime.tryParse('${toDate}T23:59:59Z');
 
   bool matches(LineStockItem item) {
@@ -194,36 +209,38 @@ final lineStockProvider = FutureProvider.autoDispose<List<LineStockItem>>((ref) 
 
 final lineStockAvailableProvider =
     FutureProvider.autoDispose<List<LineStockItem>>((ref) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient != null) {
-    final response = await apiClient.getJson(
-      '/data',
-      queryParameters: {
-        'resource': 'line_stock',
-        'status': 'available',
-        'limit': '2000',
-      },
-    );
-    return ((response['items'] as List?) ?? const [])
-        .whereType<Map>()
-        .map((e) => e.cast<String, dynamic>())
-        .map(LineStockItem.fromJson)
-        .toList(growable: false);
-  }
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient != null) {
+        final response = await apiClient.getJson(
+          '/data',
+          queryParameters: {
+            'resource': 'line_stock',
+            'status': 'available',
+            'limit': '2000',
+          },
+        );
+        return ((response['items'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .map(LineStockItem.fromJson)
+            .toList(growable: false);
+      }
 
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
-  final rows = await client
-      .from('line_stock')
-      .select('id,operator,line_number,sim_number,is_active,consumed_at,created_at')
-      .eq('is_active', true)
-      .isFilter('consumed_at', null)
-      .order('created_at', ascending: false)
-      .limit(2000);
-  return (rows as List)
-      .cast<Map<String, dynamic>>()
-      .map(LineStockItem.fromJson)
-      .toList(growable: false);
-});
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
+      final rows = await client
+          .from('line_stock')
+          .select(
+            'id,operator,line_number,sim_number,is_active,consumed_at,created_at',
+          )
+          .eq('is_active', true)
+          .isFilter('consumed_at', null)
+          .order('created_at', ascending: false)
+          .limit(2000);
+      return (rows as List)
+          .cast<Map<String, dynamic>>()
+          .map(LineStockItem.fromJson)
+          .toList(growable: false);
+    });
 
 bool get isExcelSupported => kIsWeb;

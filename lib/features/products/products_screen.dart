@@ -18,40 +18,46 @@ import '../customers/web_download_helper.dart'
 import '../definitions/definitions_screen.dart';
 import 'line_stock_tab.dart';
 
-final productSearchProvider =
-    NotifierProvider<ProductSearchNotifier, String>(ProductSearchNotifier.new);
-final showPassiveProvider =
-    NotifierProvider<ShowPassiveNotifier, bool>(ShowPassiveNotifier.new);
+final productSearchProvider = NotifierProvider<ProductSearchNotifier, String>(
+  ProductSearchNotifier.new,
+);
+final showPassiveProvider = NotifierProvider<ShowPassiveNotifier, bool>(
+  ShowPassiveNotifier.new,
+);
 final lineOperatorFilterProvider =
     NotifierProvider<LineOperatorFilterNotifier, LineOperatorFilter>(
-  LineOperatorFilterNotifier.new,
-);
+      LineOperatorFilterNotifier.new,
+    );
 final licenseCompanyFilterProvider =
     NotifierProvider<LicenseCompanyFilterNotifier, String>(
-  LicenseCompanyFilterNotifier.new,
-);
+      LicenseCompanyFilterNotifier.new,
+    );
 final lineCustomerFilterProvider =
     NotifierProvider<LineCustomerFilterNotifier, String>(
-  LineCustomerFilterNotifier.new,
-);
+      LineCustomerFilterNotifier.new,
+    );
 final licenseCustomerFilterProvider =
     NotifierProvider<LicenseCustomerFilterNotifier, String>(
-  LicenseCustomerFilterNotifier.new,
+      LicenseCustomerFilterNotifier.new,
+    );
+final lineEndsFromProvider = NotifierProvider<LineEndsFromNotifier, DateTime?>(
+  LineEndsFromNotifier.new,
 );
-final lineEndsFromProvider =
-    NotifierProvider<LineEndsFromNotifier, DateTime?>(LineEndsFromNotifier.new);
-final lineEndsToProvider =
-    NotifierProvider<LineEndsToNotifier, DateTime?>(LineEndsToNotifier.new);
+final lineEndsToProvider = NotifierProvider<LineEndsToNotifier, DateTime?>(
+  LineEndsToNotifier.new,
+);
 final licenseEndsFromProvider =
     NotifierProvider<LicenseEndsFromNotifier, DateTime?>(
-  LicenseEndsFromNotifier.new,
-);
+      LicenseEndsFromNotifier.new,
+    );
 final licenseEndsToProvider =
-    NotifierProvider<LicenseEndsToNotifier, DateTime?>(LicenseEndsToNotifier.new);
+    NotifierProvider<LicenseEndsToNotifier, DateTime?>(
+      LicenseEndsToNotifier.new,
+    );
 final totalsCustomerSearchProvider =
     NotifierProvider<TotalsCustomerSearchNotifier, String>(
-  TotalsCustomerSearchNotifier.new,
-);
+      TotalsCustomerSearchNotifier.new,
+    );
 
 class ProductSearchNotifier extends Notifier<String> {
   @override
@@ -208,16 +214,18 @@ final issuedLinesProvider = FutureProvider<List<IssuedLine>>((ref) async {
 
   final rows = await q.order('ends_at', ascending: true).limit(500);
 
-  return (rows as List).map((e) {
-    final map = e as Map<String, dynamic>;
-    final customer = map['customers'] as Map<String, dynamic>?;
-    final branch = map['branches'] as Map<String, dynamic>?;
-    return IssuedLine.fromJson({
-      ...map,
-      'customer_name': customer?['name'],
-      'branch_name': branch?['name'],
-    });
-  }).toList(growable: false);
+  return (rows as List)
+      .map((e) {
+        final map = e as Map<String, dynamic>;
+        final customer = map['customers'] as Map<String, dynamic>?;
+        final branch = map['branches'] as Map<String, dynamic>?;
+        return IssuedLine.fromJson({
+          ...map,
+          'customer_name': customer?['name'],
+          'branch_name': branch?['name'],
+        });
+      })
+      .toList(growable: false);
 });
 
 final issuedLicensesProvider = FutureProvider<List<IssuedLicense>>((ref) async {
@@ -293,16 +301,18 @@ final issuedLicensesProvider = FutureProvider<List<IssuedLicense>>((ref) async {
   }
 
   final rows = await q.order('ends_at', ascending: true).limit(500);
-  return (rows as List).map((e) {
-    final map = e as Map<String, dynamic>;
-    final customer = map['customers'] as Map<String, dynamic>?;
-    final company = map['software_companies'] as Map<String, dynamic>?;
-    return IssuedLicense.fromJson({
-      ...map,
-      'customer_name': customer?['name'],
-      'software_company_name': company?['name'],
-    });
-  }).toList(growable: false);
+  return (rows as List)
+      .map((e) {
+        final map = e as Map<String, dynamic>;
+        final customer = map['customers'] as Map<String, dynamic>?;
+        final company = map['software_companies'] as Map<String, dynamic>?;
+        return IssuedLicense.fromJson({
+          ...map,
+          'customer_name': customer?['name'],
+          'software_company_name': company?['name'],
+        });
+      })
+      .toList(growable: false);
 });
 
 class CustomerTotalsRow {
@@ -336,29 +346,31 @@ class CustomerTotalsRow {
 
 final issuedCustomerTotalsProvider =
     FutureProvider.autoDispose<List<CustomerTotalsRow>>((ref) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient == null) return const [];
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient == null) return const [];
 
-  final search = ref.watch(totalsCustomerSearchProvider).trim();
-  final showPassive = ref.watch(showPassiveProvider);
-  final isAdmin = ref.watch(isAdminProvider);
+      final search = ref.watch(totalsCustomerSearchProvider).trim();
+      final showPassive = ref.watch(showPassiveProvider);
+      final isAdmin = ref.watch(isAdminProvider);
 
-  final response = await apiClient.getJson(
-    '/data',
-    queryParameters: {
-      'resource': 'products_customer_totals',
-      if (search.isNotEmpty) 'search': search,
-      if (isAdmin) 'showPassive': showPassive.toString(),
-    },
-  );
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {
+          'resource': 'products_customer_totals',
+          if (search.isNotEmpty) 'search': search,
+          if (isAdmin) 'showPassive': showPassive.toString(),
+        },
+      );
 
-  return ((response['items'] as List?) ?? const [])
-      .whereType<Map<String, dynamic>>()
-      .map(CustomerTotalsRow.fromJson)
-      .toList(growable: false);
-});
+      return ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(CustomerTotalsRow.fromJson)
+          .toList(growable: false);
+    });
 
-final customersLookupProvider = FutureProvider<List<CustomerLookup>>((ref) async {
+final customersLookupProvider = FutureProvider<List<CustomerLookup>>((
+  ref,
+) async {
   final apiClient = ref.watch(apiClientProvider);
   if (apiClient != null) {
     final response = await apiClient.getJson(
@@ -413,24 +425,24 @@ class ProductsLicensesStats {
 
 final issuedLicensesStatsProvider =
     FutureProvider.autoDispose<ProductsLicensesStats?>((ref) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient == null) return null;
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient == null) return null;
 
-  final search = ref.watch(productSearchProvider).trim();
-  final showPassive = ref.watch(showPassiveProvider);
-  final isAdmin = ref.watch(isAdminProvider);
+      final search = ref.watch(productSearchProvider).trim();
+      final showPassive = ref.watch(showPassiveProvider);
+      final isAdmin = ref.watch(isAdminProvider);
 
-  final response = await apiClient.getJson(
-    '/data',
-    queryParameters: {
-      'resource': 'products_licenses_stats',
-      if (search.isNotEmpty) 'search': search,
-      if (isAdmin) 'showPassive': showPassive.toString(),
-    },
-  );
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {
+          'resource': 'products_licenses_stats',
+          if (search.isNotEmpty) 'search': search,
+          if (isAdmin) 'showPassive': showPassive.toString(),
+        },
+      );
 
-  return ProductsLicensesStats.fromJson(response);
-});
+      return ProductsLicensesStats.fromJson(response);
+    });
 
 class ProductsScreen extends ConsumerWidget {
   const ProductsScreen({super.key});
@@ -454,7 +466,9 @@ class ProductsScreen extends ConsumerWidget {
   }) async {
     if (!kIsWeb) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Dışarı aktarma web üzerinde desteklenir.')),
+        const SnackBar(
+          content: Text('Dışarı aktarma web üzerinde desteklenir.'),
+        ),
       );
       return;
     }
@@ -477,7 +491,9 @@ class ProductsScreen extends ConsumerWidget {
         _cell(l.number ?? ''),
         _cell(_operatorLabel(l.operator)),
         _cell(l.simNumber ?? ''),
-        _cell(l.endsAt == null ? '' : l.endsAt!.toIso8601String().substring(0, 10)),
+        _cell(
+          l.endsAt == null ? '' : l.endsAt!.toIso8601String().substring(0, 10),
+        ),
         _cell(l.isActive.toString()),
       ]);
     }
@@ -496,7 +512,11 @@ class ProductsScreen extends ConsumerWidget {
         _cell(lic.name),
         _cell(lic.softwareCompanyName ?? ''),
         _cell(lic.registryNumber ?? ''),
-        _cell(lic.endsAt == null ? '' : lic.endsAt!.toIso8601String().substring(0, 10)),
+        _cell(
+          lic.endsAt == null
+              ? ''
+              : lic.endsAt!.toIso8601String().substring(0, 10),
+        ),
         _cell(lic.isActive.toString()),
       ]);
     }
@@ -524,8 +544,11 @@ class ProductsScreen extends ConsumerWidget {
         .where((e) => (e.operator ?? '').trim().toLowerCase() == 'telsim')
         .length;
     final stats = licensesStatsAsync.asData?.value;
-    final gmp3Total = stats?.gmp3Total ??
-        licenses.where((e) => e.licenseType.trim().toLowerCase() == 'gmp3').length;
+    final gmp3Total =
+        stats?.gmp3Total ??
+        licenses
+            .where((e) => e.licenseType.trim().toLowerCase() == 'gmp3')
+            .length;
 
     String displayNameOrUnknown(String? value) {
       final v = (value ?? '').trim();
@@ -535,30 +558,35 @@ class ProductsScreen extends ConsumerWidget {
     final gmp3CompanyEntries = stats == null
         ? <MapEntry<String, int>>[]
         : stats.byCompany
-            .map((e) {
-              final name = displayNameOrUnknown(e['software_company_name']?.toString());
-              final total = (e['total'] as int?) ?? 0;
-              return MapEntry(name, total);
-            })
-            .where((e) => e.value > 0)
-            .toList(growable: false);
+              .map((e) {
+                final name = displayNameOrUnknown(
+                  e['software_company_name']?.toString(),
+                );
+                final total = (e['total'] as int?) ?? 0;
+                return MapEntry(name, total);
+              })
+              .where((e) => e.value > 0)
+              .toList(growable: false);
 
     final gmp3CustomerEntries = stats == null
         ? <MapEntry<String, int>>[]
         : stats.byCustomer
-            .map((e) {
-              final name = displayNameOrUnknown(e['customer_name']?.toString());
-              final total = (e['total'] as int?) ?? 0;
-              return MapEntry(name, total);
-            })
-            .where((e) => e.value > 0)
-            .toList(growable: false);
+              .map((e) {
+                final name = displayNameOrUnknown(
+                  e['customer_name']?.toString(),
+                );
+                final total = (e['total'] as int?) ?? 0;
+                return MapEntry(name, total);
+              })
+              .where((e) => e.value > 0)
+              .toList(growable: false);
 
     String shortCompany(String input) {
       final s = input.trim();
       if (s.length <= 14) return s;
       return '${s.substring(0, 13)}…';
     }
+
     String shortCustomer(String input) {
       final s = input.trim();
       if (s.length <= 16) return s;
@@ -710,12 +738,16 @@ class ProductsScreen extends ConsumerWidget {
                                 onPressed: () => ref
                                     .read(showPassiveProvider.notifier)
                                     .set(!showPassive),
-                                icon: const Icon(Icons.visibility_rounded, size: 18),
-                                label:
-                                    Text(showPassive ? 'Kayıt: Tümü' : 'Kayıt: Aktif'),
+                                icon: const Icon(
+                                  Icons.visibility_rounded,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  showPassive ? 'Kayıt: Tümü' : 'Kayıt: Aktif',
+                                ),
                                 style: FilledButton.styleFrom(
                                   backgroundColor: AppTheme.filterControlBg,
-                                    foregroundColor: AppTheme.filterControlFg,
+                                  foregroundColor: AppTheme.filterControlFg,
                                   minimumSize: const Size(0, 40),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 14,
@@ -759,7 +791,10 @@ class ProductsScreen extends ConsumerWidget {
                         }
 
                         return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
                           child: Row(
                             children: [
                               const Expanded(
@@ -780,10 +815,7 @@ class ProductsScreen extends ConsumerWidget {
                               ),
                               const Gap(10),
                               searchField,
-                              if (isAdmin) ...[
-                                const Gap(10),
-                                passiveToggle,
-                              ],
+                              if (isAdmin) ...[const Gap(10), passiveToggle],
                             ],
                           ),
                         );
@@ -853,10 +885,9 @@ class _SectionHeader extends StatelessWidget {
         const Gap(10),
         Text(
           title,
-          style: Theme.of(context)
-              .textTheme
-              .titleSmall
-              ?.copyWith(fontWeight: FontWeight.w700),
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
       ],
     );
@@ -879,8 +910,9 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
   @override
   void initState() {
     super.initState();
-    _customerController =
-        TextEditingController(text: ref.read(lineCustomerFilterProvider));
+    _customerController = TextEditingController(
+      text: ref.read(lineCustomerFilterProvider),
+    );
   }
 
   @override
@@ -938,7 +970,9 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                   width: narrow ? double.infinity : 320,
                   child: TextField(
                     controller: _customerController,
-                    onChanged: ref.read(lineCustomerFilterProvider.notifier).set,
+                    onChanged: ref
+                        .read(lineCustomerFilterProvider.notifier)
+                        .set,
                     decoration: const InputDecoration(
                       labelText: 'Müşteri',
                       hintText: 'Müşteri adına göre',
@@ -966,7 +1000,10 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                     label: Text('Bitiş ≥ ${dateLabel(endsFrom)}'),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 32),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       visualDensity: VisualDensity.compact,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
@@ -991,7 +1028,10 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                     label: Text('Bitiş ≤ ${dateLabel(endsTo)}'),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 32),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       visualDensity: VisualDensity.compact,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
@@ -1012,7 +1052,10 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                   label: const Text('Temizle'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 32),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                     visualDensity: VisualDensity.compact,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -1024,7 +1067,10 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                   label: const Text('Dışarı Aktar'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 32),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                     visualDensity: VisualDensity.compact,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -1080,12 +1126,17 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                 if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
                 if (operatorFilter == LineOperatorFilter.all) {
                   final turkcell = items
-                      .where((e) =>
-                          (e.operator ?? '').trim().toLowerCase() == 'turkcell')
+                      .where(
+                        (e) =>
+                            (e.operator ?? '').trim().toLowerCase() ==
+                            'turkcell',
+                      )
                       .toList(growable: false);
                   final telsim = items
-                      .where((e) =>
-                          (e.operator ?? '').trim().toLowerCase() == 'telsim')
+                      .where(
+                        (e) =>
+                            (e.operator ?? '').trim().toLowerCase() == 'telsim',
+                      )
                       .toList(growable: false);
                   final other = items
                       .where((e) {
@@ -1145,10 +1196,8 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                     padding: const EdgeInsets.only(bottom: 120),
                     itemCount: items.length,
                     separatorBuilder: (_, _) => const Gap(10),
-                    itemBuilder: (context, index) => _LineRow(
-                      item: items[index],
-                      isAdmin: widget.isAdmin,
-                    ),
+                    itemBuilder: (context, index) =>
+                        _LineRow(item: items[index], isAdmin: widget.isAdmin),
                   ),
                 );
               },
@@ -1178,8 +1227,9 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
   @override
   void initState() {
     super.initState();
-    _customerController =
-        TextEditingController(text: ref.read(licenseCustomerFilterProvider));
+    _customerController = TextEditingController(
+      text: ref.read(licenseCustomerFilterProvider),
+    );
   }
 
   @override
@@ -1212,8 +1262,9 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                   width: narrow ? double.infinity : 320,
                   child: TextField(
                     controller: _customerController,
-                    onChanged:
-                        ref.read(licenseCustomerFilterProvider.notifier).set,
+                    onChanged: ref
+                        .read(licenseCustomerFilterProvider.notifier)
+                        .set,
                     decoration: const InputDecoration(
                       labelText: 'Müşteri',
                       hintText: 'Müşteri adına göre',
@@ -1222,7 +1273,8 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                   ),
                 );
 
-                final companies = companiesAsync.asData?.value
+                final companies =
+                    companiesAsync.asData?.value
                         .where((e) => e.isActive)
                         .toList(growable: false) ??
                     const <SoftwareCompanyDefinition>[];
@@ -1246,7 +1298,9 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                       if (v == null) return;
                       ref.read(licenseCompanyFilterProvider.notifier).set(v);
                     },
-                    decoration: const InputDecoration(labelText: 'Yazılım Firması'),
+                    decoration: const InputDecoration(
+                      labelText: 'Yazılım Firması',
+                    ),
                   ),
                 );
 
@@ -1269,7 +1323,10 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                     label: Text('Bitiş ≥ ${dateLabel(endsFrom)}'),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 32),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       visualDensity: VisualDensity.compact,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
@@ -1294,7 +1351,10 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                     label: Text('Bitiş ≤ ${dateLabel(endsTo)}'),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 32),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       visualDensity: VisualDensity.compact,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
@@ -1313,7 +1373,10 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                   label: const Text('Temizle'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 32),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                     visualDensity: VisualDensity.compact,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -1325,7 +1388,10 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                   label: const Text('Dışarı Aktar'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 32),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                     visualDensity: VisualDensity.compact,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -1378,7 +1444,9 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
           Expanded(
             child: licensesAsync.when(
               data: (items) {
-                final gmp3 = items.where((e) => e.licenseType == 'gmp3').toList();
+                final gmp3 = items
+                    .where((e) => e.licenseType == 'gmp3')
+                    .toList();
                 if (gmp3.isEmpty) return const _Empty(text: 'Kayıt yok.');
                 return Scrollbar(
                   thumbVisibility: true,
@@ -1386,10 +1454,8 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                     padding: const EdgeInsets.only(bottom: 120),
                     itemCount: gmp3.length,
                     separatorBuilder: (_, _) => const Gap(10),
-                    itemBuilder: (context, index) => _LicenseRow(
-                      item: gmp3[index],
-                      isAdmin: widget.isAdmin,
-                    ),
+                    itemBuilder: (context, index) =>
+                        _LicenseRow(item: gmp3[index], isAdmin: widget.isAdmin),
                   ),
                 );
               },
@@ -1421,8 +1487,9 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
   @override
   void initState() {
     super.initState();
-    _customerController =
-        TextEditingController(text: ref.read(totalsCustomerSearchProvider));
+    _customerController = TextEditingController(
+      text: ref.read(totalsCustomerSearchProvider),
+    );
   }
 
   @override
@@ -1431,10 +1498,15 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
     super.dispose();
   }
 
-  Future<void> _export(BuildContext context, List<CustomerTotalsRow> items) async {
+  Future<void> _export(
+    BuildContext context,
+    List<CustomerTotalsRow> items,
+  ) async {
     if (!kIsWeb) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Dışarı aktarma web üzerinde desteklenir.')),
+        const SnackBar(
+          content: Text('Dışarı aktarma web üzerinde desteklenir.'),
+        ),
       );
       return;
     }
@@ -1483,7 +1555,9 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                   width: narrow ? double.infinity : 360,
                   child: TextField(
                     controller: _customerController,
-                    onChanged: ref.read(totalsCustomerSearchProvider.notifier).set,
+                    onChanged: ref
+                        .read(totalsCustomerSearchProvider.notifier)
+                        .set,
                     decoration: const InputDecoration(
                       labelText: 'Müşteri Ara',
                       hintText: 'Müşteri adına göre',
@@ -1501,19 +1575,27 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                   label: const Text('Temizle'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 32),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                     visualDensity: VisualDensity.compact,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                 );
 
                 final exportBtn = OutlinedButton.icon(
-                  onPressed: items.isEmpty ? null : () => _export(context, items),
+                  onPressed: items.isEmpty
+                      ? null
+                      : () => _export(context, items),
                   icon: const Icon(Icons.download_rounded, size: 18),
                   label: const Text('Dışarı Aktar'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 32),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                     visualDensity: VisualDensity.compact,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -1578,10 +1660,13 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                           children: [
                             Expanded(
                               child: Text(
-                                r.customerName.trim().isEmpty ? '—' : r.customerName,
+                                r.customerName.trim().isEmpty
+                                    ? '—'
+                                    : r.customerName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
                                       fontWeight: FontWeight.w800,
                                       color: const Color(0xFF0F172A),
                                     ),
@@ -1664,22 +1749,22 @@ class _LineRowState extends ConsumerState<_LineRow> {
     final tone = !item.isActive
         ? AppBadgeTone.neutral
         : endsAt == null
-            ? AppBadgeTone.neutral
-            : endsAt.isBefore(now)
-                ? AppBadgeTone.error
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? AppBadgeTone.warning
-                    : AppBadgeTone.success;
+        ? AppBadgeTone.neutral
+        : endsAt.isBefore(now)
+        ? AppBadgeTone.error
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? AppBadgeTone.warning
+        : AppBadgeTone.success;
 
     final statusLabel = !item.isActive
         ? 'Pasif'
         : endsAt == null
-            ? 'Tarihsiz'
-            : endsAt.isBefore(now)
-                ? 'Bitmiş'
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? 'Yaklaşıyor'
-                    : 'Aktif';
+        ? 'Tarihsiz'
+        : endsAt.isBefore(now)
+        ? 'Bitmiş'
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? 'Yaklaşıyor'
+        : 'Aktif';
 
     final dateText = endsAt == null
         ? '—'
@@ -1700,25 +1785,29 @@ class _LineRowState extends ConsumerState<_LineRow> {
                 Text(
                   item.number ?? 'Hat',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        decoration: item.isActive ? null : TextDecoration.lineThrough,
-                        color: const Color(0xFF0F172A),
-                      ),
+                    fontWeight: FontWeight.w800,
+                    decoration: item.isActive
+                        ? null
+                        : TextDecoration.lineThrough,
+                    color: const Color(0xFF0F172A),
+                  ),
                 ),
                 const Gap(8),
                 Expanded(
                   child: Text(
                     [
                       item.customerName ?? '—',
-                      if (item.branchName?.trim().isNotEmpty ?? false) item.branchName!,
-                      if (item.simNumber?.trim().isNotEmpty ?? false) 'SIM: ${item.simNumber}',
+                      if (item.branchName?.trim().isNotEmpty ?? false)
+                        item.branchName!,
+                      if (item.simNumber?.trim().isNotEmpty ?? false)
+                        'SIM: ${item.simNumber}',
                       if (dateText != '—') 'Bitiş: $dateText',
                     ].join(' • '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.textMuted,
-                        ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ),
               ],
@@ -1745,10 +1834,15 @@ class _LineRowState extends ConsumerState<_LineRow> {
               builder: (context, controller, _) => OutlinedButton(
                 onPressed: _busy
                     ? null
-                    : () => controller.isOpen ? controller.close() : controller.open(),
+                    : () => controller.isOpen
+                          ? controller.close()
+                          : controller.open(),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(0, 32),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
                   visualDensity: VisualDensity.compact,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
@@ -1779,7 +1873,11 @@ class _LineRowState extends ConsumerState<_LineRow> {
                     if (_busy) return;
                     setState(() => _busy = true);
                     try {
-                      await _extendLineAndQueueInvoice(context, ref, line: item);
+                      await _extendLineAndQueueInvoice(
+                        context,
+                        ref,
+                        line: item,
+                      );
                       ref.invalidate(issuedLinesProvider);
                       ref.invalidate(invoiceItemsProvider);
                     } finally {
@@ -1832,22 +1930,22 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
     final tone = !item.isActive
         ? AppBadgeTone.neutral
         : endsAt == null
-            ? AppBadgeTone.neutral
-            : endsAt.isBefore(now)
-                ? AppBadgeTone.error
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? AppBadgeTone.warning
-                    : AppBadgeTone.success;
+        ? AppBadgeTone.neutral
+        : endsAt.isBefore(now)
+        ? AppBadgeTone.error
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? AppBadgeTone.warning
+        : AppBadgeTone.success;
 
     final statusLabel = !item.isActive
         ? 'Pasif'
         : endsAt == null
-            ? 'Tarihsiz'
-            : endsAt.isBefore(now)
-                ? 'Bitmiş'
-                : endsAt.isBefore(now.add(const Duration(days: 30)))
-                    ? 'Yaklaşıyor'
-                    : 'Aktif';
+        ? 'Tarihsiz'
+        : endsAt.isBefore(now)
+        ? 'Bitmiş'
+        : endsAt.isBefore(now.add(const Duration(days: 30)))
+        ? 'Yaklaşıyor'
+        : 'Aktif';
 
     final dateText = endsAt == null
         ? '—'
@@ -1870,10 +1968,12 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        decoration: item.isActive ? null : TextDecoration.lineThrough,
-                        color: const Color(0xFF0F172A),
-                      ),
+                    fontWeight: FontWeight.w800,
+                    decoration: item.isActive
+                        ? null
+                        : TextDecoration.lineThrough,
+                    color: const Color(0xFF0F172A),
+                  ),
                 ),
                 const Gap(8),
                 Expanded(
@@ -1888,9 +1988,9 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
                     ].join(' • '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.textMuted,
-                        ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ),
               ],
@@ -1906,7 +2006,11 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
                   : () async {
                       setState(() => _busy = true);
                       try {
-                        await _extendLicenseAndQueueInvoice(context, ref, license: item);
+                        await _extendLicenseAndQueueInvoice(
+                          context,
+                          ref,
+                          license: item,
+                        );
                         ref.invalidate(issuedLicensesProvider);
                         ref.invalidate(invoiceItemsProvider);
                       } finally {
@@ -1915,7 +2019,10 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
                     },
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(0, 32),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
                 visualDensity: VisualDensity.compact,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
@@ -2000,7 +2107,9 @@ Future<void> _showEditLineDialog(
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -2009,22 +2118,21 @@ Future<void> _showEditLineDialog(
                 TextField(
                   controller: numberController,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'Hat Numarası',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Hat Numarası'),
                 ),
                 const Gap(12),
                 TextField(
                   controller: simController,
-                  decoration: const InputDecoration(
-                    labelText: 'SIM Numarası',
-                  ),
+                  decoration: const InputDecoration(labelText: 'SIM Numarası'),
                 ),
                 const Gap(12),
                 DropdownButtonFormField<String>(
                   initialValue: operator,
                   items: const [
-                    DropdownMenuItem(value: 'turkcell', child: Text('TURKCELL')),
+                    DropdownMenuItem(
+                      value: 'turkcell',
+                      child: Text('TURKCELL'),
+                    ),
                     DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
                   ],
                   onChanged: saving
@@ -2035,9 +2143,7 @@ Future<void> _showEditLineDialog(
                 const Gap(12),
                 TextField(
                   controller: labelController,
-                  decoration: const InputDecoration(
-                    labelText: 'Etiket',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Etiket'),
                 ),
                 const Gap(12),
                 Row(
@@ -2047,11 +2153,16 @@ Future<void> _showEditLineDialog(
                         borderRadius: BorderRadius.circular(12),
                         onTap: saving ? null : () => pickStart(setState),
                         child: InputDecorator(
-                          decoration: const InputDecoration(labelText: 'Başlangıç'),
+                          decoration: const InputDecoration(
+                            labelText: 'Başlangıç',
+                          ),
                           child: Text(
                             startsAt == null
                                 ? '—'
-                                : DateFormat('d MMM y', 'tr_TR').format(startsAt!),
+                                : DateFormat(
+                                    'd MMM y',
+                                    'tr_TR',
+                                  ).format(startsAt!),
                           ),
                         ),
                       ),
@@ -2066,7 +2177,10 @@ Future<void> _showEditLineDialog(
                           child: Text(
                             endsAt == null
                                 ? '—'
-                                : DateFormat('d MMM y', 'tr_TR').format(endsAt!),
+                                : DateFormat(
+                                    'd MMM y',
+                                    'tr_TR',
+                                  ).format(endsAt!),
                           ),
                         ),
                       ),
@@ -2078,7 +2192,9 @@ Future<void> _showEditLineDialog(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -2092,17 +2208,22 @@ Future<void> _showEditLineDialog(
                                 if (number.isEmpty) return;
                                 setState(() => saving = true);
                                 try {
-                                  final endStr = endsAt?.toIso8601String().substring(0, 10);
+                                  final endStr = endsAt
+                                      ?.toIso8601String()
+                                      .substring(0, 10);
                                   final values = {
                                     'number': number,
                                     'operator': operator,
-                                    'sim_number': simController.text.trim().isEmpty
+                                    'sim_number':
+                                        simController.text.trim().isEmpty
                                         ? null
                                         : simController.text.trim(),
                                     'label': labelController.text.trim().isEmpty
                                         ? null
                                         : labelController.text.trim(),
-                                    'starts_at': startsAt?.toIso8601String().substring(0, 10),
+                                    'starts_at': startsAt
+                                        ?.toIso8601String()
+                                        .substring(0, 10),
                                     'ends_at': endStr,
                                     'expires_at': endStr,
                                   };
@@ -2114,7 +2235,11 @@ Future<void> _showEditLineDialog(
                                         'op': 'updateWhere',
                                         'table': 'lines',
                                         'filters': [
-                                          {'col': 'id', 'op': 'eq', 'value': line.id},
+                                          {
+                                            'col': 'id',
+                                            'op': 'eq',
+                                            'value': line.id,
+                                          },
                                         ],
                                         'values': values,
                                       },
@@ -2129,12 +2254,16 @@ Future<void> _showEditLineDialog(
                                   if (!context.mounted) return;
                                   Navigator.of(context).pop();
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Hat güncellendi.')),
+                                    const SnackBar(
+                                      content: Text('Hat güncellendi.'),
+                                    ),
                                   );
                                 } catch (_) {
                                   if (!context.mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Hat güncellenemedi.')),
+                                    const SnackBar(
+                                      content: Text('Hat güncellenemedi.'),
+                                    ),
                                   );
                                 } finally {
                                   setState(() => saving = false);
@@ -2177,7 +2306,9 @@ Future<void> _extendLineAndQueueInvoice(
   if (apiClient == null && client == null) return;
 
   final now = DateTime.now();
-  final baseYear = (line.endsAt != null && line.endsAt!.isAfter(now)) ? line.endsAt!.year : now.year;
+  final baseYear = (line.endsAt != null && line.endsAt!.isAfter(now))
+      ? line.endsAt!.year
+      : now.year;
   final newEnd = DateTime(baseYear + 1, 12, 31);
   final newEndStr = newEnd.toIso8601String().substring(0, 10);
 
@@ -2217,15 +2348,16 @@ Future<void> _extendLineAndQueueInvoice(
                 const Gap(10),
                 Text(
                   'Yeni bitiş tarihi: ${DateFormat('d MMM y', 'tr_TR').format(newEnd)}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: AppTheme.textMuted),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
                 const Gap(12),
                 TextField(
                   controller: amountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(
                     labelText: 'Tutar (opsiyonel)',
                     hintText: '0.00',
@@ -2287,10 +2419,10 @@ Future<void> _extendLineAndQueueInvoice(
         },
       );
     } else {
-      await client!.from('lines').update({
-        'ends_at': newEndStr,
-        'expires_at': newEndStr,
-      }).eq('id', line.id);
+      await client!
+          .from('lines')
+          .update({'ends_at': newEndStr, 'expires_at': newEndStr})
+          .eq('id', line.id);
     }
 
     final amountRaw = amountController.text.trim().replaceAll(',', '.');
@@ -2301,7 +2433,8 @@ Future<void> _extendLineAndQueueInvoice(
       'item_type': 'line_renewal',
       'source_table': 'lines',
       'source_id': line.id,
-      'description': 'Hat uzatma (${line.number ?? ''}) (yeni bitiş: $newEndStr)',
+      'description':
+          'Hat uzatma (${line.number ?? ''}) (yeni bitiş: $newEndStr)',
       'amount': amount,
       'currency': currency,
       'status': 'pending',
@@ -2311,7 +2444,11 @@ Future<void> _extendLineAndQueueInvoice(
     if (apiClient != null) {
       await apiClient.postJson(
         '/mutate',
-        body: {'op': 'insertMany', 'table': 'invoice_items', 'rows': [invoiceItem]},
+        body: {
+          'op': 'insertMany',
+          'table': 'invoice_items',
+          'rows': [invoiceItem],
+        },
       );
     } else {
       await client!.from('invoice_items').insert({
@@ -2322,14 +2459,16 @@ Future<void> _extendLineAndQueueInvoice(
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat uzatıldı ve faturalama listesine eklendi.')),
+        const SnackBar(
+          content: Text('Hat uzatıldı ve faturalama listesine eklendi.'),
+        ),
       );
     }
   } catch (_) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İşlem başarısız.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('İşlem başarısız.')));
     }
   } finally {
     amountController.dispose();
@@ -2352,7 +2491,9 @@ Future<void> _transferLine(
     context: context,
     barrierDismissible: false,
     builder: (context) => _TransferDialog(
-      customers: customers.where((c) => c.id != line.customerId).toList(growable: false),
+      customers: customers
+          .where((c) => c.id != line.customerId)
+          .toList(growable: false),
     ),
   );
   if (!context.mounted) return;
@@ -2369,7 +2510,11 @@ Future<void> _transferLine(
     if (apiClient != null) {
       await apiClient.postJson(
         '/mutate',
-        body: {'op': 'upsert', 'table': 'line_transfers', 'values': transferPayload},
+        body: {
+          'op': 'upsert',
+          'table': 'line_transfers',
+          'values': transferPayload,
+        },
       );
       await apiClient.postJson(
         '/mutate',
@@ -2392,24 +2537,27 @@ Future<void> _transferLine(
         ...transferPayload,
         'transferred_by': client.auth.currentUser?.id,
       });
-      await client.from('lines').update({
-        'customer_id': selected.id,
-        'branch_id': null,
-        'transferred_at': DateTime.now().toIso8601String(),
-        'transferred_by': client.auth.currentUser?.id,
-      }).eq('id', line.id);
+      await client
+          .from('lines')
+          .update({
+            'customer_id': selected.id,
+            'branch_id': null,
+            'transferred_at': DateTime.now().toIso8601String(),
+            'transferred_by': client.auth.currentUser?.id,
+          })
+          .eq('id', line.id);
     }
 
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat devredildi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hat devredildi.')));
     }
   } catch (_) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat devredilemedi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hat devredilemedi.')));
     }
   }
 }
@@ -2424,8 +2572,9 @@ Future<void> _extendLicenseAndQueueInvoice(
   if (apiClient == null && client == null) return;
 
   final now = DateTime.now();
-  final baseYear =
-      (license.endsAt != null && license.endsAt!.isAfter(now)) ? license.endsAt!.year : now.year;
+  final baseYear = (license.endsAt != null && license.endsAt!.isAfter(now))
+      ? license.endsAt!.year
+      : now.year;
   final newEnd = DateTime(baseYear + 1, 12, 31);
   final newEndStr = newEnd.toIso8601String().substring(0, 10);
 
@@ -2465,15 +2614,16 @@ Future<void> _extendLicenseAndQueueInvoice(
                 const Gap(10),
                 Text(
                   'Yeni bitiş tarihi: ${DateFormat('d MMM y', 'tr_TR').format(newEnd)}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: AppTheme.textMuted),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
                 const Gap(12),
                 TextField(
                   controller: amountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(
                     labelText: 'Tutar (opsiyonel)',
                     hintText: '0.00',
@@ -2535,10 +2685,10 @@ Future<void> _extendLicenseAndQueueInvoice(
         },
       );
     } else {
-      await client!.from('licenses').update({
-        'ends_at': newEndStr,
-        'expires_at': newEndStr,
-      }).eq('id', license.id);
+      await client!
+          .from('licenses')
+          .update({'ends_at': newEndStr, 'expires_at': newEndStr})
+          .eq('id', license.id);
     }
 
     final amountRaw = amountController.text.trim().replaceAll(',', '.');
@@ -2559,7 +2709,11 @@ Future<void> _extendLicenseAndQueueInvoice(
     if (apiClient != null) {
       await apiClient.postJson(
         '/mutate',
-        body: {'op': 'insertMany', 'table': 'invoice_items', 'rows': [invoiceItem]},
+        body: {
+          'op': 'insertMany',
+          'table': 'invoice_items',
+          'rows': [invoiceItem],
+        },
       );
     } else {
       await client!.from('invoice_items').insert({
@@ -2570,14 +2724,16 @@ Future<void> _extendLicenseAndQueueInvoice(
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lisans uzatıldı ve faturalama listesine eklendi.')),
+        const SnackBar(
+          content: Text('Lisans uzatıldı ve faturalama listesine eklendi.'),
+        ),
       );
     }
   } catch (_) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İşlem başarısız.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('İşlem başarısız.')));
     }
   } finally {
     amountController.dispose();
@@ -2628,22 +2784,26 @@ class _TransferDialogState extends State<_TransferDialog> {
               Autocomplete<CustomerLookup>(
                 optionsBuilder: (text) {
                   final q = text.text.trim().toLowerCase();
-                  final list =
-                      widget.customers.where((c) => c.isActive).toList(growable: false);
+                  final list = widget.customers
+                      .where((c) => c.isActive)
+                      .toList(growable: false);
                   if (q.isEmpty) return list.take(20);
-                  return list.where((c) => c.name.toLowerCase().contains(q)).take(20);
+                  return list
+                      .where((c) => c.name.toLowerCase().contains(q))
+                      .take(20);
                 },
                 displayStringForOption: (o) => o.name,
                 onSelected: (o) => setState(() => _selected = o),
-                fieldViewBuilder: (context, controller, focusNode, _) => TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  decoration: const InputDecoration(
-                    labelText: 'Yeni Müşteri',
-                    hintText: 'Firma adı yazın ve seçin',
-                  ),
-                  onChanged: (_) => setState(() => _selected = null),
-                ),
+                fieldViewBuilder: (context, controller, focusNode, _) =>
+                    TextField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      decoration: const InputDecoration(
+                        labelText: 'Yeni Müşteri',
+                        hintText: 'Firma adı yazın ve seçin',
+                      ),
+                      onChanged: (_) => setState(() => _selected = null),
+                    ),
               ),
               const Gap(18),
               Row(
@@ -2673,20 +2833,42 @@ class _TransferDialogState extends State<_TransferDialog> {
   }
 }
 
+/// Stok ekranındaki Hatlar/Lisanslar/Toplamlar sekmeleri için paylaşılan
+/// boş/hata durumu. Önceden yalnızca ortalanmış gri metindi — uygulamanın
+/// geri kalanındaki `EmptyStateCard` görünümüyle tutarlı hale getirildi.
 class _Empty extends StatelessWidget {
-  const _Empty({required this.text});
+  const _Empty({required this.text, this.icon = Icons.inbox_rounded});
 
   final String text;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Text(
-        text,
-        style: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.copyWith(color: AppTheme.textMuted),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppTheme.primarySoft,
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              ),
+              child: Icon(icon, color: AppTheme.primary, size: 22),
+            ),
+            const Gap(10),
+            Text(
+              text,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2733,7 +2915,8 @@ class IssuedLine {
       simNumber: json['sim_number']?.toString(),
       operator: json['operator']?.toString(),
       startsAt: DateTime.tryParse(json['starts_at']?.toString() ?? ''),
-      endsAt: DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
+      endsAt:
+          DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
           DateTime.tryParse(json['expires_at']?.toString() ?? ''),
       isActive: (json['is_active'] as bool?) ?? true,
     );
@@ -2778,7 +2961,8 @@ class IssuedLicense {
       softwareCompanyName: json['software_company_name']?.toString(),
       registryNumber: json['registry_number']?.toString(),
       startsAt: DateTime.tryParse(json['starts_at']?.toString() ?? ''),
-      endsAt: DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
+      endsAt:
+          DateTime.tryParse(json['ends_at']?.toString() ?? '') ??
           DateTime.tryParse(json['expires_at']?.toString() ?? ''),
       isActive: (json['is_active'] as bool?) ?? true,
     );

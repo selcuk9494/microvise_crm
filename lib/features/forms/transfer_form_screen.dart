@@ -12,6 +12,8 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/empty_state_card.dart';
+import '../../design_system/status_tone.dart';
 import '../billing/invoice_queue_helper.dart';
 import '../customers/customer_form_dialog.dart';
 import '../definitions/definitions_screen.dart';
@@ -509,11 +511,10 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
               if (index == 0) return filterCard;
               if (index == 1) return statsCard;
               if (filtered.isEmpty) {
-                return const AppCard(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Center(child: Text('Henüz devir formu kaydı yok.')),
-                  ),
+                return const EmptyStateCard(
+                  icon: Icons.swap_horiz_rounded,
+                  title: 'Kayıt bulunamadı',
+                  message: 'Henüz devir formu kaydı yok.',
                 );
               }
               final record = filtered[index - 2];
@@ -561,7 +562,16 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stackTrace) => const Center(child: Text('Yüklenemedi.')),
+        error: (error, stackTrace) => EmptyStateCard(
+          icon: Icons.cloud_off_rounded,
+          title: 'Devir formları yüklenemedi',
+          message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
+          action: OutlinedButton.icon(
+            onPressed: () => ref.invalidate(transferFormsProvider),
+            icon: const Icon(Icons.refresh_rounded, size: 16),
+            label: const Text('Tekrar Dene'),
+          ),
+        ),
       ),
     );
   }
@@ -689,7 +699,7 @@ class _TransferRecordCard extends StatelessWidget {
             tooltip: record.isActive ? 'Pasife Al' : 'Aktifleştir',
             onPressed: onToggleActive,
             icon: record.isActive
-                ? Icons.archive_outlined
+                ? Icons.archive_rounded
                 : Icons.restore_rounded,
           ),
         if (canDeletePermanently && onDeletePermanently != null)

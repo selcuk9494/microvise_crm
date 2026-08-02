@@ -53,7 +53,9 @@ class DashboardExchangeRates {
       const DashboardExchangeRates(sourceUrl: '', fetchedAt: null, items: []);
 }
 
-final dashboardHalkbankRatesProvider = FutureProvider<DashboardExchangeRates>((ref) async {
+final dashboardHalkbankRatesProvider = FutureProvider<DashboardExchangeRates>((
+  ref,
+) async {
   final apiClient = ref.watch(apiClientProvider);
   if (apiClient == null) return DashboardExchangeRates.empty();
   final response = await apiClient.getJson(
@@ -61,13 +63,17 @@ final dashboardHalkbankRatesProvider = FutureProvider<DashboardExchangeRates>((r
     queryParameters: const {'resource': 'halkbank_exchange_rates'},
   );
   final fetchedAtRaw = response['fetchedAt']?.toString();
-  final fetchedAt = fetchedAtRaw == null ? null : DateTime.tryParse(fetchedAtRaw);
+  final fetchedAt = fetchedAtRaw == null
+      ? null
+      : DateTime.tryParse(fetchedAtRaw);
   final itemsRaw = response['items'];
   final items = (itemsRaw is List)
       ? itemsRaw
-          .whereType<Map>()
-          .map((e) => DashboardExchangeRate.fromJson(e.cast<String, dynamic>()))
-          .toList(growable: false)
+            .whereType<Map>()
+            .map(
+              (e) => DashboardExchangeRate.fromJson(e.cast<String, dynamic>()),
+            )
+            .toList(growable: false)
       : const <DashboardExchangeRate>[];
   return DashboardExchangeRates(
     sourceUrl: (response['sourceUrl'] ?? '').toString(),
@@ -86,18 +92,14 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
   final cacheKey = _makeDashboardCacheKey(ref, apiClient);
   final cached = AppCache.readJson<DashboardMetrics>(
     cacheKey,
-    decode: (json) => DashboardMetrics.fromJsonMap(
-      (json as Map).cast<String, dynamic>(),
-    ),
+    decode: (json) =>
+        DashboardMetrics.fromJsonMap((json as Map).cast<String, dynamic>()),
   );
   if (cached != null) {
     final ageMs = DateTime.now().millisecondsSinceEpoch - cached.savedAtMs;
     if (apiClient != null && ageMs > 2 * 60 * 1000) {
       unawaited(
-        _refreshDashboardMetricsAndInvalidate(
-          ref: ref,
-          cacheKey: cacheKey,
-        ),
+        _refreshDashboardMetricsAndInvalidate(ref: ref, cacheKey: cacheKey),
       );
     }
     return _maskDashboardMetrics(
@@ -149,53 +151,67 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
     return snapshot;
   }
 
-  final totalCustomers = await _count(client, 'customers', filters: {
-    'is_active': true,
-  });
+  final totalCustomers = await _count(
+    client,
+    'customers',
+    filters: {'is_active': true},
+  );
 
-  final openWorkOrders = await _count(client, 'work_orders', filters: {
-    'status': 'open',
-    'is_active': true,
-  });
+  final openWorkOrders = await _count(
+    client,
+    'work_orders',
+    filters: {'status': 'open', 'is_active': true},
+  );
 
-  final inProgressWorkOrders = await _count(client, 'work_orders', filters: {
-    'status': 'in_progress',
-    'is_active': true,
-  });
+  final inProgressWorkOrders = await _count(
+    client,
+    'work_orders',
+    filters: {'status': 'in_progress', 'is_active': true},
+  );
 
-  final completedWorkOrders = await _count(client, 'work_orders', filters: {
-    'status': 'done',
-    'is_active': true,
-  });
+  final completedWorkOrders = await _count(
+    client,
+    'work_orders',
+    filters: {'status': 'done', 'is_active': true},
+  );
 
-  final todayWorkOrders = await _count(client, 'work_orders', filters: {
-    'scheduled_date': formatAppDateIso(appNow()),
-    'is_active': true,
-  });
+  final todayWorkOrders = await _count(
+    client,
+    'work_orders',
+    filters: {'scheduled_date': formatAppDateIso(appNow()), 'is_active': true},
+  );
 
-  final expiring = await _count(client, 'licenses', filters: {
-    'is_active': true,
-  }, extra: (q) {
-    final now = appNow();
-    final in30 = now.add(const Duration(days: 30));
-    return q
-        .lte('expires_at', in30.toIso8601String())
-        .gte('expires_at', now.toIso8601String());
-  });
+  final expiring = await _count(
+    client,
+    'licenses',
+    filters: {'is_active': true},
+    extra: (q) {
+      final now = appNow();
+      final in30 = now.add(const Duration(days: 30));
+      return q
+          .lte('expires_at', in30.toIso8601String())
+          .gte('expires_at', now.toIso8601String());
+    },
+  );
 
-  final expiringLines = await _count(client, 'lines', filters: {
-    'is_active': true,
-  }, extra: (q) {
-    final now = appNow();
-    final in30 = now.add(const Duration(days: 30));
-    return q
-        .lte('expires_at', in30.toIso8601String())
-        .gte('expires_at', now.toIso8601String());
-  });
+  final expiringLines = await _count(
+    client,
+    'lines',
+    filters: {'is_active': true},
+    extra: (q) {
+      final now = appNow();
+      final in30 = now.add(const Duration(days: 30));
+      return q
+          .lte('expires_at', in30.toIso8601String())
+          .gte('expires_at', now.toIso8601String());
+    },
+  );
 
-  final totalProducts = await _count(client, 'products', filters: {
-    'is_active': true,
-  });
+  final totalProducts = await _count(
+    client,
+    'products',
+    filters: {'is_active': true},
+  );
 
   final lowStockProducts = await _lowStockCount(client);
   final receivablePayable = await _accountingSnapshot(client);
@@ -207,20 +223,24 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
   );
   final todayCollections = await _sumTodayCollections(client);
 
-  final openInvoices = await _count(client, 'invoices', filters: {
-    'is_active': true,
-  }, extra: (q) {
-    return q.inFilter('status', ['open', 'partial']);
-  });
+  final openInvoices = await _count(
+    client,
+    'invoices',
+    filters: {'is_active': true},
+    extra: (q) {
+      return q.inFilter('status', ['open', 'partial']);
+    },
+  );
 
   final totalInvoiceAmount = await _sumOutstandingInvoices(client);
 
   int invoiceQueuePending = 0;
   try {
-    invoiceQueuePending = await _count(client, 'invoice_items', filters: {
-      'status': 'pending',
-      'is_active': true,
-    });
+    invoiceQueuePending = await _count(
+      client,
+      'invoice_items',
+      filters: {'status': 'pending', 'is_active': true},
+    );
   } catch (_) {
     invoiceQueuePending = 0;
   }
@@ -332,43 +352,50 @@ int _hashString(String input) {
 
 final dashboardRevenueSeriesProvider =
     FutureProvider<List<DashboardDailyPoint>>((ref) async {
-  final canSeeReports = ref.watch(hasPageAccessProvider(kPageReports));
-  if (!canSeeReports) return const [];
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return const [];
+      final canSeeReports = ref.watch(hasPageAccessProvider(kPageReports));
+      if (!canSeeReports) return const [];
+      final client = ref.watch(supabaseClientProvider);
+      if (client == null) return const [];
 
-  final now = appNow();
-  final from = now.subtract(const Duration(days: 14));
-  final rows = await client
-      .from('transactions')
-      .select('transaction_date,amount,transaction_type,is_active')
-      .gte('transaction_date', from.toIso8601String().substring(0, 10))
-      .eq('transaction_type', 'collection')
-      .eq('is_active', true);
+      final now = appNow();
+      final from = now.subtract(const Duration(days: 14));
+      final rows = await client
+          .from('transactions')
+          .select('transaction_date,amount,transaction_type,is_active')
+          .gte('transaction_date', from.toIso8601String().substring(0, 10))
+          .eq('transaction_type', 'collection')
+          .eq('is_active', true);
 
-  final buckets = <DateTime, double>{};
-  for (final row in (rows as List)) {
-    final paidAtRaw = row['transaction_date'];
-    final amountRaw = row['amount'];
-    if (paidAtRaw == null || amountRaw == null) continue;
-    final paidAt = parseAppDateTime(paidAtRaw.toString());
-    if (paidAt == null) continue;
-    final key = normalizeAppDate(paidAt);
-    final amount = amountRaw is num ? amountRaw.toDouble() : double.tryParse(amountRaw.toString());
-    if (amount == null) continue;
-    buckets.update(key, (v) => v + amount, ifAbsent: () => amount);
-  }
+      final buckets = <DateTime, double>{};
+      for (final row in (rows as List)) {
+        final paidAtRaw = row['transaction_date'];
+        final amountRaw = row['amount'];
+        if (paidAtRaw == null || amountRaw == null) continue;
+        final paidAt = parseAppDateTime(paidAtRaw.toString());
+        if (paidAt == null) continue;
+        final key = normalizeAppDate(paidAt);
+        final amount = amountRaw is num
+            ? amountRaw.toDouble()
+            : double.tryParse(amountRaw.toString());
+        if (amount == null) continue;
+        buckets.update(key, (v) => v + amount, ifAbsent: () => amount);
+      }
 
-  final points = <DashboardDailyPoint>[];
-  for (int i = 13; i >= 0; i--) {
-    final day = DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
-    points.add(DashboardDailyPoint(day: day, value: buckets[day] ?? 0));
-  }
-  return points;
-});
+      final points = <DashboardDailyPoint>[];
+      for (int i = 13; i >= 0; i--) {
+        final day = DateTime(
+          now.year,
+          now.month,
+          now.day,
+        ).subtract(Duration(days: i));
+        points.add(DashboardDailyPoint(day: day, value: buckets[day] ?? 0));
+      }
+      return points;
+    });
 
-final dashboardActivitiesProvider =
-    FutureProvider<List<DashboardActivity>>((ref) async {
+final dashboardActivitiesProvider = FutureProvider<List<DashboardActivity>>((
+  ref,
+) async {
   final canSeeWorkOrders = ref.watch(hasPageAccessProvider(kPageWorkOrders));
   final canSeeService = ref.watch(hasPageAccessProvider(kPageService));
   if (!canSeeWorkOrders && !canSeeService) return const [];
@@ -377,22 +404,22 @@ final dashboardActivitiesProvider =
 
   final workRows = canSeeWorkOrders
       ? await client
-          .from('work_orders')
-          .select('id,title,created_at,customers(name)')
-          .eq('is_active', true)
-          .order('created_at', ascending: false)
-          .limit(6)
-          .then((value) => (value as List).cast<Map<String, dynamic>>())
+            .from('work_orders')
+            .select('id,title,created_at,customers(name)')
+            .eq('is_active', true)
+            .order('created_at', ascending: false)
+            .limit(6)
+            .then((value) => (value as List).cast<Map<String, dynamic>>())
       : <Map<String, dynamic>>[];
 
   final serviceRows = canSeeService
       ? await client
-          .from('service_records')
-          .select('id,title,created_at,customers(name)')
-          .eq('is_active', true)
-          .order('created_at', ascending: false)
-          .limit(6)
-          .then((value) => (value as List).cast<Map<String, dynamic>>())
+            .from('service_records')
+            .select('id,title,created_at,customers(name)')
+            .eq('is_active', true)
+            .order('created_at', ascending: false)
+            .limit(6)
+            .then((value) => (value as List).cast<Map<String, dynamic>>())
       : <Map<String, dynamic>>[];
 
   final activities = <DashboardActivity>[
@@ -438,9 +465,7 @@ Future<double> _sumTransactions(
   final from = lastMonth
       ? DateTime(now.year, now.month - 1, 1)
       : DateTime(now.year, now.month, 1);
-  final to = lastMonth
-      ? DateTime(now.year, now.month, 1)
-      : null;
+  final to = lastMonth ? DateTime(now.year, now.month, 1) : null;
   var query = client
       .from('transactions')
       .select('amount')
@@ -466,7 +491,14 @@ Future<double> _sumTodayCollections(SupabaseClient client) async {
       .from('transactions')
       .select('amount')
       .eq('transaction_type', 'collection')
-      .eq('transaction_date', DateTime(now.year, now.month, now.day).toIso8601String().substring(0, 10))
+      .eq(
+        'transaction_date',
+        DateTime(
+          now.year,
+          now.month,
+          now.day,
+        ).toIso8601String().substring(0, 10),
+      )
       .eq('is_active', true);
 
   double sum = 0;
@@ -617,23 +649,23 @@ class DashboardMetrics {
   }
 
   factory DashboardMetrics.zero() => const DashboardMetrics(
-        totalCustomers: 0,
-        openWorkOrders: 0,
-        inProgressWorkOrders: 0,
-        completedWorkOrders: 0,
-        todayWorkOrders: 0,
-        expiringSoon: 0,
-        totalProducts: 0,
-        lowStockProducts: 0,
-        revenue: 0,
-        lastMonthRevenue: 0,
-        todayCollections: 0,
-        totalReceivable: 0,
-        totalPayable: 0,
-        openInvoices: 0,
-        totalInvoiceAmount: 0,
-        invoiceQueuePending: 0,
-      );
+    totalCustomers: 0,
+    openWorkOrders: 0,
+    inProgressWorkOrders: 0,
+    completedWorkOrders: 0,
+    todayWorkOrders: 0,
+    expiringSoon: 0,
+    totalProducts: 0,
+    lowStockProducts: 0,
+    revenue: 0,
+    lastMonthRevenue: 0,
+    todayCollections: 0,
+    totalReceivable: 0,
+    totalPayable: 0,
+    openInvoices: 0,
+    totalInvoiceAmount: 0,
+    invoiceQueuePending: 0,
+  );
 
   factory DashboardMetrics.fromJsonMap(Map<String, dynamic> json) {
     return DashboardMetrics(

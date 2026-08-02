@@ -180,6 +180,7 @@ class AppTheme {
   /// Semantic accents (KPI wells / charts / status). Green only for success.
   static const Color green = Color(0xFF22C55E);
   static const Color orange = Color(0xFFF59E0B);
+
   /// Blue primary companions (charts / KPI chrome).
   static const Color blue = Color(0xFF2563EB);
   static const Color blueBright = Color(0xFF60A5FA);
@@ -198,8 +199,10 @@ class AppTheme {
   static const Color metricGreen = green;
   static const Color metricYellow = yellow;
   static const Color metricAmber = orange;
+
   /// @Deprecated — use [metricBlue]; kept as alias so charts stay on blue chrome.
   static const Color metricTeal = blue;
+
   /// @Deprecated — use [blue] / [primary]; leftover name for call sites.
   static const Color teal = blueBright;
 
@@ -213,8 +216,7 @@ class AppTheme {
             : null,
       );
 
-  static Color categoryIconFg(Color accent) =>
-      isDark ? accent : softFg(accent);
+  static Color categoryIconFg(Color accent) => isDark ? accent : softFg(accent);
 
   /// Sidebar nav active surface — soft ink pill (A) / blue fill pill (D).
   static BoxDecoration sidebarNavDecoration({required bool active}) {
@@ -277,9 +279,7 @@ class AppTheme {
     ),
   ];
 
-  static BoxDecoration get pageCanvas => BoxDecoration(
-    color: background,
-  );
+  static BoxDecoration get pageCanvas => BoxDecoration(color: background);
 
   /// Navy auth backdrop — continuous with brand accent family.
   static BoxDecoration get loginCanvas => BoxDecoration(
@@ -539,12 +539,13 @@ class AppTheme {
         selectedColor: p.primarySoft,
         side: BorderSide(color: p.border.withValues(alpha: 0.7)),
         labelStyle: textTheme.labelMedium!.copyWith(
-          color: Color.alphaBlend(p.primary.withValues(alpha: 0.88), p.textSoft),
+          color: Color.alphaBlend(
+            p.primary.withValues(alpha: 0.88),
+            p.textSoft,
+          ),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(999),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: brightness == Brightness.dark

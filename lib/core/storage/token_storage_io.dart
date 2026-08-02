@@ -9,4 +9,3 @@ class TokenStorage {
     AppCache.writeString(_key, value);
   }
 }
-

@@ -416,7 +416,7 @@ class _ReportRow extends StatelessWidget {
           Expanded(child: Text(record.fileRegistryNumber ?? '-')),
           Expanded(child: Text(record.stockRegistryNumber ?? '-')),
           AppBadge(
-            label: record.isApproved ? 'Onaylandı' : 'Bekliyor',
+            label: record.isApproved ? 'Onaylandı' : 'Onay Bekliyor',
             tone: record.isApproved
                 ? AppBadgeTone.success
                 : AppBadgeTone.warning,

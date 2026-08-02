@@ -9,6 +9,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../design_system/status_tone.dart';
 import '../application_forms/application_form_model.dart';
 import '../forms/scrap_form_model.dart';
 import '../forms/transfer_form_model.dart';
@@ -664,7 +665,7 @@ class _BrandsTab extends ConsumerWidget {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => _Empty(text: 'Yüklenemedi: $error'),
+              error: (error, _) => const _Empty(text: 'Yüklenemedi.'),
             ),
           ),
         ],
@@ -726,7 +727,7 @@ class _ModelsTab extends ConsumerWidget {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => _Empty(text: 'Yüklenemedi: $error'),
+              error: (error, _) => const _Empty(text: 'Yüklenemedi.'),
             ),
           ),
         ],
@@ -854,10 +855,7 @@ class _BrandRowState extends ConsumerState<_BrandRow> {
               ),
             ),
           ),
-          AppBadge(
-            label: b.isActive ? 'Aktif' : 'Pasif',
-            tone: b.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
-          ),
+          DsActiveBadge(isActive: b.isActive),
           const Gap(10),
           if (widget.isAdmin)
             OutlinedButton(
@@ -875,7 +873,7 @@ class _BrandRowState extends ConsumerState<_BrandRow> {
             IconButton(
               tooltip: 'Düzenle',
               onPressed: _saving ? null : _edit,
-              icon: const Icon(Icons.edit_outlined),
+              icon: const Icon(Icons.edit_rounded),
             ),
             IconButton(
               tooltip: 'Sil',
@@ -1017,17 +1015,14 @@ class _ModelRowState extends ConsumerState<_ModelRow> {
                 const Gap(4),
                 Text(
                   m.brandName ?? '—',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ],
             ),
           ),
-          AppBadge(
-            label: m.isActive ? 'Aktif' : 'Pasif',
-            tone: m.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
-          ),
+          DsActiveBadge(isActive: m.isActive),
           const Gap(10),
           if (widget.isAdmin)
             OutlinedButton(
@@ -1045,7 +1040,7 @@ class _ModelRowState extends ConsumerState<_ModelRow> {
             IconButton(
               tooltip: 'Düzenle',
               onPressed: _saving ? null : _edit,
-              icon: const Icon(Icons.edit_outlined),
+              icon: const Icon(Icons.edit_rounded),
             ),
             IconButton(
               tooltip: 'Sil',
@@ -1743,9 +1738,7 @@ class _RegionColorsTab extends ConsumerWidget {
                                 Text(
                                   '${it.bgColor} • ${it.borderColor}',
                                   style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(
-                                        color: AppTheme.textMuted,
-                                      ),
+                                      ?.copyWith(color: AppTheme.textMuted),
                                 ),
                               ],
                             ),
@@ -1964,7 +1957,7 @@ class _WorkOrderCloseNoteRowState
             IconButton(
               tooltip: 'Düzenle',
               onPressed: _saving ? null : _edit,
-              icon: const Icon(Icons.edit_outlined),
+              icon: const Icon(Icons.edit_rounded),
             ),
             IconButton(
               tooltip: 'Sil',
@@ -2284,18 +2277,15 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
                   const Gap(2),
                   Text(
                     t.description!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textMuted,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ],
               ],
             ),
           ),
-          AppBadge(
-            label: t.isActive ? 'Aktif' : 'Pasif',
-            tone: t.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
-          ),
+          DsActiveBadge(isActive: t.isActive),
           const Gap(10),
           if (widget.isAdmin)
             OutlinedButton(
@@ -2313,7 +2303,7 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
             IconButton(
               tooltip: 'Düzenle',
               onPressed: _saving ? null : _edit,
-              icon: const Icon(Icons.edit_outlined),
+              icon: const Icon(Icons.edit_rounded),
             ),
             IconButton(
               tooltip: 'Sil',
@@ -2581,10 +2571,7 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
             AppBadge(label: 'Varsayılan', tone: AppBadgeTone.primary),
             const Gap(8),
           ],
-          AppBadge(
-            label: r.isActive ? 'Aktif' : 'Pasif',
-            tone: r.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
-          ),
+          DsActiveBadge(isActive: r.isActive),
           const Gap(10),
           if (widget.isAdmin) ...[
             if (!r.isDefault)
@@ -2613,7 +2600,7 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
             IconButton(
               tooltip: 'Düzenle',
               onPressed: _saving ? null : _edit,
-              icon: const Icon(Icons.edit_outlined),
+              icon: const Icon(Icons.edit_rounded),
             ),
             IconButton(
               tooltip: 'Sil',
@@ -2677,7 +2664,7 @@ class _BusinessActivityTypesTab extends ConsumerWidget {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => _Empty(text: 'Yüklenemedi: $error'),
+              error: (error, _) => const _Empty(text: 'Yüklenemedi.'),
             ),
           ),
         ],
@@ -2731,7 +2718,7 @@ class _SoftwareCompaniesTab extends ConsumerWidget {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => _Empty(text: 'Yüklenemedi: $error'),
+              error: (error, _) => const _Empty(text: 'Yüklenemedi.'),
             ),
           ),
         ],
@@ -2858,10 +2845,7 @@ class _SoftwareCompanyRowState extends ConsumerState<_SoftwareCompanyRow> {
               ),
             ),
           ),
-          AppBadge(
-            label: item.isActive ? 'Aktif' : 'Pasif',
-            tone: item.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
-          ),
+          DsActiveBadge(isActive: item.isActive),
           const Gap(10),
           if (widget.isAdmin) ...[
             OutlinedButton(
@@ -2878,7 +2862,7 @@ class _SoftwareCompanyRowState extends ConsumerState<_SoftwareCompanyRow> {
             IconButton(
               tooltip: 'Düzenle',
               onPressed: _saving ? null : _edit,
-              icon: const Icon(Icons.edit_outlined),
+              icon: const Icon(Icons.edit_rounded),
             ),
             IconButton(
               tooltip: 'Sil',
@@ -3164,10 +3148,7 @@ class _BusinessActivityTypeRowState
               ),
             ),
           ),
-          AppBadge(
-            label: item.isActive ? 'Aktif' : 'Pasif',
-            tone: item.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
-          ),
+          DsActiveBadge(isActive: item.isActive),
           const Gap(10),
           if (widget.isAdmin)
             OutlinedButton(
@@ -3185,7 +3166,7 @@ class _BusinessActivityTypeRowState
             IconButton(
               tooltip: 'Düzenle',
               onPressed: _saving ? null : _edit,
-              icon: const Icon(Icons.edit_outlined),
+              icon: const Icon(Icons.edit_rounded),
             ),
             IconButton(
               tooltip: 'Sil',
@@ -3910,11 +3891,8 @@ class _ServiceTypesCard<T> extends StatelessWidget {
                             ),
                           ),
                           const Gap(8),
-                          AppBadge(
-                            label: isActiveOf(item) ? 'Aktif' : 'Pasif',
-                            tone: isActiveOf(item)
-                                ? AppBadgeTone.success
-                                : AppBadgeTone.neutral,
+                          DsActiveBadge(
+                            isActive: isActiveOf(item),
                             dense: true,
                           ),
                           if (isAdmin) ...[
@@ -4174,19 +4152,45 @@ Color _parseColor(String hex) {
   return Color(int.parse('FF$cleaned', radix: 16));
 }
 
+/// Tanımlamalar ekranındaki ~14 alt liste (marka, model, arıza tipi,
+/// aksesuar tipi, şube, kur vb.) için paylaşılan boş/hata durumu.
+/// Önceden yalnızca ortalanmış gri metindi (kart, ikon veya kenarlık yok) —
+/// uygulamanın geri kalanındaki `EmptyStateCard` görünümüyle tutarlı hale
+/// getirildi. Tek yerden değiştirildiği için 14 çağrı noktasına dokunmaya
+/// gerek kalmadı.
 class _Empty extends StatelessWidget {
-  const _Empty({required this.text});
+  const _Empty({required this.text, this.icon = Icons.inbox_rounded});
 
   final String text;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Text(
-        text,
-        style: Theme.of(
-          context,
-        ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppTheme.primarySoft,
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              ),
+              child: Icon(icon, color: AppTheme.primary, size: 22),
+            ),
+            const Gap(10),
+            Text(
+              text,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
+            ),
+          ],
+        ),
       ),
     );
   }

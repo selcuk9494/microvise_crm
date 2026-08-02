@@ -106,7 +106,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
       final locationLink = _resolvedLocationLink();
       final profile = await ref.read(currentUserProfileProvider.future);
       final isAdmin = ref.read(isAdminProvider);
-      if (_addLine && !isAdmin && ((_selectedLineStockId ?? '').trim().isEmpty)) {
+      if (_addLine &&
+          !isAdmin &&
+          ((_selectedLineStockId ?? '').trim().isEmpty)) {
         throw Exception('Personel stoktan hat seçmelidir.');
       }
 
@@ -149,14 +151,18 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         }
 
         var stockId = (_selectedLineStockId ?? '').trim();
-        if (isAdmin && (insertedLineId ?? '').trim().isNotEmpty && stockId.isEmpty) {
+        if (isAdmin &&
+            (insertedLineId ?? '').trim().isNotEmpty &&
+            stockId.isEmpty) {
           final entered = normalizeDigits(_lineNumberController.text.trim());
           if (entered.isNotEmpty) {
             final available = await ref.read(lineStockAvailableProvider.future);
-            final matched = available.where((e) {
-              final n = normalizeDigits(e.lineNumber);
-              return n.isNotEmpty && n == entered;
-            }).toList(growable: false);
+            final matched = available
+                .where((e) {
+                  final n = normalizeDigits(e.lineNumber);
+                  return n.isNotEmpty && n == entered;
+                })
+                .toList(growable: false);
             if (matched.isNotEmpty) {
               stockId = matched.first.id;
             }
@@ -223,7 +229,11 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         if (paymentRows.isNotEmpty) {
           await apiClient.postJson(
             '/mutate',
-            body: {'op': 'insertMany', 'table': 'payments', 'rows': paymentRows},
+            body: {
+              'op': 'insertMany',
+              'table': 'payments',
+              'rows': paymentRows,
+            },
           );
           invoiceRows.addAll(
             paymentRows.map(
@@ -234,7 +244,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                 'source_id': widget.order.id,
                 'description': [
                   'İş Emri Ödemesi',
-                  widget.order.title.trim().isEmpty ? null : widget.order.title.trim(),
+                  widget.order.title.trim().isEmpty
+                      ? null
+                      : widget.order.title.trim(),
                   row['description']?.toString().trim().isEmpty ?? true
                       ? null
                       : row['description']?.toString().trim(),
@@ -253,7 +265,11 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         if (invoiceRows.isNotEmpty) {
           await apiClient.postJson(
             '/mutate',
-            body: {'op': 'insertMany', 'table': 'invoice_items', 'rows': invoiceRows},
+            body: {
+              'op': 'insertMany',
+              'table': 'invoice_items',
+              'rows': invoiceRows,
+            },
           );
         }
 
@@ -332,7 +348,11 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                   'op': 'updateWhere',
                   'table': 'customer_locations',
                   'filters': [
-                    {'col': 'id', 'op': 'eq', 'value': _selectedCustomerLocationId},
+                    {
+                      'col': 'id',
+                      'op': 'eq',
+                      'value': _selectedCustomerLocationId,
+                    },
                   ],
                   'values': payload,
                 },
@@ -344,10 +364,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
                   'op': 'insertMany',
                   'table': 'customer_locations',
                   'rows': [
-                    {
-                      ...payload,
-                      'created_by': profile?.id,
-                    },
+                    {...payload, 'created_by': profile?.id},
                   ],
                 },
               );
@@ -357,8 +374,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         }
 
         if (!mounted) return;
-        String? closeNotesText =
-            _notesController.text.trim().isEmpty ? null : _notesController.text.trim();
+        String? closeNotesText = _notesController.text.trim().isEmpty
+            ? null
+            : _notesController.text.trim();
         if (_addLine) {
           final number = _lineNumberController.text.trim();
           final sim = _lineSimController.text.trim();
@@ -377,7 +395,8 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
             if (sim.isNotEmpty) 'SIM: $sim',
           ].join(' • ');
           closeNotesText = [
-            if ((closeNotesText ?? '').trim().isNotEmpty) closeNotesText!.trim(),
+            if ((closeNotesText ?? '').trim().isNotEmpty)
+              closeNotesText!.trim(),
             extra,
           ].join('\n');
         }
@@ -402,10 +421,10 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           final signaturePng = signatureBytes == null || signatureBytes.isEmpty
               ? null
               : signatureBytes;
-          final personnelSignatureBytes =
-              await _personnelSignatureController.toPngBytes();
-          final personnelSignaturePng = personnelSignatureBytes == null ||
-                  personnelSignatureBytes.isEmpty
+          final personnelSignatureBytes = await _personnelSignatureController
+              .toPngBytes();
+          final personnelSignaturePng =
+              personnelSignatureBytes == null || personnelSignatureBytes.isEmpty
               ? null
               : personnelSignatureBytes;
           final customerSigDataUrl = signaturePng == null
@@ -432,15 +451,15 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         } catch (_) {}
 
         if (!mounted) return;
-          final shareNow = await showDialog<bool>(
+        final shareNow = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('İş emri kapatıldı'),
-              content: Text(
-                kIsWeb
-                    ? 'PDF olarak kaydetmek ister misin?'
-                    : 'PDF olarak paylaşmak ister misin?',
-              ),
+            content: Text(
+              kIsWeb
+                  ? 'PDF olarak kaydetmek ister misin?'
+                  : 'PDF olarak paylaşmak ister misin?',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
@@ -448,7 +467,7 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               ),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop(true),
-                  child: Text(kIsWeb ? 'Kaydet' : 'Paylaş'),
+                child: Text(kIsWeb ? 'Kaydet' : 'Paylaş'),
               ),
             ],
           ),
@@ -458,10 +477,10 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           final signaturePng = signatureBytes == null || signatureBytes.isEmpty
               ? null
               : signatureBytes;
-          final personnelSignatureBytes =
-              await _personnelSignatureController.toPngBytes();
-          final personnelSignaturePng = personnelSignatureBytes == null ||
-                  personnelSignatureBytes.isEmpty
+          final personnelSignatureBytes = await _personnelSignatureController
+              .toPngBytes();
+          final personnelSignaturePng =
+              personnelSignatureBytes == null || personnelSignatureBytes.isEmpty
               ? null
               : personnelSignatureBytes;
           final pdfOrder = WorkOrder.fromJson({
@@ -469,7 +488,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
             'status': 'done',
             'closed_at': now.toIso8601String(),
             'close_notes': closeNotesText,
-            'payments': closedPayments.map((e) => e.toJson()).toList(growable: false),
+            'payments': closedPayments
+                .map((e) => e.toJson())
+                .toList(growable: false),
           });
           if (!mounted) return;
           await shareWorkOrderPdf(
@@ -487,7 +508,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              shareNow == true ? 'PDF paylaşıma hazırlandı.' : 'İş emri kapatıldı.',
+              shareNow == true
+                  ? 'PDF paylaşıma hazırlandı.'
+                  : 'İş emri kapatıldı.',
             ),
           ),
         );
@@ -569,30 +592,34 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         final insertedLine = await client
             .from('lines')
             .insert({
-          'customer_id': customer.id,
-          'branch_id': branchId,
-          'number': number,
-          'operator': op,
-          'sim_number': _lineSimController.text.trim().isEmpty
-              ? null
-              : _lineSimController.text.trim(),
-          'starts_at': start.toIso8601String().substring(0, 10),
-          'ends_at': end.toIso8601String().substring(0, 10),
-          'expires_at': end.toIso8601String().substring(0, 10),
-          'is_active': true,
+              'customer_id': customer.id,
+              'branch_id': branchId,
+              'number': number,
+              'operator': op,
+              'sim_number': _lineSimController.text.trim().isEmpty
+                  ? null
+                  : _lineSimController.text.trim(),
+              'starts_at': start.toIso8601String().substring(0, 10),
+              'ends_at': end.toIso8601String().substring(0, 10),
+              'expires_at': end.toIso8601String().substring(0, 10),
+              'is_active': true,
             })
             .select('id')
             .single();
         final insertedLineId = insertedLine['id']?.toString();
         var stockId = (_selectedLineStockId ?? '').trim();
-        if (isAdmin && (insertedLineId ?? '').trim().isNotEmpty && stockId.isEmpty) {
+        if (isAdmin &&
+            (insertedLineId ?? '').trim().isNotEmpty &&
+            stockId.isEmpty) {
           final entered = normalizeDigits(_lineNumberController.text.trim());
           if (entered.isNotEmpty) {
             final available = await ref.read(lineStockAvailableProvider.future);
-            final matched = available.where((e) {
-              final n = normalizeDigits(e.lineNumber);
-              return n.isNotEmpty && n == entered;
-            }).toList(growable: false);
+            final matched = available
+                .where((e) {
+                  final n = normalizeDigits(e.lineNumber);
+                  return n.isNotEmpty && n == entered;
+                })
+                .toList(growable: false);
             if (matched.isNotEmpty) {
               stockId = matched.first.id;
             }
@@ -688,10 +715,11 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
         signatureDataUrl =
             'data:image/png;base64,${base64Encode(signatureBytes)}';
       }
-      Uint8List? personnelSignatureBytes =
-          await _personnelSignatureController.toPngBytes();
+      Uint8List? personnelSignatureBytes = await _personnelSignatureController
+          .toPngBytes();
       String? personnelSignatureDataUrl;
-      if (personnelSignatureBytes != null && personnelSignatureBytes.isNotEmpty) {
+      if (personnelSignatureBytes != null &&
+          personnelSignatureBytes.isNotEmpty) {
         personnelSignatureDataUrl =
             'data:image/png;base64,${base64Encode(personnelSignatureBytes)}';
       }
@@ -792,7 +820,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
           'status': 'done',
           'closed_at': now.toIso8601String(),
           'close_notes': closeNotesText,
-          'payments': closedPayments.map((e) => e.toJson()).toList(growable: false),
+          'payments': closedPayments
+              .map((e) => e.toJson())
+              .toList(growable: false),
         });
         if (!mounted) return;
         await shareWorkOrderPdf(
@@ -810,7 +840,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            shareNow == true ? 'PDF paylaşıma hazırlandı.' : 'İş emri kapatıldı.',
+            shareNow == true
+                ? 'PDF paylaşıma hazırlandı.'
+                : 'İş emri kapatıldı.',
           ),
         ),
       );
@@ -866,15 +898,15 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               onLineStockSelected: _saving
                   ? null
                   : (item) => setState(() {
-                        if (item == null) {
-                          _selectedLineStockId = null;
-                          return;
-                        }
-                        _selectedLineStockId = item.id;
-                        _lineNumberController.text = item.lineNumber;
-                        _lineSimController.text = (item.simNumber ?? '').trim();
-                        _lineOperator = normalizeOperator(item.operatorName);
-                      }),
+                      if (item == null) {
+                        _selectedLineStockId = null;
+                        return;
+                      }
+                      _selectedLineStockId = item.id;
+                      _lineNumberController.text = item.lineNumber;
+                      _lineSimController.text = (item.simNumber ?? '').trim();
+                      _lineOperator = normalizeOperator(item.operatorName);
+                    }),
               selectedCustomerLocationId: _selectedCustomerLocationId,
               onCustomerLocationChanged: _saving
                   ? null
@@ -918,15 +950,15 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               onToggleAddLine: _saving
                   ? null
                   : (v) => setState(() {
-                        _addLine = v;
-                        if (v && (_lineOperator ?? '').trim().isEmpty) {
-                          _lineOperator = 'turkcell';
-                        }
-                        if (!v) {
-                          _lineOperator = null;
-                          _selectedLineStockId = null;
-                        }
-                      }),
+                      _addLine = v;
+                      if (v && (_lineOperator ?? '').trim().isEmpty) {
+                        _lineOperator = 'turkcell';
+                      }
+                      if (!v) {
+                        _lineOperator = null;
+                        _selectedLineStockId = null;
+                      }
+                    }),
               lineNumberController: _lineNumberController,
               lineSimController: _lineSimController,
               lineOperator: _lineOperator,
@@ -957,9 +989,9 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
               child: AppCard(
                 child: Text(
                   'Müşteri bilgisi yüklenemedi.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
             ),
@@ -1045,8 +1077,9 @@ class _SheetBody extends StatelessWidget {
       symbol: '',
       decimalDigits: 2,
     );
-    final lineOperatorValue =
-        (lineOperator ?? '').trim().isEmpty ? null : lineOperator!.trim();
+    final lineOperatorValue = (lineOperator ?? '').trim().isEmpty
+        ? null
+        : lineOperator!.trim();
     final manualAllowed = isAdmin;
 
     return Column(
@@ -1076,9 +1109,9 @@ class _SheetBody extends StatelessWidget {
                     '${customer.name} • ${order.title}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textMuted,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ],
               ),
@@ -1117,10 +1150,13 @@ class _SheetBody extends StatelessWidget {
                                   value: location.id,
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(location.title),
-                                      if ((location.description ?? '').trim().isNotEmpty)
+                                      if ((location.description ?? '')
+                                          .trim()
+                                          .isNotEmpty)
                                         Text(
                                           location.description!.trim(),
                                           maxLines: 1,
@@ -1139,8 +1175,10 @@ class _SheetBody extends StatelessWidget {
                             ],
                             onChanged: onCustomerLocationChanged == null
                                 ? null
-                                : (value) =>
-                                      onCustomerLocationChanged!(value, locations),
+                                : (value) => onCustomerLocationChanged!(
+                                    value,
+                                    locations,
+                                  ),
                             decoration: const InputDecoration(
                               labelText: 'Müşteri Konumu',
                             ),
@@ -1149,9 +1187,7 @@ class _SheetBody extends StatelessWidget {
                             const Gap(6),
                             Text(
                               'Kayıtlı konum yok. Konum Al ile konum getirip “Müşteriye konum olarak kaydet” seçeneğiyle ekleyebilirsin.',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
+                              style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(color: AppTheme.textMuted),
                             ),
                           ],
@@ -1283,7 +1319,10 @@ class _SheetBody extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('İmzalar', style: Theme.of(context).textTheme.titleSmall),
+                    Text(
+                      'İmzalar',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                     const Gap(10),
                     Row(
                       children: [
@@ -1296,11 +1335,15 @@ class _SheetBody extends StatelessWidget {
                                   Expanded(
                                     child: Text(
                                       'Müşteri İmzası',
-                                      style: Theme.of(context).textTheme.titleSmall,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleSmall,
                                     ),
                                   ),
                                   TextButton(
-                                    onPressed: saving ? null : signatureController.clear,
+                                    onPressed: saving
+                                        ? null
+                                        : signatureController.clear,
                                     child: const Text('Temizle'),
                                   ),
                                 ],
@@ -1333,7 +1376,9 @@ class _SheetBody extends StatelessWidget {
                                   Expanded(
                                     child: Text(
                                       'Personel İmzası',
-                                      style: Theme.of(context).textTheme.titleSmall,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleSmall,
                                     ),
                                   ),
                                   TextButton(
@@ -1369,8 +1414,9 @@ class _SheetBody extends StatelessWidget {
                       customer.email?.trim().isNotEmpty ?? false
                           ? 'İmza ile birlikte e-posta gönderimi denenecek.'
                           : 'E-posta yoksa gönderim yapılmaz.',
-                      style: Theme.of(context).textTheme.bodySmall
-                          ?.copyWith(color: AppTheme.textMuted),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
                     ),
                   ],
                 ),
@@ -1424,14 +1470,16 @@ class _SheetBody extends StatelessWidget {
                                   List<LineStockItem> filtered() {
                                     final needle = q.trim().toLowerCase();
                                     if (needle.isEmpty) return available;
-                                    return available.where((e) {
-                                      final hay = [
-                                        e.lineNumber,
-                                        e.simNumber ?? '',
-                                        e.operatorName,
-                                      ].join(' ').toLowerCase();
-                                      return hay.contains(needle);
-                                    }).toList(growable: false);
+                                    return available
+                                        .where((e) {
+                                          final hay = [
+                                            e.lineNumber,
+                                            e.simNumber ?? '',
+                                            e.operatorName,
+                                          ].join(' ').toLowerCase();
+                                          return hay.contains(needle);
+                                        })
+                                        .toList(growable: false);
                                   }
 
                                   final list = filtered();
@@ -1440,19 +1488,28 @@ class _SheetBody extends StatelessWidget {
                                       padding: EdgeInsets.only(
                                         left: 16,
                                         right: 16,
-                                        bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+                                        bottom:
+                                            MediaQuery.viewInsetsOf(
+                                              context,
+                                            ).bottom +
+                                            16,
                                         top: 8,
                                       ),
                                       child: SizedBox(
-                                        height: MediaQuery.sizeOf(context).height * 0.72,
+                                        height:
+                                            MediaQuery.sizeOf(context).height *
+                                            0.72,
                                         child: Column(
                                           children: [
                                             TextField(
                                               onChanged: (v) =>
                                                   setSheetState(() => q = v),
                                               decoration: const InputDecoration(
-                                                prefixIcon: Icon(Icons.search_rounded),
-                                                hintText: 'Ara (hat, sim, operatör...)',
+                                                prefixIcon: Icon(
+                                                  Icons.search_rounded,
+                                                ),
+                                                hintText:
+                                                    'Ara (hat, sim, operatör...)',
                                               ),
                                             ),
                                             const Gap(10),
@@ -1460,10 +1517,15 @@ class _SheetBody extends StatelessWidget {
                                               child: ListView(
                                                 children: [
                                                   ListTile(
-                                                    leading: const Icon(Icons.clear_rounded),
-                                                    title: const Text('Seçimi temizle'),
-                                                    onTap: () =>
-                                                        Navigator.of(context).pop(null),
+                                                    leading: const Icon(
+                                                      Icons.clear_rounded,
+                                                    ),
+                                                    title: const Text(
+                                                      'Seçimi temizle',
+                                                    ),
+                                                    onTap: () => Navigator.of(
+                                                      context,
+                                                    ).pop(null),
                                                   ),
                                                   const Divider(height: 1),
                                                   for (final s in list)
@@ -1471,26 +1533,39 @@ class _SheetBody extends StatelessWidget {
                                                       title: Text(s.lineNumber),
                                                       subtitle: Text(
                                                         [
-                                                          normalizeOperator(s.operatorName) ==
-                                                                  'turkcell'
-                                                              ? 'TURKCELL'
-                                                              : normalizeOperator(
-                                                                          s.operatorName) ==
-                                                                      'telsim'
+                                                              normalizeOperator(
+                                                                        s.operatorName,
+                                                                      ) ==
+                                                                      'turkcell'
+                                                                  ? 'TURKCELL'
+                                                                  : normalizeOperator(
+                                                                          s.operatorName,
+                                                                        ) ==
+                                                                        'telsim'
                                                                   ? 'TELSİM'
                                                                   : s.operatorName,
-                                                          if ((s.simNumber ?? '')
-                                                              .trim()
-                                                              .isNotEmpty)
-                                                            'SIM: ${s.simNumber}',
-                                                        ].where((e) => e.trim().isNotEmpty).join(' • '),
+                                                              if ((s.simNumber ??
+                                                                      '')
+                                                                  .trim()
+                                                                  .isNotEmpty)
+                                                                'SIM: ${s.simNumber}',
+                                                            ]
+                                                            .where(
+                                                              (e) => e
+                                                                  .trim()
+                                                                  .isNotEmpty,
+                                                            )
+                                                            .join(' • '),
                                                       ),
-                                                      onTap: () =>
-                                                          Navigator.of(context).pop(s),
+                                                      onTap: () => Navigator.of(
+                                                        context,
+                                                      ).pop(s),
                                                     ),
                                                   if (list.isEmpty)
                                                     const Padding(
-                                                      padding: EdgeInsets.all(16),
+                                                      padding: EdgeInsets.all(
+                                                        16,
+                                                      ),
                                                       child: Text('Kayıt yok.'),
                                                     ),
                                                 ],
@@ -1511,14 +1586,23 @@ class _SheetBody extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               OutlinedButton.icon(
-                                onPressed: saving || available.isEmpty ? null : openPicker,
-                                icon: const Icon(Icons.search_rounded, size: 18),
+                                onPressed: saving || available.isEmpty
+                                    ? null
+                                    : openPicker,
+                                icon: const Icon(
+                                  Icons.search_rounded,
+                                  size: 18,
+                                ),
                                 label: Text(
                                   selected == null
-                                      ? (available.isEmpty ? 'Stok yok' : 'Stoktan seç (arama)')
+                                      ? (available.isEmpty
+                                            ? 'Stok yok'
+                                            : 'Stoktan seç (arama)')
                                       : [
                                           selected.lineNumber,
-                                          if ((selected.simNumber ?? '').trim().isNotEmpty)
+                                          if ((selected.simNumber ?? '')
+                                              .trim()
+                                              .isNotEmpty)
                                             'SIM: ${selected.simNumber}',
                                         ].join(' • '),
                                 ),
@@ -1526,9 +1610,7 @@ class _SheetBody extends StatelessWidget {
                               const Gap(6),
                               Text(
                                 'Stok: ${available.length} kayıt',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
+                                style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(color: AppTheme.textMuted),
                               ),
                             ],
@@ -1540,9 +1622,7 @@ class _SheetBody extends StatelessWidget {
                         ),
                         error: (error, stackTrace) => Text(
                           'Hat stok yüklenemedi.',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
+                          style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: AppTheme.textMuted),
                         ),
                       ),
@@ -1555,7 +1635,9 @@ class _SheetBody extends StatelessWidget {
                             labelText: 'Hat Numarası',
                             hintText: '90555...',
                           ),
-                          onChanged: saving ? null : (_) => onLineStockSelected?.call(null),
+                          onChanged: saving
+                              ? null
+                              : (_) => onLineStockSelected?.call(null),
                         ),
                         const Gap(10),
                         DropdownButtonFormField<String>(
@@ -1582,15 +1664,15 @@ class _SheetBody extends StatelessWidget {
                             labelText: 'SIM Numarası',
                             hintText: '89...',
                           ),
-                          onChanged: saving ? null : (_) => onLineStockSelected?.call(null),
+                          onChanged: saving
+                              ? null
+                              : (_) => onLineStockSelected?.call(null),
                         ),
                       ] else ...[
                         const Gap(8),
                         Text(
                           'Personel sadece stoktan hat seçebilir.',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
+                          style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: AppTheme.textMuted),
                         ),
                       ],

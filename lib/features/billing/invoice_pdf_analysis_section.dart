@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/empty_state_card.dart';
 import 'invoice_pdf_analysis_export.dart';
 import 'invoice_pdf_analysis_file_save.dart';
 import 'invoice_pdf_analysis_model.dart';
@@ -55,75 +56,78 @@ class _InvoicePdfAnalysisSectionState
     final state = ref.watch(invoicePdfAnalysisProvider);
     final notifier = ref.read(invoicePdfAnalysisProvider.notifier);
     final query = _queryController.text.trim().toLowerCase();
-    final entries = state.entries.where((entry) {
-      if (query.isEmpty) return true;
-      final haystack = [
-        entry.customerName,
-        entry.invoiceNumber,
-        entry.fileName,
-      ].join(' ').toLowerCase();
-      return haystack.contains(query);
-    }).toList(growable: false);
+    final entries = state.entries
+        .where((entry) {
+          if (query.isEmpty) return true;
+          final haystack = [
+            entry.customerName,
+            entry.invoiceNumber,
+            entry.fileName,
+          ].join(' ').toLowerCase();
+          return haystack.contains(query);
+        })
+        .toList(growable: false);
     final sanitizedEntries = entries
         .map(_sanitizeEntryForDisplay)
         .whereType<InvoicePdfAnalysisEntry>()
         .toList(growable: false);
     final allRows = _buildListRows(sanitizedEntries);
-    final periodOptions = <String>{
-      'TUMU',
-      ...allRows
-          .where((row) => row.invoiceDate != null)
-          .map((row) => _periodKey(row.invoiceDate!)),
-    }.toList(growable: false)
-      ..sort((a, b) {
-        if (a == 'TUMU') return -1;
-        if (b == 'TUMU') return 1;
-        return b.compareTo(a);
-      });
+    final periodOptions =
+        <String>{
+          'TUMU',
+          ...allRows
+              .where((row) => row.invoiceDate != null)
+              .map((row) => _periodKey(row.invoiceDate!)),
+        }.toList(growable: false)..sort((a, b) {
+          if (a == 'TUMU') return -1;
+          if (b == 'TUMU') return 1;
+          return b.compareTo(a);
+        });
     final currencyOptions = <String>{
       'TUMU',
       ...allRows
           .map((row) => row.currency)
           .where((value) => value.trim().isNotEmpty),
-    }.toList(growable: false)
-      ..sort();
-    final taxRateOptions = <String>{
-      'TUMU',
-      ...allRows.expand(
-        (row) => row.vatBreakdowns.map((item) => _taxRateKey(item.taxRate)),
-      ),
-    }.toList(growable: false)
-      ..sort((a, b) {
-        if (a == 'TUMU') return -1;
-        if (b == 'TUMU') return 1;
-        return double.parse(a).compareTo(double.parse(b));
-      });
-    final rows = allRows.where((row) {
-      final periodOk =
-          _selectedPeriod == 'TUMU' ||
-          (row.invoiceDate != null &&
-              _periodKey(row.invoiceDate!) == _selectedPeriod);
-      final currencyOk =
-          _selectedCurrency == 'TUMU' || row.currency == _selectedCurrency;
-      final taxOk =
-          _selectedTaxRate == 'TUMU' ||
-          row.vatBreakdowns.any(
-            (item) => _taxRateKey(item.taxRate) == _selectedTaxRate,
-          );
-      final startOk =
-          _filterStartDate == null ||
-          (row.invoiceDate != null &&
-              !_normalizeDate(row.invoiceDate!).isBefore(
-                _normalizeDate(_filterStartDate!),
-              ));
-      final endOk =
-          _filterEndDate == null ||
-          (row.invoiceDate != null &&
-              !_normalizeDate(row.invoiceDate!).isAfter(
-                _normalizeDate(_filterEndDate!),
-              ));
-      return periodOk && currencyOk && taxOk && startOk && endOk;
-    }).toList(growable: false);
+    }.toList(growable: false)..sort();
+    final taxRateOptions =
+        <String>{
+          'TUMU',
+          ...allRows.expand(
+            (row) => row.vatBreakdowns.map((item) => _taxRateKey(item.taxRate)),
+          ),
+        }.toList(growable: false)..sort((a, b) {
+          if (a == 'TUMU') return -1;
+          if (b == 'TUMU') return 1;
+          return double.parse(a).compareTo(double.parse(b));
+        });
+    final rows = allRows
+        .where((row) {
+          final periodOk =
+              _selectedPeriod == 'TUMU' ||
+              (row.invoiceDate != null &&
+                  _periodKey(row.invoiceDate!) == _selectedPeriod);
+          final currencyOk =
+              _selectedCurrency == 'TUMU' || row.currency == _selectedCurrency;
+          final taxOk =
+              _selectedTaxRate == 'TUMU' ||
+              row.vatBreakdowns.any(
+                (item) => _taxRateKey(item.taxRate) == _selectedTaxRate,
+              );
+          final startOk =
+              _filterStartDate == null ||
+              (row.invoiceDate != null &&
+                  !_normalizeDate(
+                    row.invoiceDate!,
+                  ).isBefore(_normalizeDate(_filterStartDate!)));
+          final endOk =
+              _filterEndDate == null ||
+              (row.invoiceDate != null &&
+                  !_normalizeDate(
+                    row.invoiceDate!,
+                  ).isAfter(_normalizeDate(_filterEndDate!)));
+          return periodOk && currencyOk && taxOk && startOk && endOk;
+        })
+        .toList(growable: false);
     final summaries = _buildSummariesForRows(rows, state.fxRules);
     final filteredInvoiceCount = rows
         .map(
@@ -154,9 +158,8 @@ class _InvoicePdfAnalysisSectionState
                         const Gap(4),
                         Text(
                           'Liste fatura numarasi, tarih, fatura tutari, KDV orani ve KDV tutarina gore duzenlenir. Excel ve PDF olarak aktarabilirsiniz.',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.textMuted,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: AppTheme.textMuted),
                         ),
                       ],
                     ),
@@ -200,7 +203,8 @@ class _InvoicePdfAnalysisSectionState
                     label: const Text('Kayitli Listeyi Sil'),
                   ),
                   OutlinedButton.icon(
-                    onPressed: rows.isEmpty || _exportingExcel || state.isLoading
+                    onPressed:
+                        rows.isEmpty || _exportingExcel || state.isLoading
                         ? null
                         : () => _exportExcel(rows),
                     icon: _exportingExcel
@@ -239,7 +243,7 @@ class _InvoicePdfAnalysisSectionState
                 Text(
                   _uploadStatusMessage!,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF0F172A),
+                    color: AppTheme.text,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -261,7 +265,8 @@ class _InvoicePdfAnalysisSectionState
                             ? null
                             : IconButton(
                                 tooltip: 'Temizle',
-                                onPressed: () => setState(_queryController.clear),
+                                onPressed: () =>
+                                    setState(_queryController.clear),
                                 icon: const Icon(Icons.close_rounded),
                               ),
                       ),
@@ -275,9 +280,7 @@ class _InvoicePdfAnalysisSectionState
                       initialValue: periodOptions.contains(_selectedPeriod)
                           ? _selectedPeriod
                           : 'TUMU',
-                      decoration: const InputDecoration(
-                        labelText: 'Donem',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Donem'),
                       items: periodOptions
                           .map(
                             (value) => DropdownMenuItem<String>(
@@ -373,9 +376,7 @@ class _InvoicePdfAnalysisSectionState
                       initialValue: taxRateOptions.contains(_selectedTaxRate)
                           ? _selectedTaxRate
                           : 'TUMU',
-                      decoration: const InputDecoration(
-                        labelText: 'KDV Orani',
-                      ),
+                      decoration: const InputDecoration(labelText: 'KDV Orani'),
                       items: taxRateOptions
                           .map(
                             (value) => DropdownMenuItem<String>(
@@ -431,18 +432,18 @@ class _InvoicePdfAnalysisSectionState
                 const Gap(10),
                 Text(
                   'Kayitli liste: ${DateFormat('dd.MM.yyyy HH:mm', 'tr_TR').format(DateTime.fromMillisecondsSinceEpoch(state.lastSavedAtMs!))}',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ],
               if (state.errorMessage?.trim().isNotEmpty ?? false) ...[
                 const Gap(12),
                 Text(
                   state.errorMessage!,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.error,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.error),
                 ),
               ],
             ],
@@ -485,7 +486,7 @@ class _InvoicePdfAnalysisSectionState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Excel aktarimi basarisiz: $e')),
+        const SnackBar(content: Text('Excel aktarimi basarisiz. Lütfen tekrar deneyin.')),
       );
     } finally {
       if (mounted) setState(() => _exportingExcel = false);
@@ -505,13 +506,13 @@ class _InvoicePdfAnalysisSectionState
         mimeType: 'application/pdf',
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PDF dosyasi hazirlandi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('PDF dosyasi hazirlandi.')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('PDF aktarimi basarisiz: $e')),
+        const SnackBar(content: Text('PDF aktarimi basarisiz. Lütfen tekrar deneyin.')),
       );
     } finally {
       if (mounted) setState(() => _exportingPdf = false);
@@ -526,24 +527,27 @@ class _InvoicePdfAnalysisSectionState
       if (files.isEmpty) {
         setState(() => _uploadStatusMessage = 'PDF secilmedi.');
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('PDF secilmedi.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('PDF secilmedi.')));
         return;
       }
       setState(() {
-        _uploadStatusMessage = '${files.length} PDF secildi, analiz ediliyor...';
+        _uploadStatusMessage =
+            '${files.length} PDF secildi, analiz ediliyor...';
       });
-      await ref.read(invoicePdfAnalysisProvider.notifier).importPickedFiles(files);
+      await ref
+          .read(invoicePdfAnalysisProvider.notifier)
+          .importPickedFiles(files);
       if (!mounted) return;
       final nextState = ref.read(invoicePdfAnalysisProvider);
       final importedCount = nextState.entries.length - beforeCount;
       final errorMessage = nextState.errorMessage?.trim();
       if (errorMessage != null && errorMessage.isNotEmpty) {
         setState(() => _uploadStatusMessage = errorMessage);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(errorMessage)));
         return;
       }
       setState(() {
@@ -561,10 +565,10 @@ class _InvoicePdfAnalysisSectionState
         ),
       );
     } catch (e) {
-      setState(() => _uploadStatusMessage = 'PDF secilemedi: $e');
+      setState(() => _uploadStatusMessage = 'PDF secilemedi. Lütfen tekrar deneyin.');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('PDF secilemedi: $e')),
+        const SnackBar(content: Text('PDF secilemedi. Lütfen tekrar deneyin.')),
       );
     }
   }
@@ -598,9 +602,9 @@ class _InvoicePdfAnalysisSectionState
   Future<void> _clearSavedList() async {
     await ref.read(invoicePdfAnalysisProvider.notifier).clearSavedEntries();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Kayitli liste silindi.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Kayitli liste silindi.')));
   }
 
   Future<void> _pickFilterDate({required bool isStart}) async {
@@ -643,7 +647,7 @@ class _InvoicePdfAnalysisSectionState
         return StatefulBuilder(
           builder: (context, setLocalState) {
             return Dialog(
-              backgroundColor: Colors.white,
+              backgroundColor: AppTheme.surface,
               surfaceTintColor: Colors.transparent,
               insetPadding: const EdgeInsets.symmetric(
                 horizontal: 24,
@@ -662,10 +666,11 @@ class _InvoicePdfAnalysisSectionState
                     children: [
                       Text(
                         'Tarih Sec',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: AppTheme.text,
-                          fontWeight: FontWeight.w800,
-                        ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: AppTheme.text,
+                              fontWeight: FontWeight.w800,
+                            ),
                       ),
                       const Gap(12),
                       Theme(
@@ -674,7 +679,7 @@ class _InvoicePdfAnalysisSectionState
                             primary: AppTheme.primaryDark,
                             onPrimary: Colors.white,
                             onSurface: AppTheme.text,
-                            surface: Colors.white,
+                            surface: AppTheme.surface,
                           ),
                         ),
                         child: CalendarDatePicker(
@@ -718,15 +723,17 @@ class _InvoicePdfAnalysisSectionState
 
   Future<void> _saveFxRule() async {
     final rate = double.tryParse(_fxRateController.text.replaceAll(',', '.'));
-    if (_fxStartDate == null || _fxEndDate == null || rate == null || rate <= 0) {
+    if (_fxStartDate == null ||
+        _fxEndDate == null ||
+        rate == null ||
+        rate <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Kur, baslangic ve bitis tarihi girin.')),
       );
       return;
     }
     final rule = InvoicePdfFxRateRule(
-      id:
-          '${_fxCurrency}_${_fxStartDate!.millisecondsSinceEpoch}_${_fxEndDate!.millisecondsSinceEpoch}',
+      id: '${_fxCurrency}_${_fxStartDate!.millisecondsSinceEpoch}_${_fxEndDate!.millisecondsSinceEpoch}',
       currency: _fxCurrency,
       startDate: _fxStartDate!,
       endDate: _fxEndDate!,
@@ -739,17 +746,17 @@ class _InvoicePdfAnalysisSectionState
       _fxStartDate = null;
       _fxEndDate = null;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Kur bilgisi kaydedildi.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Kur bilgisi kaydedildi.')));
   }
 
   Future<void> _deleteFxRule(String id) async {
     await ref.read(invoicePdfAnalysisProvider.notifier).removeFxRule(id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Kur bilgisi silindi.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Kur bilgisi silindi.')));
   }
 }
 
@@ -758,32 +765,11 @@ class _InvoicePdfEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            const Icon(
-              Icons.picture_as_pdf_rounded,
-              size: 42,
-              color: Color(0xFF94A3B8),
-            ),
-            const Gap(12),
-            Text(
-              'Analiz icin henuz PDF yuklenmedi.',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            const Gap(6),
-            Text(
-              'Yukleme sonrasi KDV oran bazli dashboard ve aktarilabilir muhasebe listesi burada gorunur.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppTheme.textMuted,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return const EmptyStateCard(
+      icon: Icons.picture_as_pdf_rounded,
+      title: 'Analiz icin henuz PDF yuklenmedi.',
+      message:
+          'Yukleme sonrasi KDV oran bazli dashboard ve aktarilabilir muhasebe listesi burada gorunur.',
     );
   }
 }
@@ -836,7 +822,10 @@ class _PdfOverviewCards extends StatelessWidget {
             _TopStatCard(
               title: 'TL Karsiligi',
               value: _formatAmount(
-                summaries.fold<double>(0, (sum, item) => sum + item.tlEquivalent),
+                summaries.fold<double>(
+                  0,
+                  (sum, item) => sum + item.tlEquivalent,
+                ),
                 'TRY',
               ),
               subtitle: 'Kur tanimlarina gore',
@@ -852,10 +841,7 @@ class _PdfOverviewCards extends StatelessWidget {
 }
 
 class _VatRateOverviewWrap extends StatelessWidget {
-  const _VatRateOverviewWrap({
-    required this.summaries,
-    required this.fxRules,
-  });
+  const _VatRateOverviewWrap({required this.summaries, required this.fxRules});
 
   final List<InvoicePdfCurrencySummary> summaries;
   final List<InvoicePdfFxRateRule> fxRules;
@@ -909,8 +895,8 @@ class _VatRateCard extends StatelessWidget {
     final accent = item.currency == 'USD'
         ? AppTheme.success
         : item.currency == 'TRY'
-            ? AppTheme.warning
-            : AppTheme.primary;
+        ? AppTheme.warning
+        : AppTheme.primary;
 
     return SizedBox(
       width: 260,
@@ -929,30 +915,30 @@ class _VatRateCard extends StatelessWidget {
             const Gap(10),
             Text(
               'KDV ${_formatAmount(item.taxAmount, item.currency)}',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
             const Gap(4),
             Text(
               'Matrah ${_formatAmount(item.baseAmount, item.currency)}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppTheme.textMuted,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             ),
             const Gap(2),
             Text(
               'Vergili Toplam ${_formatAmount(item.grandTotal, item.currency)}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppTheme.textMuted,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             ),
             const Gap(2),
             Text(
               'TL Karsiligi ${_formatAmount(item.tlEquivalent, 'TRY')}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppTheme.textMuted,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             ),
           ],
         ),
@@ -1000,16 +986,13 @@ class _FxRateCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Kur Tanimlari',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
+          Text('Kur Tanimlari', style: Theme.of(context).textTheme.titleSmall),
           const Gap(6),
           Text(
             'Iki tarih arasina kur girin. Dip toplamda yabanci para faturalarin TL karsiligi ayrica hesaplanir.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AppTheme.textMuted,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
           ),
           const Gap(12),
           Wrap(
@@ -1057,7 +1040,9 @@ class _FxRateCard extends StatelessWidget {
                 width: 150,
                 child: TextField(
                   controller: rateController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(
                     labelText: 'Kur',
                     hintText: '36,50',
@@ -1125,9 +1110,8 @@ class _InvoicePdfRowsTable extends StatelessWidget {
                 const DataColumn(label: Text('PB')),
                 const DataColumn(label: Text('Fatura Tutari')),
                 ...vatRates.map(
-                  (rate) => DataColumn(
-                    label: Text('KDV %${_formatPercent(rate)}'),
-                  ),
+                  (rate) =>
+                      DataColumn(label: Text('KDV %${_formatPercent(rate)}')),
                 ),
                 const DataColumn(label: Text('Toplam KDV')),
               ],
@@ -1139,7 +1123,9 @@ class _InvoicePdfRowsTable extends StatelessWidget {
                         DataCell(Text(row.customerName)),
                         DataCell(Text(_formatDate(row.invoiceDate))),
                         DataCell(Text(row.currency)),
-                        DataCell(Text(_formatAmount(row.invoiceTotal, row.currency))),
+                        DataCell(
+                          Text(_formatAmount(row.invoiceTotal, row.currency)),
+                        ),
                         ...vatRates.map(
                           (rate) => DataCell(
                             Text(
@@ -1189,9 +1175,9 @@ class _TopStatCard extends StatelessWidget {
           children: [
             Text(
               title,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppTheme.textMuted,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             ),
             const Gap(8),
             Text(
@@ -1204,9 +1190,9 @@ class _TopStatCard extends StatelessWidget {
             const Gap(4),
             Text(
               subtitle,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppTheme.textMuted,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             ),
           ],
         ),
@@ -1249,10 +1235,8 @@ class _DatePickerField extends StatelessWidget {
 
 List<double> _collectVatRates(List<InvoicePdfAnalysisListRow> rows) {
   final rates = <double>{
-    for (final row in rows)
-      ...row.vatBreakdowns.map((item) => item.taxRate),
-  }.toList(growable: false)
-    ..sort();
+    for (final row in rows) ...row.vatBreakdowns.map((item) => item.taxRate),
+  }.toList(growable: false)..sort();
   return rates;
 }
 
@@ -1360,27 +1344,24 @@ List<InvoicePdfCurrencySummary> _buildSummariesForRows(
       vat.baseAmount += item.baseAmount;
       vat.taxAmount += item.taxAmount;
       vat.grandTotal += item.grandTotal;
-      vat.tlEquivalent += _computeTlEquivalentForBreakdown(
-        row,
-        item,
-        fxRules,
-      );
+      vat.tlEquivalent += _computeTlEquivalentForBreakdown(row, item, fxRules);
     }
   }
 
   final result = buckets.entries.map((entry) {
-    final vatGroups = entry.value.vatGroups.entries
-        .map(
-          (vatEntry) => InvoicePdfVatGroup(
-            taxRate: vatEntry.key,
-            baseAmount: vatEntry.value.baseAmount,
-            taxAmount: vatEntry.value.taxAmount,
-            grandTotal: vatEntry.value.grandTotal,
-            tlEquivalent: vatEntry.value.tlEquivalent,
-          ),
-        )
-        .toList()
-      ..sort((a, b) => a.taxRate.compareTo(b.taxRate));
+    final vatGroups =
+        entry.value.vatGroups.entries
+            .map(
+              (vatEntry) => InvoicePdfVatGroup(
+                taxRate: vatEntry.key,
+                baseAmount: vatEntry.value.baseAmount,
+                taxAmount: vatEntry.value.taxAmount,
+                grandTotal: vatEntry.value.grandTotal,
+                tlEquivalent: vatEntry.value.tlEquivalent,
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.taxRate.compareTo(b.taxRate));
 
     return InvoicePdfCurrencySummary(
       currency: entry.key,
@@ -1391,8 +1372,7 @@ List<InvoicePdfCurrencySummary> _buildSummariesForRows(
       tlEquivalent: entry.value.tlEquivalent,
       vatGroups: vatGroups,
     );
-  }).toList()
-    ..sort((a, b) => a.currency.compareTo(b.currency));
+  }).toList()..sort((a, b) => a.currency.compareTo(b.currency));
 
   return result;
 }
@@ -1429,8 +1409,9 @@ String _formatDate(DateTime? value) {
 }
 
 String _formatPercent(double value) {
-  final normalized =
-      value % 1 == 0 ? value.toStringAsFixed(0) : value.toStringAsFixed(2);
+  final normalized = value % 1 == 0
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(2);
   return normalized.replaceAll('.', ',');
 }
 
@@ -1448,7 +1429,8 @@ String _periodLabel(String key) {
   return DateFormat('MMMM yyyy', 'tr_TR').format(DateTime(year, month));
 }
 
-DateTime _normalizeDate(DateTime value) => DateTime(value.year, value.month, value.day);
+DateTime _normalizeDate(DateTime value) =>
+    DateTime(value.year, value.month, value.day);
 
 double _computeTlEquivalentForBreakdown(
   InvoicePdfAnalysisListRow row,
@@ -1458,13 +1440,14 @@ double _computeTlEquivalentForBreakdown(
   if (row.currency == 'TRY') return breakdown.grandTotal;
   if (row.invoiceDate == null) return 0;
   for (final rule in fxRules) {
-    final sameCurrency = rule.currency.toUpperCase() == row.currency.toUpperCase();
-    final startsOk = !_normalizeDate(row.invoiceDate!).isBefore(
-      _normalizeDate(rule.startDate),
-    );
-    final endsOk = !_normalizeDate(row.invoiceDate!).isAfter(
-      _normalizeDate(rule.endDate),
-    );
+    final sameCurrency =
+        rule.currency.toUpperCase() == row.currency.toUpperCase();
+    final startsOk = !_normalizeDate(
+      row.invoiceDate!,
+    ).isBefore(_normalizeDate(rule.startDate));
+    final endsOk = !_normalizeDate(
+      row.invoiceDate!,
+    ).isAfter(_normalizeDate(rule.endDate));
     if (sameCurrency && startsOk && endsOk) {
       return breakdown.grandTotal * rule.rateToTry;
     }
@@ -1506,7 +1489,9 @@ class _VatRateOverviewItem {
   final double tlEquivalent;
 }
 
-InvoicePdfAnalysisEntry? _sanitizeEntryForDisplay(InvoicePdfAnalysisEntry entry) {
+InvoicePdfAnalysisEntry? _sanitizeEntryForDisplay(
+  InvoicePdfAnalysisEntry entry,
+) {
   final marker = InvoicePdfAnalysisParser.detectDocumentMarker(
     entry.rawText,
     fileName: entry.fileName,

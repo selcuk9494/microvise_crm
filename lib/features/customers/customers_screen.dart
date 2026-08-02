@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
@@ -1102,9 +1103,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             ref.read(customerFiltersProvider.notifier).setSearch('');
             ref.read(customerFiltersProvider.notifier).setCity(null);
             ref.read(customerShowPassiveProvider.notifier).set(false);
-            ref
-                .read(customerSortProvider.notifier)
-                .set(CustomerSortOption.id);
+            ref.read(customerSortProvider.notifier).set(CustomerSortOption.id);
             ref.read(customerPageProvider.notifier).reset();
             ref.invalidate(customersProvider);
             if (popSheet && context.mounted) {
@@ -1282,9 +1281,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                           SizedBox(
                                             width: double.infinity,
                                             child: OutlinedButton.icon(
-                                              onPressed: () => clearFilters(
-                                                popSheet: true,
-                                              ),
+                                              onPressed: () =>
+                                                  clearFilters(popSheet: true),
                                               icon: const Icon(
                                                 Icons.filter_alt_off_rounded,
                                                 size: 18,
@@ -1352,8 +1350,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                           ),
                           icon: Icon(
                             compactView
-                                ? Icons.view_agenda_outlined
-                                : Icons.view_compact_alt_outlined,
+                                ? Icons.view_agenda_rounded
+                                : Icons.view_compact_alt_rounded,
                             size: 18,
                           ),
                         ),
@@ -1416,10 +1414,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                               value: false,
                               child: Text('Aktif'),
                             ),
-                            DropdownMenuItem(
-                              value: true,
-                              child: Text('Tümü'),
-                            ),
+                            DropdownMenuItem(value: true, child: Text('Tümü')),
                           ],
                           onChanged: (v) {
                             if (v == null) return;
@@ -1517,15 +1512,16 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         onChanged: () => ref.invalidate(customersProvider),
                       );
                     },
-                    loading: () => const AppCard(child: SizedBox(height: 240)),
-                    error: (error, _) => AppCard(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(
-                          'Müşteri listesi yüklenemedi: $error',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: AppTheme.textMuted),
-                        ),
+                    loading: () => const _CustomersTableSkeleton(),
+                    error: (error, _) => EmptyStateCard(
+                      icon: Icons.cloud_off_rounded,
+                      title: 'Müşteri listesi yüklenemedi',
+                      message:
+                          'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
+                      action: OutlinedButton.icon(
+                        onPressed: () => ref.invalidate(customersProvider),
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        label: const Text('Tekrar Dene'),
                       ),
                     ),
                   ),
@@ -1599,7 +1595,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 children: [
                   filterCard,
                   const Gap(12),
-                  const AppCard(child: SizedBox(height: 240)),
+                  const _CustomersListMobileSkeleton(),
                 ],
               ),
               error: (error, _) => ListView(
@@ -1607,15 +1603,14 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 children: [
                   filterCard,
                   const Gap(12),
-                  AppCard(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        'Müşteri listesi yüklenemedi: $error',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppTheme.textMuted,
-                        ),
-                      ),
+                  EmptyStateCard(
+                    icon: Icons.cloud_off_rounded,
+                    title: 'Müşteri listesi yüklenemedi',
+                    message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
+                    action: OutlinedButton.icon(
+                      onPressed: () => ref.invalidate(customersProvider),
+                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      label: const Text('Tekrar Dene'),
                     ),
                   ),
                 ],
@@ -1955,7 +1950,9 @@ class _CustomerTableRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
           color: AppDenseList.rowFill(index),
-          border: Border(bottom: BorderSide(color: AppTheme.border.withValues(alpha: 0.7))),
+          border: Border(
+            bottom: BorderSide(color: AppTheme.border.withValues(alpha: 0.7)),
+          ),
         ),
         child: Row(
           children: [
@@ -2222,6 +2219,109 @@ class _CustomerRowActions extends ConsumerWidget {
           const PopupMenuItem(value: 'delete', child: Text('Kalıcı Sil')),
       ],
       child: const Icon(Icons.more_horiz_rounded),
+    );
+  }
+}
+
+/// Masaüstü tablo yüklenirken gösterilen iskelet — önceden boş bir
+/// `SizedBox(height: 240)` kartıydı (içerik yokmuş hissi verip liste
+/// yapısını hiç ima etmiyordu). Gerçek satır sayısı/verisi bilinmediği için
+/// sabit sayıda placeholder satır çizilir; gerçek veri gelince olduğu gibi
+/// `_CustomersTable` ile değişir.
+class _CustomersTableSkeleton extends StatelessWidget {
+  const _CustomersTableSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeletonizer(
+      enabled: true,
+      child: AppCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < 7; i++) ...[
+              Row(
+                children: [
+                  const CircleAvatar(radius: 16),
+                  const Gap(12),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      'Örnek Müşteri Adı Soyadı',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                  const Gap(12),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      'İstanbul',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  const Gap(12),
+                  const AppBadge(label: 'Aktif', tone: AppBadgeTone.success),
+                ],
+              ),
+              if (i != 6) const Gap(16),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Mobil müşteri listesi yüklenirken gösterilen iskelet — `_CustomersListMobile`
+/// kartlarının gerçek şekliyle eşleşir, böylece yükleme sırasında düzen
+/// zıplaması olmaz.
+class _CustomersListMobileSkeleton extends StatelessWidget {
+  const _CustomersListMobileSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeletonizer(
+      enabled: true,
+      child: Column(
+        children: [
+          for (var i = 0; i < 5; i++) ...[
+            AppCard(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Örnek Müşteri Adı',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        const Gap(6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: const [
+                            _MobilePill(text: 'VKN: 0000000000'),
+                            _MobilePill(text: 'İSTANBUL'),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Gap(10),
+                  const AppBadge(label: 'Aktif', tone: AppBadgeTone.success),
+                ],
+              ),
+            ),
+            if (i != 4) const Gap(10),
+          ],
+        ],
+      ),
     );
   }
 }

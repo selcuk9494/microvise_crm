@@ -31,6 +31,7 @@ import '../features/service/service_screen.dart';
 import '../features/service/service_detail_screen.dart';
 import '../features/setup/setup_required_screen.dart';
 import '../features/shell/app_shell.dart';
+import '../features/work_orders/work_orders_kanban_screen.dart';
 import '../features/work_orders/work_orders_list_screen.dart';
 import '../features/work_orders/work_order_payments_screen.dart';
 
@@ -138,6 +139,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               path: 'tahsilatlar',
               pageBuilder: (context, state) =>
                   const NoTransitionPage(child: WorkOrderPaymentsScreen()),
+            ),
+            GoRoute(
+              path: 'pano',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: WorkOrdersKanbanScreen()),
             ),
           ],
         ),

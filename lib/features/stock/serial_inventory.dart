@@ -93,13 +93,14 @@ class ProductSerialInventorySummary {
   final int consumedCount;
 }
 
-final productSerialInventoryProvider =
-    FutureProvider.autoDispose.family<List<ProductSerialInventoryRecord>, String?>((
+final productSerialInventoryProvider = FutureProvider.autoDispose
+    .family<List<ProductSerialInventoryRecord>, String?>((
       ref,
       productId,
     ) async {
       final apiClient = ref.watch(apiClientProvider);
-      if (apiClient == null || (productId ?? '').trim().isEmpty) return const [];
+      if (apiClient == null || (productId ?? '').trim().isEmpty)
+        return const [];
 
       final response = await apiClient.getJson(
         '/data',
@@ -121,7 +122,10 @@ final productSerialInventoryRecordsProvider =
       if (apiClient == null) return const [];
       final response = await apiClient.getJson(
         '/data',
-        queryParameters: {'resource': 'product_serial_inventory', 'includeConsumed': 'true'},
+        queryParameters: {
+          'resource': 'product_serial_inventory',
+          'includeConsumed': 'true',
+        },
       );
       return ((response['items'] as List?) ?? const [])
           .whereType<Map<String, dynamic>>()
@@ -130,7 +134,9 @@ final productSerialInventoryRecordsProvider =
     });
 
 final productSerialInventorySummaryProvider =
-    FutureProvider.autoDispose<Map<String, ProductSerialInventorySummary>>((ref) async {
+    FutureProvider.autoDispose<Map<String, ProductSerialInventorySummary>>((
+      ref,
+    ) async {
       final apiClient = ref.watch(apiClientProvider);
       if (apiClient == null) return const {};
       final response = await apiClient.getJson(

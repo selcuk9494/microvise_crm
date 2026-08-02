@@ -33,7 +33,10 @@ class AppBadge extends StatelessWidget {
         color: AppTheme.softTint(color, alpha: AppTheme.isDark ? 0.18 : 0.14),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: AppTheme.softBorder(color, alpha: AppTheme.isDark ? 0.32 : 0.24),
+          color: AppTheme.softBorder(
+            color,
+            alpha: AppTheme.isDark ? 0.32 : 0.24,
+          ),
         ),
       ),
       child: Text(

@@ -11,4 +11,3 @@ class AppTime {
     return formatter.format(toTr(dateTime));
   }
 }
-

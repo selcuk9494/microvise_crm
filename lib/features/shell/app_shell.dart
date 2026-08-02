@@ -103,191 +103,194 @@ class _DesktopShell extends ConsumerWidget {
       body: DecoratedBox(
         decoration: AppTheme.pageCanvas,
         child: Row(
-        children: [
-          Container(
-            width: compact ? 78 : 248,
-            decoration: BoxDecoration(
-              color: AppTheme.sidebar,
-              border: Border(
-                right: BorderSide(
-                  color: AppTheme.isDark
-                      ? AppTheme.border.withValues(alpha: 0.55)
-                      : const Color(0xFF151B26),
-                ),
-              ),
-            ),
-            child: SafeArea(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  compact ? 8 : 12,
-                  compact ? 10 : 14,
-                  compact ? 8 : 12,
-                  compact ? 10 : 12,
-                ),
-                child: Column(
-                  children: [
-                    if (compact)
-                      _CompactBrandButton(
-                        onTap: () =>
-                            context.go(isBankUser ? '/banka-panel' : '/panel'),
-                      )
-                    else
-                      _BrandHeader(
-                        subtitle: isBankUser ? 'WebCR' : 'CRM & Servis',
-                        onTap: () =>
-                            context.go(isBankUser ? '/banka-panel' : '/panel'),
-                      ),
-                    const Gap(10),
-                    Expanded(
-                      child: ListView(
-                        children: [
-                          for (final item in items) ...[
-                            if (compact)
-                              _SidebarIconItem(
-                                label: item.label,
-                                icon: item.icon,
-                                active: _isActive(location, item.path),
-                                accentColor: _navAccentColor(item.pageKey),
-                                onTap: () => context.go(item.path),
-                              )
-                            else if (item.path == '/formlar' && !isBankUser)
-                              _FormsNavGroup(
-                                label: item.label,
-                                icon: item.icon,
-                                active: _isActive(location, item.path),
-                                accentColor: _navAccentColor(item.pageKey),
-                                expanded: isFormsExpanded,
-                                onHeaderTap: () {
-                                  ref
-                                      .read(formsNavExpandedProvider.notifier)
-                                      .toggle();
-                                  if (!isFormsExpanded) {
-                                    context.go(item.path);
-                                  }
-                                },
-                                subItems: _formsNavSubItems(isBankUser),
-                                matchedLocation: location,
-                              )
-                            else if (item.pageKey == 'e_fatura')
-                              _FormsNavGroup(
-                                label: item.label,
-                                icon: item.icon,
-                                active: _isActive(location, item.path),
-                                accentColor: _navAccentColor(item.pageKey),
-                                expanded: isEInvoiceExpanded,
-                                onHeaderTap: () {
-                                  ref
-                                      .read(
-                                        eInvoiceNavExpandedProvider.notifier,
-                                      )
-                                      .toggle();
-                                  context.go(item.path);
-                                },
-                                subItems: [
-                                  _FormsNavSubItem(
-                                    label: 'Faturalar',
-                                    path: '/e-fatura',
-                                  ),
-                                  _FormsNavSubItem(
-                                    label: 'Stok/Hizmet',
-                                    path: '/e-fatura/stok',
-                                  ),
-                                  _FormsNavSubItem(
-                                    label: 'Cari',
-                                    path: '/e-fatura/cari',
-                                  ),
-                                  _FormsNavSubItem(
-                                    label: 'Ayarlar',
-                                    path: '/e-fatura/ayarlar',
-                                  ),
-                                ],
-                                matchedLocation: location,
-                              )
-                            else if (item.pageKey == 'finans')
-                              _FormsNavGroup(
-                                label: item.label,
-                                icon: item.icon,
-                                active: _isActive(location, item.path),
-                                accentColor: _navAccentColor(item.pageKey),
-                                expanded: isFinanceExpanded,
-                                onHeaderTap: () {
-                                  ref
-                                      .read(
-                                        financeNavExpandedProvider.notifier,
-                                      )
-                                      .toggle();
-                                  context.go(item.path);
-                                },
-                                subItems: const [
-                                  _FormsNavSubItem(
-                                    label: 'CRM Finans',
-                                    path: '/finans',
-                                  ),
-                                  _FormsNavSubItem(
-                                    label: 'Bankalar / Hesaplar',
-                                    path: '/finans/akinsoft/bankalar',
-                                  ),
-                                  _FormsNavSubItem(
-                                    label: 'Kasa',
-                                    path: '/finans/akinsoft/kasa',
-                                  ),
-                                  _FormsNavSubItem(
-                                    label: 'Transferler',
-                                    path: '/finans/akinsoft/transferler',
-                                  ),
-                                  _FormsNavSubItem(
-                                    label: 'Masraf Faturaları',
-                                    path: '/finans/akinsoft/masraf',
-                                  ),
-                                ],
-                                matchedLocation: location,
-                              )
-                            else
-                              _SidebarItem(
-                                label: item.label,
-                                icon: item.icon,
-                                active: _isActive(location, item.path),
-                                accentColor: _navAccentColor(item.pageKey),
-                                onTap: () => context.go(item.path),
-                              ),
-                            const Gap(4),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const Gap(10),
-                    compact
-                        ? _CompactAccountButton(
-                            onTap: () => _showMobileAccountSheet(context, ref),
-                          )
-                        : _AccountCard(
-                            profile: ref
-                                .watch(currentUserProfileProvider)
-                                .value,
-                            onSignOut: () async {
-                              ref.read(apiAccessTokenProvider.notifier).clear();
-                              final client = ref.read(supabaseClientProvider);
-                              await client?.auth.signOut();
-                            },
-                          ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                const _TopBar(),
-                Expanded(
-                  child: ClipRect(
-                    child: SelectionArea(child: child),
+          children: [
+            Container(
+              width: compact ? 78 : 248,
+              decoration: BoxDecoration(
+                color: AppTheme.sidebar,
+                border: Border(
+                  right: BorderSide(
+                    color: AppTheme.isDark
+                        ? AppTheme.border.withValues(alpha: 0.55)
+                        : const Color(0xFF151B26),
                   ),
                 ),
-              ],
+              ),
+              child: SafeArea(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    compact ? 8 : 12,
+                    compact ? 10 : 14,
+                    compact ? 8 : 12,
+                    compact ? 10 : 12,
+                  ),
+                  child: Column(
+                    children: [
+                      if (compact)
+                        _CompactBrandButton(
+                          onTap: () => context.go(
+                            isBankUser ? '/banka-panel' : '/panel',
+                          ),
+                        )
+                      else
+                        _BrandHeader(
+                          subtitle: isBankUser ? 'WebCR' : 'CRM & Servis',
+                          onTap: () => context.go(
+                            isBankUser ? '/banka-panel' : '/panel',
+                          ),
+                        ),
+                      const Gap(10),
+                      Expanded(
+                        child: ListView(
+                          children: [
+                            for (final item in items) ...[
+                              if (compact)
+                                _SidebarIconItem(
+                                  label: item.label,
+                                  icon: item.icon,
+                                  active: _isActive(location, item.path),
+                                  accentColor: _navAccentColor(item.pageKey),
+                                  onTap: () => context.go(item.path),
+                                )
+                              else if (item.path == '/formlar' && !isBankUser)
+                                _FormsNavGroup(
+                                  label: item.label,
+                                  icon: item.icon,
+                                  active: _isActive(location, item.path),
+                                  accentColor: _navAccentColor(item.pageKey),
+                                  expanded: isFormsExpanded,
+                                  onHeaderTap: () {
+                                    ref
+                                        .read(formsNavExpandedProvider.notifier)
+                                        .toggle();
+                                    if (!isFormsExpanded) {
+                                      context.go(item.path);
+                                    }
+                                  },
+                                  subItems: _formsNavSubItems(isBankUser),
+                                  matchedLocation: location,
+                                )
+                              else if (item.pageKey == 'e_fatura')
+                                _FormsNavGroup(
+                                  label: item.label,
+                                  icon: item.icon,
+                                  active: _isActive(location, item.path),
+                                  accentColor: _navAccentColor(item.pageKey),
+                                  expanded: isEInvoiceExpanded,
+                                  onHeaderTap: () {
+                                    ref
+                                        .read(
+                                          eInvoiceNavExpandedProvider.notifier,
+                                        )
+                                        .toggle();
+                                    context.go(item.path);
+                                  },
+                                  subItems: [
+                                    _FormsNavSubItem(
+                                      label: 'Faturalar',
+                                      path: '/e-fatura',
+                                    ),
+                                    _FormsNavSubItem(
+                                      label: 'Stok/Hizmet',
+                                      path: '/e-fatura/stok',
+                                    ),
+                                    _FormsNavSubItem(
+                                      label: 'Cari',
+                                      path: '/e-fatura/cari',
+                                    ),
+                                    _FormsNavSubItem(
+                                      label: 'Ayarlar',
+                                      path: '/e-fatura/ayarlar',
+                                    ),
+                                  ],
+                                  matchedLocation: location,
+                                )
+                              else if (item.pageKey == 'finans')
+                                _FormsNavGroup(
+                                  label: item.label,
+                                  icon: item.icon,
+                                  active: _isActive(location, item.path),
+                                  accentColor: _navAccentColor(item.pageKey),
+                                  expanded: isFinanceExpanded,
+                                  onHeaderTap: () {
+                                    ref
+                                        .read(
+                                          financeNavExpandedProvider.notifier,
+                                        )
+                                        .toggle();
+                                    context.go(item.path);
+                                  },
+                                  subItems: const [
+                                    _FormsNavSubItem(
+                                      label: 'CRM Finans',
+                                      path: '/finans',
+                                    ),
+                                    _FormsNavSubItem(
+                                      label: 'Bankalar / Hesaplar',
+                                      path: '/finans/akinsoft/bankalar',
+                                    ),
+                                    _FormsNavSubItem(
+                                      label: 'Kasa',
+                                      path: '/finans/akinsoft/kasa',
+                                    ),
+                                    _FormsNavSubItem(
+                                      label: 'Transferler',
+                                      path: '/finans/akinsoft/transferler',
+                                    ),
+                                    _FormsNavSubItem(
+                                      label: 'Masraf Faturaları',
+                                      path: '/finans/akinsoft/masraf',
+                                    ),
+                                  ],
+                                  matchedLocation: location,
+                                )
+                              else
+                                _SidebarItem(
+                                  label: item.label,
+                                  icon: item.icon,
+                                  active: _isActive(location, item.path),
+                                  accentColor: _navAccentColor(item.pageKey),
+                                  onTap: () => context.go(item.path),
+                                ),
+                              const Gap(4),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const Gap(10),
+                      compact
+                          ? _CompactAccountButton(
+                              onTap: () =>
+                                  _showMobileAccountSheet(context, ref),
+                            )
+                          : _AccountCard(
+                              profile: ref
+                                  .watch(currentUserProfileProvider)
+                                  .value,
+                              onSignOut: () async {
+                                ref
+                                    .read(apiAccessTokenProvider.notifier)
+                                    .clear();
+                                final client = ref.read(supabaseClientProvider);
+                                await client?.auth.signOut();
+                              },
+                            ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
-        ],
+            Expanded(
+              child: Column(
+                children: [
+                  const _TopBar(),
+                  Expanded(
+                    child: ClipRect(child: SelectionArea(child: child)),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -370,7 +373,7 @@ class _MobileShell extends ConsumerWidget {
               ),
             _BottomItem(
               label: 'Menü',
-              icon: Icons.apps_outlined,
+              icon: Icons.grid_view_rounded,
               active: overflowActive,
               onTap: () =>
                   _showMobileModulesSheet(context, ref, allowedItems, location),
@@ -896,10 +899,7 @@ class _CompactBrandButton extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          child: _brandLogoImage(
-            height: 28,
-            alignment: Alignment.center,
-          ),
+          child: _brandLogoImage(height: 28, alignment: Alignment.center),
         ),
       ),
     );
@@ -966,11 +966,7 @@ class _CompactAccountButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             border: Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
           ),
-          child: Icon(
-            Icons.person_rounded,
-            color: AppTheme.primary,
-            size: 21,
-          ),
+          child: Icon(Icons.person_rounded, color: AppTheme.primary, size: 21),
         ),
       ),
     );
@@ -1070,11 +1066,7 @@ class _ThemeModeControl extends ConsumerWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  themeModeIcon(mode),
-                  size: 18,
-                  color: AppTheme.primary,
-                ),
+                Icon(themeModeIcon(mode), size: 18, color: AppTheme.primary),
                 const Gap(8),
                 Text(
                   themeModeLabelTr(mode),
@@ -1101,7 +1093,8 @@ class _ThemeModeControl extends ConsumerWidget {
           ThemeMode.system,
         ])
           MenuItemButton(
-            onPressed: () => ref.read(themeModeProvider.notifier).setMode(option),
+            onPressed: () =>
+                ref.read(themeModeProvider.notifier).setMode(option),
             leadingIcon: Icon(
               themeModeIcon(option),
               size: 18,
@@ -1123,9 +1116,23 @@ class _ThemeModeControl extends ConsumerWidget {
   }
 }
 
-class _ProfileButton extends StatelessWidget {
+/// Masaüstü üst çubuktaki profil düğmesi.
+///
+/// Önceden her zaman sabit "Profil" metni gösteriyordu (gerçek kullanıcı adı
+/// hiç okunmuyordu) ve tek menü öğesi olan "Ayarlar" hiçbir şey yapmıyordu
+/// (`onPressed: () {}`). Mobildeki hesap sayfası (`_showMobileAccountSheet`)
+/// zaten aynı bilgiyi (isim, rol, çıkış) `currentUserProfileProvider`
+/// üzerinden gösteriyordu — burada da aynı, zaten var olan sayfa açılıyor;
+/// yeni bir ekran/route icat edilmedi.
+class _ProfileButton extends ConsumerWidget {
+  const _ProfileButton();
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(currentUserProfileProvider).value;
+    final name = (profile?.fullName ?? '').trim();
+    final label = name.isEmpty ? 'Profil' : name;
+
     return MenuAnchor(
       builder: (context, controller, child) => InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -1150,7 +1157,15 @@ class _ProfileButton extends StatelessWidget {
                 ),
               ),
               const Gap(10),
-              Text('Profil', style: Theme.of(context).textTheme.bodyMedium),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 140),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
               const Gap(6),
               const Icon(Icons.expand_more_rounded, size: 18),
             ],
@@ -1158,7 +1173,11 @@ class _ProfileButton extends StatelessWidget {
         ),
       ),
       menuChildren: [
-        MenuItemButton(onPressed: () {}, child: const Text('Ayarlar')),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.settings_rounded, size: 18),
+          onPressed: () => _showMobileAccountSheet(context, ref),
+          child: const Text('Ayarlar'),
+        ),
       ],
     );
   }
@@ -1359,8 +1378,8 @@ class _SidebarSubItem extends StatelessWidget {
               decoration: BoxDecoration(
                 color: active
                     ? (AppTheme.isDark
-                        ? AppTheme.primaryDark
-                        : AppTheme.sidebarText)
+                          ? AppTheme.primaryDark
+                          : AppTheme.sidebarText)
                     : AppTheme.sidebarTextMuted.withValues(alpha: 0.55),
                 borderRadius: BorderRadius.circular(3),
               ),
@@ -1559,7 +1578,7 @@ Future<void> _showQuickCreateSheet(BuildContext context) async {
           const Gap(10),
           _SheetItem(
             title: 'Yeni Müşteri',
-            icon: Icons.person_add_alt_outlined,
+            icon: Icons.person_add_alt_1_rounded,
             onTap: () {
               Navigator.of(context).pop();
               context.go('/musteriler?yeni=1');
@@ -1567,7 +1586,7 @@ Future<void> _showQuickCreateSheet(BuildContext context) async {
           ),
           _SheetItem(
             title: 'Yeni İş Emri',
-            icon: Icons.note_add_outlined,
+            icon: Icons.playlist_add_rounded,
             onTap: () {
               Navigator.of(context).pop();
               context.go('/is-emirleri?yeni=1');
@@ -1575,7 +1594,7 @@ Future<void> _showQuickCreateSheet(BuildContext context) async {
           ),
           _SheetItem(
             title: 'Yeni Servis Kaydı',
-            icon: Icons.handyman_outlined,
+            icon: Icons.handyman_rounded,
             onTap: () {
               Navigator.of(context).pop();
               context.go('/servis?yeni=1');
@@ -1659,85 +1678,85 @@ final _navItems = <_NavItem>[
   _NavItem(
     path: '/panel',
     label: 'Panel',
-    icon: Icons.home_outlined,
+    icon: Icons.space_dashboard_rounded,
     pageKey: 'panel',
   ),
   _NavItem(
     path: '/musteriler',
     label: 'Müşteriler',
-    icon: Icons.groups_outlined,
+    icon: Icons.groups_rounded,
     pageKey: 'musteriler',
   ),
   _NavItem(
     path: '/formlar',
     label: 'Formlar',
-    icon: Icons.article_outlined,
+    icon: Icons.article_rounded,
     pageKey: 'formlar',
   ),
   _NavItem(
     path: '/e-fatura',
     label: 'E-Fatura',
-    icon: Icons.receipt_long_outlined,
+    icon: Icons.receipt_long_rounded,
     pageKey: 'e_fatura',
   ),
   _NavItem(
     path: '/belgeler',
     label: 'Belgeler',
-    icon: Icons.folder_outlined,
+    icon: Icons.folder_rounded,
     pageKey: 'formlar',
   ),
   _NavItem(
     path: '/is-emirleri',
     label: 'İş Emirleri',
-    icon: Icons.view_kanban_outlined,
+    icon: Icons.view_kanban_rounded,
     pageKey: 'is_emirleri',
   ),
   _NavItem(
     path: '/servis',
     label: 'Servis',
-    icon: Icons.handyman_outlined,
+    icon: Icons.handyman_rounded,
     pageKey: 'servis',
   ),
   _NavItem(
     path: '/raporlar',
     label: 'Raporlar',
-    icon: Icons.bar_chart_outlined,
+    icon: Icons.insights_rounded,
     pageKey: 'raporlar',
   ),
   _NavItem(
     path: '/urunler',
     label: 'Hat & Lisans',
-    icon: Icons.sim_card_outlined,
+    icon: Icons.sim_card_rounded,
     pageKey: 'urunler',
   ),
   _NavItem(
     path: '/faturalama',
     label: 'Faturalama',
-    icon: Icons.payments_outlined,
+    icon: Icons.payments_rounded,
     pageKey: 'faturalama',
   ),
   _NavItem(
     path: '/finans',
     label: 'Finans',
-    icon: Icons.account_balance_wallet_outlined,
+    icon: Icons.account_balance_wallet_rounded,
     pageKey: 'finans',
   ),
   _NavItem(
     path: '/kdv-analizi',
     label: 'KDV Analizi',
-    icon: Icons.pie_chart_outline,
+    icon: Icons.pie_chart_rounded,
     pageKey: 'kdv_analizi',
   ),
   _NavItem(
     path: '/tanimlamalar',
     label: 'Tanımlamalar',
-    icon: Icons.settings_outlined,
+    icon: Icons.category_rounded,
     pageKey: 'tanimlamalar',
   ),
   _NavItem(
     path: '/personel',
     label: 'Personel',
-    icon: Icons.manage_accounts_outlined,
+    icon: Icons.manage_accounts_rounded,
     pageKey: 'personel',
   ),
 ];
@@ -1746,19 +1765,19 @@ final _bankNavItems = <_NavItem>[
   const _NavItem(
     path: '/banka-panel',
     label: 'Panel',
-    icon: Icons.home_outlined,
+    icon: Icons.space_dashboard_rounded,
     pageKey: 'formlar',
   ),
   const _NavItem(
     path: '/formlar/basvuru',
     label: 'Başvuru',
-    icon: Icons.article_outlined,
+    icon: Icons.article_rounded,
     pageKey: 'formlar',
   ),
   const _NavItem(
     path: '/formlar/banka-rapor',
     label: 'Rapor',
-    icon: Icons.bar_chart_outlined,
+    icon: Icons.insights_rounded,
     pageKey: 'formlar',
   ),
 ];

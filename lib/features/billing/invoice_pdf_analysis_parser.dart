@@ -48,10 +48,7 @@ class InvoicePdfAnalysisParser {
     final text = PdfTextExtractor(document).extractText();
     document.dispose();
 
-    final leadingMarker = detectDocumentMarker(
-      text,
-      fileName: fileName,
-    );
+    final leadingMarker = detectDocumentMarker(text, fileName: fileName);
     if (leadingMarker == 'ALACAK') return null;
 
     final isCancelled = leadingMarker == 'IPTAL';
@@ -114,22 +111,24 @@ class InvoicePdfAnalysisParser {
     final currency =
         _extractMicroviseCurrency(normalized) ??
         _currencyFromMoneySymbol(normalized) ??
-        items.firstWhere(
-          (item) => item.currency.trim().isNotEmpty,
-          orElse: () => const InvoicePdfLineItem(
-            rowNo: 0,
-            description: '',
-            quantity: 0,
-            unit: '',
-            unitPrice: 0,
-            currency: 'TRY',
-            discountRate: 0,
-            discountAmount: 0,
-            taxRate: 0,
-            taxAmount: 0,
-            lineBaseAmount: 0,
-          ),
-        ).currency;
+        items
+            .firstWhere(
+              (item) => item.currency.trim().isNotEmpty,
+              orElse: () => const InvoicePdfLineItem(
+                rowNo: 0,
+                description: '',
+                quantity: 0,
+                unit: '',
+                unitPrice: 0,
+                currency: 'TRY',
+                discountRate: 0,
+                discountAmount: 0,
+                taxRate: 0,
+                taxAmount: 0,
+                lineBaseAmount: 0,
+              ),
+            )
+            .currency;
 
     return InvoicePdfAnalysisEntry(
       fileName: fileName,
@@ -166,22 +165,24 @@ class InvoicePdfAnalysisParser {
 
     final currency =
         _extractCurrency(normalized) ??
-        items.firstWhere(
-          (item) => item.currency.trim().isNotEmpty,
-          orElse: () => const InvoicePdfLineItem(
-            rowNo: 0,
-            description: '',
-            quantity: 0,
-            unit: '',
-            unitPrice: 0,
-            currency: 'TRY',
-            discountRate: 0,
-            discountAmount: 0,
-            taxRate: 0,
-            taxAmount: 0,
-            lineBaseAmount: 0,
-          ),
-        ).currency;
+        items
+            .firstWhere(
+              (item) => item.currency.trim().isNotEmpty,
+              orElse: () => const InvoicePdfLineItem(
+                rowNo: 0,
+                description: '',
+                quantity: 0,
+                unit: '',
+                unitPrice: 0,
+                currency: 'TRY',
+                discountRate: 0,
+                discountAmount: 0,
+                taxRate: 0,
+                taxAmount: 0,
+                lineBaseAmount: 0,
+              ),
+            )
+            .currency;
 
     return InvoicePdfAnalysisEntry(
       fileName: fileName,
@@ -220,7 +221,9 @@ class InvoicePdfAnalysisParser {
       cursor = match.end;
 
       final quantity = _parseAmount(match.group(1));
-      final unit = (match.group(2) ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
+      final unit = (match.group(2) ?? '')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
       final unitPrice = _parseMoney(match.group(3));
       final discountRaw = (match.group(4) ?? '').trim();
       final discountAmount = discountRaw.isEmpty || discountRaw == '-'
@@ -362,8 +365,10 @@ class InvoicePdfAnalysisParser {
     ).firstMatch(rawText);
     final line = lineMatch?.group(1)?.trim() ?? '';
     if (line.isNotEmpty &&
-        !RegExp(r'^(Tel:|E-posta:|Web:|VKN:|FATURA)', caseSensitive: false)
-            .hasMatch(line)) {
+        !RegExp(
+          r'^(Tel:|E-posta:|Web:|VKN:|FATURA)',
+          caseSensitive: false,
+        ).hasMatch(line)) {
       return line;
     }
 
@@ -387,7 +392,10 @@ class InvoicePdfAnalysisParser {
           caseSensitive: false,
         ).firstMatch(value);
         if (cut != null) return cut.group(1)!.trim();
-        return value.split(RegExp(r'\s{2,}|\s+(?=[A-ZÇĞİÖŞÜ][a-zçğıöşü])')).first.trim();
+        return value
+            .split(RegExp(r'\s{2,}|\s+(?=[A-ZÇĞİÖŞÜ][a-zçğıöşü])'))
+            .first
+            .trim();
       }
     }
     return 'Bilinmeyen Müşteri';
@@ -441,8 +449,11 @@ class InvoicePdfAnalysisParser {
   }
 
   static String _extractItemBlock(String rawText) {
-    final startMatch = RegExp(r'Sıra\s*No', caseSensitive: false, dotAll: true)
-        .firstMatch(rawText);
+    final startMatch = RegExp(
+      r'Sıra\s*No',
+      caseSensitive: false,
+      dotAll: true,
+    ).firstMatch(rawText);
     final endMatch = RegExp(
       r'Mal\s*Hizmet\s*Toplam\s*Tutarı',
       caseSensitive: false,
@@ -522,13 +533,18 @@ class InvoicePdfAnalysisParser {
 
   static String detectDocumentMarker(String rawText, {String? fileName}) {
     final normalizedFileName = (fileName ?? '').trim().toUpperCase();
-    final fileNameMatch = RegExp(r'\b(ALACAK|IPTAL)\b', caseSensitive: false)
-        .firstMatch(normalizedFileName);
+    final fileNameMatch = RegExp(
+      r'\b(ALACAK|IPTAL)\b',
+      caseSensitive: false,
+    ).firstMatch(normalizedFileName);
     if (fileNameMatch != null) {
       return fileNameMatch.group(1)?.trim().toUpperCase() ?? '';
     }
 
-    final compactFileName = normalizedFileName.replaceAll(RegExp(r'[^A-Z]'), '');
+    final compactFileName = normalizedFileName.replaceAll(
+      RegExp(r'[^A-Z]'),
+      '',
+    );
     if (compactFileName.contains('ALACAK')) return 'ALACAK';
     if (compactFileName.contains('IPTAL')) return 'IPTAL';
 
@@ -539,8 +555,10 @@ class InvoicePdfAnalysisParser {
         : normalized.length.clamp(0, 4000);
     final headerWindow = normalized.substring(0, headerEnd);
 
-    final tokenMatch = RegExp(r'\b(ALACAK|IPTAL)\b', caseSensitive: false)
-        .firstMatch(headerWindow);
+    final tokenMatch = RegExp(
+      r'\b(ALACAK|IPTAL)\b',
+      caseSensitive: false,
+    ).firstMatch(headerWindow);
     if (tokenMatch != null) {
       return tokenMatch.group(1)?.trim().toUpperCase() ?? '';
     }

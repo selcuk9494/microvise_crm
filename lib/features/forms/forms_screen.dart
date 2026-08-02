@@ -22,7 +22,8 @@ class FormsScreen extends StatelessWidget {
         children: [
           AppSectionCard(
             title: 'Form Merkezi',
-            subtitle: 'Resmi form akışlarını tek merkezden yönetin ve yazdırın.',
+            subtitle:
+                'Resmi form akışlarını tek merkezden yönetin ve yazdırın.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -46,7 +47,7 @@ class FormsScreen extends StatelessWidget {
                       description:
                           'Hurda cihaz süreçleri için aynı mantıkta yeni form akışı burada olacak.',
                       icon: Icons.delete_sweep_rounded,
-                      accent: const Color(0xFFB45309),
+                      accent: AppTheme.warning,
                       buttonLabel: 'Aç',
                       onTap: () => context.go('/formlar/hurda'),
                       width: isMobile ? double.infinity : 320,
@@ -59,6 +60,26 @@ class FormsScreen extends StatelessWidget {
                       accent: AppTheme.primary,
                       buttonLabel: 'Aç',
                       onTap: () => context.go('/formlar/devir'),
+                      width: isMobile ? double.infinity : 320,
+                    ),
+                    _FormEntryCard(
+                      title: 'Arıza Formu',
+                      description:
+                          'Arızalı cihaz kayıtlarını ve servis yönlendirme sürecini yönetin.',
+                      icon: Icons.build_circle_rounded,
+                      accent: AppTheme.error,
+                      buttonLabel: 'Aç',
+                      onTap: () => context.go('/formlar/ariza'),
+                      width: isMobile ? double.infinity : 320,
+                    ),
+                    _FormEntryCard(
+                      title: 'Seri Takip',
+                      description:
+                          'Seri numarası bazlı ürün takibini ve durumlarını görüntüleyin.',
+                      icon: Icons.qr_code_2_rounded,
+                      accent: AppTheme.primary,
+                      buttonLabel: 'Aç',
+                      onTap: () => context.go('/formlar/seri-takip'),
                       width: isMobile ? double.infinity : 320,
                     ),
                   ],
@@ -113,7 +134,11 @@ class _FormEntryCard extends StatelessWidget {
                 color: accent.withValues(alpha: AppTheme.isDark ? 0.18 : 0.10),
                 borderRadius: BorderRadius.circular(AppTheme.radiusSm),
               ),
-              child: Icon(icon, color: AppTheme.categoryIconFg(accent), size: 19),
+              child: Icon(
+                icon,
+                color: AppTheme.categoryIconFg(accent),
+                size: 19,
+              ),
             ),
             const Gap(10),
             Text(title, style: Theme.of(context).textTheme.titleMedium),

@@ -14,7 +14,11 @@ import 'invoice_model.dart';
 import 'invoice_providers.dart';
 
 class InvoiceFormScreen extends ConsumerStatefulWidget {
-  const InvoiceFormScreen({super.key, required this.invoiceType, this.editInvoice});
+  const InvoiceFormScreen({
+    super.key,
+    required this.invoiceType,
+    this.editInvoice,
+  });
 
   final String invoiceType;
   final Invoice? editInvoice;
@@ -26,13 +30,13 @@ class InvoiceFormScreen extends ConsumerStatefulWidget {
 class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _notesController = TextEditingController();
-  
+
   String? _selectedCustomerId;
   DateTime _invoiceDate = normalizeAppDate(DateTime.now());
   DateTime? _dueDate = normalizeAppDate(DateTime.now());
   String _currency = 'TRY';
   double _exchangeRate = 1.0;
-  
+
   final List<_ItemDraft> _items = [];
   bool _saving = false;
   Map<String, double> _rates = {};
@@ -41,7 +45,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   void initState() {
     super.initState();
     _loadRates();
-    
+
     if (widget.editInvoice != null) {
       final inv = widget.editInvoice!;
       _selectedCustomerId = inv.customerId;
@@ -50,17 +54,23 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
       _currency = inv.currency;
       _exchangeRate = inv.exchangeRate;
       _notesController.text = inv.notes ?? '';
-      
+
       for (final item in inv.items) {
-        _items.add(_ItemDraft(
-          descController: TextEditingController(text: item.description),
-          qtyController: TextEditingController(text: item.quantity.toString()),
-          priceController: TextEditingController(text: item.unitPrice.toString()),
-          taxRate: item.taxRate,
-          discountRate: item.discountRate,
-          unit: item.unit,
-          productId: item.productId,
-        ));
+        _items.add(
+          _ItemDraft(
+            descController: TextEditingController(text: item.description),
+            qtyController: TextEditingController(
+              text: item.quantity.toString(),
+            ),
+            priceController: TextEditingController(
+              text: item.unitPrice.toString(),
+            ),
+            taxRate: item.taxRate,
+            discountRate: item.discountRate,
+            unit: item.unit,
+            productId: item.productId,
+          ),
+        );
       }
     } else {
       _items.add(_ItemDraft());
@@ -114,11 +124,17 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   Widget build(BuildContext context) {
     final customersAsync = ref.watch(customersLookupProvider);
     final productsAsync = ref.watch(productsProvider(null));
-    final money = NumberFormat.currency(locale: 'tr_TR', symbol: '', decimalDigits: 2);
-    
+    final money = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: '',
+      decimalDigits: 2,
+    );
+
     final title = widget.editInvoice != null
         ? 'Fatura Düzenle'
-        : (widget.invoiceType == 'sales' ? 'Yeni Satış Faturası' : 'Yeni Alış Faturası');
+        : (widget.invoiceType == 'sales'
+              ? 'Yeni Satış Faturası'
+              : 'Yeni Alış Faturası');
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -133,7 +149,14 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
           FilledButton(
             onPressed: _saving ? null : _saveAndFinalize,
             child: _saving
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Text('Kaydet'),
           ),
           const Gap(12),
@@ -150,18 +173,27 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Cari Bilgileri', style: Theme.of(context).textTheme.titleSmall),
+                  Text(
+                    'Cari Bilgileri',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
                   const Gap(12),
                   customersAsync.when(
                     data: (customers) => DropdownButtonFormField<String>(
                       initialValue: _selectedCustomerId,
-                      items: customers.map((c) => DropdownMenuItem(
-                        value: c.id,
-                        child: Text(c.name),
-                      )).toList(),
+                      items: customers
+                          .map(
+                            (c) => DropdownMenuItem(
+                              value: c.id,
+                              child: Text(c.name),
+                            ),
+                          )
+                          .toList(),
                       onChanged: (v) => setState(() => _selectedCustomerId = v),
                       decoration: InputDecoration(
-                        labelText: widget.invoiceType == 'sales' ? 'Müşteri' : 'Tedarikçi',
+                        labelText: widget.invoiceType == 'sales'
+                            ? 'Müşteri'
+                            : 'Tedarikçi',
                       ),
                       validator: (v) => v == null ? 'Cari seçin' : null,
                     ),
@@ -178,7 +210,10 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Fatura Bilgileri', style: Theme.of(context).textTheme.titleSmall),
+                  Text(
+                    'Fatura Bilgileri',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
                   const Gap(12),
                   Row(
                     children: [
@@ -192,11 +227,19 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                               firstDate: DateTime(2020),
                               lastDate: DateTime(2030),
                             );
-                            if (date != null) setState(() => _invoiceDate = date);
+                            if (date != null)
+                              setState(() => _invoiceDate = date);
                           },
                           child: InputDecorator(
-                            decoration: const InputDecoration(labelText: 'Fatura Tarihi'),
-                            child: Text(DateFormat('d MMM y', 'tr_TR').format(_invoiceDate)),
+                            decoration: const InputDecoration(
+                              labelText: 'Fatura Tarihi',
+                            ),
+                            child: Text(
+                              DateFormat(
+                                'd MMM y',
+                                'tr_TR',
+                              ).format(_invoiceDate),
+                            ),
                           ),
                         ),
                       ),
@@ -207,15 +250,26 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                           onTap: () async {
                             final date = await showDatePicker(
                               context: context,
-                              initialDate: _dueDate ?? _invoiceDate.add(const Duration(days: 30)),
+                              initialDate:
+                                  _dueDate ??
+                                  _invoiceDate.add(const Duration(days: 30)),
                               firstDate: DateTime(2020),
                               lastDate: DateTime(2030),
                             );
                             if (date != null) setState(() => _dueDate = date);
                           },
                           child: InputDecorator(
-                            decoration: const InputDecoration(labelText: 'Vade Tarihi'),
-                            child: Text(_dueDate == null ? 'Seçilmedi' : DateFormat('d MMM y', 'tr_TR').format(_dueDate!)),
+                            decoration: const InputDecoration(
+                              labelText: 'Vade Tarihi',
+                            ),
+                            child: Text(
+                              _dueDate == null
+                                  ? 'Seçilmedi'
+                                  : DateFormat(
+                                      'd MMM y',
+                                      'tr_TR',
+                                    ).format(_dueDate!),
+                            ),
                           ),
                         ),
                       ),
@@ -228,19 +282,35 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                         child: DropdownButtonFormField<String>(
                           initialValue: _currency,
                           items: const [
-                            DropdownMenuItem(value: 'TRY', child: Text('TRY (₺)')),
-                            DropdownMenuItem(value: 'USD', child: Text('USD (\$)')),
-                            DropdownMenuItem(value: 'EUR', child: Text('EUR (€)')),
-                            DropdownMenuItem(value: 'GBP', child: Text('GBP (£)')),
+                            DropdownMenuItem(
+                              value: 'TRY',
+                              child: Text('TRY (₺)'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'USD',
+                              child: Text('USD (\$)'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'EUR',
+                              child: Text('EUR (€)'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'GBP',
+                              child: Text('GBP (£)'),
+                            ),
                           ],
                           onChanged: (v) {
                             if (v == null) return;
                             setState(() {
                               _currency = v;
-                              _exchangeRate = v == 'TRY' ? 1.0 : (_rates[v] ?? 1.0);
+                              _exchangeRate = v == 'TRY'
+                                  ? 1.0
+                                  : (_rates[v] ?? 1.0);
                             });
                           },
-                          decoration: const InputDecoration(labelText: 'Para Birimi'),
+                          decoration: const InputDecoration(
+                            labelText: 'Para Birimi',
+                          ),
                         ),
                       ),
                       if (_currency != 'TRY') ...[
@@ -248,9 +318,12 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                         Expanded(
                           child: TextFormField(
                             initialValue: _exchangeRate.toStringAsFixed(4),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
                             decoration: const InputDecoration(labelText: 'Kur'),
-                            onChanged: (v) => _exchangeRate = double.tryParse(v) ?? 1.0,
+                            onChanged: (v) =>
+                                _exchangeRate = double.tryParse(v) ?? 1.0,
                           ),
                         ),
                       ],
@@ -268,9 +341,15 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                 children: [
                   Row(
                     children: [
-                      Expanded(child: Text('Fatura Kalemleri', style: Theme.of(context).textTheme.titleSmall)),
+                      Expanded(
+                        child: Text(
+                          'Fatura Kalemleri',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ),
                       OutlinedButton.icon(
-                        onPressed: () => setState(() => _items.add(_ItemDraft())),
+                        onPressed: () =>
+                            setState(() => _items.add(_ItemDraft())),
                         icon: const Icon(Icons.add_rounded, size: 18),
                         label: const Text('Kalem Ekle'),
                       ),
@@ -285,10 +364,12 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                             key: ValueKey(i),
                             item: _items[i],
                             products: products,
-                            onRemove: _items.length > 1 ? () => setState(() {
-                              _items[i].dispose();
-                              _items.removeAt(i);
-                            }) : null,
+                            onRemove: _items.length > 1
+                                ? () => setState(() {
+                                    _items[i].dispose();
+                                    _items.removeAt(i);
+                                  })
+                                : null,
                             onChanged: () => setState(() {}),
                           ),
                       ],
@@ -297,11 +378,25 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                     error: (_, _) => const Text('Ürünler yüklenemedi'),
                   ),
                   const Divider(height: 24),
-                  _SummaryRow(label: 'Ara Toplam', value: money.format(_subtotal)),
-                  if (_discountTotal > 0) _SummaryRow(label: 'İndirim', value: '-${money.format(_discountTotal)}'),
-                  _SummaryRow(label: 'KDV Toplam', value: money.format(_taxTotal)),
+                  _SummaryRow(
+                    label: 'Ara Toplam',
+                    value: money.format(_subtotal),
+                  ),
+                  if (_discountTotal > 0)
+                    _SummaryRow(
+                      label: 'İndirim',
+                      value: '-${money.format(_discountTotal)}',
+                    ),
+                  _SummaryRow(
+                    label: 'KDV Toplam',
+                    value: money.format(_taxTotal),
+                  ),
                   const Gap(8),
-                  _SummaryRow(label: 'Genel Toplam', value: money.format(_grandTotal), isTotal: true),
+                  _SummaryRow(
+                    label: 'Genel Toplam',
+                    value: money.format(_grandTotal),
+                    isTotal: true,
+                  ),
                 ],
               ),
             ),
@@ -338,11 +433,16 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   Future<void> _save(String status) async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedCustomerId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cari seçin')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Cari seçin')));
       return;
     }
-    if (_items.isEmpty || _items.every((i) => (i.description?.isEmpty ?? true))) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('En az bir kalem ekleyin')));
+    if (_items.isEmpty ||
+        _items.every((i) => (i.description?.isEmpty ?? true))) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('En az bir kalem ekleyin')));
       return;
     }
 
@@ -381,7 +481,9 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
         'currency': _currency,
         'exchange_rate': _exchangeRate,
         'status': status,
-        'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+        'notes': _notesController.text.trim().isEmpty
+            ? null
+            : _notesController.text.trim(),
         'created_by': profile?.id,
       };
 
@@ -456,19 +558,29 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
       if (itemsData.isNotEmpty) {
         await apiClient.postJson(
           '/mutate',
-          body: {'op': 'insertMany', 'table': 'invoice_items', 'rows': itemsData},
+          body: {
+            'op': 'insertMany',
+            'table': 'invoice_items',
+            'rows': itemsData,
+          },
         );
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(status == 'draft' ? 'Taslak kaydedildi' : 'Fatura kaydedildi')),
+          SnackBar(
+            content: Text(
+              status == 'draft' ? 'Taslak kaydedildi' : 'Fatura kaydedildi',
+            ),
+          ),
         );
         Navigator.of(context).pop();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hata: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Hata: $e')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -485,9 +597,9 @@ class _ItemDraft {
     this.discountRate = 0,
     this.unit = 'Adet',
     this.productId,
-  })  : descController = descController ?? TextEditingController(),
-        qtyController = qtyController ?? TextEditingController(text: '1'),
-        priceController = priceController ?? TextEditingController(text: '0');
+  }) : descController = descController ?? TextEditingController(),
+       qtyController = qtyController ?? TextEditingController(text: '1'),
+       priceController = priceController ?? TextEditingController(text: '0');
 
   final TextEditingController descController;
   final TextEditingController qtyController;
@@ -497,9 +609,12 @@ class _ItemDraft {
   String unit;
   String? productId;
 
-  String? get description => descController.text.trim().isEmpty ? null : descController.text.trim();
-  double? get quantity => double.tryParse(qtyController.text.replaceAll(',', '.'));
-  double? get unitPrice => double.tryParse(priceController.text.replaceAll(',', '.'));
+  String? get description =>
+      descController.text.trim().isEmpty ? null : descController.text.trim();
+  double? get quantity =>
+      double.tryParse(qtyController.text.replaceAll(',', '.'));
+  double? get unitPrice =>
+      double.tryParse(priceController.text.replaceAll(',', '.'));
 
   void dispose() {
     descController.dispose();
@@ -542,9 +657,13 @@ class _ItemRow extends StatelessWidget {
                   optionsBuilder: (text) {
                     final q = text.text.toLowerCase();
                     if (q.isEmpty) return products.take(10);
-                    return products.where((p) =>
-                        p.name.toLowerCase().contains(q) ||
-                        (p.code?.toLowerCase().contains(q) ?? false)).take(10);
+                    return products
+                        .where(
+                          (p) =>
+                              p.name.toLowerCase().contains(q) ||
+                              (p.code?.toLowerCase().contains(q) ?? false),
+                        )
+                        .take(10);
                   },
                   displayStringForOption: (p) => p.name,
                   onSelected: (p) {
@@ -556,7 +675,8 @@ class _ItemRow extends StatelessWidget {
                     onChanged();
                   },
                   fieldViewBuilder: (context, controller, focusNode, _) {
-                    if (controller.text.isEmpty && item.descController.text.isNotEmpty) {
+                    if (controller.text.isEmpty &&
+                        item.descController.text.isNotEmpty) {
                       controller.text = item.descController.text;
                     }
                     return TextField(
@@ -591,8 +711,13 @@ class _ItemRow extends StatelessWidget {
               Expanded(
                 child: TextField(
                   controller: item.qtyController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Miktar', isDense: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Miktar',
+                    isDense: true,
+                  ),
                   onChanged: (_) => onChanged(),
                 ),
               ),
@@ -612,15 +737,23 @@ class _ItemRow extends StatelessWidget {
                     item.unit = v ?? 'Adet';
                     onChanged();
                   },
-                  decoration: const InputDecoration(labelText: 'Birim', isDense: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Birim',
+                    isDense: true,
+                  ),
                 ),
               ),
               const Gap(8),
               Expanded(
                 child: TextField(
                   controller: item.priceController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Birim Fiyat', isDense: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Birim Fiyat',
+                    isDense: true,
+                  ),
                   onChanged: (_) => onChanged(),
                 ),
               ),
@@ -642,7 +775,10 @@ class _ItemRow extends StatelessWidget {
                     item.taxRate = v ?? 20;
                     onChanged();
                   },
-                  decoration: const InputDecoration(labelText: 'KDV', isDense: true),
+                  decoration: const InputDecoration(
+                    labelText: 'KDV',
+                    isDense: true,
+                  ),
                 ),
               ),
               const Gap(8),
@@ -660,13 +796,19 @@ class _ItemRow extends StatelessWidget {
                     item.discountRate = v ?? 0;
                     onChanged();
                   },
-                  decoration: const InputDecoration(labelText: 'İndirim', isDense: true),
+                  decoration: const InputDecoration(
+                    labelText: 'İndirim',
+                    isDense: true,
+                  ),
                 ),
               ),
               const Gap(8),
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     color: AppTheme.primary.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(10),
@@ -674,7 +816,9 @@ class _ItemRow extends StatelessWidget {
                   child: Text(
                     _calcLineTotal(item),
                     textAlign: TextAlign.end,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -691,12 +835,20 @@ class _ItemRow extends StatelessWidget {
     final base = qty * price;
     final afterDiscount = base * (1 - item.discountRate / 100);
     final total = afterDiscount * (1 + item.taxRate / 100);
-    return NumberFormat.currency(locale: 'tr_TR', symbol: '', decimalDigits: 2).format(total);
+    return NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: '',
+      decimalDigits: 2,
+    ).format(total);
   }
 }
 
 class _SummaryRow extends StatelessWidget {
-  const _SummaryRow({required this.label, required this.value, this.isTotal = false});
+  const _SummaryRow({
+    required this.label,
+    required this.value,
+    this.isTotal = false,
+  });
 
   final String label;
   final String value;
@@ -712,15 +864,15 @@ class _SummaryRow extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
-                ),
+              fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
+            ),
           ),
           Text(
             value,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: isTotal ? FontWeight.w700 : FontWeight.w600,
-                  fontSize: isTotal ? 18 : null,
-                ),
+              fontWeight: isTotal ? FontWeight.w700 : FontWeight.w600,
+              fontSize: isTotal ? 18 : null,
+            ),
           ),
         ],
       ),

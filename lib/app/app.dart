@@ -67,7 +67,22 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
 
     final router = ref.watch(appRouterProvider);
 
+    // `AppTheme`'in renk getter'ları (`AppTheme.text`, `.surface`, ...)
+    // Theme.of(context)'e değil statik bir `_brightness` alanına bağlı.
+    // Bu yüzden tema modu değiştiğinde yalnızca bu widget (App) yeniden
+    // çiziliyordu; ekrandaki mevcut sayfa widget'ları (route içeriği) tekrar
+    // build edilmediği için eski renklerde kalıyordu — kullanıcı ancak
+    // çıkış yapıp tekrar girdiğinde (yani sayfa widget'ları GoRouter
+    // tarafından sıfırdan oluşturulduğunda) yeni temayı görüyordu.
+    //
+    // Düzeltme: MaterialApp.router'ı çözümlenmiş parlaklığa göre keyliyoruz.
+    // Tema değiştiğinde Flutter bu widget'ı (ve altındaki mevcut route
+    // içeriğini) sıfırdan kurar; GoRouter örneği (appRouterProvider) ve tüm
+    // Riverpod durumu/iş mantığı aynı kalır, yalnızca geçerli sayfa yeniden
+    // build edilip güncel AppTheme renklerini okur. Aktif konum GoRouter'ın
+    // kendi dahili durumunda tutulduğu için korunur.
     return MaterialApp.router(
+      key: ValueKey(AppTheme.brightness),
       debugShowCheckedModeBanner: false,
       title: 'Microvise CRM',
       theme: AppTheme.light(),

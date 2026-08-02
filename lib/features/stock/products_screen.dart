@@ -137,9 +137,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               error: (error, stackTrace) => Center(
                 child: Text(
                   'Ürünler yüklenemedi',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
             ),
@@ -505,9 +505,9 @@ class _ProductCard extends StatelessWidget {
                 ),
                 Text(
                   '%${product.taxRate.toInt()} KDV',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ],
             ),

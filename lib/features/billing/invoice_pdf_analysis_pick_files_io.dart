@@ -3,10 +3,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 
 class PickedPdfFile {
-  const PickedPdfFile({
-    required this.name,
-    required this.bytes,
-  });
+  const PickedPdfFile({required this.name, required this.bytes});
 
   final String name;
   final List<int> bytes;

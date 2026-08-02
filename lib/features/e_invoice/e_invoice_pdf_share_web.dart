@@ -85,14 +85,10 @@ Future<bool> downloadEInvoicePdfs({
 
   for (final item in files) {
     try {
-      final safeName = _uniqueFilename(
-        _safeFilename(item.fileName),
-        usedNames,
-      );
+      final safeName = _uniqueFilename(_safeFilename(item.fileName), usedNames);
       usedNames.add(safeName.toLowerCase());
 
-      final local =
-          (item.localPath?.trim().isNotEmpty ?? false)
+      final local = (item.localPath?.trim().isNotEmpty ?? false)
           ? item.localPath!.trim()
           : _localPathFromOpenPdfUrl(item.url);
 

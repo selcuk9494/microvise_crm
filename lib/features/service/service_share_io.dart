@@ -12,7 +12,10 @@ Future<void> shareServicePdf({
   required ServiceDetail detail,
   required List<String> accessoryNames,
 }) async {
-  final bytes = await buildServicePdfBytes(detail: detail, accessoryNames: accessoryNames);
+  final bytes = await buildServicePdfBytes(
+    detail: detail,
+    accessoryNames: accessoryNames,
+  );
 
   final dir = await getTemporaryDirectory();
   final filename = _safeFilename(
@@ -25,10 +28,7 @@ Future<void> shareServicePdf({
   final dpr = view?.devicePixelRatio ?? 1.0;
   final size = view == null
       ? const Size(1, 1)
-      : Size(
-          view.physicalSize.width / dpr,
-          view.physicalSize.height / dpr,
-        );
+      : Size(view.physicalSize.width / dpr, view.physicalSize.height / dpr);
   final maxX = math.max<double>(size.width - 20, 0);
   final maxY = math.max<double>(size.height - 20, 0);
   final origin = Rect.fromLTWH(
@@ -38,13 +38,11 @@ Future<void> shareServicePdf({
     20,
   );
 
-  await Share.shareXFiles(
-    [XFile(file.path, mimeType: 'application/pdf', name: filename)],
-    sharePositionOrigin: origin,
-  );
+  await Share.shareXFiles([
+    XFile(file.path, mimeType: 'application/pdf', name: filename),
+  ], sharePositionOrigin: origin);
 }
 
 String _safeFilename(String input) {
   return input.replaceAll(RegExp(r'[^a-zA-Z0-9._-]+'), '_');
 }
-

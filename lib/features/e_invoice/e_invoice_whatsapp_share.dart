@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../app/theme/app_theme.dart';
 import 'package:flutter/services.dart';
@@ -78,9 +79,9 @@ Future<void> shareEInvoicePdfWithWhatsApp({
               options.isEmpty
                   ? 'Cariye kayıtlı numara yok. Numara girin veya PDF’i açıp sohbete ekleyin.'
                   : 'Numara seçin; WhatsApp sohbeti açılır. PDF yerel olarak hazırlanır — sohbete ekleyin.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppTheme.textMuted,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             ),
             const Gap(12),
             for (final opt in options)
@@ -89,9 +90,8 @@ Future<void> shareEInvoicePdfWithWhatsApp({
                 leading: const Icon(Icons.chat_bubble_rounded),
                 title: Text(opt.label),
                 subtitle: Text(opt.phone),
-                onTap: () => Navigator.of(context).pop(
-                  _ShareAction.whatsApp(opt.phone),
-                ),
+                onTap: () =>
+                    Navigator.of(context).pop(_ShareAction.whatsApp(opt.phone)),
               ),
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -135,9 +135,7 @@ Future<void> shareEInvoicePdfWithWhatsApp({
   if (phoneToUse != null) {
     final waPhone = normalizePhoneForWhatsApp(phoneToUse);
     final url = waPhone.isEmpty
-        ? Uri.parse(
-            'https://wa.me/?text=${Uri.encodeComponent(message)}',
-          )
+        ? Uri.parse('https://wa.me/?text=${Uri.encodeComponent(message)}')
         : Uri.parse(
             'https://wa.me/$waPhone?text=${Uri.encodeComponent(message)}',
           );
@@ -157,13 +155,15 @@ Future<void> shareEInvoicePdfWithWhatsApp({
       : '${number}_$customerName.pdf';
 
   var sharedOrOpened = false;
-  // Electron/yerel open-pdf: dosyayı doğrudan aç; http indirme / bulut gerekmez.
-  if (isLocalOpenPdfUrl(pdfUrl)) {
+  // Electron/web open-pdf: dosyayı doğrudan aç. Mobilde _local/open-pdf geçersiz;
+  // pdfBase64 veya https URL ile paylaş.
+  if (kIsWeb && isLocalOpenPdfUrl(pdfUrl)) {
     sharedOrOpened = await openExternalUrl(pdfUrl);
   } else {
+    final shareUrl = isLocalOpenPdfUrl(pdfUrl) ? '' : pdfUrl;
     try {
       sharedOrOpened = await shareEInvoicePdf(
-        url: pdfUrl,
+        url: shareUrl,
         fileName: fileName,
         shareText: shareText,
         pdfBase64: pdfBase64,
@@ -171,15 +171,17 @@ Future<void> shareEInvoicePdfWithWhatsApp({
     } catch (_) {
       // Paylaşım başarısızsa bağlantıyı açmaya geri düşülür.
     }
-    if (!sharedOrOpened && pdfUrl.trim().isNotEmpty) {
-      sharedOrOpened = await openExternalUrl(pdfUrl);
+    if (!sharedOrOpened && shareUrl.trim().isNotEmpty) {
+      sharedOrOpened = await openExternalUrl(shareUrl);
     }
   }
 
   // Electron: Finder’da göster ki kullanıcı sohbete sürükleyebilsin.
-  final revealUrl = revealLocalFileUrlFromOpenPdf(pdfUrl);
-  if (revealUrl != null) {
-    await openExternalUrl(revealUrl);
+  if (kIsWeb) {
+    final revealUrl = revealLocalFileUrlFromOpenPdf(pdfUrl);
+    if (revealUrl != null) {
+      await openExternalUrl(revealUrl);
+    }
   }
 
   if (!context.mounted) return;
@@ -256,7 +258,6 @@ bool isLocalOpenPdfUrl(String pdfUrl) {
 }
 
 bool _isLocalOpenPdfPath(String path) => path == '/api/_local/open-pdf';
-
 
 Future<String?> _askPhoneNumber(BuildContext context) async {
   final controller = TextEditingController();

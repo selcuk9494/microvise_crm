@@ -12,6 +12,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/empty_state_card.dart';
 import 'application_form_model.dart';
 import 'application_form_screen.dart';
 
@@ -143,7 +144,16 @@ class BankApplicationDashboardScreen extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => const Center(child: Text('Banka paneli yüklenemedi.')),
+        error: (_, _) => EmptyStateCard(
+          icon: Icons.cloud_off_rounded,
+          title: 'Banka paneli yüklenemedi',
+          message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
+          action: OutlinedButton.icon(
+            onPressed: () => ref.invalidate(applicationFormsProvider),
+            icon: const Icon(Icons.refresh_rounded, size: 16),
+            label: const Text('Tekrar Dene'),
+          ),
+        ),
       ),
     );
   }

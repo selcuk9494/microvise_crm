@@ -12,9 +12,11 @@ import '../../core/format/search_normalize.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/empty_state_card.dart';
 import 'service_definitions.dart';
 import 'service_detail_screen.dart';
 import 'service_share.dart';
+import 'service_status_ui.dart';
 import 'service_technicians.dart';
 
 class ServiceListQuery {
@@ -87,36 +89,47 @@ class ServicePageData {
   final int page;
   final int pageSize;
 
-  int get totalPages => totalCount <= 0 ? 1 : ((totalCount - 1) ~/ pageSize) + 1;
+  int get totalPages =>
+      totalCount <= 0 ? 1 : ((totalCount - 1) ~/ pageSize) + 1;
   bool get hasPrev => page > 1;
   bool get hasNext => page < totalPages;
 }
 
-final serviceRecordsProvider =
-    FutureProvider.autoDispose.family<ServicePageData, ServiceListQuery>((ref, query) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient == null) {
-    return const ServicePageData(items: [], totalCount: 0, page: 1, pageSize: 50);
-  }
-  final response = await apiClient.getJson(
-    '/data',
-    queryParameters: query.toQueryParams(),
-  );
-  final items = ((response['items'] as List?) ?? const [])
-      .whereType<Map<String, dynamic>>()
-      .map(ServiceRecord.fromJson)
-      .toList(growable: false);
-  int? toIntAny(Object? v) {
-    if (v is int) return v;
-    if (v is num) return v.toInt();
-    return int.tryParse(v?.toString() ?? '');
-  }
+final serviceRecordsProvider = FutureProvider.autoDispose
+    .family<ServicePageData, ServiceListQuery>((ref, query) async {
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient == null) {
+        return const ServicePageData(
+          items: [],
+          totalCount: 0,
+          page: 1,
+          pageSize: 50,
+        );
+      }
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: query.toQueryParams(),
+      );
+      final items = ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(ServiceRecord.fromJson)
+          .toList(growable: false);
+      int? toIntAny(Object? v) {
+        if (v is int) return v;
+        if (v is num) return v.toInt();
+        return int.tryParse(v?.toString() ?? '');
+      }
 
-  final totalCount = toIntAny(response['totalCount']) ?? items.length;
-  final page = toIntAny(response['page']) ?? query.page;
-  final pageSize = toIntAny(response['pageSize']) ?? query.pageSize;
-  return ServicePageData(items: items, totalCount: totalCount, page: page, pageSize: pageSize);
-});
+      final totalCount = toIntAny(response['totalCount']) ?? items.length;
+      final page = toIntAny(response['page']) ?? query.page;
+      final pageSize = toIntAny(response['pageSize']) ?? query.pageSize;
+      return ServicePageData(
+        items: items,
+        totalCount: totalCount,
+        page: page,
+        pageSize: pageSize,
+      );
+    });
 
 class ServiceScreen extends ConsumerStatefulWidget {
   const ServiceScreen({super.key});
@@ -139,7 +152,14 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
   @override
   Widget build(BuildContext context) {
     final recordsAsync = ref.watch(serviceRecordsProvider(_query));
-    const allowedStatuses = {'all', 'waiting', 'approval', 'ready', 'done', 'cancelled'};
+    const allowedStatuses = {
+      'all',
+      'waiting',
+      'approval',
+      'ready',
+      'done',
+      'cancelled',
+    };
     if (!allowedStatuses.contains(_query.status)) {
       _query = _query.copyWith(status: 'all');
     }
@@ -169,18 +189,25 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
 
           final isWebWide = kIsWeb && MediaQuery.sizeOf(context).width >= 1200;
           String mapStatus(String v) => switch (v) {
-                'open' => 'waiting',
-                'in_progress' => 'approval',
-                _ => v,
-              };
-          final waitingCount =
-              items.where((e) => mapStatus(e.status) == 'waiting').length;
-          final approvalCount =
-              items.where((e) => mapStatus(e.status) == 'approval').length;
-          final readyCount = items.where((e) => mapStatus(e.status) == 'ready').length;
-          final doneCount = items.where((e) => mapStatus(e.status) == 'done').length;
-          final cancelledCount =
-              items.where((e) => mapStatus(e.status) == 'cancelled').length;
+            'open' => 'waiting',
+            'in_progress' => 'approval',
+            _ => v,
+          };
+          final waitingCount = items
+              .where((e) => mapStatus(e.status) == 'waiting')
+              .length;
+          final approvalCount = items
+              .where((e) => mapStatus(e.status) == 'approval')
+              .length;
+          final readyCount = items
+              .where((e) => mapStatus(e.status) == 'ready')
+              .length;
+          final doneCount = items
+              .where((e) => mapStatus(e.status) == 'done')
+              .length;
+          final cancelledCount = items
+              .where((e) => mapStatus(e.status) == 'cancelled')
+              .length;
 
           if (isWebWide && _selectedServiceId == null && items.isNotEmpty) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -313,7 +340,10 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                             );
                             if (next == null || next.trim().isEmpty) return;
                             setState(() {
-                              _query = _query.copyWith(status: next.trim(), page: 1);
+                              _query = _query.copyWith(
+                                status: next.trim(),
+                                page: 1,
+                              );
                             });
                           },
                         ),
@@ -330,37 +360,58 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: const [
-                                    _StatusSheetItem(value: 'all', label: 'Tümü'),
-                                    _StatusSheetItem(value: 'low', label: 'Düşük'),
-                                    _StatusSheetItem(value: 'medium', label: 'Orta'),
-                                    _StatusSheetItem(value: 'high', label: 'Yüksek'),
+                                    _StatusSheetItem(
+                                      value: 'all',
+                                      label: 'Tümü',
+                                    ),
+                                    _StatusSheetItem(
+                                      value: 'low',
+                                      label: 'Düşük',
+                                    ),
+                                    _StatusSheetItem(
+                                      value: 'medium',
+                                      label: 'Orta',
+                                    ),
+                                    _StatusSheetItem(
+                                      value: 'high',
+                                      label: 'Yüksek',
+                                    ),
                                   ],
                                 ),
                               ),
                             );
                             if (next == null || next.trim().isEmpty) return;
                             setState(() {
-                              _query = _query.copyWith(priority: next.trim(), page: 1);
+                              _query = _query.copyWith(
+                                priority: next.trim(),
+                                page: 1,
+                              );
                             });
                           },
                         ),
                         Consumer(
                           builder: (context, ref, _) {
-                            final techAsync = ref.watch(serviceTechniciansProvider);
+                            final techAsync = ref.watch(
+                              serviceTechniciansProvider,
+                            );
                             final selectedId = _query.technicianId;
-                            final selected = techAsync.asData?.value.where((e) => e.id == selectedId);
+                            final selected = techAsync.asData?.value.where(
+                              (e) => e.id == selectedId,
+                            );
                             final selectedName = selectedId == 'all'
                                 ? 'Tümü'
                                 : (selected == null || selected.isEmpty)
-                                    ? 'Seç'
-                                    : selected.first.fullName;
+                                ? 'Seç'
+                                : selected.first.fullName;
                             return _StatusPill(
                               label: 'Teknisyen: $selectedName',
                               backgroundColor: AppTheme.filterControlBg,
-                          foregroundColor: AppTheme.filterControlFg,
+                              foregroundColor: AppTheme.filterControlFg,
                               icon: Icons.person_rounded,
                               onTap: () async {
-                                final techs = techAsync.asData?.value ?? const <ServiceTechnician>[];
+                                final techs =
+                                    techAsync.asData?.value ??
+                                    const <ServiceTechnician>[];
                                 final next = await showModalBottomSheet<String>(
                                   context: context,
                                   showDragHandle: true,
@@ -368,16 +419,25 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                                     child: ListView(
                                       shrinkWrap: true,
                                       children: [
-                                        const _StatusSheetItem(value: 'all', label: 'Tümü'),
+                                        const _StatusSheetItem(
+                                          value: 'all',
+                                          label: 'Tümü',
+                                        ),
                                         for (final t in techs)
-                                          _StatusSheetItem(value: t.id, label: t.fullName),
+                                          _StatusSheetItem(
+                                            value: t.id,
+                                            label: t.fullName,
+                                          ),
                                       ],
                                     ),
                                   ),
                                 );
                                 if (next == null || next.trim().isEmpty) return;
                                 setState(() {
-                                  _query = _query.copyWith(technicianId: next.trim(), page: 1);
+                                  _query = _query.copyWith(
+                                    technicianId: next.trim(),
+                                    page: 1,
+                                  );
                                 });
                               },
                             );
@@ -394,7 +454,9 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                             final picked = await showDateRangePicker(
                               context: context,
                               firstDate: DateTime(2020, 1, 1),
-                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                              lastDate: DateTime.now().add(
+                                const Duration(days: 365),
+                              ),
                               initialDateRange: _query.range,
                             );
                             if (picked == null) return;
@@ -406,7 +468,10 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                         if (_query.range != null)
                           OutlinedButton(
                             onPressed: () => setState(() {
-                              _query = _query.copyWith(clearRange: true, page: 1);
+                              _query = _query.copyWith(
+                                clearRange: true,
+                                page: 1,
+                              );
                             }),
                             child: const Text('Tarih Temizle'),
                           ),
@@ -417,12 +482,14 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                               _query = const ServiceListQuery();
                             });
                           },
-                          icon:
-                              const Icon(Icons.delete_outline_rounded, size: 18),
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            size: 18,
+                          ),
                           label: const Text('Sıfırla'),
                           style: FilledButton.styleFrom(
                             backgroundColor: AppTheme.softTint(AppTheme.error),
-                          foregroundColor: AppTheme.softFg(AppTheme.error),
+                            foregroundColor: AppTheme.softFg(AppTheme.error),
                             minimumSize: const Size(0, 40),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 14,
@@ -434,24 +501,26 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                           tooltip: 'Önceki',
                           onPressed: pageData.hasPrev
                               ? () => setState(() {
-                                    _query = _query.copyWith(page: pageData.page - 1);
-                                  })
+                                  _query = _query.copyWith(
+                                    page: pageData.page - 1,
+                                  );
+                                })
                               : null,
                           icon: const Icon(Icons.chevron_left_rounded),
                         ),
                         Text(
                           '${pageData.page} / ${pageData.totalPages}',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
+                          style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: AppTheme.textMuted),
                         ),
                         IconButton(
                           tooltip: 'Sonraki',
                           onPressed: pageData.hasNext
                               ? () => setState(() {
-                                    _query = _query.copyWith(page: pageData.page + 1);
-                                  })
+                                  _query = _query.copyWith(
+                                    page: pageData.page + 1,
+                                  );
+                                })
                               : null,
                           icon: const Icon(Icons.chevron_right_rounded),
                         ),
@@ -475,11 +544,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        controls,
-                        const Gap(10),
-                        stats,
-                      ],
+                      children: [controls, const Gap(10), stats],
                     );
                   },
                 ),
@@ -487,24 +552,30 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
               const Gap(12),
               Expanded(
                 child: items.isEmpty
-                    ? const AppCard(
-                        child: Center(child: Text('Kayıt bulunamadı.')),
+                    ? const EmptyStateCard(
+                        icon: Icons.build_circle_rounded,
+                        title: 'Kayıt bulunamadı',
+                        message: 'Filtrelerinize uyan bir servis kaydı yok.',
                       )
                     : LayoutBuilder(
                         builder: (context, constraints) {
-                          final showPanel = kIsWeb && constraints.maxWidth >= 1200;
+                          final showPanel =
+                              kIsWeb && constraints.maxWidth >= 1200;
                           if (!showPanel) {
                             return AppCard(
                               padding: EdgeInsets.zero,
                               child: ListView.separated(
                                 itemCount: items.length,
-                                separatorBuilder: (context, index) => const Divider(height: 1),
-                                itemBuilder: (context, index) => _ServiceRow(item: items[index]),
+                                separatorBuilder: (context, index) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (context, index) =>
+                                    _ServiceRow(item: items[index]),
                               ),
                             );
                           }
 
-                          final selectedId = (_selectedServiceId ?? '').trim().isEmpty
+                          final selectedId =
+                              (_selectedServiceId ?? '').trim().isEmpty
                               ? items.first.id
                               : _selectedServiceId!;
 
@@ -517,7 +588,8 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                                   padding: EdgeInsets.zero,
                                   child: ListView.separated(
                                     itemCount: items.length + 1,
-                                    separatorBuilder: (context, index) => const Divider(height: 1),
+                                    separatorBuilder: (context, index) =>
+                                        const Divider(height: 1),
                                     itemBuilder: (context, index) {
                                       if (index == 0) {
                                         return const _ServiceTableHeader();
@@ -526,7 +598,9 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                                       return _ServiceRow(
                                         item: item,
                                         selected: item.id == selectedId,
-                                        onTap: () => setState(() => _selectedServiceId = item.id),
+                                        onTap: () => setState(
+                                          () => _selectedServiceId = item.id,
+                                        ),
                                       );
                                     },
                                   ),
@@ -535,7 +609,9 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                               const Gap(16),
                               Expanded(
                                 flex: 2,
-                                child: _ServiceDetailPanel(serviceId: selectedId),
+                                child: _ServiceDetailPanel(
+                                  serviceId: selectedId,
+                                ),
                               ),
                             ],
                           );
@@ -580,16 +656,14 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
             ),
           ),
         ),
-        error: (error, _) => AppCard(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Text(
-              'Servis kayıtları yüklenemedi: $error',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: AppTheme.textMuted),
-            ),
+        error: (error, _) => EmptyStateCard(
+          icon: Icons.cloud_off_rounded,
+          title: 'Servis kayıtları yüklenemedi',
+          message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
+          action: OutlinedButton.icon(
+            onPressed: () => ref.invalidate(serviceRecordsProvider(_query)),
+            icon: const Icon(Icons.refresh_rounded, size: 16),
+            label: const Text('Tekrar Dene'),
           ),
         ),
       ),
@@ -632,10 +706,10 @@ class _StatusPill extends StatelessWidget {
             const Gap(8),
             Text(
               label,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: foregroundColor, fontWeight: FontWeight.w700),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: foregroundColor,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const Gap(6),
             Icon(Icons.expand_more_rounded, size: 18, color: foregroundColor),
@@ -661,21 +735,10 @@ class _StatusSheetItem extends StatelessWidget {
   }
 }
 
+// Kanonik durum etiketleri — bkz. service_status_ui.dart.
 String _statusLabel(String value) {
-  switch (value) {
-    case 'waiting':
-      return 'Beklemede';
-    case 'approval':
-      return 'Onayda';
-    case 'ready':
-      return 'Hazır';
-    case 'done':
-      return 'Tamamlandı';
-    case 'cancelled':
-      return 'İptal';
-    default:
-      return 'Tümü';
-  }
+  if (value == 'all') return 'Tümü';
+  return serviceStatusInfo(value).label;
 }
 
 String _priorityLabel(String value) {
@@ -716,17 +779,16 @@ class _MetricCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: AppTheme.textMuted),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
                 const Gap(2),
                 Text(
                   value,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ],
             ),
@@ -752,9 +814,9 @@ class _ServiceTableHeader extends StatelessWidget {
             child: Text(
               'Kayıt',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.textMuted,
-                  ),
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textMuted,
+              ),
             ),
           ),
           Expanded(
@@ -762,9 +824,9 @@ class _ServiceTableHeader extends StatelessWidget {
             child: Text(
               'Müşteri',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.textMuted,
-                  ),
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textMuted,
+              ),
             ),
           ),
           Expanded(
@@ -772,9 +834,9 @@ class _ServiceTableHeader extends StatelessWidget {
             child: Text(
               'Sicil / Arıza',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.textMuted,
-                  ),
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textMuted,
+              ),
             ),
           ),
           Expanded(
@@ -783,9 +845,9 @@ class _ServiceTableHeader extends StatelessWidget {
               'Tutar',
               textAlign: TextAlign.right,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.textMuted,
-                  ),
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textMuted,
+              ),
             ),
           ),
           Expanded(
@@ -794,9 +856,9 @@ class _ServiceTableHeader extends StatelessWidget {
               'Durum',
               textAlign: TextAlign.right,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.textMuted,
-                  ),
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textMuted,
+              ),
             ),
           ),
           Expanded(
@@ -805,9 +867,9 @@ class _ServiceTableHeader extends StatelessWidget {
               'Tarih',
               textAlign: TextAlign.right,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.textMuted,
-                  ),
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textMuted,
+              ),
             ),
           ),
         ],
@@ -829,15 +891,8 @@ class _ServiceDetailPanel extends ConsumerWidget {
     return AppCard(
       child: detailAsync.when(
         data: (detail) {
-          final statusLabel = switch (detail.status) {
-            'open' || 'waiting' => 'Bekliyor',
-            'in_progress' || 'approval' => 'Onayda',
-            'ready' => 'Hazır',
-            'done' => 'Teslim',
-            _ => detail.status,
-          };
-
-          final accessoryNames = accessoryTypesAsync.asData?.value
+          final accessoryNames =
+              accessoryTypesAsync.asData?.value
                   .where((e) => detail.accessoryTypeIds.contains(e.id))
                   .map((e) => e.name)
                   .toList(growable: false) ??
@@ -854,7 +909,7 @@ class _ServiceDetailPanel extends ConsumerWidget {
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
                   ),
-                  AppBadge(label: statusLabel, tone: AppBadgeTone.primary, dense: true),
+                  serviceStatusBadge(detail.status, dense: true),
                   const Gap(8),
                   PopupMenuButton<String>(
                     tooltip: 'İşlemler',
@@ -884,7 +939,11 @@ class _ServiceDetailPanel extends ConsumerWidget {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text(next ? 'Kayıt aktifleştirildi.' : 'Kayıt pasife alındı.'),
+                              content: Text(
+                                next
+                                    ? 'Kayıt aktifleştirildi.'
+                                    : 'Kayıt pasife alındı.',
+                              ),
                             ),
                           );
                         }
@@ -895,14 +954,18 @@ class _ServiceDetailPanel extends ConsumerWidget {
                           context: context,
                           builder: (context) => AlertDialog(
                             title: const Text('Kaydı Sil'),
-                            content: const Text('Bu işlem geri alınamaz. Devam edilsin mi?'),
+                            content: const Text(
+                              'Bu işlem geri alınamaz. Devam edilsin mi?',
+                            ),
                             actions: [
                               TextButton(
-                                onPressed: () => Navigator.of(context).pop(false),
+                                onPressed: () =>
+                                    Navigator.of(context).pop(false),
                                 child: const Text('Vazgeç'),
                               ),
                               FilledButton(
-                                onPressed: () => Navigator.of(context).pop(true),
+                                onPressed: () =>
+                                    Navigator.of(context).pop(true),
                                 child: const Text('Sil'),
                               ),
                             ],
@@ -926,10 +989,15 @@ class _ServiceDetailPanel extends ConsumerWidget {
                       }
                     },
                     itemBuilder: (context) => [
-                      const PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Text('Düzenle'),
+                      ),
                       PopupMenuItem(
                         value: 'toggle_active',
-                        child: Text(detail.isActive ? 'Pasife Al' : 'Aktif Yap'),
+                        child: Text(
+                          detail.isActive ? 'Pasife Al' : 'Aktif Yap',
+                        ),
                       ),
                       const PopupMenuDivider(),
                       const PopupMenuItem(value: 'delete', child: Text('Sil')),
@@ -945,27 +1013,39 @@ class _ServiceDetailPanel extends ConsumerWidget {
               const Gap(10),
               Text(
                 detail.customerName ?? '—',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               if ((detail.customerEmail ?? '').trim().isNotEmpty) ...[
                 const Gap(4),
                 Text(
                   detail.customerEmail!,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: AppTheme.textMuted),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ],
               const Divider(height: 24),
               _kv(context, 'Başlık', detail.title),
-              _kv(context, 'Sicil No', (detail.registryNumber ?? '').trim().isEmpty ? '—' : detail.registryNumber!),
-              _kv(context, 'Arıza Tipi', (detail.faultTypeName ?? '').trim().isEmpty ? '—' : detail.faultTypeName!),
+              _kv(
+                context,
+                'Sicil No',
+                (detail.registryNumber ?? '').trim().isEmpty
+                    ? '—'
+                    : detail.registryNumber!,
+              ),
+              _kv(
+                context,
+                'Arıza Tipi',
+                (detail.faultTypeName ?? '').trim().isEmpty
+                    ? '—'
+                    : detail.faultTypeName!,
+              ),
               if (detail.accessoriesReceived && accessoryNames.isNotEmpty)
                 _kv(context, 'Aksesuar', accessoryNames.join(', ')),
-              if ((detail.notes ?? '').trim().isNotEmpty) _kv(context, 'Not', detail.notes!),
+              if ((detail.notes ?? '').trim().isNotEmpty)
+                _kv(context, 'Not', detail.notes!),
               const Divider(height: 24),
               Row(
                 children: [
@@ -973,7 +1053,10 @@ class _ServiceDetailPanel extends ConsumerWidget {
                     child: OutlinedButton.icon(
                       onPressed: () async {
                         try {
-                          await shareServicePdf(detail: detail, accessoryNames: accessoryNames);
+                          await shareServicePdf(
+                            detail: detail,
+                            accessoryNames: accessoryNames,
+                          );
                         } catch (_) {}
                       },
                       icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
@@ -1003,10 +1086,22 @@ class _ServiceDetailPanel extends ConsumerWidget {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: const [
-                                _StatusSheetItem(value: 'waiting', label: 'Bekliyor'),
-                                _StatusSheetItem(value: 'approval', label: 'Onayda'),
-                                _StatusSheetItem(value: 'ready', label: 'Hazır'),
-                                _StatusSheetItem(value: 'done', label: 'Teslim'),
+                                _StatusSheetItem(
+                                  value: 'waiting',
+                                  label: 'Bekliyor',
+                                ),
+                                _StatusSheetItem(
+                                  value: 'approval',
+                                  label: 'Onayda',
+                                ),
+                                _StatusSheetItem(
+                                  value: 'ready',
+                                  label: 'Hazır',
+                                ),
+                                _StatusSheetItem(
+                                  value: 'done',
+                                  label: 'Teslim',
+                                ),
                               ],
                             ),
                           ),
@@ -1053,19 +1148,18 @@ class _ServiceDetailPanel extends ConsumerWidget {
             width: 90,
             child: Text(
               k,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: AppTheme.textMuted),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             ),
           ),
           const Gap(10),
           Expanded(
             child: Text(
               v,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
         ],
@@ -1075,11 +1169,7 @@ class _ServiceDetailPanel extends ConsumerWidget {
 }
 
 class _ServiceRow extends StatelessWidget {
-  const _ServiceRow({
-    required this.item,
-    this.selected = false,
-    this.onTap,
-  });
+  const _ServiceRow({required this.item, this.selected = false, this.onTap});
 
   final ServiceRecord item;
   final bool selected;
@@ -1087,17 +1177,10 @@ class _ServiceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status = switch (item.status) {
-      'open' => ('Bekliyor', AppBadgeTone.warning),
-      'waiting' => ('Bekliyor', AppBadgeTone.warning),
-      'in_progress' => ('Onayda', AppBadgeTone.primary),
-      'approval' => ('Onayda', AppBadgeTone.primary),
-      'ready' => ('Hazır', AppBadgeTone.success),
-      'done' => ('Teslim', AppBadgeTone.neutral),
-      _ => ('—', AppBadgeTone.neutral),
-    };
     final date = DateFormat('d MMM', 'tr_TR').format(item.createdAt);
-    final serviceNoText = item.serviceNo == null ? 'SRV' : 'SRV-${item.serviceNo}';
+    final serviceNoText = item.serviceNo == null
+        ? 'SRV'
+        : 'SRV-${item.serviceNo}';
     final registry = (item.registryNumber ?? '').trim();
     final fault = (item.faultTypeName ?? '').trim();
     final hasInfo = registry.isNotEmpty || fault.isNotEmpty;
@@ -1108,8 +1191,8 @@ class _ServiceRow extends StatelessWidget {
             symbol: item.currency == 'USD'
                 ? r'$'
                 : item.currency == 'EUR'
-                    ? '€'
-                    : '₺',
+                ? '€'
+                : '₺',
             decimalDigits: 2,
           ).format(item.totalAmount);
 
@@ -1121,10 +1204,14 @@ class _ServiceRow extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFF2563EB).withValues(alpha: 0.08) : null,
+            color: selected
+                ? const Color(0xFF2563EB).withValues(alpha: 0.08)
+                : null,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: selected ? const Color(0xFF2563EB).withValues(alpha: 0.35) : Colors.transparent,
+              color: selected
+                  ? const Color(0xFF2563EB).withValues(alpha: 0.35)
+                  : Colors.transparent,
             ),
           ),
           child: Row(
@@ -1132,12 +1219,14 @@ class _ServiceRow extends StatelessWidget {
               Expanded(
                 flex: 3,
                 child: Text(
-                  item.title.trim().isEmpty ? serviceNoText : '$serviceNoText • ${item.title.trim()}',
+                  item.title.trim().isEmpty
+                      ? serviceNoText
+                      : '$serviceNoText • ${item.title.trim()}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
               Expanded(
@@ -1146,10 +1235,9 @@ class _ServiceRow extends StatelessWidget {
                   item.customerName ?? '—',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: AppTheme.textMuted),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
               Expanded(
@@ -1164,10 +1252,9 @@ class _ServiceRow extends StatelessWidget {
                       : (item.accessoriesReceived ? 'Aksesuar' : '—'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: AppTheme.textMuted),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
               Expanded(
@@ -1175,17 +1262,16 @@ class _ServiceRow extends StatelessWidget {
                 child: Text(
                   amountText,
                   textAlign: TextAlign.right,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF94A3B8)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF94A3B8),
+                  ),
                 ),
               ),
               Expanded(
                 flex: 2,
                 child: Align(
                   alignment: Alignment.centerRight,
-                  child: AppBadge(label: status.$1, tone: status.$2, dense: true),
+                  child: serviceStatusBadge(item.status, dense: true),
                 ),
               ),
               Expanded(
@@ -1193,10 +1279,9 @@ class _ServiceRow extends StatelessWidget {
                 child: Text(
                   date,
                   textAlign: TextAlign.right,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: const Color(0xFF94A3B8)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF94A3B8),
+                  ),
                 ),
               ),
             ],
@@ -1207,7 +1292,10 @@ class _ServiceRow extends StatelessWidget {
   }
 }
 
-Future<void> _showCreateServiceDialog(BuildContext context, WidgetRef ref) async {
+Future<void> _showCreateServiceDialog(
+  BuildContext context,
+  WidgetRef ref,
+) async {
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
@@ -1219,7 +1307,8 @@ class _CreateServiceDialog extends ConsumerStatefulWidget {
   const _CreateServiceDialog();
 
   @override
-  ConsumerState<_CreateServiceDialog> createState() => _CreateServiceDialogState();
+  ConsumerState<_CreateServiceDialog> createState() =>
+      _CreateServiceDialogState();
 }
 
 class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
@@ -1324,21 +1413,27 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
     try {
       final title = _titleController.text.trim();
       final serial = _serialController.text.trim();
-      final deviceBrand =
-          _deviceBrandController.text.trim().isEmpty ? null : _deviceBrandController.text.trim();
-      final deviceModel =
-          _deviceModelController.text.trim().isEmpty ? null : _deviceModelController.text.trim();
+      final deviceBrand = _deviceBrandController.text.trim().isEmpty
+          ? null
+          : _deviceBrandController.text.trim();
+      final deviceModel = _deviceModelController.text.trim().isEmpty
+          ? null
+          : _deviceModelController.text.trim();
       final faultDescription = _faultDescriptionController.text.trim().isEmpty
           ? null
           : _faultDescriptionController.text.trim();
-      final notes =
-          _notesController.text.trim().isEmpty ? null : _notesController.text.trim();
+      final notes = _notesController.text.trim().isEmpty
+          ? null
+          : _notesController.text.trim();
 
       String? deviceId;
       if (serial.isNotEmpty) {
         final existing = await apiClient.getJson(
           '/data',
-          queryParameters: {'resource': 'customer_device_by_serial', 'serial': serial},
+          queryParameters: {
+            'resource': 'customer_device_by_serial',
+            'serial': serial,
+          },
         );
         if (existing.isNotEmpty) {
           deviceId = existing['id']?.toString();
@@ -1381,7 +1476,9 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
             'device_model': deviceModel,
             'device_serial': serial.isEmpty ? null : serial,
             'accessories_received': _accessoriesReceived,
-            'accessory_type_ids': _selectedAccessoryTypeIds.toList(growable: false),
+            'accessory_type_ids': _selectedAccessoryTypeIds.toList(
+              growable: false,
+            ),
             'notes': notes,
             'steps': const [],
             'parts': const [],
@@ -1403,10 +1500,15 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
         try {
           final detailJson = await apiClient.getJson(
             '/data',
-            queryParameters: {'resource': 'service_detail', 'serviceId': createdId},
+            queryParameters: {
+              'resource': 'service_detail',
+              'serviceId': createdId,
+            },
           );
           final detail = ServiceDetail.fromJson(detailJson);
-          final accessoryDefs = await ref.read(serviceAccessoryTypesProvider.future);
+          final accessoryDefs = await ref.read(
+            serviceAccessoryTypesProvider.future,
+          );
           final accessoryNames = accessoryDefs
               .where((e) => detail.accessoryTypeIds.contains(e.id))
               .map((e) => e.name)
@@ -1452,7 +1554,9 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -1477,7 +1581,9 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                                 SizedBox(
                                   width: 18,
                                   height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 ),
                                 Gap(10),
                                 Expanded(child: Text('Müşteriler yükleniyor…')),
@@ -1490,7 +1596,10 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                               final q = normalizeSearchText(text.text);
                               if (q.isEmpty) return _customers.take(20);
                               return _customers
-                                  .where((c) => normalizeSearchText(c.name).contains(q))
+                                  .where(
+                                    (c) =>
+                                        normalizeSearchText(c.name).contains(q),
+                                  )
                                   .take(20);
                             },
                             displayStringForOption: (o) => o.name,
@@ -1503,25 +1612,27 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                               _customerController.text = o.name;
                               _loadRegistries(o.id);
                             },
-                            fieldViewBuilder: (context, controller, focusNode, _) {
-                              _customerFieldController = controller;
-                              return TextFormField(
-                                controller: controller,
-                                focusNode: focusNode,
-                                decoration: const InputDecoration(
-                                  labelText: 'Müşteri',
-                                  hintText: 'Firma adı yazın ve seçin',
-                                ),
-                                validator: (_) => (_selectedCustomerId ?? '').isEmpty
-                                    ? 'Müşteri seçin.'
-                                    : null,
-                                onChanged: (v) => setState(() {
-                                  _selectedCustomerId = null;
-                                  _registries = const [];
-                                  _customerController.text = v;
-                                }),
-                              );
-                            },
+                            fieldViewBuilder:
+                                (context, controller, focusNode, _) {
+                                  _customerFieldController = controller;
+                                  return TextFormField(
+                                    controller: controller,
+                                    focusNode: focusNode,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Müşteri',
+                                      hintText: 'Firma adı yazın ve seçin',
+                                    ),
+                                    validator: (_) =>
+                                        (_selectedCustomerId ?? '').isEmpty
+                                        ? 'Müşteri seçin.'
+                                        : null,
+                                    onChanged: (v) => setState(() {
+                                      _selectedCustomerId = null;
+                                      _registries = const [];
+                                      _customerController.text = v;
+                                    }),
+                                  );
+                                },
                           ),
                         const Gap(12),
                         TextFormField(
@@ -1530,8 +1641,9 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                             labelText: 'Başlık',
                             hintText: 'Örn: Arızalı cihaz servisi',
                           ),
-                          validator: (v) =>
-                              v == null || v.trim().isEmpty ? 'Başlık gerekli.' : null,
+                          validator: (v) => v == null || v.trim().isEmpty
+                              ? 'Başlık gerekli.'
+                              : null,
                         ),
                         const Gap(12),
                         Row(
@@ -1555,16 +1667,23 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                                 ],
                                 onChanged: _saving
                                     ? null
-                                    : (v) => setState(() => _priority = v ?? 'medium'),
-                                decoration: const InputDecoration(labelText: 'Öncelik'),
+                                    : (v) => setState(
+                                        () => _priority = v ?? 'medium',
+                                      ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Öncelik',
+                                ),
                               ),
                             ),
                             const Gap(12),
                             Expanded(
                               child: Consumer(
                                 builder: (context, ref, _) {
-                                  final techAsync = ref.watch(serviceTechniciansProvider);
-                                  final techs = techAsync.asData?.value ??
+                                  final techAsync = ref.watch(
+                                    serviceTechniciansProvider,
+                                  );
+                                  final techs =
+                                      techAsync.asData?.value ??
                                       const <ServiceTechnician>[];
                                   return DropdownButtonFormField<String>(
                                     initialValue: _technicianId,
@@ -1574,13 +1693,19 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                                         child: Text('Teknisyen: Seçilmedi'),
                                       ),
                                       for (final t in techs)
-                                        DropdownMenuItem(value: t.id, child: Text(t.fullName)),
+                                        DropdownMenuItem(
+                                          value: t.id,
+                                          child: Text(t.fullName),
+                                        ),
                                     ],
                                     onChanged: _saving
                                         ? null
-                                        : (v) => setState(() => _technicianId = v ?? 'all'),
-                                    decoration:
-                                        const InputDecoration(labelText: 'Teknisyen'),
+                                        : (v) => setState(
+                                            () => _technicianId = v ?? 'all',
+                                          ),
+                                    decoration: const InputDecoration(
+                                      labelText: 'Teknisyen',
+                                    ),
                                   );
                                 },
                               ),
@@ -1599,12 +1724,19 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                                         final picked = await showDatePicker(
                                           context: context,
                                           firstDate: DateTime(2020, 1, 1),
-                                          lastDate: now.add(const Duration(days: 365)),
+                                          lastDate: now.add(
+                                            const Duration(days: 365),
+                                          ),
                                           initialDate: _appointmentAt ?? now,
                                         );
                                         if (picked == null) return;
-                                        setState(() => _appointmentAt =
-                                            DateTime(picked.year, picked.month, picked.day));
+                                        setState(
+                                          () => _appointmentAt = DateTime(
+                                            picked.year,
+                                            picked.month,
+                                            picked.day,
+                                          ),
+                                        );
                                       },
                                 icon: const Icon(Icons.event_rounded, size: 18),
                                 label: Text(
@@ -1619,7 +1751,8 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                               OutlinedButton(
                                 onPressed: _saving
                                     ? null
-                                    : () => setState(() => _appointmentAt = null),
+                                    : () =>
+                                          setState(() => _appointmentAt = null),
                                 child: const Text('Temizle'),
                               ),
                             ],
@@ -1655,15 +1788,20 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                                 child: Text(
                                   [
                                     r.registryNumber,
-                                    if (r.model.trim().isNotEmpty) r.model.trim(),
+                                    if (r.model.trim().isNotEmpty)
+                                      r.model.trim(),
                                   ].join(' • '),
                                 ),
                               ),
                           ],
                           onChanged: _saving
                               ? null
-                              : (v) => setState(() => _serialController.text = v ?? ''),
-                          decoration: const InputDecoration(labelText: 'Sicil No'),
+                              : (v) => setState(
+                                  () => _serialController.text = v ?? '',
+                                ),
+                          decoration: const InputDecoration(
+                            labelText: 'Sicil No',
+                          ),
                         ),
                         const Gap(12),
                         TextFormField(
@@ -1686,10 +1824,13 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                         const Gap(12),
                         Consumer(
                           builder: (context, ref, _) {
-                            final faultTypesAsync = ref.watch(serviceFaultTypesProvider);
+                            final faultTypesAsync = ref.watch(
+                              serviceFaultTypesProvider,
+                            );
                             return faultTypesAsync.when(
                               data: (items) => DropdownButtonFormField<String?>(
-                                initialValue: (_selectedFaultTypeId ?? '').trim().isEmpty
+                                initialValue:
+                                    (_selectedFaultTypeId ?? '').trim().isEmpty
                                     ? null
                                     : _selectedFaultTypeId,
                                 items: [
@@ -1705,9 +1846,12 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                                 ],
                                 onChanged: _saving
                                     ? null
-                                    : (v) => setState(() => _selectedFaultTypeId = v),
-                                decoration:
-                                    const InputDecoration(labelText: 'Arıza Tipi'),
+                                    : (v) => setState(
+                                        () => _selectedFaultTypeId = v,
+                                      ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Arıza Tipi',
+                                ),
                               ),
                               loading: () => const SizedBox.shrink(),
                               error: (_, _) => const SizedBox.shrink(),
@@ -1726,23 +1870,29 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                         if (_accessoriesReceived) ...[
                           Consumer(
                             builder: (context, ref, _) {
-                              final accessoryAsync = ref.watch(serviceAccessoryTypesProvider);
+                              final accessoryAsync = ref.watch(
+                                serviceAccessoryTypesProvider,
+                              );
                               return accessoryAsync.when(
                                 data: (items) => Column(
                                   children: [
                                     for (final t in items)
                                       CheckboxListTile(
                                         contentPadding: EdgeInsets.zero,
-                                        value: _selectedAccessoryTypeIds.contains(t.id),
+                                        value: _selectedAccessoryTypeIds
+                                            .contains(t.id),
                                         onChanged: _saving
                                             ? null
                                             : (v) => setState(() {
-                                                  if (v == true) {
-                                                    _selectedAccessoryTypeIds.add(t.id);
-                                                  } else {
-                                                    _selectedAccessoryTypeIds.remove(t.id);
-                                                  }
-                                                }),
+                                                if (v == true) {
+                                                  _selectedAccessoryTypeIds.add(
+                                                    t.id,
+                                                  );
+                                                } else {
+                                                  _selectedAccessoryTypeIds
+                                                      .remove(t.id);
+                                                }
+                                              }),
                                         title: Text(t.name),
                                       ),
                                   ],
@@ -1771,7 +1921,9 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -1899,9 +2051,12 @@ class ServiceRecord {
       customerName: json['customer_name']?.toString(),
       status: (json['status'] ?? 'open').toString(),
       priority: json['priority']?.toString(),
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+      createdAt:
+          DateTime.tryParse(json['created_at']?.toString() ?? '') ??
           DateTime.now(),
-      appointmentAt: DateTime.tryParse(json['appointment_at']?.toString() ?? ''),
+      appointmentAt: DateTime.tryParse(
+        json['appointment_at']?.toString() ?? '',
+      ),
       registryNumber: json['registry_number']?.toString(),
       faultTypeName: json['fault_type_name']?.toString(),
       faultDescription: json['fault_description']?.toString(),

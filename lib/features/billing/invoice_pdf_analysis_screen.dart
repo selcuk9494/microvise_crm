@@ -10,7 +10,8 @@ class InvoicePdfAnalysisScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const AppPageLayout(
       title: 'KDV Analizi',
-      subtitle: 'PDF faturalardan musteri, fatura no, tarife ve oran bazli KDV dagilimini analiz edin.',
+      subtitle:
+          'PDF faturalardan musteri, fatura no, tarife ve oran bazli KDV dagilimini analiz edin.',
       body: InvoicePdfAnalysisSection(),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
@@ -10,6 +11,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/empty_state_card.dart';
 
 enum InvoiceDateFilter { today, last7, last30, all }
 
@@ -174,9 +176,9 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   'Bu sayfaya erişiminiz yok.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
             )
@@ -201,11 +203,10 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                     _BillingQueueHeader(count: filtered.length),
                     const Gap(8),
                     if (filtered.isEmpty)
-                      const AppCard(
-                        child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Text('Filtreye uygun kayıt yok.'),
-                        ),
+                      const EmptyStateCard(
+                        icon: Icons.receipt_long_rounded,
+                        title: 'Kayıt bulunamadı',
+                        message: 'Filtrelerinize uyan bir fatura yok.',
                       )
                     else
                       ListView.separated(
@@ -224,19 +225,62 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                   ],
                 );
               },
-              loading: () => const AppCard(child: SizedBox(height: 240)),
-              error: (e, _) => AppCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    'Fatura listesi yüklenemedi: $e',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.textMuted,
-                    ),
-                  ),
+              loading: () => const _BillingListSkeleton(),
+              error: (e, _) => EmptyStateCard(
+                icon: Icons.cloud_off_rounded,
+                title: 'Fatura listesi yüklenemedi',
+                message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
+                action: OutlinedButton.icon(
+                  onPressed: () => ref.invalidate(invoiceItemsProvider),
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Tekrar Dene'),
                 ),
               ),
             ),
+    );
+  }
+}
+
+/// Fatura listesi yüklenirken gösterilen iskelet — önceden boş bir
+/// `SizedBox(height: 240)` kartıydı.
+class _BillingListSkeleton extends StatelessWidget {
+  const _BillingListSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeletonizer(
+      enabled: true,
+      child: Column(
+        children: [
+          for (var i = 0; i < 5; i++) ...[
+            AppCard(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Örnek Müşteri — Fatura Açıklaması',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        const Gap(6),
+                        Text(
+                          '1 Ocak 2026',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Gap(10),
+                  const AppBadge(label: 'Bekliyor', tone: AppBadgeTone.warning),
+                ],
+              ),
+            ),
+            if (i != 4) const Gap(10),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -962,7 +1006,7 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
                           tooltip: item.isActive ? 'Pasife Al' : 'Aktifleştir',
                           onPressed: _saving ? null : _toggleActive,
                           icon: item.isActive
-                              ? Icons.archive_outlined
+                              ? Icons.archive_rounded
                               : Icons.restore_rounded,
                         ),
                         if (widget.canDeletePermanently) ...[

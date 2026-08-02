@@ -46,8 +46,6 @@ String _safeFilename(String input) {
       .replaceAll(RegExp(r'[^a-z0-9._-]+'), '_')
       .replaceAll(RegExp(r'_+'), '_')
       .replaceAll(RegExp(r'^_|_$'), '');
-  final safeExt = ext
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9.]'), '');
+  final safeExt = ext.toLowerCase().replaceAll(RegExp(r'[^a-z0-9.]'), '');
   return '${safeStem.isEmpty ? 'ekstre' : safeStem}${safeExt.isEmpty ? '.pdf' : safeExt}';
 }

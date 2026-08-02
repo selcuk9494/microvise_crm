@@ -150,9 +150,9 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
               error: (_, _) => Center(
                 child: Text(
                   'Faturalar yüklenemedi',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
             ),
@@ -461,9 +461,9 @@ class _InvoiceCard extends StatelessWidget {
                     invoice.customerName ?? '-',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textMuted,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                   const Gap(2),
                   Row(

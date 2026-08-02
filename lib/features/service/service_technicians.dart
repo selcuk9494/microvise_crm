@@ -15,7 +15,9 @@ class ServiceTechnician {
 
   factory ServiceTechnician.fromJson(Map<String, dynamic> json) {
     final pages = json['page_permissions'];
-    final pageList = pages is List ? pages.map((e) => e.toString()).toList() : const <String>[];
+    final pageList = pages is List
+        ? pages.map((e) => e.toString()).toList()
+        : const <String>[];
     return ServiceTechnician(
       id: json['id']?.toString() ?? '',
       fullName: (json['full_name'] ?? '').toString(),
@@ -24,19 +26,21 @@ class ServiceTechnician {
   }
 }
 
-final serviceTechniciansProvider = FutureProvider.autoDispose<List<ServiceTechnician>>((ref) async {
-  final apiClient = ref.watch(apiClientProvider);
-  if (apiClient == null) return const [];
-  final response = await apiClient.getJson(
-    '/data',
-    queryParameters: {'resource': 'personnel_users'},
-  );
-  final users = ((response['items'] as List?) ?? const [])
-      .whereType<Map<String, dynamic>>()
-      .map(ServiceTechnician.fromJson)
-      .where((u) => u.id.trim().isNotEmpty && u.canSeeService)
-      .toList(growable: false);
-  users.sort((a, b) => a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()));
-  return users;
-});
-
+final serviceTechniciansProvider =
+    FutureProvider.autoDispose<List<ServiceTechnician>>((ref) async {
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient == null) return const [];
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'personnel_users'},
+      );
+      final users = ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(ServiceTechnician.fromJson)
+          .where((u) => u.id.trim().isNotEmpty && u.canSeeService)
+          .toList(growable: false);
+      users.sort(
+        (a, b) => a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()),
+      );
+      return users;
+    });

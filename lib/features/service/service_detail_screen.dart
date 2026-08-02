@@ -10,11 +10,11 @@ import 'package:signature/signature.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
-import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
 import 'service_definitions.dart';
 import 'service_share.dart';
+import 'service_status_ui.dart';
 
 final serviceDetailProvider = FutureProvider.family<ServiceDetail, String>((
   ref,
@@ -640,13 +640,6 @@ class _BodyState extends ConsumerState<_Body> {
   @override
   Widget build(BuildContext context) {
     final date = DateFormat('d MMM y', 'tr_TR').format(widget.detail.createdAt);
-    final status = switch (widget.detail.status) {
-      'open' || 'waiting' => ('Bekliyor', AppBadgeTone.warning),
-      'in_progress' || 'approval' => ('Onayda', AppBadgeTone.primary),
-      'ready' => ('Hazır', AppBadgeTone.success),
-      'done' => ('Teslim', AppBadgeTone.neutral),
-      _ => (widget.detail.status, AppBadgeTone.neutral),
-    };
 
     final isMobile = MediaQuery.sizeOf(context).width < 720;
 
@@ -732,7 +725,7 @@ class _BodyState extends ConsumerState<_Body> {
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
-                AppBadge(label: status.$1, tone: status.$2),
+                serviceStatusBadge(widget.detail.status),
                 if (!isMobile) ...[
                   if (widget.detail.status == 'waiting' ||
                       widget.detail.status == 'open') ...[
@@ -1316,10 +1309,10 @@ class _ImageThumb extends StatelessWidget {
                     imageUrl,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) => const Center(
-                      child: Icon(Icons.image_not_supported_outlined),
+                      child: Icon(Icons.image_not_supported_rounded),
                     ),
                   )
-                : const Center(child: Icon(Icons.image_not_supported_outlined)),
+                : const Center(child: Icon(Icons.image_not_supported_rounded)),
           ),
         ),
         if (onRemove != null)

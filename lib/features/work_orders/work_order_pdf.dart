@@ -44,10 +44,12 @@ Future<Uint8List> buildWorkOrderPdfBytes({
   final closedAt = order.closedAt;
   final scheduledAt = order.scheduledDate;
 
-  final createdAtText =
-      createdAt == null ? null : dateTimeFormat.format(AppTime.toTr(createdAt));
-  final closedAtText =
-      closedAt == null ? null : dateTimeFormat.format(AppTime.toTr(closedAt));
+  final createdAtText = createdAt == null
+      ? null
+      : dateTimeFormat.format(AppTime.toTr(createdAt));
+  final closedAtText = closedAt == null
+      ? null
+      : dateTimeFormat.format(AppTime.toTr(closedAt));
   final scheduledText = scheduledAt == null
       ? null
       : dateTimeFormat.format(AppTime.toTr(scheduledAt));
@@ -67,12 +69,19 @@ Future<Uint8List> buildWorkOrderPdfBytes({
     _ => order.status,
   };
 
-  final money =
-      NumberFormat.currency(locale: 'tr_TR', symbol: '', decimalDigits: 2);
+  final money = NumberFormat.currency(
+    locale: 'tr_TR',
+    symbol: '',
+    decimalDigits: 2,
+  );
 
   final totalsByCurrency = <String, double>{};
   for (final p in payments) {
-    totalsByCurrency.update(p.currency, (v) => v + p.amount, ifAbsent: () => p.amount);
+    totalsByCurrency.update(
+      p.currency,
+      (v) => v + p.amount,
+      ifAbsent: () => p.amount,
+    );
   }
 
   final signature = signaturePngBytes == null || signaturePngBytes.isEmpty
@@ -80,13 +89,14 @@ Future<Uint8List> buildWorkOrderPdfBytes({
       : pw.MemoryImage(signaturePngBytes);
   final personnelSignature =
       personnelSignaturePngBytes == null || personnelSignaturePngBytes.isEmpty
-          ? null
-          : pw.MemoryImage(personnelSignaturePngBytes);
+      ? null
+      : pw.MemoryImage(personnelSignaturePngBytes);
 
   pw.MemoryImage? logo;
   try {
-    final bytes =
-        (await rootBundle.load('assets/images/logo_v2.png')).buffer.asUint8List();
+    final bytes = (await rootBundle.load(
+      'assets/images/logo_v2.png',
+    )).buffer.asUint8List();
     if (bytes.isNotEmpty) {
       logo = pw.MemoryImage(bytes);
     }
@@ -141,10 +151,10 @@ Future<Uint8List> buildWorkOrderPdfBytes({
     final typeName = (order.workOrderTypeName ?? '').trim();
     final branch = (order.branchName ?? '').trim();
 
-    final registry = RegExp(r'Sicil:\\s*([^•\\s]+)', caseSensitive: false)
-        .firstMatch((order.description ?? '').trim())
-        ?.group(1)
-        ?.trim();
+    final registry = RegExp(
+      r'Sicil:\\s*([^•\\s]+)',
+      caseSensitive: false,
+    ).firstMatch((order.description ?? '').trim())?.group(1)?.trim();
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -156,8 +166,8 @@ Future<Uint8List> buildWorkOrderPdfBytes({
           order.paymentRequired == null
               ? 'Belirsiz'
               : order.paymentRequired!
-                  ? 'Alınacak'
-                  : 'Alınmayacak',
+              ? 'Alınacak'
+              : 'Alınmayacak',
         ),
         if (createdAtText != null) kvRow('Oluşturma', createdAtText),
         if (scheduledText != null) kvRow('Plan', scheduledText),
@@ -169,7 +179,8 @@ Future<Uint8List> buildWorkOrderPdfBytes({
         if (phone.isNotEmpty) kvRow('Telefon', phone),
         if (email.isNotEmpty) kvRow('E-posta', email),
         if (addressText.isNotEmpty) kvRow('Adres', addressText),
-        if (registry != null && registry.isNotEmpty) kvRow('Cihaz Sicil', registry),
+        if (registry != null && registry.isNotEmpty)
+          kvRow('Cihaz Sicil', registry),
       ],
     );
   }
@@ -335,7 +346,10 @@ Future<Uint8List> buildWorkOrderPdfBytes({
               kvRow('Arıza / Talep', order.title.trim()),
               if ((order.description ?? '').trim().isNotEmpty)
                 kvRow('Açıklama', (order.description ?? '').trim()),
-              kvRow('Yapılan İşlem', (closeNotes ?? '').trim().isEmpty ? '—' : closeNotes!.trim()),
+              kvRow(
+                'Yapılan İşlem',
+                (closeNotes ?? '').trim().isEmpty ? '—' : closeNotes!.trim(),
+              ),
             ],
           ),
         ),
@@ -387,9 +401,15 @@ Future<Uint8List> buildWorkOrderPdfBytes({
                             : pw.Image(signature, fit: pw.BoxFit.contain),
                       ),
                       pw.SizedBox(height: 6),
-                      pw.Text('Firma: ${customer.name.trim()}', style: tSmall()),
+                      pw.Text(
+                        'Firma: ${customer.name.trim()}',
+                        style: tSmall(),
+                      ),
                       pw.SizedBox(height: 3),
-                      pw.Text('Tarih: ${dateOnlyFormat.format(headerDate)}', style: tSmall()),
+                      pw.Text(
+                        'Tarih: ${dateOnlyFormat.format(headerDate)}',
+                        style: tSmall(),
+                      ),
                     ],
                   ),
                 ),
@@ -423,7 +443,10 @@ Future<Uint8List> buildWorkOrderPdfBytes({
                         style: tSmall(),
                       ),
                       pw.SizedBox(height: 3),
-                      pw.Text('Tarih: ${dateOnlyFormat.format(headerDate)}', style: tSmall()),
+                      pw.Text(
+                        'Tarih: ${dateOnlyFormat.format(headerDate)}',
+                        style: tSmall(),
+                      ),
                     ],
                   ),
                 ),

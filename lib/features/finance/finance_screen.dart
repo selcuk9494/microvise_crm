@@ -8,6 +8,7 @@ import '../../core/api/api_client.dart';
 import '../../core/format/app_date_time.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../design_system/status_tone.dart';
 
 double _num(dynamic value) {
   if (value == null) return 0;
@@ -59,11 +60,15 @@ class FinanceAccount {
       accountType: _text(json['account_type']).isEmpty
           ? 'bank'
           : _text(json['account_type']),
-      currency: _text(json['currency']).isEmpty ? 'TRY' : _text(json['currency']),
+      currency: _text(json['currency']).isEmpty
+          ? 'TRY'
+          : _text(json['currency']),
       currentBalance: _num(json['current_balance']),
       openingBalance: _num(json['opening_balance']),
       isActive: json['is_active'] != false,
-      bankName: _text(json['bank_name']).isEmpty ? null : _text(json['bank_name']),
+      bankName: _text(json['bank_name']).isEmpty
+          ? null
+          : _text(json['bank_name']),
       iban: _text(json['iban']).isEmpty ? null : _text(json['iban']),
       posEnabled: json['pos_enabled'] == true,
       notes: _text(json['notes']).isEmpty ? null : _text(json['notes']),
@@ -115,7 +120,9 @@ class FinanceTransaction {
           ? 'Hesap'
           : _text(account?['name']),
       date: parseAppDateTime(_text(json['transaction_date'])) ?? appNow(),
-      direction: _text(json['direction']).isEmpty ? 'in' : _text(json['direction']),
+      direction: _text(json['direction']).isEmpty
+          ? 'in'
+          : _text(json['direction']),
       transactionType: _text(json['transaction_type']).isEmpty
           ? 'collection'
           : _text(json['transaction_type']),
@@ -123,14 +130,22 @@ class FinanceTransaction {
           ? 'bank'
           : _text(json['payment_method']),
       amount: _num(json['amount']),
-      currency: _text(json['currency']).isEmpty ? 'TRY' : _text(json['currency']),
+      currency: _text(json['currency']).isEmpty
+          ? 'TRY'
+          : _text(json['currency']),
       isActive: json['is_active'] != false,
-      customerName: _text(customer?['name']).isEmpty ? null : _text(customer?['name']),
+      customerName: _text(customer?['name']).isEmpty
+          ? null
+          : _text(customer?['name']),
       invoiceNumber: _text(invoice?['invoice_number']).isEmpty
           ? null
           : _text(invoice?['invoice_number']),
-      description: _text(json['description']).isEmpty ? null : _text(json['description']),
-      referenceNo: _text(json['reference_no']).isEmpty ? null : _text(json['reference_no']),
+      description: _text(json['description']).isEmpty
+          ? null
+          : _text(json['description']),
+      referenceNo: _text(json['reference_no']).isEmpty
+          ? null
+          : _text(json['reference_no']),
     );
   }
 }
@@ -165,7 +180,9 @@ class FinanceFilter {
     return FinanceFilter(
       accountId: clearAccount ? null : accountId ?? this.accountId,
       direction: clearDirection ? null : direction ?? this.direction,
-      transactionType: clearType ? null : transactionType ?? this.transactionType,
+      transactionType: clearType
+          ? null
+          : transactionType ?? this.transactionType,
       startDate: clearStart ? null : startDate ?? this.startDate,
       endDate: clearEnd ? null : endDate ?? this.endDate,
     );
@@ -174,17 +191,17 @@ class FinanceFilter {
 
 final financeAccountsProvider =
     FutureProvider.autoDispose<List<FinanceAccount>>((ref) async {
-  final api = ref.read(apiClientProvider);
-  if (api == null) return const [];
-  final response = await api.getJson(
-    '/data',
-    queryParameters: {'resource': 'finance_accounts'},
-  );
-  return ((response['items'] as List?) ?? const [])
-      .whereType<Map<String, dynamic>>()
-      .map(FinanceAccount.fromJson)
-      .toList(growable: false);
-});
+      final api = ref.read(apiClientProvider);
+      if (api == null) return const [];
+      final response = await api.getJson(
+        '/data',
+        queryParameters: {'resource': 'finance_accounts'},
+      );
+      return ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(FinanceAccount.fromJson)
+          .toList(growable: false);
+    });
 
 class FinanceFilterNotifier extends Notifier<FinanceFilter> {
   @override
@@ -200,25 +217,26 @@ final financeFilterProvider =
 
 final financeTransactionsProvider =
     FutureProvider.autoDispose<List<FinanceTransaction>>((ref) async {
-  final api = ref.read(apiClientProvider);
-  final filter = ref.watch(financeFilterProvider);
-  if (api == null) return const [];
-  final response = await api.getJson(
-    '/data',
-    queryParameters: {
-      'resource': 'finance_transactions',
-      if (filter.accountId != null) 'accountId': filter.accountId!,
-      if (filter.direction != null) 'direction': filter.direction!,
-      if (filter.transactionType != null) 'transactionType': filter.transactionType!,
-      if (filter.startDate != null) 'startDate': _date(filter.startDate!),
-      if (filter.endDate != null) 'endDate': _date(filter.endDate!),
-    },
-  );
-  return ((response['items'] as List?) ?? const [])
-      .whereType<Map<String, dynamic>>()
-      .map(FinanceTransaction.fromJson)
-      .toList(growable: false);
-});
+      final api = ref.read(apiClientProvider);
+      final filter = ref.watch(financeFilterProvider);
+      if (api == null) return const [];
+      final response = await api.getJson(
+        '/data',
+        queryParameters: {
+          'resource': 'finance_transactions',
+          if (filter.accountId != null) 'accountId': filter.accountId!,
+          if (filter.direction != null) 'direction': filter.direction!,
+          if (filter.transactionType != null)
+            'transactionType': filter.transactionType!,
+          if (filter.startDate != null) 'startDate': _date(filter.startDate!),
+          if (filter.endDate != null) 'endDate': _date(filter.endDate!),
+        },
+      );
+      return ((response['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(FinanceTransaction.fromJson)
+          .toList(growable: false);
+    });
 
 class FinanceScreen extends ConsumerWidget {
   const FinanceScreen({super.key});
@@ -256,7 +274,10 @@ class FinanceScreen extends ConsumerWidget {
         children: [
           accountsAsync.when(
             loading: () => const LinearProgressIndicator(minHeight: 2),
-            error: (error, _) => _ErrorBox(message: 'Finans hesapları yüklenemedi: $error'),
+            error: (error, _) => _ErrorBox(
+              message: 'Finans hesapları yüklenemedi. Lütfen tekrar deneyin.',
+              onRetry: () => ref.invalidate(financeAccountsProvider),
+            ),
             data: (accounts) => _FinanceSummary(accounts: accounts),
           ),
           const Gap(12),
@@ -276,10 +297,14 @@ class FinanceScreen extends ConsumerWidget {
                   width: 390,
                   child: accountsAsync.when(
                     loading: () => const _LoadingCard(),
-                    error: (error, _) => _ErrorBox(message: '$error'),
+                    error: (error, _) => _ErrorBox(
+                      message: 'Hesaplar yüklenemedi. Lütfen tekrar deneyin.',
+                      onRetry: () => ref.invalidate(financeAccountsProvider),
+                    ),
                     data: (accounts) => _AccountsPanel(
                       accounts: accounts,
-                      onEdit: (account) => _showAccountDialog(context, ref, account: account),
+                      onEdit: (account) =>
+                          _showAccountDialog(context, ref, account: account),
                     ),
                   ),
                 ),
@@ -287,10 +312,15 @@ class FinanceScreen extends ConsumerWidget {
                 Expanded(
                   child: transactionsAsync.when(
                     loading: () => const _LoadingCard(),
-                    error: (error, _) => _ErrorBox(message: '$error'),
+                    error: (error, _) => _ErrorBox(
+                      message: 'Hareketler yüklenemedi. Lütfen tekrar deneyin.',
+                      onRetry: () =>
+                          ref.invalidate(financeTransactionsProvider),
+                    ),
                     data: (transactions) => _TransactionsPanel(
                       transactions: transactions,
-                      onEdit: (tx) => _showTransactionDialog(context, ref, transaction: tx),
+                      onEdit: (tx) =>
+                          _showTransactionDialog(context, ref, transaction: tx),
                     ),
                   ),
                 ),
@@ -340,9 +370,9 @@ class _AkinsoftFinanceShortcuts extends StatelessWidget {
       children: [
         Text(
           'Akınsoft Finans (canlı senkron)',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
         const Gap(8),
         Wrap(
@@ -373,18 +403,14 @@ class _AkinsoftFinanceShortcuts extends StatelessWidget {
                           children: [
                             Text(
                               item.label,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
+                              style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(fontWeight: FontWeight.w700),
                             ),
                             Text(
                               item.subtitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
+                              style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(color: AppTheme.textMuted),
                             ),
                           ],
@@ -412,7 +438,9 @@ class _FinanceSummary extends StatelessWidget {
     final active = accounts.where((a) => a.isActive).toList();
     final bank = active.where((a) => a.accountType == 'bank').length;
     final cash = active.where((a) => a.accountType == 'cash').length;
-    final pos = active.where((a) => a.posEnabled || a.accountType == 'pos').length;
+    final pos = active
+        .where((a) => a.posEnabled || a.accountType == 'pos')
+        .length;
     final tryTotal = active
         .where((a) => a.currency == 'TRY')
         .fold<double>(0, (sum, a) => sum + a.currentBalance);
@@ -421,17 +449,37 @@ class _FinanceSummary extends StatelessWidget {
       spacing: 12,
       runSpacing: 12,
       children: [
-        _SummaryCard(label: 'Banka', value: bank.toString(), icon: Icons.account_balance_rounded),
-        _SummaryCard(label: 'Kasa', value: cash.toString(), icon: Icons.point_of_sale_rounded),
-        _SummaryCard(label: 'POS', value: pos.toString(), icon: Icons.credit_card_rounded),
-        _SummaryCard(label: 'TRY Bakiye', value: _money(tryTotal, 'TRY'), icon: Icons.savings_rounded),
+        _SummaryCard(
+          label: 'Banka',
+          value: bank.toString(),
+          icon: Icons.account_balance_rounded,
+        ),
+        _SummaryCard(
+          label: 'Kasa',
+          value: cash.toString(),
+          icon: Icons.point_of_sale_rounded,
+        ),
+        _SummaryCard(
+          label: 'POS',
+          value: pos.toString(),
+          icon: Icons.credit_card_rounded,
+        ),
+        _SummaryCard(
+          label: 'TRY Bakiye',
+          value: _money(tryTotal, 'TRY'),
+          icon: Icons.savings_rounded,
+        ),
       ],
     );
   }
 }
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.label, required this.value, required this.icon});
+  const _SummaryCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
 
   final String label;
   final String value;
@@ -498,11 +546,19 @@ class _FinanceFilters extends ConsumerWidget {
                 prefixIcon: Icon(Icons.account_balance_wallet_rounded),
               ),
               items: [
-                const DropdownMenuItem(value: null, child: Text('Tüm Hesaplar')),
+                const DropdownMenuItem(
+                  value: null,
+                  child: Text('Tüm Hesaplar'),
+                ),
                 for (final account in accounts)
-                  DropdownMenuItem(value: account.id, child: Text(account.name)),
+                  DropdownMenuItem(
+                    value: account.id,
+                    child: Text(account.name),
+                  ),
               ],
-              onChanged: (value) => set(filter.copyWith(accountId: value, clearAccount: value == null)),
+              onChanged: (value) => set(
+                filter.copyWith(accountId: value, clearAccount: value == null),
+              ),
             ),
           ),
           SizedBox(
@@ -515,7 +571,12 @@ class _FinanceFilters extends ConsumerWidget {
                 DropdownMenuItem(value: 'in', child: Text('Giriş')),
                 DropdownMenuItem(value: 'out', child: Text('Çıkış')),
               ],
-              onChanged: (value) => set(filter.copyWith(direction: value, clearDirection: value == null)),
+              onChanged: (value) => set(
+                filter.copyWith(
+                  direction: value,
+                  clearDirection: value == null,
+                ),
+              ),
             ),
           ),
           SizedBox(
@@ -531,7 +592,12 @@ class _FinanceFilters extends ConsumerWidget {
                 DropdownMenuItem(value: 'transfer', child: Text('Virman')),
                 DropdownMenuItem(value: 'expense', child: Text('Gider')),
               ],
-              onChanged: (value) => set(filter.copyWith(transactionType: value, clearType: value == null)),
+              onChanged: (value) => set(
+                filter.copyWith(
+                  transactionType: value,
+                  clearType: value == null,
+                ),
+              ),
             ),
           ),
           OutlinedButton.icon(
@@ -577,18 +643,24 @@ class _AccountsPanel extends StatelessWidget {
                       children: [
                         _IconBox(
                           icon: _accountIcon(account.accountType),
-                          color: account.isActive ? AppTheme.accent : AppTheme.textMuted,
+                          color: account.isActive
+                              ? AppTheme.accent
+                              : AppTheme.textMuted,
                         ),
                         const Gap(10),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(account.name, style: Theme.of(context).textTheme.titleSmall),
+                              Text(
+                                account.name,
+                                style: Theme.of(context).textTheme.titleSmall,
+                              ),
                               Text(
                                 [
                                   _accountTypeLabel(account.accountType),
-                                  if (account.bankName != null) account.bankName!,
+                                  if (account.bankName != null)
+                                    account.bankName!,
                                   account.currency,
                                 ].join(' • '),
                                 overflow: TextOverflow.ellipsis,
@@ -603,9 +675,8 @@ class _AccountsPanel extends StatelessWidget {
                               _money(account.currentBalance, account.currency),
                               style: Theme.of(context).textTheme.titleSmall,
                             ),
-                            AppBadge(
-                              label: account.isActive ? 'Aktif' : 'Pasif',
-                              tone: account.isActive ? AppBadgeTone.success : AppBadgeTone.neutral,
+                            DsActiveBadge(
+                              isActive: account.isActive,
                               dense: true,
                             ),
                           ],
@@ -636,7 +707,7 @@ class _TransactionsPanel extends StatelessWidget {
               children: [
                 Container(
                   height: 44,
-                  color: const Color(0xFFEFF6FF),
+                  color: AppTheme.tableHeaderBg,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: const Row(
                     children: [
@@ -666,37 +737,72 @@ class _TransactionsPanel extends StatelessWidget {
                               child: Row(
                                 children: [
                                   _IconBox(
-                                    icon: isIn ? Icons.south_west_rounded : Icons.north_east_rounded,
-                                    color: isIn ? AppTheme.success : AppTheme.error,
+                                    icon: isIn
+                                        ? Icons.south_west_rounded
+                                        : Icons.north_east_rounded,
+                                    color: isIn
+                                        ? AppTheme.success
+                                        : AppTheme.error,
                                     small: true,
                                   ),
                                   const Gap(10),
                                   Expanded(
                                     child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          tx.description ?? _typeLabel(tx.transactionType),
+                                          tx.description ??
+                                              _typeLabel(tx.transactionType),
                                           overflow: TextOverflow.ellipsis,
-                                          style: Theme.of(context).textTheme.titleSmall,
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.titleSmall,
                                         ),
-                                        Text('${_date(tx.date)}${tx.referenceNo == null ? '' : ' • ${tx.referenceNo}'}'),
+                                        Text(
+                                          '${_date(tx.date)}${tx.referenceNo == null ? '' : ' • ${tx.referenceNo}'}',
+                                        ),
                                       ],
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            Expanded(flex: 2, child: Text(tx.accountName, overflow: TextOverflow.ellipsis)),
-                            Expanded(flex: 2, child: Text(tx.customerName ?? '-', overflow: TextOverflow.ellipsis)),
-                            Expanded(child: AppBadge(label: _typeLabel(tx.transactionType), tone: AppBadgeTone.primary, dense: true)),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                tx.accountName,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                tx.customerName ?? '-',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Expanded(
+                              child: AppBadge(
+                                label: _typeLabel(tx.transactionType),
+                                tone: AppBadgeTone.primary,
+                                dense: true,
+                              ),
+                            ),
                             Expanded(
                               child: Text(
-                                _money(isIn ? tx.amount : -tx.amount, tx.currency),
+                                _money(
+                                  isIn ? tx.amount : -tx.amount,
+                                  tx.currency,
+                                ),
                                 textAlign: TextAlign.right,
-                                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                      color: isIn ? AppTheme.success : AppTheme.error,
+                                style: Theme.of(context).textTheme.titleSmall
+                                    ?.copyWith(
+                                      color: isIn
+                                          ? AppTheme.success
+                                          : AppTheme.error,
                                     ),
                               ),
                             ),
@@ -794,9 +900,10 @@ class _LoadingCard extends StatelessWidget {
 }
 
 class _ErrorBox extends StatelessWidget {
-  const _ErrorBox({required this.message});
+  const _ErrorBox({required this.message, this.onRetry});
 
   final String message;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -807,7 +914,19 @@ class _ErrorBox extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         border: Border.all(color: AppTheme.error.withValues(alpha: 0.16)),
       ),
-      child: Text(message),
+      child: Row(
+        children: [
+          Expanded(child: Text(message)),
+          if (onRetry != null) ...[
+            const Gap(10),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('Tekrar Dene'),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -820,7 +939,9 @@ Future<void> _showAccountDialog(
   final name = TextEditingController(text: account?.name ?? '');
   final bankName = TextEditingController(text: account?.bankName ?? '');
   final iban = TextEditingController(text: account?.iban ?? '');
-  final opening = TextEditingController(text: account?.openingBalance.toStringAsFixed(2) ?? '0');
+  final opening = TextEditingController(
+    text: account?.openingBalance.toStringAsFixed(2) ?? '0',
+  );
   final notes = TextEditingController(text: account?.notes ?? '');
   var type = account?.accountType ?? 'bank';
   var currency = account?.currency ?? 'TRY';
@@ -838,19 +959,27 @@ Future<void> _showAccountDialog(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: name, decoration: const InputDecoration(labelText: 'Hesap Adı')),
+                TextField(
+                  controller: name,
+                  decoration: const InputDecoration(labelText: 'Hesap Adı'),
+                ),
                 const Gap(10),
                 Row(
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
                         initialValue: type,
-                        decoration: const InputDecoration(labelText: 'Hesap Tipi'),
+                        decoration: const InputDecoration(
+                          labelText: 'Hesap Tipi',
+                        ),
                         items: const [
                           DropdownMenuItem(value: 'bank', child: Text('Banka')),
                           DropdownMenuItem(value: 'cash', child: Text('Kasa')),
                           DropdownMenuItem(value: 'pos', child: Text('POS')),
-                          DropdownMenuItem(value: 'other', child: Text('Diğer')),
+                          DropdownMenuItem(
+                            value: 'other',
+                            child: Text('Diğer'),
+                          ),
                         ],
                         onChanged: (v) => setState(() => type = v ?? 'bank'),
                       ),
@@ -859,7 +988,9 @@ Future<void> _showAccountDialog(
                     Expanded(
                       child: DropdownButtonFormField<String>(
                         initialValue: currency,
-                        decoration: const InputDecoration(labelText: 'Para Birimi'),
+                        decoration: const InputDecoration(
+                          labelText: 'Para Birimi',
+                        ),
                         items: const [
                           DropdownMenuItem(value: 'TRY', child: Text('TRY')),
                           DropdownMenuItem(value: 'USD', child: Text('USD')),
@@ -872,14 +1003,26 @@ Future<void> _showAccountDialog(
                   ],
                 ),
                 const Gap(10),
-                TextField(controller: bankName, decoration: const InputDecoration(labelText: 'Banka Adı / Şube')),
+                TextField(
+                  controller: bankName,
+                  decoration: const InputDecoration(
+                    labelText: 'Banka Adı / Şube',
+                  ),
+                ),
                 const Gap(10),
-                TextField(controller: iban, decoration: const InputDecoration(labelText: 'IBAN / Hesap No')),
+                TextField(
+                  controller: iban,
+                  decoration: const InputDecoration(
+                    labelText: 'IBAN / Hesap No',
+                  ),
+                ),
                 const Gap(10),
                 TextField(
                   controller: opening,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Açılış Bakiyesi'),
+                  decoration: const InputDecoration(
+                    labelText: 'Açılış Bakiyesi',
+                  ),
                 ),
                 const Gap(10),
                 SwitchListTile(
@@ -894,39 +1037,56 @@ Future<void> _showAccountDialog(
                   title: const Text('Aktif'),
                   contentPadding: EdgeInsets.zero,
                 ),
-                TextField(controller: notes, decoration: const InputDecoration(labelText: 'Not'), maxLines: 2),
+                TextField(
+                  controller: notes,
+                  decoration: const InputDecoration(labelText: 'Not'),
+                  maxLines: 2,
+                ),
               ],
             ),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('İptal')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('İptal'),
+          ),
           FilledButton(
             onPressed: () async {
               final api = ref.read(apiClientProvider);
               if (api == null) return;
-              await api.postJson(
-                '/mutate',
-                body: {
-                  'op': 'upsert',
-                  'table': 'finance_accounts',
-                  'values': {
-                    if (account != null) 'id': account.id,
-                    'name': name.text.trim(),
-                    'account_type': type,
-                    'bank_name': bankName.text.trim(),
-                    'iban': iban.text.trim(),
-                    'currency': currency,
-                    'opening_balance': _num(opening.text),
-                    'pos_enabled': posEnabled,
-                    'is_active': isActive,
-                    'notes': notes.text.trim(),
+              try {
+                await api.postJson(
+                  '/mutate',
+                  body: {
+                    'op': 'upsert',
+                    'table': 'finance_accounts',
+                    'values': {
+                      if (account != null) 'id': account.id,
+                      'name': name.text.trim(),
+                      'account_type': type,
+                      'bank_name': bankName.text.trim(),
+                      'iban': iban.text.trim(),
+                      'currency': currency,
+                      'opening_balance': _num(opening.text),
+                      'pos_enabled': posEnabled,
+                      'is_active': isActive,
+                      'notes': notes.text.trim(),
+                    },
                   },
-                },
-              );
-              ref.invalidate(financeAccountsProvider);
-              ref.invalidate(financeTransactionsProvider);
-              if (context.mounted) Navigator.pop(context);
+                );
+                ref.invalidate(financeAccountsProvider);
+                ref.invalidate(financeTransactionsProvider);
+                if (context.mounted) Navigator.pop(context);
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Kaydedilemedi. Lütfen tekrar deneyin.'),
+                    ),
+                  );
+                }
+              }
             },
             child: const Text('Kaydet'),
           ),
@@ -949,14 +1109,23 @@ Future<void> _showTransactionDialog(
     );
     return;
   }
-  final amount = TextEditingController(text: transaction?.amount.toStringAsFixed(2) ?? '');
-  final description = TextEditingController(text: transaction?.description ?? '');
+  final amount = TextEditingController(
+    text: transaction?.amount.toStringAsFixed(2) ?? '',
+  );
+  final description = TextEditingController(
+    text: transaction?.description ?? '',
+  );
   final reference = TextEditingController(text: transaction?.referenceNo ?? '');
   var accountId = transaction?.accountId ?? accounts.first.id;
-  var account = accounts.firstWhere((a) => a.id == accountId, orElse: () => accounts.first);
+  var account = accounts.firstWhere(
+    (a) => a.id == accountId,
+    orElse: () => accounts.first,
+  );
   var direction = transaction?.direction ?? 'in';
   var type = transaction?.transactionType ?? 'collection';
-  var method = transaction?.paymentMethod ?? (account.accountType == 'cash' ? 'cash' : 'bank');
+  var method =
+      transaction?.paymentMethod ??
+      (account.accountType == 'cash' ? 'cash' : 'bank');
   var date = transaction?.date ?? appNow();
 
   await showDialog<void>(
@@ -972,10 +1141,15 @@ Future<void> _showTransactionDialog(
               children: [
                 DropdownButtonFormField<String>(
                   initialValue: accountId,
-                  decoration: const InputDecoration(labelText: 'Banka / Kasa Hesabı'),
+                  decoration: const InputDecoration(
+                    labelText: 'Banka / Kasa Hesabı',
+                  ),
                   items: [
                     for (final item in accounts)
-                      DropdownMenuItem(value: item.id, child: Text('${item.name} • ${item.currency}')),
+                      DropdownMenuItem(
+                        value: item.id,
+                        child: Text('${item.name} • ${item.currency}'),
+                      ),
                   ],
                   onChanged: (v) => setState(() {
                     accountId = v ?? accountId;
@@ -1001,15 +1175,33 @@ Future<void> _showTransactionDialog(
                     Expanded(
                       child: DropdownButtonFormField<String>(
                         initialValue: type,
-                        decoration: const InputDecoration(labelText: 'İşlem Tipi'),
+                        decoration: const InputDecoration(
+                          labelText: 'İşlem Tipi',
+                        ),
                         items: const [
-                          DropdownMenuItem(value: 'collection', child: Text('Tahsilat')),
-                          DropdownMenuItem(value: 'payment', child: Text('Ödeme')),
-                          DropdownMenuItem(value: 'pos', child: Text('POS Çekim')),
-                          DropdownMenuItem(value: 'transfer', child: Text('Virman')),
-                          DropdownMenuItem(value: 'expense', child: Text('Gider')),
+                          DropdownMenuItem(
+                            value: 'collection',
+                            child: Text('Tahsilat'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'payment',
+                            child: Text('Ödeme'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'pos',
+                            child: Text('POS Çekim'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'transfer',
+                            child: Text('Virman'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'expense',
+                            child: Text('Gider'),
+                          ),
                         ],
-                        onChanged: (v) => setState(() => type = v ?? 'collection'),
+                        onChanged: (v) =>
+                            setState(() => type = v ?? 'collection'),
                       ),
                     ),
                   ],
@@ -1020,13 +1212,18 @@ Future<void> _showTransactionDialog(
                     Expanded(
                       child: DropdownButtonFormField<String>(
                         initialValue: method,
-                        decoration: const InputDecoration(labelText: 'Ödeme Şekli'),
+                        decoration: const InputDecoration(
+                          labelText: 'Ödeme Şekli',
+                        ),
                         items: const [
                           DropdownMenuItem(value: 'bank', child: Text('Banka')),
                           DropdownMenuItem(value: 'cash', child: Text('Nakit')),
                           DropdownMenuItem(value: 'pos', child: Text('POS')),
                           DropdownMenuItem(value: 'cheque', child: Text('Çek')),
-                          DropdownMenuItem(value: 'transfer', child: Text('Virman')),
+                          DropdownMenuItem(
+                            value: 'transfer',
+                            child: Text('Virman'),
+                          ),
                         ],
                         onChanged: (v) => setState(() => method = v ?? 'bank'),
                       ),
@@ -1036,7 +1233,9 @@ Future<void> _showTransactionDialog(
                       child: TextField(
                         controller: amount,
                         keyboardType: TextInputType.number,
-                        decoration: InputDecoration(labelText: 'Tutar (${account.currency})'),
+                        decoration: InputDecoration(
+                          labelText: 'Tutar (${account.currency})',
+                        ),
                       ),
                     ),
                   ],
@@ -1057,43 +1256,65 @@ Future<void> _showTransactionDialog(
                     if (picked != null) setState(() => date = picked);
                   },
                 ),
-                TextField(controller: reference, decoration: const InputDecoration(labelText: 'Fiş / Referans No')),
+                TextField(
+                  controller: reference,
+                  decoration: const InputDecoration(
+                    labelText: 'Fiş / Referans No',
+                  ),
+                ),
                 const Gap(10),
-                TextField(controller: description, decoration: const InputDecoration(labelText: 'Açıklama'), maxLines: 2),
+                TextField(
+                  controller: description,
+                  decoration: const InputDecoration(labelText: 'Açıklama'),
+                  maxLines: 2,
+                ),
               ],
             ),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('İptal')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('İptal'),
+          ),
           FilledButton(
             onPressed: () async {
               final api = ref.read(apiClientProvider);
               if (api == null) return;
-              await api.postJson(
-                '/mutate',
-                body: {
-                  'op': 'upsert',
-                  'table': 'finance_transactions',
-                  'values': {
-                    if (transaction != null) 'id': transaction.id,
-                    'account_id': accountId,
-                    'transaction_date': _date(date),
-                    'direction': direction,
-                    'transaction_type': type,
-                    'payment_method': method,
-                    'amount': _num(amount.text),
-                    'currency': account.currency,
-                    'description': description.text.trim(),
-                    'reference_no': reference.text.trim(),
-                    'source': 'manual',
-                    'is_active': true,
+              try {
+                await api.postJson(
+                  '/mutate',
+                  body: {
+                    'op': 'upsert',
+                    'table': 'finance_transactions',
+                    'values': {
+                      if (transaction != null) 'id': transaction.id,
+                      'account_id': accountId,
+                      'transaction_date': _date(date),
+                      'direction': direction,
+                      'transaction_type': type,
+                      'payment_method': method,
+                      'amount': _num(amount.text),
+                      'currency': account.currency,
+                      'description': description.text.trim(),
+                      'reference_no': reference.text.trim(),
+                      'source': 'manual',
+                      'is_active': true,
+                    },
                   },
-                },
-              );
-              ref.invalidate(financeAccountsProvider);
-              ref.invalidate(financeTransactionsProvider);
-              if (context.mounted) Navigator.pop(context);
+                );
+                ref.invalidate(financeAccountsProvider);
+                ref.invalidate(financeTransactionsProvider);
+                if (context.mounted) Navigator.pop(context);
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Kaydedilemedi. Lütfen tekrar deneyin.'),
+                    ),
+                  );
+                }
+              }
             },
             child: const Text('Kaydet'),
           ),

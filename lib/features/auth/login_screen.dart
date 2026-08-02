@@ -101,7 +101,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final raw = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(raw.startsWith('Giriş') ? raw : 'Giriş başarısız: $raw'),
+          content: Text(
+            raw.startsWith('Giriş') ? raw : 'Giriş başarısız: $raw',
+          ),
         ),
       );
     } finally {

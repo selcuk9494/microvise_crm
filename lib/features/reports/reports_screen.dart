@@ -9,11 +9,12 @@ import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/empty_state_card.dart';
 
 final reportsFiltersProvider =
     NotifierProvider<ReportsFiltersNotifier, ReportsFilters>(
-  ReportsFiltersNotifier.new,
-);
+      ReportsFiltersNotifier.new,
+    );
 
 class ReportsFiltersNotifier extends Notifier<ReportsFilters> {
   @override
@@ -24,7 +25,9 @@ class ReportsFiltersNotifier extends Notifier<ReportsFilters> {
   }
 
   void setUser(String? userId) {
-    state = state.copyWith(userId: userId?.trim().isEmpty ?? true ? null : userId);
+    state = state.copyWith(
+      userId: userId?.trim().isEmpty ?? true ? null : userId,
+    );
   }
 }
 
@@ -86,7 +89,9 @@ final reportsDataProvider = FutureProvider<ReportsData>((ref) async {
   final revenueByDay = <DateTime, double>{};
   final revenueByCustomer = <String, double>{};
   for (final row in payments.whereType<Map<String, dynamic>>()) {
-    final paidAt = DateTime.tryParse(row['paid_at']?.toString() ?? '')?.toLocal();
+    final paidAt = DateTime.tryParse(
+      row['paid_at']?.toString() ?? '',
+    )?.toLocal();
     final amountRaw = row['amount'];
     final amount = amountRaw is num
         ? amountRaw.toDouble()
@@ -94,9 +99,14 @@ final reportsDataProvider = FutureProvider<ReportsData>((ref) async {
     if (paidAt == null || amount == null) continue;
     final day = DateTime(paidAt.year, paidAt.month, paidAt.day);
     revenueByDay.update(day, (v) => v + amount, ifAbsent: () => amount);
-    final customer = (row['customers'] as Map<String, dynamic>?)?['name']?.toString();
+    final customer = (row['customers'] as Map<String, dynamic>?)?['name']
+        ?.toString();
     if (customer != null && customer.trim().isNotEmpty) {
-      revenueByCustomer.update(customer, (v) => v + amount, ifAbsent: () => amount);
+      revenueByCustomer.update(
+        customer,
+        (v) => v + amount,
+        ifAbsent: () => amount,
+      );
     }
   }
 
@@ -125,7 +135,11 @@ final reportsDataProvider = FutureProvider<ReportsData>((ref) async {
     ReportsPreset.thisMonth => now.day,
   };
   for (int i = days - 1; i >= 0; i--) {
-    final day = DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
+    final day = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: i));
     points.add(ReportPoint(day: day, value: revenueByDay[day] ?? 0));
   }
 
@@ -134,7 +148,11 @@ final reportsDataProvider = FutureProvider<ReportsData>((ref) async {
 
   return ReportsData(
     revenueTrend: points,
-    workOrderStatus: WorkOrderStatusReport(open: open, inProgress: inProgress, done: done),
+    workOrderStatus: WorkOrderStatusReport(
+      open: open,
+      inProgress: inProgress,
+      done: done,
+    ),
     topCustomers: topCustomers.take(6).toList(growable: false),
   );
 });
@@ -147,7 +165,11 @@ class ReportsScreen extends ConsumerWidget {
     final filters = ref.watch(reportsFiltersProvider);
     final usersAsync = ref.watch(reportsUsersProvider);
     final dataAsync = ref.watch(reportsDataProvider);
-    final money = NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0);
+    final money = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: '₺',
+      decimalDigits: 0,
+    );
 
     return AppPageLayout(
       title: 'Raporlar',
@@ -245,13 +267,14 @@ class ReportsScreen extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Gelir Trend', style: Theme.of(context).textTheme.titleMedium),
+                            Text(
+                              'Gelir Trend',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
                             const Gap(6),
                             Text(
                               'Seçilen tarih aralığında günlük toplam.',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
+                              style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(color: AppTheme.textMuted),
                             ),
                             const Gap(16),
@@ -275,7 +298,9 @@ class ReportsScreen extends ConsumerWidget {
                                 children: [
                                   Text(
                                     'İş Emri Durumu',
-                                    style: Theme.of(context).textTheme.titleMedium,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleMedium,
                                   ),
                                   const Gap(12),
                                   _StatusBars(status: data.workOrderStatus),
@@ -289,7 +314,9 @@ class ReportsScreen extends ConsumerWidget {
                                 children: [
                                   Text(
                                     'En Çok Gelir Getirenler',
-                                    style: Theme.of(context).textTheme.titleMedium,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleMedium,
                                   ),
                                   const Gap(12),
                                   if (data.topCustomers.isEmpty)
@@ -303,7 +330,9 @@ class ReportsScreen extends ConsumerWidget {
                                   else
                                     for (final e in data.topCustomers)
                                       Padding(
-                                        padding: const EdgeInsets.only(bottom: 10),
+                                        padding: const EdgeInsets.only(
+                                          bottom: 10,
+                                        ),
                                         child: Row(
                                           children: [
                                             Expanded(
@@ -311,8 +340,12 @@ class ReportsScreen extends ConsumerWidget {
                                                 e.key,
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
-                                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                                      fontWeight: FontWeight.w600,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodyMedium
+                                                    ?.copyWith(
+                                                      fontWeight:
+                                                          FontWeight.w600,
                                                     ),
                                               ),
                                             ),
@@ -321,7 +354,9 @@ class ReportsScreen extends ConsumerWidget {
                                               style: Theme.of(context)
                                                   .textTheme
                                                   .bodySmall
-                                                  ?.copyWith(color: AppTheme.textMuted),
+                                                  ?.copyWith(
+                                                    color: AppTheme.textMuted,
+                                                  ),
                                             ),
                                           ],
                                         ),
@@ -338,20 +373,16 @@ class ReportsScreen extends ConsumerWidget {
             ),
             loading: () => Skeletonizer(
               enabled: true,
-              child: AppCard(
-                child: SizedBox(height: 320),
-              ),
+              child: AppCard(child: SizedBox(height: 320)),
             ),
-            error: (_, _) => AppCard(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Text(
-                  'Raporlar yüklenemedi.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: AppTheme.textMuted),
-                ),
+            error: (_, _) => EmptyStateCard(
+              icon: Icons.cloud_off_rounded,
+              title: 'Raporlar yüklenemedi',
+              message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
+              action: OutlinedButton.icon(
+                onPressed: () => ref.invalidate(reportsDataProvider),
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('Tekrar Dene'),
               ),
             ),
           ),
@@ -373,10 +404,9 @@ class _TrendChart extends StatelessWidget {
       return Center(
         child: Text(
           'Bu aralıkta gelir kaydı yok.',
-          style: Theme.of(context)
-              .textTheme
-              .bodyMedium
-              ?.copyWith(color: AppTheme.textMuted),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
         ),
       );
     }
@@ -417,7 +447,10 @@ class _StatusBars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = (status.open + status.inProgress + status.done).clamp(1, 1 << 30);
+    final total = (status.open + status.inProgress + status.done).clamp(
+      1,
+      1 << 30,
+    );
     return Column(
       children: [
         _StatusRow(
@@ -466,10 +499,10 @@ class _StatusRow extends StatelessWidget {
           width: 56,
           child: Text(
             label,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: AppTheme.textMuted, fontWeight: FontWeight.w600),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppTheme.textMuted,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
         Expanded(
@@ -490,9 +523,9 @@ class _StatusRow extends StatelessWidget {
             '$count',
             textAlign: TextAlign.right,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF0F172A),
-                ),
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF0F172A),
+            ),
           ),
         ),
       ],
@@ -531,10 +564,10 @@ class ReportsData {
   final List<MapEntry<String, double>> topCustomers;
 
   factory ReportsData.empty() => const ReportsData(
-        revenueTrend: [],
-        workOrderStatus: WorkOrderStatusReport(open: 0, inProgress: 0, done: 0),
-        topCustomers: [],
-      );
+    revenueTrend: [],
+    workOrderStatus: WorkOrderStatusReport(open: 0, inProgress: 0, done: 0),
+    topCustomers: [],
+  );
 }
 
 class ReportPoint {
@@ -557,7 +590,11 @@ class WorkOrderStatusReport {
 }
 
 class ReportUser {
-  const ReportUser({required this.id, required this.fullName, required this.role});
+  const ReportUser({
+    required this.id,
+    required this.fullName,
+    required this.role,
+  });
 
   final String id;
   final String? fullName;

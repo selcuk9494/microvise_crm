@@ -8,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../../core/utils/app_time.dart';
 import 'service_detail_screen.dart';
+import 'service_status_ui.dart';
 
 Uint8List? _decodeDataUrl(String? dataUrl) {
   final raw = (dataUrl ?? '').trim();
@@ -72,13 +73,9 @@ Future<Uint8List> buildServicePdfBytes({
     decimalDigits: 2,
   );
 
-  final statusLabel = switch (detail.status) {
-    'waiting' || 'open' => 'Bekliyor',
-    'approval' || 'in_progress' => 'Onayda',
-    'ready' => 'Hazır',
-    'done' => 'Teslim',
-    _ => detail.status,
-  };
+  // Kanonik durum etiketi — bkz. service_status_ui.dart. Eskiden 'cancelled'
+  // durumu burada çevrilmeden ham "cancelled" olarak PDF'e basılıyordu.
+  final statusLabel = serviceStatusInfo(detail.status).label;
 
   final registry = (detail.registryNumber ?? '').trim();
   final fault = (detail.faultTypeName ?? '').trim();

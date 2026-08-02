@@ -48,10 +48,12 @@ String _buildPrintableHtml(FaultFormRecord record) {
   final lastZ = record.lastZReportDisplay.trim();
   final revenue = (record.totalRevenue ?? '').trim();
   final totalVat = (record.totalVat ?? '').trim();
-  final revenueDisplay =
-      revenue.isEmpty || revenue.contains('₺') ? revenue : '$revenue ₺';
-  final vatDisplay =
-      totalVat.isEmpty || totalVat.contains('₺') ? totalVat : '$totalVat ₺';
+  final revenueDisplay = revenue.isEmpty || revenue.contains('₺')
+      ? revenue
+      : '$revenue ₺';
+  final vatDisplay = totalVat.isEmpty || totalVat.contains('₺')
+      ? totalVat
+      : '$totalVat ₺';
 
   return '''
 <!doctype html>

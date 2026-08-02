@@ -57,6 +57,7 @@ class Invoice {
   final String? poNumber;
   final String currency;
   final double exchangeRate;
+
   /// true: formda girilen birim fiyatlar KDV dahil; kayıtta matrah+KDV ayrılır.
   final bool pricesIncludeVat;
   final double subtotal;
@@ -75,6 +76,7 @@ class Invoice {
   final String? erpInvoiceNumber;
   final String? akinsoftSourceId;
   final String? akinsoftSourceCode;
+
   /// Durable Akınsoft push state: synced | error | pending (null = derive).
   final String? akinsoftSyncStatus;
   final DateTime? akinsoftSyncedAt;
@@ -132,6 +134,7 @@ class Invoice {
   bool get isOpen => status == 'open' || status == 'partial';
   bool get isEInvoiceSent => eInvoiceStatus == 'sent';
   bool get isEInvoiceManual => eInvoiceStatus == 'manual';
+
   /// Test API gönderimi (veya test sonrası manuel kapatma).
   /// Listede "Manuel Gönderildi" olarak gösterilir.
   bool get isEInvoiceManualSent =>
@@ -190,6 +193,7 @@ class Invoice {
         no.startsWith('AKN-') ||
         no.startsWith('MSF');
   }
+
   bool canSendEInvoiceTo(String environment) {
     if (eInvoiceStatus == 'manual' || eInvoiceStatus == 'manual_sent') {
       return false;
@@ -219,7 +223,8 @@ class Invoice {
       poNumber: json['po_number']?.toString(),
       currency: json['currency']?.toString() ?? 'TRY',
       exchangeRate: _jsonDouble(json['exchange_rate'], fallback: 1.0),
-      pricesIncludeVat: json['prices_include_vat'] == true ||
+      pricesIncludeVat:
+          json['prices_include_vat'] == true ||
           json['prices_include_vat']?.toString() == 'true',
       subtotal: _jsonDouble(
         json['effective_subtotal'],

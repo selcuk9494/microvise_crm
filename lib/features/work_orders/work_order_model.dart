@@ -5,8 +5,10 @@ bool? _parseFlexibleBool(dynamic value) {
   if (value is num) return value != 0;
   final text = value?.toString().trim().toLowerCase();
   if (text == null || text.isEmpty) return null;
-  if (text == 'true' || text == 't' || text == '1' || text == 'yes') return true;
-  if (text == 'false' || text == 'f' || text == '0' || text == 'no') return false;
+  if (text == 'true' || text == 't' || text == '1' || text == 'yes')
+    return true;
+  if (text == 'false' || text == 'f' || text == '0' || text == 'no')
+    return false;
   return null;
 }
 
@@ -97,8 +99,8 @@ class WorkOrder {
           .toList(growable: false),
       paymentRequired: _parseFlexibleBool(json['payment_required']),
       customerSignatureDataUrl: json['customer_signature_data_url']?.toString(),
-      personnelSignatureDataUrl:
-          json['personnel_signature_data_url']?.toString(),
+      personnelSignatureDataUrl: json['personnel_signature_data_url']
+          ?.toString(),
       isActive: _parseFlexibleBool(json['is_active']) ?? true,
     );
   }
@@ -125,7 +127,8 @@ class WorkOrder {
       branchId: branchId ?? this.branchId,
       branchName: branchName ?? this.branchName,
       assignedTo: assignedTo ?? this.assignedTo,
-      assignedPersonnelName: assignedPersonnelName ?? this.assignedPersonnelName,
+      assignedPersonnelName:
+          assignedPersonnelName ?? this.assignedPersonnelName,
       scheduledDate: scheduledDate,
       createdAt: createdAt,
       closedAt: closedAt,

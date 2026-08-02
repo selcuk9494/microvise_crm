@@ -3,4 +3,3 @@ class TokenStorage {
 
   static void write(String? value) {}
 }
-

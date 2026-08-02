@@ -170,9 +170,9 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
               error: (_, _) => Center(
                 child: Text(
                   'Cari hesaplar yüklenemedi',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
             ),
@@ -353,9 +353,9 @@ class _AccountCard extends StatelessWidget {
                       : isPayable
                       ? 'Borç'
                       : 'Dengede',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -929,9 +929,9 @@ class _InvoiceSelectCard extends StatelessWidget {
                   const Gap(4),
                   Text(
                     DateFormat('d MMM y', 'tr_TR').format(invoice.invoiceDate),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textMuted,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ],
               ),

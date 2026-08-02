@@ -47,7 +47,8 @@ IconData themeModeIcon(ThemeMode mode) {
 
 class ThemeModeNotifier extends Notifier<ThemeMode> {
   @override
-  ThemeMode build() => themeModeFromStorage(AppCache.readString(kThemeModeCacheKey));
+  ThemeMode build() =>
+      themeModeFromStorage(AppCache.readString(kThemeModeCacheKey));
 
   Future<void> setMode(ThemeMode mode) async {
     if (state == mode) return;
@@ -56,5 +57,6 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
   }
 }
 
-final themeModeProvider =
-    NotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);
+final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(
+  ThemeModeNotifier.new,
+);

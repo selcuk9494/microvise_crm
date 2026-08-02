@@ -5,10 +5,11 @@ import 'package:gap/gap.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
-import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/empty_state_card.dart';
+import '../../design_system/status_tone.dart';
 
 class SerialTrackingItem {
   const SerialTrackingItem({
@@ -38,8 +39,9 @@ class SerialTrackingItem {
   }
 }
 
-final serialTrackingProvider =
-    FutureProvider<List<SerialTrackingItem>>((ref) async {
+final serialTrackingProvider = FutureProvider<List<SerialTrackingItem>>((
+  ref,
+) async {
   final apiClient = ref.watch(apiClientProvider);
   if (apiClient == null) return const [];
   final response = await apiClient.getJson(
@@ -124,7 +126,7 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                   label: Text(_showPassive ? 'Durum: Tümü' : 'Durum: Aktif'),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.filterControlBg,
-                          foregroundColor: AppTheme.filterControlFg,
+                    foregroundColor: AppTheme.filterControlFg,
                     minimumSize: const Size(0, 40),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -139,17 +141,22 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
           Expanded(
             child: itemsAsync.when(
               data: (items) {
-                final filtered = items.where((item) {
-                  if (!_showPassive && !item.isActive) return false;
-                  if (search.isEmpty) return true;
-                  final haystack = '${item.serialNumber} ${item.productName}'
-                      .toLowerCase();
-                  return haystack.contains(search);
-                }).toList(growable: false);
+                final filtered = items
+                    .where((item) {
+                      if (!_showPassive && !item.isActive) return false;
+                      if (search.isEmpty) return true;
+                      final haystack =
+                          '${item.serialNumber} ${item.productName}'
+                              .toLowerCase();
+                      return haystack.contains(search);
+                    })
+                    .toList(growable: false);
 
                 if (filtered.isEmpty) {
-                  return const AppCard(
-                    child: Center(child: Text('Kayıt bulunamadı.')),
+                  return const EmptyStateCard(
+                    icon: Icons.qr_code_2_rounded,
+                    title: 'Kayıt bulunamadı',
+                    message: 'Filtrelerinize uyan bir seri kaydı yok.',
                   );
                 }
 
@@ -171,7 +178,10 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                         ),
                         child: const Row(
                           children: [
-                            SizedBox(width: 260, child: _HeaderCell('Sicil No')),
+                            SizedBox(
+                              width: 260,
+                              child: _HeaderCell('Sicil No'),
+                            ),
                             SizedBox(
                               width: 520,
                               child: _HeaderCell('Ürün İsmi'),
@@ -198,16 +208,14 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => AppCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    'Seri takip yüklenemedi: $error',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: AppTheme.textMuted),
-                  ),
+              error: (error, _) => EmptyStateCard(
+                icon: Icons.cloud_off_rounded,
+                title: 'Seri takip yüklenemedi',
+                message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
+                action: OutlinedButton.icon(
+                  onPressed: () => ref.invalidate(serialTrackingProvider),
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Tekrar Dene'),
                 ),
               ),
             ),
@@ -218,10 +226,12 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
   }
 
   Future<void> _openEditor({SerialTrackingItem? initial}) async {
-    final productController =
-        TextEditingController(text: initial?.productName ?? '');
-    final serialController =
-        TextEditingController(text: initial?.serialNumber ?? '');
+    final productController = TextEditingController(
+      text: initial?.productName ?? '',
+    );
+    final serialController = TextEditingController(
+      text: initial?.serialNumber ?? '',
+    );
     bool saving = false;
 
     final saved = await showDialog<bool>(
@@ -249,8 +259,9 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                       ),
                       IconButton(
                         tooltip: 'Kapat',
-                        onPressed:
-                            saving ? null : () => Navigator.of(context).pop(false),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(false),
                         icon: const Icon(Icons.close_rounded),
                       ),
                     ],
@@ -288,10 +299,10 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                           onPressed: saving
                               ? null
                               : () async {
-                                  final productName =
-                                      productController.text.trim();
-                                  final serialNumber =
-                                      serialController.text.trim();
+                                  final productName = productController.text
+                                      .trim();
+                                  final serialNumber = serialController.text
+                                      .trim();
                                   if (productName.isEmpty) return;
                                   if (serialNumber.isEmpty) return;
 
@@ -300,8 +311,9 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
 
                                   setState(() => saving = true);
                                   try {
-                                    final profile = await ref
-                                        .read(currentUserProfileProvider.future);
+                                    final profile = await ref.read(
+                                      currentUserProfileProvider.future,
+                                    );
                                     await apiClient.postJson(
                                       '/mutate',
                                       body: {
@@ -311,7 +323,8 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                                           if (initial != null) 'id': initial.id,
                                           'product_name': productName,
                                           'serial_number': serialNumber,
-                                          'is_active': initial?.isActive ?? true,
+                                          'is_active':
+                                              initial?.isActive ?? true,
                                           'created_by': profile?.id,
                                         },
                                       },
@@ -383,8 +396,9 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                       ),
                       IconButton(
                         tooltip: 'Kapat',
-                        onPressed:
-                            saving ? null : () => Navigator.of(context).pop(false),
+                        onPressed: saving
+                            ? null
+                            : () => Navigator.of(context).pop(false),
                         icon: const Icon(Icons.close_rounded),
                       ),
                     ],
@@ -392,9 +406,7 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                   const Gap(12),
                   TextField(
                     controller: productController,
-                    decoration: const InputDecoration(
-                      labelText: 'Ürün İsmi',
-                    ),
+                    decoration: const InputDecoration(labelText: 'Ürün İsmi'),
                   ),
                   const Gap(12),
                   TextField(
@@ -411,10 +423,9 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                   if (saving)
                     Text(
                       'Kaydediliyor: $savedCount',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: AppTheme.textMuted),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
                     ),
                   const Gap(18),
                   Row(
@@ -433,8 +444,8 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                           onPressed: saving
                               ? null
                               : () async {
-                                  final productName =
-                                      productController.text.trim();
+                                  final productName = productController.text
+                                      .trim();
                                   final raw = serialsController.text;
                                   final serials = raw
                                       .split(RegExp(r'[\n,;]+'))
@@ -508,9 +519,9 @@ class _HeaderCell extends StatelessWidget {
     return Text(
       label,
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF475569),
-          ),
+        fontWeight: FontWeight.w800,
+        color: AppTheme.textMuted,
+      ),
     );
   }
 }
@@ -531,24 +542,12 @@ class _SerialTableRowState extends ConsumerState<_SerialTableRow> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final badge = item.isActive
-        ? const AppBadge(
-            label: 'Aktif',
-            tone: AppBadgeTone.success,
-            dense: true,
-          )
-        : const AppBadge(
-            label: 'Pasif',
-            tone: AppBadgeTone.neutral,
-            dense: true,
-          );
+    final badge = DsActiveBadge(isActive: item.isActive, dense: true);
 
     return Container(
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: AppDenseList.rowH),
-      decoration: BoxDecoration(
-        border: Border(bottom: AppDenseList.hairline),
-      ),
+      decoration: BoxDecoration(border: Border(bottom: AppDenseList.hairline)),
       child: Row(
         children: [
           SizedBox(
@@ -590,17 +589,22 @@ class _SerialTableRowState extends ConsumerState<_SerialTableRow> {
                   tooltip: 'Düzenle',
                   onPressed: _saving
                       ? null
-                      : () => (context.findAncestorStateOfType<
-                              _SerialTrackingScreenState>())
-                          ?._openEditor(initial: item),
-                  icon: const Icon(Icons.edit_outlined),
+                      : () =>
+                            (context
+                                    .findAncestorStateOfType<
+                                      _SerialTrackingScreenState
+                                    >())
+                                ?._openEditor(initial: item),
+                  icon: const Icon(Icons.edit_rounded),
                 ),
                 IconButton(
                   tooltip: item.isActive ? 'Pasife Al' : 'Aktifleştir',
                   onPressed: _saving ? null : _toggleActive,
-                  icon: Icon(item.isActive
-                      ? Icons.pause_circle_outline_rounded
-                      : Icons.play_circle_outline_rounded),
+                  icon: Icon(
+                    item.isActive
+                        ? Icons.pause_circle_outline_rounded
+                        : Icons.play_circle_outline_rounded,
+                  ),
                 ),
                 IconButton(
                   tooltip: 'Sil',
@@ -664,7 +668,11 @@ class _SerialTableRowState extends ConsumerState<_SerialTableRow> {
     try {
       await apiClient.postJson(
         '/mutate',
-        body: {'op': 'delete', 'table': 'serial_tracking', 'id': widget.item.id},
+        body: {
+          'op': 'delete',
+          'table': 'serial_tracking',
+          'id': widget.item.id,
+        },
       );
       widget.onChanged();
     } finally {

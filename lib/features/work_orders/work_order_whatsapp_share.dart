@@ -24,13 +24,29 @@ Future<void> shareWorkOrderPdfWithWhatsAppPrompt({
     if (raw.isEmpty) return;
     final normalizedKey = _normalizePhoneKey(raw);
     if (normalizedKey.isEmpty) return;
-    if (options.any((o) => _normalizePhoneKey(o.phone) == normalizedKey)) return;
+    if (options.any((o) => _normalizePhoneKey(o.phone) == normalizedKey))
+      return;
     options.add(_PhoneOption(label: label, phone: raw));
   }
 
-  addPhone((customer.phone1Title ?? 'Müşteri').trim().isEmpty ? 'Müşteri' : customer.phone1Title!, customer.phone1);
-  addPhone((customer.phone2Title ?? 'İrtibat').trim().isEmpty ? 'İrtibat' : customer.phone2Title!, customer.phone2);
-  addPhone((customer.phone3Title ?? 'İrtibat 2').trim().isEmpty ? 'İrtibat 2' : customer.phone3Title!, customer.phone3);
+  addPhone(
+    (customer.phone1Title ?? 'Müşteri').trim().isEmpty
+        ? 'Müşteri'
+        : customer.phone1Title!,
+    customer.phone1,
+  );
+  addPhone(
+    (customer.phone2Title ?? 'İrtibat').trim().isEmpty
+        ? 'İrtibat'
+        : customer.phone2Title!,
+    customer.phone2,
+  );
+  addPhone(
+    (customer.phone3Title ?? 'İrtibat 2').trim().isEmpty
+        ? 'İrtibat 2'
+        : customer.phone3Title!,
+    customer.phone3,
+  );
   addPhone('İş Emri İrtibat', order.contactPhone);
 
   final action = await showModalBottomSheet<_ShareAction>(
@@ -38,7 +54,12 @@ Future<void> shareWorkOrderPdfWithWhatsAppPrompt({
     showDragHandle: true,
     builder: (context) => SafeArea(
       child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + MediaQuery.viewInsetsOf(context).bottom),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          8,
+          16,
+          16 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -47,7 +68,9 @@ Future<void> shareWorkOrderPdfWithWhatsAppPrompt({
             const Gap(6),
             Text(
               'WhatsApp ile göndermek için bir numara seçin veya sadece paylaşın.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             ),
             const Gap(12),
             for (final opt in options)
@@ -56,21 +79,22 @@ Future<void> shareWorkOrderPdfWithWhatsAppPrompt({
                 leading: const Icon(Icons.chat_bubble_rounded),
                 title: Text(opt.label),
                 subtitle: Text(opt.phone),
-                onTap: () => Navigator.of(context).pop(
-                  _ShareAction.whatsApp(opt.phone),
-                ),
+                onTap: () =>
+                    Navigator.of(context).pop(_ShareAction.whatsApp(opt.phone)),
               ),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.add_call),
               title: const Text('Başka numara'),
-              onTap: () => Navigator.of(context).pop(const _ShareAction.other()),
+              onTap: () =>
+                  Navigator.of(context).pop(const _ShareAction.other()),
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.share_rounded),
               title: const Text('Sadece paylaş'),
-              onTap: () => Navigator.of(context).pop(const _ShareAction.shareOnly()),
+              onTap: () =>
+                  Navigator.of(context).pop(const _ShareAction.shareOnly()),
             ),
           ],
         ),
@@ -147,7 +171,10 @@ Future<String?> _askPhoneNumber(BuildContext context) async {
   return phone;
 }
 
-String _buildWhatsAppMessage({required WorkOrder order, required CustomerDetail customer}) {
+String _buildWhatsAppMessage({
+  required WorkOrder order,
+  required CustomerDetail customer,
+}) {
   final docNo = order.id.length >= 6 ? order.id.substring(0, 6) : order.id;
   final title = order.title.trim().isEmpty ? 'İş Emri' : order.title.trim();
   return 'Microvise Servis Formu • Form No: $docNo • ${customer.name.trim()} • $title';
@@ -184,5 +211,5 @@ class _ShareAction {
   const _ShareAction.other() : this._(_ShareActionKind.other);
   const _ShareAction.shareOnly() : this._(_ShareActionKind.shareOnly);
   const _ShareAction.whatsApp(String phone)
-      : this._(_ShareActionKind.whatsapp, phone: phone);
+    : this._(_ShareActionKind.whatsapp, phone: phone);
 }

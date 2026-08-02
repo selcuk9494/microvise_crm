@@ -34,11 +34,7 @@ Future<bool> shareEInvoicePdf({
 }) async {
   return shareEInvoicePdfBundle(
     files: [
-      EInvoicePdfDownload(
-        url: url,
-        fileName: fileName,
-        pdfBase64: pdfBase64,
-      ),
+      EInvoicePdfDownload(url: url, fileName: fileName, pdfBase64: pdfBase64),
     ],
     shareText: shareText,
   );
@@ -74,10 +70,7 @@ Future<bool> shareEInvoicePdfBundle({
 Future<bool> downloadEInvoicePdfs({
   required List<EInvoicePdfDownload> files,
 }) async {
-  return shareEInvoicePdfBundle(
-    files: files,
-    shareText: 'E-faturalar',
-  );
+  return shareEInvoicePdfBundle(files: files, shareText: 'E-faturalar');
 }
 
 Future<Uint8List?> _resolvePdfBytes(EInvoicePdfDownload item) async {

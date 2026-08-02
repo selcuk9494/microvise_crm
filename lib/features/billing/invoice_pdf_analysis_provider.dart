@@ -121,8 +121,12 @@ class InvoicePdfAnalysisNotifier extends Notifier<InvoicePdfAnalysisState> {
     final merged = <InvoicePdfAnalysisEntry>[];
     final seenKeys = <String>{};
     final sanitized = [
-      ...cached.value.map(_sanitizeEntryFromRawText).whereType<InvoicePdfAnalysisEntry>(),
-      ...state.entries.map(_sanitizeEntryFromRawText).whereType<InvoicePdfAnalysisEntry>(),
+      ...cached.value
+          .map(_sanitizeEntryFromRawText)
+          .whereType<InvoicePdfAnalysisEntry>(),
+      ...state.entries
+          .map(_sanitizeEntryFromRawText)
+          .whereType<InvoicePdfAnalysisEntry>(),
     ];
     for (final entry in sanitized) {
       final key = _invoiceIdentityKey(entry);
@@ -165,7 +169,9 @@ class InvoicePdfAnalysisNotifier extends Notifier<InvoicePdfAnalysisState> {
   }
 
   Future<void> removeFxRule(String id) async {
-    final next = state.fxRules.where((item) => item.id != id).toList(growable: false);
+    final next = state.fxRules
+        .where((item) => item.id != id)
+        .toList(growable: false);
     await AppCache.writeJson(
       _fxCacheKey,
       next.map((item) => item.toJson()).toList(growable: false),
@@ -210,30 +216,35 @@ class InvoicePdfAnalysisState {
       }
     }
 
-    final result = buckets.entries.map((entry) {
-      final vatGroups = entry.value.taxGroups.entries
-          .map(
-            (taxEntry) => InvoicePdfVatGroup(
-              taxRate: taxEntry.key,
-              baseAmount: taxEntry.value.baseAmount,
-              taxAmount: taxEntry.value.taxAmount,
-              grandTotal: taxEntry.value.grandTotal,
-              tlEquivalent: 0,
-            ),
-          )
-          .toList()
-        ..sort((a, b) => a.taxRate.compareTo(b.taxRate));
-      return InvoicePdfCurrencySummary(
-        currency: entry.key,
-        invoiceCount: entry.value.invoiceCount,
-        subtotal: entry.value.subtotal,
-        taxTotal: entry.value.taxTotal,
-        grandTotal: entry.value.grandTotal,
-        tlEquivalent: 0,
-        vatGroups: vatGroups,
-      );
-    }).toList()
-      ..sort((a, b) => _currencySortValue(a.currency).compareTo(_currencySortValue(b.currency)));
+    final result =
+        buckets.entries.map((entry) {
+          final vatGroups =
+              entry.value.taxGroups.entries
+                  .map(
+                    (taxEntry) => InvoicePdfVatGroup(
+                      taxRate: taxEntry.key,
+                      baseAmount: taxEntry.value.baseAmount,
+                      taxAmount: taxEntry.value.taxAmount,
+                      grandTotal: taxEntry.value.grandTotal,
+                      tlEquivalent: 0,
+                    ),
+                  )
+                  .toList()
+                ..sort((a, b) => a.taxRate.compareTo(b.taxRate));
+          return InvoicePdfCurrencySummary(
+            currency: entry.key,
+            invoiceCount: entry.value.invoiceCount,
+            subtotal: entry.value.subtotal,
+            taxTotal: entry.value.taxTotal,
+            grandTotal: entry.value.grandTotal,
+            tlEquivalent: 0,
+            vatGroups: vatGroups,
+          );
+        }).toList()..sort(
+          (a, b) => _currencySortValue(
+            a.currency,
+          ).compareTo(_currencySortValue(b.currency)),
+        );
 
     return result;
   }
@@ -251,8 +262,9 @@ class InvoicePdfAnalysisState {
       entries: entries ?? this.entries,
       isLoading: isLoading ?? this.isLoading,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
-      lastSavedAtMs:
-          clearLastSavedAtMs ? null : (lastSavedAtMs ?? this.lastSavedAtMs),
+      lastSavedAtMs: clearLastSavedAtMs
+          ? null
+          : (lastSavedAtMs ?? this.lastSavedAtMs),
       fxRules: fxRules ?? this.fxRules,
     );
   }
@@ -263,7 +275,9 @@ String _invoiceIdentityKey(InvoicePdfAnalysisEntry entry) {
   return '${entry.invoiceNumber.trim().toUpperCase()}|${entry.customerName.trim().toUpperCase()}|$date';
 }
 
-InvoicePdfAnalysisEntry? _sanitizeEntryFromRawText(InvoicePdfAnalysisEntry entry) {
+InvoicePdfAnalysisEntry? _sanitizeEntryFromRawText(
+  InvoicePdfAnalysisEntry entry,
+) {
   final marker = InvoicePdfAnalysisParser.detectDocumentMarker(
     entry.rawText,
     fileName: entry.fileName,

@@ -18,8 +18,7 @@ Uri _akinsoftFinanceUri(String path) {
       base.host == '127.0.0.1' ||
       base.host == 'localhost' ||
       base.host == '::1';
-  final separateBridge =
-      isLocalWeb && (base.port == 3000 || base.port == 8080);
+  final separateBridge = isLocalWeb && (base.port == 3000 || base.port == 8080);
   final uri = separateBridge
       ? Uri.parse('http://127.0.0.1:4000/api/akinsoft/')
       : base.resolve('/api/akinsoft/');
@@ -92,9 +91,11 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
       throw Exception('Geçersiz Akınsoft yanıtı.');
     }
     if (response.statusCode >= 400 || decoded['ok'] != true) {
-      throw Exception(_text(decoded['error']).isEmpty
-          ? 'Akınsoft işlem hatası (${response.statusCode})'
-          : _text(decoded['error']));
+      throw Exception(
+        _text(decoded['error']).isEmpty
+            ? 'Akınsoft işlem hatası (${response.statusCode})'
+            : _text(decoded['error']),
+      );
     }
     return decoded;
   }
@@ -157,9 +158,9 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     try {
       await _post(path, body);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(successMessage)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(successMessage)));
       await _pull();
     } catch (error) {
       if (!mounted) return;
@@ -224,7 +225,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
             onPressed: _loading || _banks.isEmpty
                 ? null
                 : () => _showAccountDialog(),
-            icon: const Icon(Icons.account_balance_wallet_outlined, size: 18),
+            icon: const Icon(Icons.account_balance_wallet_rounded, size: 18),
             label: const Text('Hesap'),
           ),
         if (widget.section == 'kasa')
@@ -306,11 +307,10 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
           banks: _banks,
           accounts: _accounts,
           onEditBank: (row) => _showBankDialog(existing: row),
-          onDeleteBank: (row) => _mutate(
-            'finance/bank',
-            {'action': 'delete', 'sourceId': row['sourceId']},
-            successMessage: 'Banka Akınsoft’tan silindi.',
-          ),
+          onDeleteBank: (row) => _mutate('finance/bank', {
+            'action': 'delete',
+            'sourceId': row['sourceId'],
+          }, successMessage: 'Banka Akınsoft’tan silindi.'),
           onEditAccount: (row) => _showAccountDialog(existing: row),
           onDeleteAccount: (row) => _mutate(
             'finance/bank-account',
@@ -325,7 +325,9 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     final nameCtrl = TextEditingController(text: _text(existing?['bankName']));
     final branchCtrl = TextEditingController(text: _text(existing?['branch']));
     final phoneCtrl = TextEditingController(text: _text(existing?['phone']));
-    final addressCtrl = TextEditingController(text: _text(existing?['address']));
+    final addressCtrl = TextEditingController(
+      text: _text(existing?['address']),
+    );
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -473,10 +475,10 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
 
   Future<void> _showKasaDialog({Map<String, dynamic>? existing}) async {
     final nameCtrl = TextEditingController(text: _text(existing?['kasaAdi']));
-    final yetkiliCtrl =
-        TextEditingController(text: _text(existing?['yetkilisi']));
-    final noteCtrl =
-        TextEditingController(text: _text(existing?['aciklama1']));
+    final yetkiliCtrl = TextEditingController(
+      text: _text(existing?['yetkilisi']),
+    );
+    final noteCtrl = TextEditingController(text: _text(existing?['aciklama1']));
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -541,14 +543,14 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
 
   Future<void> _showTransferDialog() async {
     String type = 'bank_bank';
-    String? fromAccount =
-        _accounts.isEmpty ? null : _text(_accounts.first['sourceId']);
+    String? fromAccount = _accounts.isEmpty
+        ? null
+        : _text(_accounts.first['sourceId']);
     String? toAccount = _accounts.length > 1
         ? _text(_accounts[1]['sourceId'])
         : fromAccount;
     String? accountId = fromAccount;
-    String? kasaAdi =
-        _kasas.isEmpty ? null : _text(_kasas.first['kasaAdi']);
+    String? kasaAdi = _kasas.isEmpty ? null : _text(_kasas.first['kasaAdi']);
     DateTime date = DateTime.now();
     final amountCtrl = TextEditingController();
     final descCtrl = TextEditingController();
@@ -596,7 +598,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                       title: const Text('Tarih'),
                       subtitle: Text(DateFormat('dd.MM.yyyy').format(date)),
                       trailing: IconButton(
-                        icon: const Icon(Icons.calendar_month_outlined),
+                        icon: const Icon(Icons.calendar_month_rounded),
                         onPressed: () async {
                           final picked = await showDatePicker(
                             context: context,
@@ -613,8 +615,9 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                     if (type == 'bank_bank') ...[
                       DropdownButtonFormField<String>(
                         initialValue: fromAccount,
-                        decoration:
-                            const InputDecoration(labelText: 'Kaynak hesap *'),
+                        decoration: const InputDecoration(
+                          labelText: 'Kaynak hesap *',
+                        ),
                         items: [
                           for (final a in _accounts)
                             DropdownMenuItem(
@@ -626,8 +629,9 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                       ),
                       DropdownButtonFormField<String>(
                         initialValue: toAccount,
-                        decoration:
-                            const InputDecoration(labelText: 'Hedef hesap *'),
+                        decoration: const InputDecoration(
+                          labelText: 'Hedef hesap *',
+                        ),
                         items: [
                           for (final a in _accounts)
                             DropdownMenuItem(
@@ -672,8 +676,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                       ),
                       decoration: InputDecoration(
                         labelText: 'Tutar * ($currency)',
-                        helperText:
-                            'Wolvox BANKAHR / KASAHR çift kayıt yazar',
+                        helperText: 'Wolvox BANKAHR / KASAHR çift kayıt yazar',
                       ),
                     ),
                     TextField(
@@ -708,8 +711,8 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
       'date': date.toIso8601String(),
       'currency': _text(
         (type == 'bank_bank'
-                ? _accountById(fromAccount)
-                : _accountById(accountId))?['currency'],
+            ? _accountById(fromAccount)
+            : _accountById(accountId))?['currency'],
       ),
     };
     if (type == 'bank_bank') {
@@ -731,9 +734,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     DateTime date = DateTime.now();
     final cariCtrl = TextEditingController();
     final descCtrl = TextEditingController();
-    final lines = <_MasrafLineDraft>[
-      _MasrafLineDraft(),
-    ];
+    final lines = <_MasrafLineDraft>[_MasrafLineDraft()];
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -760,7 +761,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                       title: const Text('Tarih'),
                       subtitle: Text(DateFormat('dd.MM.yyyy').format(date)),
                       trailing: IconButton(
-                        icon: const Icon(Icons.calendar_month_outlined),
+                        icon: const Icon(Icons.calendar_month_rounded),
                         onPressed: () async {
                           final picked = await showDatePicker(
                             context: context,
@@ -789,16 +790,13 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                       children: [
                         Text(
                           'Kalemler',
-                          style:
-                              Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const Spacer(),
                         TextButton.icon(
-                          onPressed: () => setLocal(
-                            () => lines.add(_MasrafLineDraft()),
-                          ),
+                          onPressed: () =>
+                              setLocal(() => lines.add(_MasrafLineDraft())),
                           icon: const Icon(Icons.add_rounded, size: 18),
                           label: const Text('Kalem'),
                         ),
@@ -811,8 +809,9 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                           border: Border.all(
                             color: AppTheme.border.withValues(alpha: 0.7),
                           ),
-                          borderRadius:
-                              BorderRadius.circular(AppTheme.radiusSm),
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.radiusSm,
+                          ),
                         ),
                         child: Padding(
                           padding: const EdgeInsets.all(10),
@@ -823,19 +822,18 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                                   Expanded(
                                     child: Text(
                                       'Kalem ${i + 1}',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .labelLarge,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.labelLarge,
                                     ),
                                   ),
                                   if (lines.length > 1)
                                     IconButton(
                                       tooltip: 'Kalemi sil',
-                                      onPressed: () => setLocal(
-                                        () => lines.removeAt(i),
-                                      ),
+                                      onPressed: () =>
+                                          setLocal(() => lines.removeAt(i)),
                                       icon: const Icon(
-                                        Icons.delete_outline,
+                                        Icons.delete_rounded,
                                         size: 18,
                                       ),
                                     ),
@@ -855,8 +853,8 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                                       controller: lines[i].qtyCtrl,
                                       keyboardType:
                                           const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
+                                            decimal: true,
+                                          ),
                                       decoration: const InputDecoration(
                                         labelText: 'Miktar',
                                       ),
@@ -869,8 +867,8 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                                       controller: lines[i].priceCtrl,
                                       keyboardType:
                                           const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
+                                            decimal: true,
+                                          ),
                                       decoration: const InputDecoration(
                                         labelText: 'Birim fiyat *',
                                       ),
@@ -922,15 +920,15 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                     Text(
                       'Ara toplam: ${_money(alt)}  ·  KDV: ${_money(kdv)}  ·  Genel: ${_money(genel)}',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const Gap(4),
                     Text(
                       'FATURA_DURUMU=7, FATURA_NO=MSF… olarak Wolvox’a yazılır',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.textMuted,
-                          ),
+                        color: AppTheme.textMuted,
+                      ),
                     ),
                   ],
                 ),
@@ -983,9 +981,9 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
 
 class _MasrafLineDraft {
   _MasrafLineDraft()
-      : nameCtrl = TextEditingController(),
-        qtyCtrl = TextEditingController(text: '1'),
-        priceCtrl = TextEditingController();
+    : nameCtrl = TextEditingController(),
+      qtyCtrl = TextEditingController(text: '1'),
+      priceCtrl = TextEditingController();
 
   final TextEditingController nameCtrl;
   final TextEditingController qtyCtrl;
@@ -1023,9 +1021,9 @@ class _Banner extends StatelessWidget {
       child: Text(
         message,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AppTheme.softFg(color),
-              fontWeight: FontWeight.w600,
-            ),
+          color: AppTheme.softFg(color),
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -1148,10 +1146,7 @@ class _KasaList extends StatelessWidget {
 }
 
 class _TransferList extends StatelessWidget {
-  const _TransferList({
-    required this.items,
-    required this.onDelete,
-  });
+  const _TransferList({required this.items, required this.onDelete});
 
   final List<Map<String, dynamic>> items;
   final ValueChanged<Map<String, dynamic>> onDelete;
@@ -1173,8 +1168,7 @@ class _TransferList extends StatelessWidget {
         };
         return _DenseRow(
           index: index,
-          title:
-              '${_text(row['fromLabel'])} → ${_text(row['toLabel'])}',
+          title: '${_text(row['fromLabel'])} → ${_text(row['toLabel'])}',
           subtitle:
               '${_date(row['date'])} · ${_text(row['evrakNo'])} · ${_money(row['amount'] as num? ?? 0)}',
           trailing: AppBadge(
@@ -1190,10 +1184,7 @@ class _TransferList extends StatelessWidget {
 }
 
 class _MasrafList extends StatelessWidget {
-  const _MasrafList({
-    required this.items,
-    required this.onDelete,
-  });
+  const _MasrafList({required this.items, required this.onDelete});
 
   final List<Map<String, dynamic>> items;
   final ValueChanged<Map<String, dynamic>> onDelete;
@@ -1257,9 +1248,9 @@ class _SimpleList extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
             child: Text(
               title,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
           Divider(height: 1, color: AppTheme.border.withValues(alpha: 0.7)),
@@ -1269,8 +1260,8 @@ class _SimpleList extends StatelessWidget {
                     child: Text(
                       empty,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppTheme.textMuted,
-                          ),
+                        color: AppTheme.textMuted,
+                      ),
                     ),
                   )
                 : ListView.builder(
@@ -1319,18 +1310,18 @@ class _DenseRow extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const Gap(2),
                 Text(
                   subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.textMuted,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -1341,14 +1332,14 @@ class _DenseRow extends StatelessWidget {
               tooltip: 'Düzenle',
               visualDensity: VisualDensity.compact,
               onPressed: onEdit,
-              icon: const Icon(Icons.edit_outlined, size: 18),
+              icon: const Icon(Icons.edit_rounded, size: 18),
             ),
           if (onDelete != null)
             IconButton(
               tooltip: 'Sil',
               visualDensity: VisualDensity.compact,
               onPressed: onDelete,
-              icon: const Icon(Icons.delete_outline, size: 18),
+              icon: const Icon(Icons.delete_rounded, size: 18),
             ),
         ],
       ),

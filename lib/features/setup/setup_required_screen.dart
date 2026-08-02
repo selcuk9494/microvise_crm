@@ -35,10 +35,9 @@ class SetupRequiredScreen extends StatelessWidget {
                       configured
                           ? 'Supabase yapılandırması bulundu ama uygulama başlatılamadı.'
                           : 'Uygulamayı çalıştırmak için Supabase URL ve Publishable Key gerekli.',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(color: const Color(0xFF475569)),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
                     ),
                     const Gap(20),
                     _KeyRow(
@@ -65,9 +64,9 @@ class SetupRequiredScreen extends StatelessWidget {
                       child: Text(
                         'flutter run --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_PUBLISHABLE_KEY=...',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              fontFamily: 'monospace',
-                              color: const Color(0xFF0F172A),
-                            ),
+                          fontFamily: 'monospace',
+                          color: AppTheme.text,
+                        ),
                       ),
                     ),
                     const Gap(16),
@@ -77,12 +76,12 @@ class SetupRequiredScreen extends StatelessWidget {
                           child: OutlinedButton(
                             onPressed: () =>
                                 ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Supabase değerlerini girip uygulamayı yeniden başlatın.',
+                                  const SnackBar(
+                                    content: Text(
+                                      'Supabase değerlerini girip uygulamayı yeniden başlatın.',
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
                             child: const Text('Anladım'),
                           ),
                         ),
@@ -114,18 +113,17 @@ class _KeyRow extends StatelessWidget {
           child: Text(
             label,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF0F172A),
-                ),
+              fontWeight: FontWeight.w600,
+              color: AppTheme.text,
+            ),
           ),
         ),
         Expanded(
           child: Text(
             value,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: const Color(0xFF475569)),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
           ),
         ),
       ],

@@ -12,6 +12,7 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/empty_state_card.dart';
 import '../customers/customer_form_dialog.dart';
 import 'form_document_actions.dart';
 import 'fault_form_model.dart';
@@ -355,11 +356,15 @@ class _FaultFormScreenState extends ConsumerState<FaultFormScreen> {
             },
           );
         },
-        loading: () => const AppCard(child: SizedBox(height: 240)),
-        error: (e, _) => AppCard(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text('Yüklenemedi: $e'),
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => EmptyStateCard(
+          icon: Icons.cloud_off_rounded,
+          title: 'Arıza formları yüklenemedi',
+          message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
+          action: OutlinedButton.icon(
+            onPressed: () => ref.invalidate(faultFormsProvider),
+            icon: const Icon(Icons.refresh_rounded, size: 16),
+            label: const Text('Tekrar Dene'),
           ),
         ),
       ),
@@ -548,7 +553,7 @@ class _FaultRecordCard extends StatelessWidget {
             tooltip: record.isActive ? 'Pasife Al' : 'Aktifleştir',
             onPressed: onToggleActive,
             icon: record.isActive
-                ? Icons.archive_outlined
+                ? Icons.archive_rounded
                 : Icons.restore_rounded,
           ),
         if (canDeletePermanently && onDeletePermanently != null)
@@ -890,7 +895,7 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
               children: [
                 AppCard(
                   padding: const EdgeInsets.all(14),
-                  color: const Color(0xFFEEF2FF),
+                  color: AppTheme.softTint(AppTheme.primary, alpha: 0.12),
                   child: Row(
                     children: [
                       Icon(
@@ -905,7 +910,7 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
                           style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(
                                 fontWeight: FontWeight.w700,
-                                color: const Color(0xFF1E3A8A),
+                                color: AppTheme.softFg(AppTheme.primary),
                               ),
                         ),
                       ),
@@ -937,7 +942,10 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
                         if (selected != null)
                           AppCard(
                             padding: const EdgeInsets.all(14),
-                            color: AppTheme.softTint(AppTheme.error, alpha: 0.12),
+                            color: AppTheme.softTint(
+                              AppTheme.error,
+                              alpha: 0.12,
+                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -995,19 +1003,19 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
                     padding: EdgeInsets.symmetric(vertical: 24),
                     child: Center(child: CircularProgressIndicator()),
                   ),
-                  error: (e, _) => Text('Müşteriler yüklenemedi: $e'),
+                  error: (e, _) => const Text('Müşteriler yüklenemedi.'),
                 ),
                 const Gap(12),
                 AppCard(
                   padding: const EdgeInsets.all(14),
-                  color: const Color(0xFFFFFBEB),
+                  color: AppTheme.softTint(AppTheme.warning, alpha: 0.12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'Form Alanları (sarı alanlar)',
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: const Color(0xFF78350F),
+                          color: AppTheme.softFg(AppTheme.warning),
                         ),
                       ),
                       const Gap(12),

@@ -330,8 +330,9 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                     onInvoiceDateChanged: (value) =>
                         setState(() => _invoiceDate = normalizeAppDate(value)),
                     onDueDateChanged: (value) => setState(
-                      () => _dueDate =
-                          value == null ? null : normalizeAppDate(value),
+                      () => _dueDate = value == null
+                          ? null
+                          : normalizeAppDate(value),
                     ),
                     onCurrencyChanged: _setCurrency,
                     onExchangeRateChanged: (value) =>
@@ -428,17 +429,17 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                               label: 'Fatura Tarihi',
                               value: dateFormat.format(_invoiceDate),
                               initialDate: _invoiceDate,
-                              onPicked: (value) =>
-                                  setState(
-                                    () => _invoiceDate = normalizeAppDate(value),
-                                  ),
+                              onPicked: (value) => setState(
+                                () => _invoiceDate = normalizeAppDate(value),
+                              ),
                             ),
                           ),
                           const Gap(8),
                           SizedBox(
                             width: 118,
                             child: DropdownButtonFormField<String>(
-                              initialValue: _invoiceCurrencies.contains(_currency)
+                              initialValue:
+                                  _invoiceCurrencies.contains(_currency)
                                   ? _currency
                                   : 'USD',
                               isExpanded: true,
@@ -449,8 +450,9 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                                     child: Text(_currencyLabel(code)),
                                   ),
                               ],
-                              onChanged: (value) =>
-                                  _setCurrency(value ?? (_isSales ? 'USD' : 'TRY')),
+                              onChanged: (value) => _setCurrency(
+                                value ?? (_isSales ? 'USD' : 'TRY'),
+                              ),
                               decoration: const InputDecoration(
                                 labelText: 'Para',
                                 isDense: true,
@@ -1297,7 +1299,7 @@ class _AddressInfoPanel extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.home_work_outlined, size: 18, color: AppTheme.primary),
+              Icon(Icons.home_work_rounded, size: 18, color: AppTheme.primary),
               const Gap(8),
               Text(
                 'Adres ve Vergi Bilgisi',
@@ -1599,9 +1601,9 @@ class _InvoiceTableRow extends StatelessWidget {
                           .where(
                             (product) =>
                                 product.name.toLowerCase().contains(query) ||
-                                (product.code ?? '')
-                                    .toLowerCase()
-                                    .contains(query),
+                                (product.code ?? '').toLowerCase().contains(
+                                  query,
+                                ),
                           )
                           .take(12);
                     },
@@ -1622,7 +1624,9 @@ class _InvoiceTableRow extends StatelessWidget {
                       return TextFormField(
                         controller: controller,
                         focusNode: focusNode,
-                        decoration: const InputDecoration(hintText: 'Ürün seçin'),
+                        decoration: const InputDecoration(
+                          hintText: 'Ürün seçin',
+                        ),
                         validator: (value) =>
                             (value ?? '').trim().isEmpty ? 'Gerekli' : null,
                         onChanged: (value) {
@@ -1707,8 +1711,9 @@ class _InvoiceTableRow extends StatelessWidget {
                     children: [
                       Text(
                         money.format(item.lineTotal(pricesIncludeVat)),
-                        style: Theme.of(context).textTheme.titleSmall
-                            ?.copyWith(color: AppTheme.success),
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: AppTheme.success,
+                        ),
                       ),
                       Text(
                         'KDV ${money.format(item.taxAmount(pricesIncludeVat))}',
@@ -2446,7 +2451,7 @@ class _MobileItemsCard extends StatelessWidget {
                   onPressed: productsAsync.asData == null
                       ? null
                       : () => onAddFromStock(productsAsync.asData!.value),
-                  icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                  icon: const Icon(Icons.inventory_2_rounded, size: 18),
                   label: const Text('Stoktan'),
                 ),
               ),

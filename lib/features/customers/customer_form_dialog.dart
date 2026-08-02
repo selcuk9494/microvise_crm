@@ -359,7 +359,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
         decoration: const InputDecoration(
           labelText: 'VKN',
           hintText: '10 haneli vergi numarası',
-          prefixIcon: Icon(Icons.badge_outlined),
+          prefixIcon: Icon(Icons.badge_rounded),
           counterText: '',
         ),
         onFieldSubmitted: (_) =>
@@ -497,7 +497,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                         hintText: 'Müşterinin ana adresi',
                                         alignLabelWithHint: true,
                                         prefixIcon: Icon(
-                                          Icons.location_on_outlined,
+                                          Icons.location_on_rounded,
                                         ),
                                       ),
                                     ),
@@ -530,7 +530,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                       titleLabel: 'Telefon 1 Başlığı',
                                       phoneLabel: 'Telefon 1',
                                       phoneHint: '0 5xx xxx xx xx',
-                                      phoneIcon: Icons.phone_outlined,
+                                      phoneIcon: Icons.phone_rounded,
                                     ),
                                     const Gap(12),
                                     _phoneRow(
@@ -539,7 +539,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                       titleLabel: 'Telefon 2 Başlığı',
                                       phoneLabel: 'Telefon 2',
                                       phoneHint: '0 2xx xxx xx xx',
-                                      phoneIcon: Icons.phone_in_talk_outlined,
+                                      phoneIcon: Icons.phone_in_talk_rounded,
                                     ),
                                     const Gap(12),
                                     _phoneRow(
@@ -548,7 +548,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                       titleLabel: 'Telefon 3 Başlığı',
                                       phoneLabel: 'Telefon 3',
                                       phoneHint: 'Opsiyonel',
-                                      phoneIcon: Icons.phone_callback_outlined,
+                                      phoneIcon: Icons.phone_callback_rounded,
                                     ),
                                   ],
                                 ),
@@ -702,7 +702,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                               labelText: 'Adres',
                               hintText: 'Müşterinin ana adresi',
                               alignLabelWithHint: true,
-                              prefixIcon: Icon(Icons.location_on_outlined),
+                              prefixIcon: Icon(Icons.location_on_rounded),
                             ),
                           ),
                           const Gap(12),
@@ -765,7 +765,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                             titleLabel: 'Telefon 1 Başlığı',
                             phoneLabel: 'Telefon 1',
                             phoneHint: '0 5xx xxx xx xx',
-                            phoneIcon: Icons.phone_outlined,
+                            phoneIcon: Icons.phone_rounded,
                           ),
                           const Gap(12),
                           _phoneRow(
@@ -774,7 +774,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                             titleLabel: 'Telefon 2 Başlığı',
                             phoneLabel: 'Telefon 2',
                             phoneHint: '0 2xx xxx xx xx',
-                            phoneIcon: Icons.phone_in_talk_outlined,
+                            phoneIcon: Icons.phone_in_talk_rounded,
                           ),
                           const Gap(12),
                           _phoneRow(
@@ -783,7 +783,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                             titleLabel: 'Telefon 3 Başlığı',
                             phoneLabel: 'Telefon 3',
                             phoneHint: 'Opsiyonel',
-                            phoneIcon: Icons.phone_callback_outlined,
+                            phoneIcon: Icons.phone_callback_rounded,
                           ),
                           const Gap(12),
                           SwitchListTile.adaptive(
@@ -1148,8 +1148,8 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
         SnackBar(
           content: Text(
             widget.isEdit
-                ? 'Güncelleme başarısız: $e'
-                : 'Müşteri kaydedilemedi: $e',
+                ? 'Güncelleme başarısız. Lütfen tekrar deneyin.'
+                : 'Müşteri kaydedilemedi. Lütfen tekrar deneyin.',
           ),
         ),
       );
@@ -1288,7 +1288,7 @@ class _CustomerLocationCard extends StatelessWidget {
                   decoration: const InputDecoration(
                     labelText: 'Konum Başlığı',
                     hintText: 'Örn. Merkez Ofis',
-                    prefixIcon: Icon(Icons.place_outlined),
+                    prefixIcon: Icon(Icons.place_rounded),
                   ),
                 ),
               ),
@@ -1323,7 +1323,7 @@ class _CustomerLocationCard extends StatelessWidget {
               labelText: 'Adres',
               hintText: 'Cadde, sokak, no, ilçe...',
               alignLabelWithHint: true,
-              prefixIcon: Icon(Icons.home_work_outlined),
+              prefixIcon: Icon(Icons.home_work_rounded),
             ),
           ),
           const Gap(12),

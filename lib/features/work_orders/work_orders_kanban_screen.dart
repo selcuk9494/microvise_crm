@@ -8,12 +8,14 @@ import 'package:skeletonizer/skeletonizer.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
-import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/empty_state_card.dart';
+import '../../design_system/status_tone.dart';
 import 'work_order_model.dart';
 import 'work_order_close_sheet.dart';
 import 'work_order_detail_sheet.dart';
+import 'work_order_status_ui.dart';
 import 'work_orders_providers.dart';
 
 class WorkOrdersKanbanScreen extends ConsumerStatefulWidget {
@@ -24,7 +26,8 @@ class WorkOrdersKanbanScreen extends ConsumerStatefulWidget {
       _WorkOrdersKanbanScreenState();
 }
 
-class _WorkOrdersKanbanScreenState extends ConsumerState<WorkOrdersKanbanScreen> {
+class _WorkOrdersKanbanScreenState
+    extends ConsumerState<WorkOrdersKanbanScreen> {
   bool _handledCreateQuery = false;
 
   @override
@@ -50,8 +53,9 @@ class _WorkOrdersKanbanScreenState extends ConsumerState<WorkOrdersKanbanScreen>
     final boardAsync = ref.watch(workOrdersBoardProvider);
 
     return AppPageLayout(
-      title: 'İş Emirleri',
-      subtitle: 'Açık / Devam Ediyor / Kapalı filtreleri ile tek sayfa.',
+      title: 'İş Emirleri — Pano',
+      subtitle:
+          'Aynı iş emirlerini durum bazlı panoda görün, sürükleyerek durum değiştirin.',
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.read(workOrdersBoardProvider.notifier).refresh(),
@@ -60,9 +64,9 @@ class _WorkOrdersKanbanScreenState extends ConsumerState<WorkOrdersKanbanScreen>
         ),
         const Gap(10),
         OutlinedButton.icon(
-          onPressed: () => context.go('/is-emirleri/tablo'),
+          onPressed: () => context.go('/is-emirleri'),
           icon: const Icon(Icons.table_rows_rounded, size: 18),
-          label: const Text('Tablo'),
+          label: const Text('Tablo Görünümü'),
         ),
         const Gap(10),
         FilledButton.icon(
@@ -82,55 +86,72 @@ class _WorkOrdersKanbanScreenState extends ConsumerState<WorkOrdersKanbanScreen>
           }
           return _WorkOrdersStatusView(items: items);
         },
-        loading: () => Skeletonizer(
-          enabled: true,
-          child: _WorkOrdersStatusView(
-            items: const [
-              WorkOrder(
-                id: '1',
-                title: 'Hat yenileme / ACME Teknoloji',
-                customerId: 'c1',
-                customerName: 'ACME Teknoloji',
-                status: 'open',
-                branchId: null,
-                assignedTo: null,
-                scheduledDate: null,
-                isActive: true,
-              ),
-              WorkOrder(
-                id: '2',
-                title: 'Servis kapanış / Orion Endüstri',
-                customerId: 'c2',
-                customerName: 'Orion Endüstri',
-                status: 'in_progress',
-                branchId: null,
-                assignedTo: null,
-                scheduledDate: null,
-                isActive: true,
-              ),
-              WorkOrder(
-                id: '3',
-                title: 'Lisans uzatma / Nova Yazılım',
-                customerId: 'c3',
-                customerName: 'Nova Yazılım',
-                status: 'done',
-                branchId: null,
-                assignedTo: null,
-                scheduledDate: null,
-                isActive: true,
-              ),
-            ],
-          ),
-        ),
+        loading: () {
+          final width = MediaQuery.sizeOf(context).width;
+          const fakeItems = [
+            WorkOrder(
+              id: '1',
+              title: 'Hat yenileme / ACME Teknoloji',
+              customerId: 'c1',
+              customerName: 'ACME Teknoloji',
+              status: 'open',
+              branchId: null,
+              assignedTo: null,
+              scheduledDate: null,
+              isActive: true,
+            ),
+            WorkOrder(
+              id: '2',
+              title: 'Servis kapanış / Orion Endüstri',
+              customerId: 'c2',
+              customerName: 'Orion Endüstri',
+              status: 'in_progress',
+              branchId: null,
+              assignedTo: null,
+              scheduledDate: null,
+              isActive: true,
+            ),
+            WorkOrder(
+              id: '3',
+              title: 'Onay bekliyor / Delta Lojistik',
+              customerId: 'c4',
+              customerName: 'Delta Lojistik',
+              status: 'approval_pending',
+              branchId: null,
+              assignedTo: null,
+              scheduledDate: null,
+              isActive: true,
+            ),
+            WorkOrder(
+              id: '4',
+              title: 'Lisans uzatma / Nova Yazılım',
+              customerId: 'c3',
+              customerName: 'Nova Yazılım',
+              status: 'done',
+              branchId: null,
+              assignedTo: null,
+              scheduledDate: null,
+              isActive: true,
+            ),
+          ];
+          // Yükleme sırasında gerçek genişliğe uygun iskelet gösterilir —
+          // eskiden masaüstünde bile mobil sekmeli görünüm iskeleti
+          // gösteriliyordu, veri gelince ekran aniden panoya dönüşüyordu.
+          return Skeletonizer(
+            enabled: true,
+            child: width >= 980
+                ? const _KanbanBoard(items: fakeItems)
+                : const _WorkOrdersStatusView(items: fakeItems),
+          );
+        },
         error: (_, _) => AppCard(
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Text(
               'İş emirleri yüklenemedi. Yetki ve bağlantı ayarlarını kontrol edin.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: AppTheme.textMuted),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
             ),
           ),
         ),
@@ -146,25 +167,30 @@ class _WorkOrdersStatusView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final open = items.where((e) => e.status == 'open').toList(growable: false);
-    final inProgress =
-        items.where((e) => e.status == 'in_progress').toList(growable: false);
-    final done = items.where((e) => e.status == 'done').toList(growable: false);
+    // Tüm gerçek durumlar (approval_pending ve cancelled dahil) sekme
+    // olarak gösterilir — eskiden bu görünüm yalnızca 3 durumu tanıyordu,
+    // onay bekleyen/iptal edilen iş emirleri mobilde hiç görünmüyordu.
+    final byStatus = {
+      for (final status in kWorkOrderStatusOrder)
+        status: items.where((e) => e.status == status).toList(growable: false),
+    };
 
     return DefaultTabController(
-      length: 3,
+      length: kWorkOrderStatusOrder.length,
       child: AppCard(
         padding: EdgeInsets.zero,
         child: Column(
           children: [
-            const TabBar(
+            TabBar(
               isScrollable: true,
               tabAlignment: TabAlignment.start,
-              labelPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              labelPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
               tabs: [
-                Tab(text: 'Açık'),
-                Tab(text: 'Devam Ediyor'),
-                Tab(text: 'Kapalı'),
+                for (final status in kWorkOrderStatusOrder)
+                  Tab(text: workOrderStatusInfo(status).label),
               ],
             ),
             const Divider(height: 1),
@@ -172,9 +198,8 @@ class _WorkOrdersStatusView extends ConsumerWidget {
               height: 720,
               child: TabBarView(
                 children: [
-                  _WorkOrdersList(status: 'open', items: open),
-                  _WorkOrdersList(status: 'in_progress', items: inProgress),
-                  _WorkOrdersList(status: 'done', items: done),
+                  for (final status in kWorkOrderStatusOrder)
+                    _WorkOrdersList(status: status, items: byStatus[status]!),
                 ],
               ),
             ),
@@ -194,13 +219,14 @@ class _WorkOrdersList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (items.isEmpty) {
-      return Center(
-        child: Text(
-          'Kayıt yok.',
-          style: Theme.of(context)
-              .textTheme
-              .bodyMedium
-              ?.copyWith(color: AppTheme.textMuted),
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: EmptyStateCard(
+            icon: Icons.inbox_rounded,
+            title: 'Kayıt yok',
+            message: 'Bu durumda henüz iş emri bulunmuyor.',
+          ),
         ),
       );
     }
@@ -233,20 +259,6 @@ class _WorkOrderListTileState extends ConsumerState<_WorkOrderListTile> {
         ? null
         : DateFormat('d MMM y', 'tr_TR').format(w.scheduledDate!);
 
-    final tone = switch (w.status) {
-      'open' => AppBadgeTone.warning,
-      'in_progress' => AppBadgeTone.primary,
-      'done' => AppBadgeTone.success,
-      _ => AppBadgeTone.neutral,
-    };
-
-    final statusLabel = switch (w.status) {
-      'open' => 'Açık',
-      'in_progress' => 'Devam',
-      'done' => 'Kapalı',
-      _ => '—',
-    };
-
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -277,28 +289,24 @@ class _WorkOrderListTileState extends ConsumerState<_WorkOrderListTile> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            decoration: w.isActive
-                                ? null
-                                : TextDecoration.lineThrough,
-                          ),
+                        fontWeight: FontWeight.w800,
+                        decoration: w.isActive
+                            ? null
+                            : TextDecoration.lineThrough,
+                      ),
                     ),
                     const Gap(6),
                     Text(
-                      [
-                        w.customerName ?? '—',
-                        ?scheduled,
-                      ].join(' • '),
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: AppTheme.textMuted),
+                      [w.customerName ?? '—', ?scheduled].join(' • '),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
                     ),
                   ],
                 ),
               ),
               const Gap(10),
-              AppBadge(label: statusLabel, tone: tone),
+              workOrderStatusBadge(w.status, dense: true),
             ],
           ),
         ),
@@ -314,37 +322,24 @@ class _KanbanBoard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final open = items.where((e) => e.status == 'open').toList();
-    final inProgress = items.where((e) => e.status == 'in_progress').toList();
-    final done = items.where((e) => e.status == 'done').toList();
-
+    // Panonun 5 kolonu da kanonik durum sırasından (kWorkOrderStatusOrder)
+    // üretilir — eskiden yalnızca 3 sabit kolon vardı, onay bekleyen ve
+    // iptal edilen iş emirleri panoda hiç görünmüyordu.
     return SizedBox(
       height: 700,
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
           const Gap(2),
-          _KanbanColumn(
-            title: 'Açık',
-            tone: AppBadgeTone.warning,
-            status: 'open',
-            items: open,
-          ),
-          const Gap(12),
-          _KanbanColumn(
-            title: 'Devam Ediyor',
-            tone: AppBadgeTone.primary,
-            status: 'in_progress',
-            items: inProgress,
-          ),
-          const Gap(12),
-          _KanbanColumn(
-            title: 'Tamamlandı',
-            tone: AppBadgeTone.success,
-            status: 'done',
-            items: done,
-          ),
-          const Gap(2),
+          for (final status in kWorkOrderStatusOrder) ...[
+            _KanbanColumn(
+              status: status,
+              items: items
+                  .where((e) => e.status == status)
+                  .toList(growable: false),
+            ),
+            const Gap(12),
+          ],
         ],
       ),
     );
@@ -352,15 +347,8 @@ class _KanbanBoard extends ConsumerWidget {
 }
 
 class _KanbanColumn extends ConsumerWidget {
-  const _KanbanColumn({
-    required this.title,
-    required this.tone,
-    required this.status,
-    required this.items,
-  });
+  const _KanbanColumn({required this.status, required this.items});
 
-  final String title;
-  final AppBadgeTone tone;
   final String status;
   final List<WorkOrder> items;
 
@@ -369,10 +357,9 @@ class _KanbanColumn extends ConsumerWidget {
     return DragTarget<WorkOrder>(
       onWillAcceptWithDetails: (details) => details.data.status != status,
       onAcceptWithDetails: (details) async {
-        await ref.read(workOrdersBoardProvider.notifier).updateStatus(
-              workOrderId: details.data.id,
-              newStatus: status,
-            );
+        await ref
+            .read(workOrdersBoardProvider.notifier)
+            .updateStatus(workOrderId: details.data.id, newStatus: status);
       },
       builder: (context, candidateData, rejectedData) {
         final isOver = candidateData.isNotEmpty;
@@ -387,11 +374,14 @@ class _KanbanColumn extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        title,
+                        workOrderStatusInfo(status).label,
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
-                    AppBadge(label: items.length.toString(), tone: tone),
+                    DsStatusBadge(
+                      label: items.length.toString(),
+                      tone: workOrderStatusInfo(status).tone,
+                    ),
                   ],
                 ),
                 const Gap(10),
@@ -415,9 +405,7 @@ class _KanbanColumn extends ConsumerWidget {
                         ? Center(
                             child: Text(
                               'Bu sütunda kayıt yok.',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
+                              style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(color: AppTheme.textMuted),
                             ),
                           )
@@ -476,27 +464,34 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: w.isActive
-                            ? TextDecoration.none
-                            : TextDecoration.lineThrough,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    decoration: w.isActive
+                        ? TextDecoration.none
+                        : TextDecoration.lineThrough,
+                  ),
                 ),
               ),
               const Gap(8),
               if (w.status == 'done')
-                Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 18)
+                Icon(
+                  Icons.check_circle_rounded,
+                  color: AppTheme.success,
+                  size: 18,
+                )
               else
-                const Icon(Icons.open_in_new_rounded, size: 18, color: AppTheme.textMuted),
+                Icon(
+                  Icons.open_in_new_rounded,
+                  size: 18,
+                  color: AppTheme.textMuted,
+                ),
             ],
           ),
           const Gap(6),
           Text(
             w.customerName ?? '—',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: AppTheme.textMuted),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
           ),
         ],
       ),
@@ -525,7 +520,10 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
   }
 }
 
-Future<void> _showCreateWorkOrderDialog(BuildContext context, WidgetRef ref) async {
+Future<void> _showCreateWorkOrderDialog(
+  BuildContext context,
+  WidgetRef ref,
+) async {
   final client = ref.read(supabaseClientProvider);
   if (client == null) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -549,7 +547,8 @@ class _CreateWorkOrderDialog extends ConsumerStatefulWidget {
       _CreateWorkOrderDialogState();
 }
 
-class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> {
+class _CreateWorkOrderDialogState
+    extends ConsumerState<_CreateWorkOrderDialog> {
   final _formKey = GlobalKey<FormState>();
   final _customerController = TextEditingController();
   final _titleController = TextEditingController();
@@ -659,9 +658,9 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
 
     final customerId = _selectedCustomerId;
     if (customerId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Müşteri seçin.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Müşteri seçin.')));
       return;
     }
 
@@ -698,14 +697,14 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
 
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İş emri oluşturuldu.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('İş emri oluşturuldu.')));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İş emri oluşturulamadı.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('İş emri oluşturulamadı.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -744,7 +743,9 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
                     ),
                     IconButton(
                       tooltip: 'Kapat',
-                      onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -769,9 +770,7 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
                         Expanded(
                           child: Text(
                             'Müşteriler yükleniyor…',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
+                            style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(color: AppTheme.textMuted),
                           ),
                         ),
@@ -835,7 +834,9 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
                         ),
                       ),
                     ],
-                    onChanged: _saving ? null : (v) => setState(() => _selectedBranchId = v),
+                    onChanged: _saving
+                        ? null
+                        : (v) => setState(() => _selectedBranchId = v),
                     decoration: const InputDecoration(labelText: 'Şube'),
                   ),
                   const Gap(12),
@@ -848,7 +849,8 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
                         onTap: _saving
                             ? null
                             : () async {
-                                final initial = _scheduledDate ?? DateTime.now();
+                                final initial =
+                                    _scheduledDate ?? DateTime.now();
                                 final picked = await showDatePicker(
                                   context: context,
                                   initialDate: initial,
@@ -887,8 +889,12 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
                               ),
                             ),
                           ],
-                          onChanged: _saving ? null : (v) => setState(() => _assignedTo = v),
-                          decoration: const InputDecoration(labelText: 'Atanan Personel'),
+                          onChanged: _saving
+                              ? null
+                              : (v) => setState(() => _assignedTo = v),
+                          decoration: const InputDecoration(
+                            labelText: 'Atanan Personel',
+                          ),
                           validator: (v) {
                             if (!isAdmin) return null;
                             if ((v ?? '').isEmpty) return 'Personel gerekli.';
@@ -907,7 +913,8 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
                     hintText: 'Örn: Hat yenileme',
                   ),
                   validator: (v) {
-                    if (v == null || v.trim().length < 2) return 'Başlık gerekli.';
+                    if (v == null || v.trim().length < 2)
+                      return 'Başlık gerekli.';
                     return null;
                   },
                 ),
@@ -926,8 +933,9 @@ class _CreateWorkOrderDialogState extends ConsumerState<_CreateWorkOrderDialog> 
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed:
-                            _saving ? null : () => Navigator.of(context).pop(),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Vazgeç'),
                       ),
                     ),
@@ -987,7 +995,11 @@ class _BranchOption {
 }
 
 class _UserOption {
-  const _UserOption({required this.id, required this.fullName, required this.role});
+  const _UserOption({
+    required this.id,
+    required this.fullName,
+    required this.role,
+  });
 
   final String id;
   final String? fullName;

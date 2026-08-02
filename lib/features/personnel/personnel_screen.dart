@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
@@ -9,6 +10,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/empty_state_card.dart';
 
 final personnelUsersProvider = FutureProvider<List<PersonnelUser>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
@@ -93,9 +95,9 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   'Bu sayfa sadece admin için erişilebilir.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
             )
@@ -211,10 +213,12 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                                   ),
                                   label: const Text('Temizle'),
                                   style: FilledButton.styleFrom(
-                                    backgroundColor:
-                                        AppTheme.softTint(AppTheme.error),
-                                    foregroundColor:
-                                        AppTheme.softFg(AppTheme.error),
+                                    backgroundColor: AppTheme.softTint(
+                                      AppTheme.error,
+                                    ),
+                                    foregroundColor: AppTheme.softFg(
+                                      AppTheme.error,
+                                    ),
                                     minimumSize: const Size(0, 40),
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 14,
@@ -250,8 +254,11 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                       const Gap(12),
                       Expanded(
                         child: filtered.isEmpty
-                            ? const AppCard(
-                                child: Center(child: Text('Kayıt bulunamadı.')),
+                            ? const EmptyStateCard(
+                                icon: Icons.badge_rounded,
+                                title: 'Kayıt bulunamadı',
+                                message:
+                                    'Filtrelerinize uyan bir personel yok.',
                               )
                             : AppCard(
                                 padding: EdgeInsets.zero,
@@ -277,16 +284,15 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                   ),
                 );
               },
-              loading: () => const AppCard(child: SizedBox(height: 240)),
-              error: (_, _) => AppCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    'Personel listesi yüklenemedi.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.textMuted,
-                    ),
-                  ),
+              loading: () => const _PersonnelListSkeleton(),
+              error: (_, _) => EmptyStateCard(
+                icon: Icons.cloud_off_rounded,
+                title: 'Personel listesi yüklenemedi',
+                message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
+                action: OutlinedButton.icon(
+                  onPressed: () => ref.invalidate(personnelUsersProvider),
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Tekrar Dene'),
                 ),
               ),
             ),
@@ -300,6 +306,63 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => const _CreatePersonnelDialog(),
+    );
+  }
+}
+
+/// Personel listesi yüklenirken gösterilen iskelet — önceden boş bir
+/// `SizedBox(height: 240)` kartıydı. Gerçek satırlar (`_UserRow`) canlı
+/// izin/rol düzenleme mantığı içerdiği için burada tekrar üretilmiyor;
+/// bunun yerine tabloyla aynı genel şekli (satır + rol rozeti) taklit eden
+/// nötr bir placeholder kullanılıyor.
+class _PersonnelListSkeleton extends StatelessWidget {
+  const _PersonnelListSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeletonizer(
+      enabled: true,
+      child: AppCard(
+        padding: EdgeInsets.zero,
+        child: Column(
+          children: [
+            const _Header(),
+            const Divider(height: 1),
+            for (var i = 0; i < 6; i++) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    const CircleAvatar(radius: 14),
+                    const Gap(12),
+                    Expanded(
+                      child: Text(
+                        'Örnek Kullanıcı Adı',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                    const Gap(12),
+                    const SizedBox(
+                      width: 110,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: AppBadge(
+                          label: 'Personel',
+                          tone: AppBadgeTone.neutral,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (i != 5) const Divider(height: 1),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -855,9 +918,9 @@ class _UserRowState extends ConsumerState<_UserRow> {
                     widget.user.email?.trim().isNotEmpty ?? false
                         ? widget.user.email!
                         : widget.user.id,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textMuted,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                   const Gap(12),
                   TextField(
@@ -1058,9 +1121,9 @@ class _UserRowState extends ConsumerState<_UserRow> {
                       : user.id,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -1105,13 +1168,13 @@ class _UserRowState extends ConsumerState<_UserRow> {
           IconButton(
             tooltip: 'Düzenle',
             onPressed: _saving ? null : _editUser,
-            icon: const Icon(Icons.edit_outlined),
+            icon: const Icon(Icons.edit_rounded),
           ),
           const Gap(2),
           IconButton(
             tooltip: 'Yetkiler',
             onPressed: _saving ? null : _editPermissions,
-            icon: const Icon(Icons.admin_panel_settings_outlined),
+            icon: const Icon(Icons.admin_panel_settings_rounded),
           ),
           const Gap(2),
           IconButton(
@@ -1334,9 +1397,9 @@ class _CreatePersonnelDialogState
                   ),
                   child: Text(
                     'Not: Kullanıcı bu bilgiler ile sisteme giriş yapar.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textMuted,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ),
                 const Gap(18),
