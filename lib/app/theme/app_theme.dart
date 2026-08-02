@@ -116,44 +116,44 @@ class AppTheme {
     loginC: Color(0xFF151C2C),
   );
 
-  /// Dark — Option C Dual Surface: graphite shell, tonal cards, blue accents.
+  /// Dark — Option D Warm Charcoal: zinc shell, raised cards, blue chrome only.
   static const _AppPalette _dark = _AppPalette(
-    primary: Color(0xFF3B82F6),
-    primaryDark: Color(0xFF60A5FA),
-    primaryDeep: Color(0xFF93C5FD),
+    primary: Color(0xFF2563EB),
+    primaryDark: Color(0xFF3B82F6),
+    primaryDeep: Color(0xFF60A5FA),
     primarySoft: Color(0xFF1E3A5F),
-    accent: Color(0xFF60A5FA),
-    background: Color(0xFF0B0F14),
-    backgroundAlt: Color(0xFF0E131A),
-    sidebar: Color(0xFF080B10),
-    sidebarText: Color(0xFFF3F4F6),
-    sidebarTextMuted: Color(0xFF9CA3AF),
-    surface: Color(0xFF141B24),
-    surfaceMuted: Color(0xFF10161E),
-    surfaceSoft: Color(0xFF1A222D),
-    border: Color(0xFF243041),
-    borderStrong: Color(0xFF374151),
-    text: Color(0xFFF9FAFB),
-    textSoft: Color(0xFFD1D5DB),
-    textMuted: Color(0xFF9CA3AF),
+    accent: Color(0xFF3B82F6),
+    background: Color(0xFF18181B),
+    backgroundAlt: Color(0xFF1C1C1F),
+    sidebar: Color(0xFF09090B),
+    sidebarText: Color(0xFFFAFAFA),
+    sidebarTextMuted: Color(0xFFA1A1AA),
+    surface: Color(0xFF27272A),
+    surfaceMuted: Color(0xFF1F1F23),
+    surfaceSoft: Color(0xFF2E2E32),
+    border: Color(0xFF3F3F46),
+    borderStrong: Color(0xFF52525B),
+    text: Color(0xFFFAFAFA),
+    textSoft: Color(0xFFD4D4D8),
+    textMuted: Color(0xFFA1A1AA),
     success: Color(0xFF22C55E),
     warning: Color(0xFFF59E0B),
     error: Color(0xFFEF4444),
-    hint: Color(0xFF9CA3AF),
+    hint: Color(0xFF71717A),
     secondaryContainer: Color(0xFF1E3A5F),
     onSecondaryContainer: Color(0xFF93C5FD),
-    tertiaryContainer: Color(0xFF1A222D),
-    canvasTop: Color(0xFF0E131A),
-    canvasMid: Color(0xFF0B0F14),
-    canvasBottom: Color(0xFF07090D),
-    loginA: Color(0xFF080B10),
-    loginB: Color(0xFF0B0F14),
-    loginC: Color(0xFF141B24),
+    tertiaryContainer: Color(0xFF2E2E32),
+    canvasTop: Color(0xFF1C1C1F),
+    canvasMid: Color(0xFF18181B),
+    canvasBottom: Color(0xFF121214),
+    loginA: Color(0xFF09090B),
+    loginB: Color(0xFF18181B),
+    loginC: Color(0xFF27272A),
   );
 
   static _AppPalette get _p => isDark ? _dark : _light;
 
-  // Hybrid A/C: Inter UI, ink rail (light) / dual graphite (dark), blue accents.
+  // Hybrid A/D: Inter UI, ink rail (light) / warm charcoal (dark), blue accents.
   static Color get primary => _p.primary;
   static Color get primaryDark => _p.primaryDark;
   static Color get primaryDeep => _p.primaryDeep;
@@ -203,26 +203,29 @@ class AppTheme {
   /// @Deprecated — use [blue] / [primary]; leftover name for call sites.
   static const Color teal = blueBright;
 
-  /// KPI icon well — harmonious tint in light (A); vivid soft well in dark (C).
+  /// KPI icon well — soft tint in light (A); blue-slate tint in dark (D).
   static BoxDecoration categoryIconWell(Color accent, {double radius = 10}) =>
       BoxDecoration(
-        color: accent.withValues(alpha: isDark ? 0.20 : 0.10),
+        color: accent.withValues(alpha: isDark ? 0.18 : 0.10),
         borderRadius: BorderRadius.circular(radius),
+        border: isDark
+            ? Border.all(color: border.withValues(alpha: 0.55), width: 1)
+            : null,
       );
 
   static Color categoryIconFg(Color accent) =>
       isDark ? accent : softFg(accent);
 
-  /// Sidebar nav active surface — soft ink pill (A) / blue border pill (C).
+  /// Sidebar nav active surface — soft ink pill (A) / blue fill pill (D).
   static BoxDecoration sidebarNavDecoration({required bool active}) {
     if (!active) {
       return const BoxDecoration(color: Colors.transparent);
     }
     if (isDark) {
       return BoxDecoration(
-        color: primary.withValues(alpha: 0.12),
+        color: primary.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(radiusXs),
-        border: Border.all(color: primary.withValues(alpha: 0.55), width: 1),
+        border: Border.all(color: primary.withValues(alpha: 0.45), width: 1),
       );
     }
     return BoxDecoration(
@@ -251,11 +254,11 @@ class AppTheme {
     vertical: 16,
   );
   static const EdgeInsets pagePaddingMobile = EdgeInsets.symmetric(
-    horizontal: 14,
-    vertical: 12,
+    horizontal: 16,
+    vertical: 14,
   );
 
-  /// Light (A): refined soft elevation. Dark (C): tonal only — no glow.
+  /// Light (A): refined soft elevation. Dark (D): border-separated cards — no glow.
   static List<BoxShadow> get cardShadow => isDark
       ? const <BoxShadow>[]
       : [
@@ -291,7 +294,10 @@ class AppTheme {
   static BoxDecoration get panelSurface => BoxDecoration(
     color: surface,
     borderRadius: BorderRadius.circular(radiusMd),
-    border: Border.all(color: border.withValues(alpha: isDark ? 0.92 : 0.72)),
+    border: Border.all(
+      color: border.withValues(alpha: isDark ? 1.0 : 0.72),
+      width: isDark ? 1 : 1,
+    ),
     boxShadow: cardShadow,
   );
 
@@ -438,7 +444,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(radiusMd),
           side: BorderSide(
             color: p.border.withValues(
-              alpha: brightness == Brightness.dark ? 0.85 : 0.65,
+              alpha: brightness == Brightness.dark ? 1.0 : 0.65,
             ),
           ),
         ),

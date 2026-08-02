@@ -70,129 +70,91 @@ class _AppPageLayoutState extends State<AppPageLayout> {
       final hasSubtitle = widget.subtitle?.trim().isNotEmpty ?? false;
       final hasActions =
           normalizedActions != null && normalizedActions.isNotEmpty;
-      final hasExtras = hasSubtitle || hasActions;
-      final expandedHeight = !hasExtras
-          ? kToolbarHeight
-          : hasActions
-          ? (widget.compactHeader ? 128.0 : 150.0)
-          : (widget.compactHeader ? 88.0 : 96.0);
+      final titleStyle = Theme.of(context).textTheme.titleLarge?.copyWith(
+        fontWeight: FontWeight.w800,
+        height: 1.2,
+        letterSpacing: -0.3,
+      );
+      final subtitleStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+        color: AppTheme.textMuted,
+        height: 1.35,
+        fontSize: widget.compactHeader ? 12.5 : 13.5,
+      );
 
+      // Fixed column header — avoids SliverAppBar title/flexibleSpace overlap
+      // on notched phones (title stacking on subtitle).
       return Scaffold(
         backgroundColor: AppTheme.background,
         body: DecoratedBox(
           decoration: AppTheme.pageCanvas,
-          child: NestedScrollView(
-            headerSliverBuilder: (context, innerBoxIsScrolled) => [
-              SliverAppBar(
-                backgroundColor: AppTheme.surface.withValues(alpha: 0.98),
-                surfaceTintColor: Colors.transparent,
-                foregroundColor: AppTheme.text,
-                elevation: 0,
-                pinned: true,
-                floating: false,
-                expandedHeight: expandedHeight,
-                toolbarHeight: kToolbarHeight,
-                titleSpacing: horizontalPadding,
-                title: Text(
-                  widget.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: AppTheme.surface.withValues(alpha: 0.98),
+                    border: Border(
+                      bottom: BorderSide(
+                        color: AppTheme.border.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ),
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    widget.compactHeader ? 10 : 14,
+                    horizontalPadding,
+                    widget.compactHeader ? 12 : 14,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: titleStyle,
+                      ),
+                      if (hasSubtitle) ...[
+                        SizedBox(height: widget.compactHeader ? 5 : 6),
+                        Text(
+                          widget.subtitle!,
+                          maxLines: widget.compactHeader ? 1 : 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: subtitleStyle,
+                        ),
+                      ],
+                      if (hasActions) ...[
+                        SizedBox(height: widget.compactHeader ? 10 : 12),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              for (final w in normalizedActions) ...[
+                                w,
+                                const SizedBox(width: 10),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-                flexibleSpace: hasExtras
-                    ? LayoutBuilder(
-                        builder: (context, constraints) {
-                          if (constraints.maxHeight <= kToolbarHeight + 1) {
-                            return const SizedBox.shrink();
-                          }
-                          final t =
-                              ((constraints.maxHeight - kToolbarHeight) /
-                                      (expandedHeight - kToolbarHeight))
-                                  .clamp(0.0, 1.0);
-                          final opacity = Curves.easeOut.transform(t);
-
-                          return ClipRect(
-                            child: SafeArea(
-                              bottom: false,
-                              child: Align(
-                                alignment: Alignment.bottomLeft,
-                                child: Opacity(
-                                  opacity: opacity,
-                                  child: Padding(
-                                    padding: EdgeInsets.fromLTRB(
-                                      horizontalPadding,
-                                      0,
-                                      horizontalPadding,
-                                      12,
-                                    ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        if (widget.subtitle != null)
-                                          Text(
-                                            widget.subtitle!,
-                                            maxLines: widget.compactHeader
-                                                ? 1
-                                                : 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodyMedium
-                                                ?.copyWith(
-                                                  color: AppTheme.textMuted,
-                                                  fontSize: widget.compactHeader
-                                                      ? 12
-                                                      : null,
-                                                ),
-                                          ),
-                                        if (normalizedActions != null &&
-                                            normalizedActions.isNotEmpty) ...[
-                                          SizedBox(
-                                            height: widget.compactHeader
-                                                ? 8
-                                                : 10,
-                                          ),
-                                          SingleChildScrollView(
-                                            scrollDirection: Axis.horizontal,
-                                            child: Row(
-                                              children: [
-                                                for (final w
-                                                    in normalizedActions) ...[
-                                                  w,
-                                                  const SizedBox(width: 10),
-                                                ],
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      )
-                    : null,
-              ),
-            ],
-            body: SafeArea(
-              top: false,
-              bottom: false,
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  horizontalPadding,
-                  10,
-                  horizontalPadding,
-                  16,
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      12,
+                      horizontalPadding,
+                      16,
+                    ),
+                    child: widget.body,
+                  ),
                 ),
-                child: widget.body,
-              ),
+              ],
             ),
           ),
         ),
@@ -230,8 +192,11 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                             : 10,
                       ),
                       decoration: AppTheme.panelSurface,
-                      child: isMobile
-                          ? Column(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
@@ -239,87 +204,46 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                                   style: Theme.of(context)
                                       .textTheme
                                       .headlineSmall
-                                      ?.copyWith(fontWeight: FontWeight.w800),
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: widget.compactHeader
+                                            ? 20
+                                            : null,
+                                      ),
                                 ),
-                                if (widget.subtitle != null)
+                                if (!widget.compactHeader &&
+                                    widget.subtitle != null)
                                   Padding(
-                                    padding: const EdgeInsets.only(top: 6),
+                                    padding: const EdgeInsets.only(top: 4),
                                     child: Text(
                                       widget.subtitle!,
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodyMedium
-                                          ?.copyWith(color: AppTheme.textMuted),
-                                    ),
-                                  ),
-                                if (normalizedActions != null) ...[
-                                  const SizedBox(height: 8),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: normalizedActions,
-                                  ),
-                                ],
-                              ],
-                            )
-                          : Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        widget.title,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .headlineSmall
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w800,
-                                              fontSize: widget.compactHeader
-                                                  ? 20
-                                                  : null,
-                                            ),
-                                      ),
-                                      if (!widget.compactHeader &&
-                                          widget.subtitle != null)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            top: 4,
+                                          ?.copyWith(
+                                            color: AppTheme.textMuted,
+                                            fontSize: 13,
                                           ),
-                                          child: Text(
-                                            widget.subtitle!,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodyMedium
-                                                ?.copyWith(
-                                                  color: AppTheme.textMuted,
-                                                  fontSize: widget.compactHeader
-                                                      ? 12
-                                                      : 13,
-                                                ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                if (normalizedActions != null)
-                                  Flexible(
-                                    child: Align(
-                                      alignment: Alignment.topRight,
-                                      child: Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        alignment: WrapAlignment.end,
-                                        crossAxisAlignment:
-                                            WrapCrossAlignment.center,
-                                        children: normalizedActions,
-                                      ),
                                     ),
                                   ),
                               ],
                             ),
+                          ),
+                          if (normalizedActions != null)
+                            Flexible(
+                              child: Align(
+                                alignment: Alignment.topRight,
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  alignment: WrapAlignment.end,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: normalizedActions,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

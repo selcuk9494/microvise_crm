@@ -30,7 +30,8 @@ class _AppCardState extends State<AppCard> {
     final child = Padding(padding: widget.padding, child: widget.child);
     final clickable = widget.onTap != null;
     final baseBorder =
-        widget.borderColor ?? AppTheme.border.withValues(alpha: AppTheme.isDark ? 0.9 : 0.65);
+        widget.borderColor ??
+        AppTheme.border.withValues(alpha: AppTheme.isDark ? 1.0 : 0.65);
 
     final content = Material(
       type: MaterialType.transparency,

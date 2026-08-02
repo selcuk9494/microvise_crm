@@ -816,7 +816,9 @@ class _MetricsGrid extends StatelessWidget {
               title: 'Açık İş Emirleri',
               value: metrics.openWorkOrders.toString(),
               icon: Icons.view_kanban_outlined,
-              accent: AppTheme.metricOrange,
+              accent: metrics.openWorkOrders > 0
+                  ? AppTheme.metricAmber
+                  : AppTheme.metricBlue,
               onTap: () => context.go('/is-emirleri'),
             ),
           if (canSeeWorkOrders && canSeeTileInProgressWorkOrders)
@@ -832,7 +834,7 @@ class _MetricsGrid extends StatelessWidget {
               title: 'Bugünkü İşler',
               value: metrics.todayWorkOrders.toString(),
               icon: Icons.today_outlined,
-              accent: AppTheme.metricPurple,
+              accent: AppTheme.blueBright,
               onTap: () => context.go('/is-emirleri'),
             ),
           if (canSeeProducts && canSeeTileExpiringSoon)
@@ -840,7 +842,9 @@ class _MetricsGrid extends StatelessWidget {
               title: 'Süresi Dolanlar',
               value: metrics.expiringSoon.toString(),
               icon: Icons.warning_amber_outlined,
-              accent: AppTheme.metricRed,
+              accent: metrics.expiringSoon > 0
+                  ? AppTheme.metricAmber
+                  : AppTheme.metricBlue,
               onTap: () => context.go('/urunler'),
             ),
           if (canSeeReports && canSeeTileRevenue)
@@ -848,11 +852,11 @@ class _MetricsGrid extends StatelessWidget {
               title: 'Gelir (Bu Ay)',
               value: money.format(metrics.revenue),
               icon: Icons.payments_outlined,
-              accent: AppTheme.metricGreen,
+              accent: AppTheme.metricBlue,
               subtitle: revenueChangeText,
               subtitleColor: revenueChange >= 0
-                  ? AppTheme.metricGreen
-                  : AppTheme.metricRed,
+                  ? AppTheme.success
+                  : AppTheme.error,
               onTap: () => context.go('/raporlar'),
             ),
           if (canSeeBilling && canSeeTileOpenInvoices)
@@ -869,7 +873,9 @@ class _MetricsGrid extends StatelessWidget {
               title: 'Fatura Kuyruğu',
               value: metrics.invoiceQueuePending.toString(),
               icon: Icons.receipt_outlined,
-              accent: AppTheme.metricYellow,
+              accent: metrics.invoiceQueuePending > 0
+                  ? AppTheme.metricAmber
+                  : AppTheme.metricBlue,
               onTap: () => context.go('/faturalama'),
             ),
           if (canSeeProducts && canSeeTileLowStock)
@@ -878,8 +884,8 @@ class _MetricsGrid extends StatelessWidget {
               value: metrics.lowStockProducts.toString(),
               icon: Icons.inventory_2_outlined,
               accent: metrics.lowStockProducts > 0
-                  ? AppTheme.metricOrange
-                  : AppTheme.metricGreen,
+                  ? AppTheme.metricAmber
+                  : AppTheme.metricBlue,
               onTap: () => context.go('/urunler'),
             ),
         ];

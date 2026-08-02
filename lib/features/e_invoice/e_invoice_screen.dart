@@ -493,13 +493,13 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               'Alış',
               purchases.toString(),
               Icons.south_west_outlined,
-              AppTheme.metricOrange,
+              AppTheme.blueBright,
             ),
             _Metric(
               'Açık Fatura',
               open.toString(),
               Icons.pending_actions_outlined,
-              AppTheme.metricYellow,
+              open > 0 ? AppTheme.metricAmber : AppTheme.metricBlue,
             ),
             _Metric(
               'TL Toplam',
@@ -511,7 +511,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               'USD Toplam',
               usdMoney.format(usdTotal),
               Icons.attach_money_outlined,
-              AppTheme.blueBright,
+              AppTheme.primaryDark,
             ),
           ],
         ),
@@ -2687,76 +2687,32 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         (invoice.eInvoiceStatus == 'sent' &&
             invoice.eInvoiceEnvironment == 'test');
 
+    // Mobile Option D: icon chrome + overflow — no cramped labeled strip.
     if (mobile) {
       final actions = <Widget>[
-        if (!alreadySent)
-          _InvoiceLabeledAction(
-            label: isManual ? 'Geri al' : 'Manuel',
-            tooltip: isManual
-                ? 'Manuel fatura işaretini geri al'
-                : 'Manuel fatura kesildi olarak işaretle',
-            icon: isManual ? Icons.undo_outlined : Icons.verified_outlined,
-            tone: isManual
-                ? _InvoiceActionTone.info
-                : _InvoiceActionTone.warning,
-            onPressed: _busy ? null : _toggleManual,
-          ),
-        if (canMarkManualSent)
-          _InvoiceLabeledAction(
-            label: isManualSent ? 'Geri al' : 'Man.Gön.',
-            tooltip: isManualSent
-                ? 'Manuel gönderildi işaretini geri al'
-                : 'Test sonrası manuel gönderildi olarak işaretle',
-            icon: isManualSent
-                ? Icons.undo_outlined
-                : Icons.mark_email_read_outlined,
-            tone: isManualSent
-                ? _InvoiceActionTone.info
-                : _InvoiceActionTone.primary,
-            onPressed: _busy ? null : _toggleManualSent,
-          ),
-        if (alreadySent) ...[
-          _InvoiceLabeledAction(
-            label: 'PDF',
-            tooltip: 'PDF oluştur / aç',
-            icon: Icons.picture_as_pdf_outlined,
-            tone: _InvoiceActionTone.danger,
-            onPressed: _busy ? null : _printOfficialPdf,
-          ),
-          _InvoiceLabeledAction(
-            label: 'Maliye',
-            tooltip: 'Maliye sayfasını aç',
-            icon: Icons.account_balance_outlined,
-            tone: _InvoiceActionTone.info,
-            onPressed: _busy ? null : _openMaliyeLink,
-          ),
-        ] else
-          _InvoiceLabeledAction(
-            label: 'Yazdır',
-            tooltip: 'PDF yazdır',
-            icon: Icons.print_outlined,
-            onPressed: _busy ? null : _print,
-          ),
-        if (!invoice.isActive)
-          _InvoiceLabeledAction(
-            label: 'Sil',
-            tooltip: 'Kalıcı sil',
-            icon: Icons.delete_outline_rounded,
-            tone: _InvoiceActionTone.danger,
-            onPressed: _busy ? null : _delete,
-          ),
-        _InvoiceLabeledAction(
-          label: 'Gönder',
+        _InvoiceIconAction(
           tooltip: sendTooltip,
           icon: _busy ? Icons.hourglass_top_outlined : Icons.send_outlined,
           tone: _InvoiceActionTone.primary,
           onPressed: _busy || !canSend ? null : () => _prepare(send: true),
         ),
+        if (alreadySent)
+          _InvoiceIconAction(
+            tooltip: 'PDF oluştur / aç',
+            icon: Icons.picture_as_pdf_outlined,
+            tone: _InvoiceActionTone.danger,
+            onPressed: _busy ? null : _printOfficialPdf,
+          )
+        else
+          _InvoiceIconAction(
+            tooltip: 'PDF yazdır',
+            icon: Icons.print_outlined,
+            onPressed: _busy ? null : _print,
+          ),
         if ((!invoice.isLinkedToAkinsoft || invoice.needsAkinsoftNumberSync) &&
             invoice.isActive &&
             invoice.status != 'cancelled')
-          _InvoiceLabeledAction(
-            label: invoice.needsAkinsoftNumberSync ? 'ERP No' : 'ERP',
+          _InvoiceIconAction(
             tooltip: invoice.needsAkinsoftNumberSync
                 ? 'Akınsoft fatura numarasını Maliye no ile güncelle'
                 : 'Akınsoft’a fatura gönder',
@@ -2766,62 +2722,98 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             tone: _InvoiceActionTone.success,
             onPressed: _busy ? null : _pushToAkinsoft,
           ),
-        PopupMenuButton<String>(
-          tooltip: 'Diğer işlemler',
-          enabled: !_busy,
-          padding: EdgeInsets.zero,
-          onSelected: (value) {
-            switch (value) {
-              case 'statement':
-                _statement();
-              case 'payload':
-                _prepare(send: false);
-            }
-          },
-          itemBuilder: (context) => [
-            const PopupMenuItem(value: 'statement', child: Text('Cari ekstre PDF')),
-            const PopupMenuItem(
-              value: 'payload',
-              child: Text('Gönderim verisini hazırla'),
-            ),
-          ],
-          child: Container(
-            width: 40,
-            height: 40,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceMuted,
-              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-              border: Border.all(color: AppTheme.border),
-            ),
-            child: Icon(
-              Icons.more_horiz_outlined,
-              size: 20,
-              color: AppTheme.text,
-            ),
-          ),
-        ),
-        _InvoiceLabeledAction(
-          label: 'Düzenle',
+        _InvoiceIconAction(
           tooltip: 'Düzenle',
           icon: Icons.edit_outlined,
           onPressed: _busy ? null : _edit,
         ),
-        _InvoiceLabeledAction(
-          label: invoice.isActive ? 'Pasif' : 'Aktif',
-          tooltip: invoice.isActive ? 'Pasife al' : 'Tekrar aktifleştir',
-          icon: invoice.isActive
-              ? Icons.visibility_off_outlined
-              : Icons.visibility_outlined,
-          tone: invoice.isActive
-              ? _InvoiceActionTone.warning
-              : _InvoiceActionTone.success,
-          onPressed: _busy ? null : _toggleActive,
+        PopupMenuButton<String>(
+          tooltip: 'Diğer işlemler',
+          enabled: !_busy,
+          padding: EdgeInsets.zero,
+          offset: const Offset(0, 36),
+          onSelected: (value) {
+            switch (value) {
+              case 'manual':
+                _toggleManual();
+              case 'manual_sent':
+                _toggleManualSent();
+              case 'maliye':
+                _openMaliyeLink();
+              case 'statement':
+                _statement();
+              case 'payload':
+                _prepare(send: false);
+              case 'active':
+                _toggleActive();
+              case 'delete':
+                _delete();
+            }
+          },
+          itemBuilder: (context) => [
+            if (!alreadySent)
+              PopupMenuItem(
+                value: 'manual',
+                child: Text(
+                  isManual
+                      ? 'Manuel işareti geri al'
+                      : 'Manuel fatura kesildi',
+                ),
+              ),
+            if (canMarkManualSent)
+              PopupMenuItem(
+                value: 'manual_sent',
+                child: Text(
+                  isManualSent
+                      ? 'Manuel gönderildi işaretini geri al'
+                      : 'Manuel Gönderildi olarak işaretle',
+                ),
+              ),
+            if (alreadySent)
+              const PopupMenuItem(
+                value: 'maliye',
+                child: Text('Maliye sayfasını aç'),
+              ),
+            const PopupMenuItem(
+              value: 'statement',
+              child: Text('Cari ekstre PDF'),
+            ),
+            const PopupMenuItem(
+              value: 'payload',
+              child: Text('Gönderim verisini hazırla'),
+            ),
+            PopupMenuItem(
+              value: 'active',
+              child: Text(invoice.isActive ? 'Pasife al' : 'Aktifleştir'),
+            ),
+            if (!invoice.isActive)
+              const PopupMenuItem(
+                value: 'delete',
+                child: Text('Kalıcı sil'),
+              ),
+          ],
+          child: Container(
+            width: AppDenseList.action + 4,
+            height: AppDenseList.action + 4,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceMuted.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+              border: Border.all(
+                color: AppTheme.border.withValues(alpha: 0.75),
+              ),
+            ),
+            child: Icon(
+              Icons.more_horiz_outlined,
+              size: AppDenseList.actionIcon,
+              color: AppTheme.textSoft,
+            ),
+          ),
         ),
       ];
       final spaced = <Widget>[];
       for (var i = 0; i < actions.length; i++) {
-        if (i > 0) spaced.add(const Gap(4));
+        if (i > 0) spaced.add(const Gap(6));
         spaced.add(actions[i]);
       }
       return spaced;
@@ -3164,144 +3156,141 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     String sendTooltip,
     bool canSend,
   ) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: AppDenseList.rowFill(widget.index, selected: widget.selected),
-        border: Border(bottom: AppDenseList.hairline),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Checkbox(
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                value: widget.selected,
-                onChanged: widget.onSelectedChanged == null
-                    ? null
-                    : (value) => widget.onSelectedChanged!(value ?? false),
-              ),
-              const Gap(4),
-              AppDenseLeadingIcon(
-                icon: invoice.invoiceType == 'sales'
-                    ? Icons.arrow_outward_outlined
-                    : Icons.south_west_outlined,
-                color: invoice.invoiceType == 'sales'
-                    ? AppTheme.primary
-                    : AppTheme.warning,
-                active: invoice.isActive,
-              ),
-              const Gap(8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      invoice.customerName ?? 'Cari',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontSize: 13.5,
-                        height: 1.15,
-                        fontWeight: FontWeight.w800,
+    final syncError =
+        invoice.akinsoftSyncStatusEffective == 'error' &&
+        (invoice.akinsoftSyncError?.trim().isNotEmpty ?? false);
+    final statusTone = invoice.isActive
+        ? _eInvoiceStatusTone(invoice)
+        : AppBadgeTone.neutral;
+    final statusLabel = invoice.isActive
+        ? _eInvoiceStatusLabel(invoice)
+        : 'Pasif';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppCard(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        color: widget.selected
+            ? AppTheme.softTint(AppTheme.primary, alpha: 0.12)
+            : AppTheme.surface,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Checkbox(
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  value: widget.selected,
+                  onChanged: widget.onSelectedChanged == null
+                      ? null
+                      : (value) => widget.onSelectedChanged!(value ?? false),
+                ),
+                const Gap(4),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Tooltip(
+                              message: invoice.invoiceNumber,
+                              waitDuration: const Duration(milliseconds: 250),
+                              child: Text(
+                                invoice.invoiceNumberDisplay,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.titleSmall
+                                    ?.copyWith(
+                                      fontSize: 14,
+                                      height: 1.2,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppTheme.text,
+                                    ),
+                              ),
+                            ),
+                          ),
+                          const Gap(8),
+                          Text(
+                            DateFormat('d MMM yyyy', 'tr_TR')
+                                .format(invoice.invoiceDate),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppTheme.textMuted,
+                                ),
+                          ),
+                        ],
                       ),
-                    ),
-                    Tooltip(
-                      message: invoice.invoiceNumber,
-                      waitDuration: const Duration(milliseconds: 250),
-                      child: Text(
-                        invoice.invoiceNumberDisplay,
+                      const Gap(4),
+                      Text(
+                        invoice.customerName ?? 'Cari',
                         maxLines: 1,
-                        softWrap: false,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontSize: 12,
-                          height: 1.15,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textSoft,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontSize: 13,
+                          height: 1.25,
+                          fontWeight: FontWeight.w500,
+                          color: AppTheme.textMuted,
                         ),
                       ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Gap(12),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    money.format(invoice.grandTotal),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.text,
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const Gap(8),
-          AppDenseBadgeRow(
-            children: [
-              AppBadge(
-                dense: true,
-                label: invoice.isActive
-                    ? _statusLabel(invoice.status)
-                    : 'Pasif',
-                tone: invoice.isActive
-                    ? _statusTone(invoice.status)
-                    : AppBadgeTone.neutral,
-              ),
-              AppBadge(
-                dense: true,
-                label: _eInvoiceStatusLabel(invoice),
-                tone: _eInvoiceStatusTone(invoice),
-              ),
-              Tooltip(
-                message: invoice.akinsoftSyncStatusEffective == 'error' &&
-                        (invoice.akinsoftSyncError?.trim().isNotEmpty ?? false)
-                    ? invoice.akinsoftSyncError!.trim()
-                    : _akinsoftSyncStatusLabel(invoice),
-                waitDuration: const Duration(milliseconds: 250),
-                child: AppBadge(
+                AppBadge(
                   dense: true,
-                  label: _akinsoftSyncStatusLabel(invoice),
-                  tone: _akinsoftSyncStatusTone(invoice),
+                  label: statusLabel,
+                  tone: statusTone,
                 ),
-              ),
-            ],
-          ),
-          const Gap(6),
-          Wrap(
-            spacing: 10,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(
-                DateFormat('dd.MM.yyyy').format(invoice.invoiceDate),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
+                if (syncError) ...[
+                  const Gap(6),
+                  Tooltip(
+                    message: invoice.akinsoftSyncError!.trim(),
+                    child: AppBadge(
+                      dense: true,
+                      label: 'Uyarı',
+                      tone: AppBadgeTone.warning,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const Gap(12),
+            SizedBox(
+              height: AppDenseList.action + 4,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: _buildInvoiceActions(
+                  sendTooltip: sendTooltip,
+                  canSend: canSend,
+                  withGaps: true,
+                  mobile: true,
                 ),
-              ),
-              Text(
-                invoice.invoiceType == 'sales' ? 'Satış' : 'Alış',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(
-                money.format(invoice.grandTotal),
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const Gap(8),
-          SizedBox(
-            height: AppDenseList.action,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: _buildInvoiceActions(
-                sendTooltip: sendTooltip,
-                canSend: canSend,
-                withGaps: true,
-                mobile: true,
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -4159,67 +4148,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       'error' => AppBadgeTone.error,
       _ => AppBadgeTone.neutral,
     };
-  }
-}
-
-class _InvoiceLabeledAction extends StatelessWidget {
-  const _InvoiceLabeledAction({
-    required this.label,
-    required this.tooltip,
-    required this.icon,
-    required this.onPressed,
-    this.tone = _InvoiceActionTone.neutral,
-  });
-
-  final String label;
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback? onPressed;
-  final _InvoiceActionTone tone;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = _InvoiceIconAction._toneColors(tone);
-    final enabled = onPressed != null;
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: enabled ? colors.background : AppTheme.surfaceMuted,
-        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-          child: Container(
-            constraints: const BoxConstraints(minWidth: 58, minHeight: 44),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-              border: Border.all(
-                color: enabled ? colors.border : AppTheme.border,
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  icon,
-                  size: 18,
-                  color: enabled ? colors.foreground : AppTheme.textMuted,
-                ),
-                const Gap(2),
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: enabled ? colors.foreground : AppTheme.textMuted,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
@@ -8579,7 +8507,7 @@ class _MetricsRow extends StatelessWidget {
                   vertical: 10,
                 ),
                 color: Color.alphaBlend(
-                  metric.accent.withValues(alpha: 0.08),
+                  metric.accent.withValues(alpha: AppTheme.isDark ? 0.10 : 0.08),
                   AppTheme.surface,
                 ),
                 child: Row(
