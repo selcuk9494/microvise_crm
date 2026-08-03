@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -61,7 +62,7 @@ class _BankApplicationReportScreenState
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(applicationFormsProvider),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
       ],
@@ -95,7 +96,7 @@ class _BankApplicationReportScreenState
                         controller: _customerController,
                         onChanged: (_) => setState(() {}),
                         decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.person_search_rounded),
+                          prefixIcon: Icon(LucideIcons.userSearch),
                           hintText: 'Müşteri ara',
                         ),
                       ),
@@ -106,7 +107,7 @@ class _BankApplicationReportScreenState
                         controller: _registryController,
                         onChanged: (_) => setState(() {}),
                         decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.confirmation_num_rounded),
+                          prefixIcon: Icon(LucideIcons.ticketCheck),
                           hintText: 'Sicil / cihaz ara',
                         ),
                       ),
@@ -173,7 +174,7 @@ class _BankApplicationReportScreenState
                           _approvalStatus = 'all';
                         });
                       },
-                      icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
+                      icon: const Icon(LucideIcons.filterX, size: 18),
                       label: const Text('Temizle'),
                     ),
                   ],
@@ -187,24 +188,24 @@ class _BankApplicationReportScreenState
                   _ReportStat(
                     label: 'Toplam Talep',
                     value: filtered.length.toString(),
-                    icon: Icons.description_rounded,
+                    icon: LucideIcons.fileText,
                   ),
                   _ReportStat(
                     label: 'Onay Bekleyen',
                     value: pending.toString(),
-                    icon: Icons.pending_actions_rounded,
+                    icon: LucideIcons.clipboardClock,
                     tone: AppBadgeTone.warning,
                   ),
                   _ReportStat(
                     label: 'Onaylanmış',
                     value: approved.toString(),
-                    icon: Icons.verified_rounded,
+                    icon: LucideIcons.badgeCheck,
                     tone: AppBadgeTone.success,
                   ),
                   _ReportStat(
                     label: 'Cihaz/Sicil',
                     value: deviceCount.toString(),
-                    icon: Icons.memory_rounded,
+                    icon: LucideIcons.memoryStick,
                   ),
                 ],
               ),
@@ -305,11 +306,11 @@ class _ReportDateField extends StatelessWidget {
         decoration: InputDecoration(
           labelText: label,
           suffixIcon: value == null
-              ? const Icon(Icons.calendar_today_rounded)
+              ? const Icon(LucideIcons.calendarDays)
               : IconButton(
                   tooltip: 'Temizle',
                   onPressed: onClear,
-                  icon: const Icon(Icons.close_rounded),
+                  icon: const Icon(LucideIcons.x),
                 ),
         ),
         child: Text(value == null ? 'Tarih seçin' : format.format(value!)),

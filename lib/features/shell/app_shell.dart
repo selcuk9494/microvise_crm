@@ -10,6 +10,7 @@ import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_breakpoints.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_phosphor_icons.dart';
 
 class _FormsNavExpandedNotifier extends Notifier<bool> {
   @override
@@ -110,9 +111,7 @@ class _DesktopShell extends ConsumerWidget {
                 color: AppTheme.sidebar,
                 border: Border(
                   right: BorderSide(
-                    color: AppTheme.isDark
-                        ? AppTheme.border.withValues(alpha: 0.55)
-                        : const Color(0xFF151B26),
+                    color: AppTheme.border.withValues(alpha: 0.8),
                   ),
                 ),
               ),
@@ -336,7 +335,7 @@ class _MobileShell extends ConsumerWidget {
               backgroundColor: AppTheme.primary,
               foregroundColor: Colors.white,
               onPressed: () => _showQuickCreateSheet(context),
-              child: const Icon(Icons.add_rounded),
+              child: const Icon(AppPhosphorIcons.plus),
             ),
       floatingActionButtonLocation: isBankUser
           ? null
@@ -373,7 +372,7 @@ class _MobileShell extends ConsumerWidget {
               ),
             _BottomItem(
               label: 'Menü',
-              icon: Icons.grid_view_rounded,
+              icon: AppPhosphorIcons.gridFour,
               active: overflowActive,
               onTap: () =>
                   _showMobileModulesSheet(context, ref, allowedItems, location),
@@ -500,7 +499,7 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
                   IconButton(
                     tooltip: 'Hesap',
                     onPressed: widget.onAccountTap,
-                    icon: const Icon(Icons.person_rounded),
+                    icon: const Icon(AppPhosphorIcons.userCircle),
                   ),
                 ],
               ),
@@ -513,7 +512,7 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
                     hintText: 'Modül ara',
-                    prefixIcon: const Icon(Icons.search_rounded),
+                    prefixIcon: const Icon(AppPhosphorIcons.magnifyingGlass),
                     suffixIcon: _query.isEmpty
                         ? null
                         : IconButton(
@@ -522,7 +521,7 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
                               _searchController.clear();
                               setState(() => _query = '');
                             },
-                            icon: const Icon(Icons.close_rounded),
+                            icon: const Icon(AppPhosphorIcons.x),
                           ),
                   ),
                 ),
@@ -660,11 +659,15 @@ class _MobileModuleTile extends StatelessWidget {
                   Container(
                     width: 38,
                     height: 38,
-                    decoration: BoxDecoration(
-                      color: accentColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
+                    decoration: AppTheme.categoryIconWell(
+                      accentColor,
+                      radius: AppTheme.radiusXs,
                     ),
-                    child: Icon(item.icon, size: 20, color: accentColor),
+                    child: Icon(
+                      item.icon,
+                      size: 19,
+                      color: AppTheme.categoryIconFg(accentColor),
+                    ),
                   ),
                   const Gap(12),
                   Expanded(
@@ -673,15 +676,15 @@ class _MobileModuleTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: active ? FontWeight.w800 : FontWeight.w700,
+                        fontWeight: active ? FontWeight.w600 : FontWeight.w500,
                         color: active ? accentColor : AppTheme.text,
                       ),
                     ),
                   ),
                   Icon(
                     active
-                        ? Icons.check_circle_rounded
-                        : Icons.chevron_right_rounded,
+                        ? AppPhosphorIcons.checkCircle
+                        : AppPhosphorIcons.caretRight,
                     size: active ? 20 : 22,
                     color: active ? accentColor : AppTheme.textMuted,
                   ),
@@ -786,7 +789,7 @@ Future<void> _showMobileAccountSheet(
                       radius: 18,
                       backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
                       child: Icon(
-                        Icons.person_rounded,
+                        AppPhosphorIcons.userCircle,
                         color: AppTheme.primary,
                       ),
                     ),
@@ -824,7 +827,7 @@ Future<void> _showMobileAccountSheet(
                   Navigator.of(context).pop();
                   context.go('/giris');
                 },
-                icon: const Icon(Icons.logout_rounded, size: 18),
+                icon: const Icon(AppPhosphorIcons.signOut, size: 18),
                 label: const Text('Çıkış Yap'),
               ),
               const Gap(8),
@@ -918,8 +921,6 @@ class _SidebarIconItem extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool active;
-  // Kept for call-site parity with expanded nav items (mobile accents).
-  // ignore: unused_field
   final Color accentColor;
   final VoidCallback onTap;
 
@@ -935,10 +936,20 @@ class _SidebarIconItem extends StatelessWidget {
           curve: Curves.easeOut,
           height: 44,
           decoration: AppTheme.sidebarNavDecoration(active: active),
-          child: Icon(
-            icon,
-            size: 20,
-            color: AppTheme.sidebarNavFg(active: active),
+          child: Center(
+            child: Container(
+              width: 31,
+              height: 31,
+              decoration: AppTheme.categoryIconWell(
+                accentColor,
+                radius: AppTheme.radiusXs,
+              ),
+              child: AppPhosphorIcon(
+                icon,
+                size: 18,
+                color: AppTheme.categoryIconFg(accentColor),
+              ),
+            ),
           ),
         ),
       ),
@@ -966,7 +977,11 @@ class _CompactAccountButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             border: Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
           ),
-          child: Icon(Icons.person_rounded, color: AppTheme.primary, size: 21),
+          child: Icon(
+            AppPhosphorIcons.userCircle,
+            color: AppTheme.primary,
+            size: 21,
+          ),
         ),
       ),
     );
@@ -984,9 +999,7 @@ class _TopBar extends StatelessWidget {
         height: 64,
         padding: const EdgeInsets.symmetric(horizontal: 18),
         decoration: BoxDecoration(
-          color: AppTheme.isDark
-              ? AppTheme.surface.withValues(alpha: 0.72)
-              : AppTheme.surface.withValues(alpha: 0.94),
+          color: AppTheme.surface.withValues(alpha: 0.96),
           border: Border(
             bottom: BorderSide(color: AppTheme.border.withValues(alpha: 0.45)),
           ),
@@ -1006,9 +1019,9 @@ class _TopBar extends StatelessWidget {
               child: Row(
                 children: [
                   Icon(
-                    Icons.monitor_rounded,
+                    AppPhosphorIcons.monitor,
                     size: 16,
-                    color: AppTheme.primary,
+                    color: AppTheme.textSoft,
                   ),
                   const Gap(8),
                   Text(
@@ -1027,10 +1040,7 @@ class _TopBar extends StatelessWidget {
             IconButton(
               tooltip: 'Bildirimler',
               onPressed: () {},
-              icon: Icon(
-                Icons.notifications_none_rounded,
-                color: AppTheme.text,
-              ),
+              icon: Icon(AppPhosphorIcons.bell, color: AppTheme.text),
             ),
             const Gap(6),
             _ProfileButton(),
@@ -1066,7 +1076,7 @@ class _ThemeModeControl extends ConsumerWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(themeModeIcon(mode), size: 18, color: AppTheme.primary),
+                Icon(themeModeIcon(mode), size: 18, color: AppTheme.textSoft),
                 const Gap(8),
                 Text(
                   themeModeLabelTr(mode),
@@ -1077,7 +1087,7 @@ class _ThemeModeControl extends ConsumerWidget {
                 ),
                 const Gap(2),
                 Icon(
-                  Icons.expand_more_rounded,
+                  AppPhosphorIcons.caretDown,
                   size: 18,
                   color: AppTheme.textMuted,
                 ),
@@ -1101,7 +1111,11 @@ class _ThemeModeControl extends ConsumerWidget {
               color: mode == option ? AppTheme.primary : AppTheme.textSoft,
             ),
             trailingIcon: mode == option
-                ? Icon(Icons.check_rounded, size: 16, color: AppTheme.primary)
+                ? Icon(
+                    AppPhosphorIcons.check,
+                    size: 16,
+                    color: AppTheme.primary,
+                  )
                 : null,
             child: Text(
               themeModeLabelTr(option),
@@ -1149,11 +1163,11 @@ class _ProfileButton extends ConsumerWidget {
             children: [
               CircleAvatar(
                 radius: 12,
-                backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
+                backgroundColor: AppTheme.surfaceSoft,
                 child: Icon(
-                  Icons.person_rounded,
+                  AppPhosphorIcons.userCircle,
                   size: 16,
-                  color: AppTheme.primary,
+                  color: AppTheme.textSoft,
                 ),
               ),
               const Gap(10),
@@ -1167,14 +1181,14 @@ class _ProfileButton extends ConsumerWidget {
                 ),
               ),
               const Gap(6),
-              const Icon(Icons.expand_more_rounded, size: 18),
+              const Icon(AppPhosphorIcons.caretDown, size: 18),
             ],
           ),
         ),
       ),
       menuChildren: [
         MenuItemButton(
-          leadingIcon: const Icon(Icons.settings_rounded, size: 18),
+          leadingIcon: const Icon(AppPhosphorIcons.gearSix, size: 18),
           onPressed: () => _showMobileAccountSheet(context, ref),
           child: const Text('Ayarlar'),
         ),
@@ -1195,7 +1209,6 @@ class _SidebarItem extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool active;
-  // ignore: unused_field
   final Color accentColor;
   final VoidCallback onTap;
 
@@ -1213,7 +1226,19 @@ class _SidebarItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10),
         child: Row(
           children: [
-            Icon(icon, size: 19, color: fg),
+            Container(
+              width: 30,
+              height: 30,
+              decoration: AppTheme.categoryIconWell(
+                accentColor,
+                radius: AppTheme.radiusXs,
+              ),
+              child: AppPhosphorIcon(
+                icon,
+                size: 17,
+                color: AppTheme.categoryIconFg(accentColor),
+              ),
+            ),
             const Gap(10),
             Expanded(
               child: Text(
@@ -1254,7 +1279,6 @@ class _FormsNavGroup extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool active;
-  // ignore: unused_field
   final Color accentColor;
   final bool expanded;
   final VoidCallback onHeaderTap;
@@ -1283,7 +1307,19 @@ class _FormsNavGroup extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Row(
               children: [
-                Icon(icon, size: 19, color: fg),
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: AppTheme.categoryIconWell(
+                    accentColor,
+                    radius: AppTheme.radiusXs,
+                  ),
+                  child: AppPhosphorIcon(
+                    icon,
+                    size: 17,
+                    color: AppTheme.categoryIconFg(accentColor),
+                  ),
+                ),
                 const Gap(10),
                 Expanded(
                   child: Text(
@@ -1297,8 +1333,8 @@ class _FormsNavGroup extends StatelessWidget {
                 ),
                 Icon(
                   expanded
-                      ? Icons.expand_less_rounded
-                      : Icons.expand_more_rounded,
+                      ? AppPhosphorIcons.caretUp
+                      : AppPhosphorIcons.caretDown,
                   size: 18,
                   color: fg,
                 ),
@@ -1417,7 +1453,14 @@ class _BottomItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? AppTheme.primary : AppTheme.textMuted;
+    final accent = switch (label) {
+      'Panel' => AppTheme.primary,
+      'Müşteriler' => AppTheme.purple,
+      'İş Emirleri' => AppTheme.success,
+      'Menü' => AppTheme.blueBright,
+      _ => AppTheme.primary,
+    };
+    final color = active ? accent : AppTheme.textMuted;
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -1427,7 +1470,19 @@ class _BottomItem extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 20, color: color),
+              Container(
+                width: 26,
+                height: 26,
+                decoration: AppTheme.categoryIconWell(
+                  accent,
+                  radius: AppTheme.radiusXs,
+                ),
+                child: AppPhosphorIcon(
+                  icon,
+                  size: 16,
+                  color: AppTheme.categoryIconFg(accent),
+                ),
+              ),
               const Gap(4),
               Text(
                 label,
@@ -1480,7 +1535,7 @@ class _AccountCard extends StatelessWidget {
                 ? AppTheme.primary.withValues(alpha: 0.18)
                 : AppTheme.primary.withValues(alpha: 0.18),
             child: Icon(
-              Icons.person_outline_rounded,
+              AppPhosphorIcons.userCircle,
               size: 17,
               color: AppTheme.isDark
                   ? AppTheme.primaryDark
@@ -1518,7 +1573,7 @@ class _AccountCard extends StatelessWidget {
             onPressed: onSignOut,
             visualDensity: VisualDensity.compact,
             icon: Icon(
-              Icons.logout_rounded,
+              AppPhosphorIcons.signOut,
               size: 17,
               color: AppTheme.sidebarTextMuted,
             ),
@@ -1578,7 +1633,7 @@ Future<void> _showQuickCreateSheet(BuildContext context) async {
           const Gap(10),
           _SheetItem(
             title: 'Yeni Müşteri',
-            icon: Icons.person_add_alt_1_rounded,
+            icon: AppPhosphorIcons.userPlus,
             onTap: () {
               Navigator.of(context).pop();
               context.go('/musteriler?yeni=1');
@@ -1586,7 +1641,7 @@ Future<void> _showQuickCreateSheet(BuildContext context) async {
           ),
           _SheetItem(
             title: 'Yeni İş Emri',
-            icon: Icons.playlist_add_rounded,
+            icon: AppPhosphorIcons.listPlus,
             onTap: () {
               Navigator.of(context).pop();
               context.go('/is-emirleri?yeni=1');
@@ -1594,7 +1649,7 @@ Future<void> _showQuickCreateSheet(BuildContext context) async {
           ),
           _SheetItem(
             title: 'Yeni Servis Kaydı',
-            icon: Icons.handyman_rounded,
+            icon: AppPhosphorIcons.hammer,
             onTap: () {
               Navigator.of(context).pop();
               context.go('/servis?yeni=1');
@@ -1638,7 +1693,7 @@ class _SheetItem extends StatelessWidget {
           context,
         ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
       ),
-      trailing: const Icon(Icons.chevron_right_rounded),
+      trailing: const Icon(AppPhosphorIcons.caretRight),
       onTap: onTap,
     );
   }
@@ -1678,85 +1733,85 @@ final _navItems = <_NavItem>[
   _NavItem(
     path: '/panel',
     label: 'Panel',
-    icon: Icons.space_dashboard_rounded,
+    icon: AppPhosphorIcons.gauge,
     pageKey: 'panel',
   ),
   _NavItem(
     path: '/musteriler',
     label: 'Müşteriler',
-    icon: Icons.groups_rounded,
+    icon: AppPhosphorIcons.addressBook,
     pageKey: 'musteriler',
   ),
   _NavItem(
     path: '/formlar',
     label: 'Formlar',
-    icon: Icons.article_rounded,
+    icon: AppPhosphorIcons.notePencil,
     pageKey: 'formlar',
   ),
   _NavItem(
     path: '/e-fatura',
     label: 'E-Fatura',
-    icon: Icons.receipt_long_rounded,
+    icon: AppPhosphorIcons.receipt,
     pageKey: 'e_fatura',
   ),
   _NavItem(
     path: '/belgeler',
     label: 'Belgeler',
-    icon: Icons.folder_rounded,
+    icon: AppPhosphorIcons.fileArchive,
     pageKey: 'formlar',
   ),
   _NavItem(
     path: '/is-emirleri',
     label: 'İş Emirleri',
-    icon: Icons.view_kanban_rounded,
+    icon: AppPhosphorIcons.clipboardText,
     pageKey: 'is_emirleri',
   ),
   _NavItem(
     path: '/servis',
     label: 'Servis',
-    icon: Icons.handyman_rounded,
+    icon: AppPhosphorIcons.toolbox,
     pageKey: 'servis',
   ),
   _NavItem(
     path: '/raporlar',
     label: 'Raporlar',
-    icon: Icons.insights_rounded,
+    icon: AppPhosphorIcons.presentationChart,
     pageKey: 'raporlar',
   ),
   _NavItem(
     path: '/urunler',
     label: 'Hat & Lisans',
-    icon: Icons.sim_card_rounded,
+    icon: AppPhosphorIcons.simCard,
     pageKey: 'urunler',
   ),
   _NavItem(
     path: '/faturalama',
     label: 'Faturalama',
-    icon: Icons.payments_rounded,
+    icon: AppPhosphorIcons.invoice,
     pageKey: 'faturalama',
   ),
   _NavItem(
     path: '/finans',
     label: 'Finans',
-    icon: Icons.account_balance_wallet_rounded,
+    icon: AppPhosphorIcons.bank,
     pageKey: 'finans',
   ),
   _NavItem(
     path: '/kdv-analizi',
     label: 'KDV Analizi',
-    icon: Icons.pie_chart_rounded,
+    icon: AppPhosphorIcons.chartDonut,
     pageKey: 'kdv_analizi',
   ),
   _NavItem(
     path: '/tanimlamalar',
     label: 'Tanımlamalar',
-    icon: Icons.category_rounded,
+    icon: AppPhosphorIcons.slidersHorizontal,
     pageKey: 'tanimlamalar',
   ),
   _NavItem(
     path: '/personel',
     label: 'Personel',
-    icon: Icons.manage_accounts_rounded,
+    icon: AppPhosphorIcons.identificationBadge,
     pageKey: 'personel',
   ),
 ];
@@ -1765,19 +1820,19 @@ final _bankNavItems = <_NavItem>[
   const _NavItem(
     path: '/banka-panel',
     label: 'Panel',
-    icon: Icons.space_dashboard_rounded,
+    icon: AppPhosphorIcons.squaresFour,
     pageKey: 'formlar',
   ),
   const _NavItem(
     path: '/formlar/basvuru',
     label: 'Başvuru',
-    icon: Icons.article_rounded,
+    icon: AppPhosphorIcons.clipboardText,
     pageKey: 'formlar',
   ),
   const _NavItem(
     path: '/formlar/banka-rapor',
     label: 'Rapor',
-    icon: Icons.insights_rounded,
+    icon: AppPhosphorIcons.chartLineUp,
     pageKey: 'formlar',
   ),
 ];

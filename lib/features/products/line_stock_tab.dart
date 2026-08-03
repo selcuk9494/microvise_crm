@@ -2,6 +2,7 @@ import 'package:excel/excel.dart' as excel;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -554,7 +555,7 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                     onChanged: ref.read(lineStockSearchProvider.notifier).set,
                     decoration: const InputDecoration(
                       hintText: 'Ara (hat, sim, müşteri...)',
-                      prefixIcon: Icon(Icons.search_rounded),
+                      prefixIcon: Icon(LucideIcons.search),
                       isDense: true,
                     ),
                   ),
@@ -646,7 +647,7 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () => pickDate(from: true),
-                          icon: const Icon(Icons.event_rounded, size: 18),
+                          icon: const Icon(LucideIcons.calendar, size: 18),
                           label: Text('Başlangıç: ${fmtDate(consumedFrom)}'),
                         ),
                       ),
@@ -654,7 +655,7 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () => pickDate(from: false),
-                          icon: const Icon(Icons.event_rounded, size: 18),
+                          icon: const Icon(LucideIcons.calendar, size: 18),
                           label: Text('Bitiş: ${fmtDate(consumedTo)}'),
                         ),
                       ),
@@ -670,7 +671,7 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                               .clear();
                           ref.invalidate(lineStockProvider);
                         },
-                        icon: const Icon(Icons.clear_rounded),
+                        icon: const Icon(LucideIcons.eraser),
                       ),
                     ],
                   ),
@@ -678,19 +679,19 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
 
                 final addBtn = FilledButton.icon(
                   onPressed: isAdmin ? () => _showEditDialog() : null,
-                  icon: const Icon(Icons.add_rounded, size: 18),
+                  icon: const Icon(LucideIcons.plus, size: 18),
                   label: const Text('Hat Ekle'),
                 );
 
                 final importBtn = OutlinedButton.icon(
                   onPressed: isAdmin ? _importExcel : null,
-                  icon: const Icon(Icons.upload_file_rounded, size: 18),
+                  icon: const Icon(LucideIcons.upload, size: 18),
                   label: const Text('İçe Aktar'),
                 );
 
                 final exportBtn = OutlinedButton.icon(
                   onPressed: items.isEmpty ? null : () => _exportExcel(items),
-                  icon: const Icon(Icons.download_rounded, size: 18),
+                  icon: const Icon(LucideIcons.download, size: 18),
                   label: const Text('Dışarı Aktar'),
                 );
 
@@ -829,7 +830,7 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                                     style: Theme.of(context).textTheme.bodySmall
                                         ?.copyWith(
                                           fontWeight: FontWeight.w800,
-                                          color: const Color(0xFF0F172A),
+                                          color: AppTheme.text,
                                         ),
                                   ),
                                   if (item.isConsumed &&
@@ -928,7 +929,7 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                               child: const SizedBox(
                                 width: 36,
                                 height: 34,
-                                child: Icon(Icons.more_horiz_rounded),
+                                child: Icon(LucideIcons.ellipsis),
                               ),
                             ),
                           ],

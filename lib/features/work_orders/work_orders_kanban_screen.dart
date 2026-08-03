@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
@@ -59,13 +60,13 @@ class _WorkOrdersKanbanScreenState
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.read(workOrdersBoardProvider.notifier).refresh(),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         const Gap(10),
         OutlinedButton.icon(
           onPressed: () => context.go('/is-emirleri'),
-          icon: const Icon(Icons.table_rows_rounded, size: 18),
+          icon: const Icon(LucideIcons.rows3, size: 18),
           label: const Text('Tablo Görünümü'),
         ),
         const Gap(10),
@@ -74,7 +75,7 @@ class _WorkOrdersKanbanScreenState
             await _showCreateWorkOrderDialog(context, ref);
             ref.read(workOrdersBoardProvider.notifier).refresh();
           },
-          icon: const Icon(Icons.add_rounded, size: 18),
+          icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text('Yeni İş Emri'),
         ),
       ],
@@ -223,7 +224,7 @@ class _WorkOrdersList extends ConsumerWidget {
         child: Padding(
           padding: EdgeInsets.all(24),
           child: EmptyStateCard(
-            icon: Icons.inbox_rounded,
+            icon: LucideIcons.inbox,
             title: 'Kayıt yok',
             message: 'Bu durumda henüz iş emri bulunmuyor.',
           ),
@@ -473,14 +474,10 @@ class _WorkOrderCardState extends State<_WorkOrderCard> {
               ),
               const Gap(8),
               if (w.status == 'done')
-                Icon(
-                  Icons.check_circle_rounded,
-                  color: AppTheme.success,
-                  size: 18,
-                )
+                Icon(LucideIcons.circleCheck, color: AppTheme.success, size: 18)
               else
                 Icon(
-                  Icons.open_in_new_rounded,
+                  LucideIcons.externalLink,
                   size: 18,
                   color: AppTheme.textMuted,
                 ),
@@ -746,7 +743,7 @@ class _CreateWorkOrderDialogState
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),

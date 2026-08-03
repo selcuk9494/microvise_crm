@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_theme.dart';
@@ -34,7 +35,7 @@ class FeatureAccessGate extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(
-                      Icons.lock_outline_rounded,
+                      LucideIcons.lockKeyhole,
                       size: 40,
                       color: Color(0xFF94A3B8),
                     ),

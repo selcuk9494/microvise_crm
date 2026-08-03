@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -287,7 +288,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.save_rounded, size: 18),
+                  : const Icon(LucideIcons.save, size: 18),
               label: const Text('Kaydet'),
             ),
             const Gap(12),
@@ -1094,7 +1095,7 @@ class _CustomerSelectField extends StatelessWidget {
               suffixIcon: IconButton(
                 tooltip: 'Cari ara',
                 onPressed: onSearch,
-                icon: const Icon(Icons.search_rounded),
+                icon: const Icon(LucideIcons.search),
               ),
             ),
             child: Text(
@@ -1188,7 +1189,7 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
               autofocus: true,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search_rounded),
+                prefixIcon: Icon(LucideIcons.search),
                 hintText: 'Ad, VKN, telefon veya şehir ile ara',
               ),
             ),
@@ -1203,7 +1204,7 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                    : const Icon(LucideIcons.userPlus, size: 18),
                 label: Text(_creating ? 'Oluşturuluyor…' : 'Yeni cari ekle'),
               ),
             ),
@@ -1218,7 +1219,7 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
                           const Gap(8),
                           OutlinedButton.icon(
                             onPressed: _creating ? null : _createCustomer,
-                            icon: const Icon(Icons.person_add_alt_1_rounded),
+                            icon: const Icon(LucideIcons.userPlus),
                             label: const Text('Yeni cari oluştur'),
                           ),
                         ],
@@ -1257,7 +1258,7 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
                             overflow: TextOverflow.ellipsis,
                           ),
                           trailing: selected
-                              ? const Icon(Icons.check_circle_rounded)
+                              ? const Icon(LucideIcons.circleCheck)
                               : null,
                           onTap: () => Navigator.of(context).pop(customer),
                         );
@@ -1299,7 +1300,7 @@ class _AddressInfoPanel extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.home_work_rounded, size: 18, color: AppTheme.primary),
+              Icon(LucideIcons.building2, size: 18, color: AppTheme.primary),
               const Gap(8),
               Text(
                 'Adres ve Vergi Bilgisi',
@@ -1394,7 +1395,7 @@ class _DesktopItemsTable extends StatelessWidget {
             child: Row(
               children: [
                 const _SectionTab(
-                  icon: Icons.format_list_bulleted_rounded,
+                  icon: LucideIcons.list,
                   label: 'Öğeler',
                   selected: true,
                 ),
@@ -1402,7 +1403,7 @@ class _DesktopItemsTable extends StatelessWidget {
                 productsAsync.maybeWhen(
                   data: (products) => OutlinedButton.icon(
                     onPressed: () => onProductSearch(products),
-                    icon: const Icon(Icons.search_rounded, size: 18),
+                    icon: const Icon(LucideIcons.search, size: 18),
                     label: const Text('Ürün Ara / Çoklu Ekle'),
                   ),
                   orElse: () => const SizedBox.shrink(),
@@ -1411,7 +1412,7 @@ class _DesktopItemsTable extends StatelessWidget {
                 IconButton.filled(
                   tooltip: 'Boş satır ekle',
                   onPressed: onAdd,
-                  icon: const Icon(Icons.add_rounded, size: 20),
+                  icon: const Icon(LucideIcons.plus, size: 20),
                 ),
               ],
             ),
@@ -1728,7 +1729,7 @@ class _InvoiceTableRow extends StatelessWidget {
                 child: IconButton(
                   tooltip: 'Sil',
                   onPressed: onRemove,
-                  icon: const Icon(Icons.delete_outline_rounded),
+                  icon: const Icon(LucideIcons.trash2),
                 ),
               ),
             ],
@@ -1874,7 +1875,7 @@ class _ProductPickerDialogState extends State<_ProductPickerDialog> {
               autofocus: true,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search_rounded),
+                prefixIcon: Icon(LucideIcons.search),
                 hintText: 'Ürün adı, kod veya kategori ile ara',
               ),
             ),
@@ -1919,8 +1920,8 @@ class _ProductPickerDialogState extends State<_ProductPickerDialog> {
                           ),
                           secondary: Icon(
                             product.productType == 'service'
-                                ? Icons.design_services_rounded
-                                : Icons.inventory_2_rounded,
+                                ? LucideIcons.penTool
+                                : LucideIcons.package,
                           ),
                         );
                       },
@@ -1943,7 +1944,7 @@ class _ProductPickerDialogState extends State<_ProductPickerDialog> {
                       .toList(growable: false);
                   Navigator.of(context).pop(selected);
                 },
-          icon: const Icon(Icons.add_rounded, size: 18),
+          icon: const Icon(LucideIcons.plus, size: 18),
           label: Text('Seçilenleri Ekle (${_selectedIds.length})'),
         ),
       ],
@@ -2017,7 +2018,7 @@ class _DispatchCard extends StatelessWidget {
           if (date != null || numberController.text.trim().isNotEmpty)
             TextButton.icon(
               onPressed: onClear,
-              icon: const Icon(Icons.clear_rounded),
+              icon: const Icon(LucideIcons.eraser),
               label: const Text('İrsaliyeyi temizle'),
             ),
         ],
@@ -2236,7 +2237,7 @@ class _ItemEditor extends StatelessWidget {
                             tooltip: 'Kalemi sil',
                             visualDensity: VisualDensity.compact,
                             onPressed: onRemove,
-                            icon: const Icon(Icons.delete_outline_rounded),
+                            icon: const Icon(LucideIcons.trash2),
                           ),
                         ],
                       ),
@@ -2291,7 +2292,7 @@ class _ItemEditor extends StatelessWidget {
                           IconButton(
                             tooltip: 'Kalemi sil',
                             onPressed: onRemove,
-                            icon: const Icon(Icons.delete_outline_rounded),
+                            icon: const Icon(LucideIcons.trash2),
                           ),
                         ],
                       ),
@@ -2451,7 +2452,7 @@ class _MobileItemsCard extends StatelessWidget {
                   onPressed: productsAsync.asData == null
                       ? null
                       : () => onAddFromStock(productsAsync.asData!.value),
-                  icon: const Icon(Icons.inventory_2_rounded, size: 18),
+                  icon: const Icon(LucideIcons.package, size: 18),
                   label: const Text('Stoktan'),
                 ),
               ),
@@ -2459,7 +2460,7 @@ class _MobileItemsCard extends StatelessWidget {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: onAddBlank,
-                  icon: const Icon(Icons.add_rounded, size: 18),
+                  icon: const Icon(LucideIcons.plus, size: 18),
                   label: const Text('Satır'),
                 ),
               ),

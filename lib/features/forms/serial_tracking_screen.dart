@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 
@@ -84,19 +85,19 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(serialTrackingProvider),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         const Gap(10),
         OutlinedButton.icon(
           onPressed: () => _openBulkEditor(),
-          icon: const Icon(Icons.playlist_add_rounded, size: 18),
+          icon: const Icon(LucideIcons.listPlus, size: 18),
           label: const Text('Toplu Giriş'),
         ),
         const Gap(10),
         FilledButton.icon(
           onPressed: () => _openEditor(),
-          icon: const Icon(Icons.add_rounded, size: 18),
+          icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text('Yeni Kayıt'),
         ),
       ],
@@ -115,14 +116,14 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                     controller: _searchController,
                     onChanged: (_) => setState(() {}),
                     decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search_rounded),
+                      prefixIcon: Icon(LucideIcons.search),
                       hintText: 'Ara',
                     ),
                   ),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: () => setState(() => _showPassive = !_showPassive),
-                  icon: const Icon(Icons.circle_rounded, size: 12),
+                  icon: const Icon(LucideIcons.circle, size: 12),
                   label: Text(_showPassive ? 'Durum: Tümü' : 'Durum: Aktif'),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.filterControlBg,
@@ -154,7 +155,7 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
 
                 if (filtered.isEmpty) {
                   return const EmptyStateCard(
-                    icon: Icons.qr_code_2_rounded,
+                    icon: LucideIcons.qrCode,
                     title: 'Kayıt bulunamadı',
                     message: 'Filtrelerinize uyan bir seri kaydı yok.',
                   );
@@ -209,12 +210,12 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
               },
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, _) => EmptyStateCard(
-                icon: Icons.cloud_off_rounded,
+                icon: LucideIcons.cloudOff,
                 title: 'Seri takip yüklenemedi',
                 message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
                 action: OutlinedButton.icon(
                   onPressed: () => ref.invalidate(serialTrackingProvider),
-                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  icon: const Icon(LucideIcons.refreshCw, size: 16),
                   label: const Text('Tekrar Dene'),
                 ),
               ),
@@ -262,7 +263,7 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                         onPressed: saving
                             ? null
                             : () => Navigator.of(context).pop(false),
-                        icon: const Icon(Icons.close_rounded),
+                        icon: const Icon(LucideIcons.x),
                       ),
                     ],
                   ),
@@ -399,7 +400,7 @@ class _SerialTrackingScreenState extends ConsumerState<SerialTrackingScreen> {
                         onPressed: saving
                             ? null
                             : () => Navigator.of(context).pop(false),
-                        icon: const Icon(Icons.close_rounded),
+                        icon: const Icon(LucideIcons.x),
                       ),
                     ],
                   ),
@@ -595,21 +596,21 @@ class _SerialTableRowState extends ConsumerState<_SerialTableRow> {
                                       _SerialTrackingScreenState
                                     >())
                                 ?._openEditor(initial: item),
-                  icon: const Icon(Icons.edit_rounded),
+                  icon: const Icon(LucideIcons.pencil),
                 ),
                 IconButton(
                   tooltip: item.isActive ? 'Pasife Al' : 'Aktifleştir',
                   onPressed: _saving ? null : _toggleActive,
                   icon: Icon(
                     item.isActive
-                        ? Icons.pause_circle_outline_rounded
-                        : Icons.play_circle_outline_rounded,
+                        ? LucideIcons.circlePause
+                        : LucideIcons.circlePlay,
                   ),
                 ),
                 IconButton(
                   tooltip: 'Sil',
                   onPressed: _saving ? null : _delete,
-                  icon: const Icon(Icons.delete_outline_rounded),
+                  icon: const Icon(LucideIcons.trash2),
                 ),
               ],
             ),

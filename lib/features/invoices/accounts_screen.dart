@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -39,7 +40,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(accountBalancesProvider),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
       ],
@@ -65,7 +66,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                         title: 'Toplam Alacak',
                         value: _money.format(totalReceivable),
                         color: AppTheme.success,
-                        icon: Icons.arrow_upward_rounded,
+                        icon: LucideIcons.arrowUp,
                         onTap: () => setState(
                           () => _filter = _filter == 'receivable'
                               ? 'all'
@@ -80,7 +81,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                         title: 'Toplam Borç',
                         value: _money.format(totalPayable),
                         color: AppTheme.error,
-                        icon: Icons.arrow_downward_rounded,
+                        icon: LucideIcons.arrowDown,
                         onTap: () => setState(
                           () => _filter = _filter == 'payable'
                               ? 'all'
@@ -97,7 +98,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                         color: netBalance >= 0
                             ? AppTheme.success
                             : AppTheme.error,
-                        icon: Icons.account_balance_wallet_rounded,
+                        icon: LucideIcons.walletCards,
                         onTap: () => setState(() => _filter = 'all'),
                         selected: _filter == 'all',
                       ),
@@ -135,9 +136,9 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              Icons.account_balance_rounded,
+                              LucideIcons.landmark,
                               size: 48,
-                              color: const Color(0xFF94A3B8),
+                              color: AppTheme.textMuted,
                             ),
                             const Gap(12),
                             Text(
@@ -306,7 +307,7 @@ class _AccountCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                Icons.business_rounded,
+                LucideIcons.building2,
                 color: isReceivable
                     ? AppTheme.success
                     : isPayable
@@ -360,7 +361,7 @@ class _AccountCard extends StatelessWidget {
               ],
             ),
             const Gap(8),
-            Icon(Icons.chevron_right_rounded, color: const Color(0xFF94A3B8)),
+            Icon(LucideIcons.chevronRight, color: AppTheme.textMuted),
           ],
         ),
       ),
@@ -421,17 +422,17 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
         title: Text(widget.customerName),
         actions: [
           IconButton(
-            icon: const Icon(Icons.picture_as_pdf_rounded),
+            icon: const Icon(LucideIcons.fileType2),
             tooltip: 'PDF Ekstre',
             onPressed: () => _exportStatement('pdf'),
           ),
           IconButton(
-            icon: const Icon(Icons.table_chart_rounded),
+            icon: const Icon(LucideIcons.table2),
             tooltip: 'Excel Ekstre',
             onPressed: () => _exportStatement('excel'),
           ),
           IconButton(
-            icon: const Icon(Icons.email_rounded),
+            icon: const Icon(LucideIcons.mail),
             tooltip: 'E-posta Gönder',
             onPressed: _sendStatement,
           ),
@@ -459,13 +460,13 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
       floatingActionButton: _selectedInvoices.isNotEmpty
           ? FloatingActionButton.extended(
               onPressed: _exportSelectedStatement,
-              icon: const Icon(Icons.description_rounded),
+              icon: const Icon(LucideIcons.fileText),
               label: Text('${_selectedInvoices.length} Fatura Seçili'),
             )
           : FloatingActionButton(
               onPressed: () => _addTransaction(context),
               tooltip: 'Tahsilat/Ödeme Ekle',
-              child: const Icon(Icons.add_rounded),
+              child: const Icon(LucideIcons.plus),
             ),
     );
   }
@@ -482,7 +483,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  Icons.check_circle_outline_rounded,
+                  LucideIcons.circleCheck,
                   size: 64,
                   color: AppTheme.success,
                 ),
@@ -508,7 +509,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
               color: AppTheme.warning.withValues(alpha: 0.1),
               child: Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded, color: AppTheme.warning),
+                  Icon(LucideIcons.triangleAlert, color: AppTheme.warning),
                   const Gap(12),
                   Expanded(
                     child: Text(
@@ -613,8 +614,8 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
                     ),
                     child: Icon(
                       isCollection
-                          ? Icons.arrow_downward_rounded
-                          : Icons.arrow_upward_rounded,
+                          ? LucideIcons.arrowDown
+                          : LucideIcons.arrowUp,
                       color: isCollection ? AppTheme.success : AppTheme.error,
                       size: 18,
                     ),
@@ -641,7 +642,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
                             'tr_TR',
                           ).format(tx.transactionDate),
                           style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: const Color(0xFF94A3B8)),
+                              ?.copyWith(color: AppTheme.textMuted),
                         ),
                       ],
                     ),

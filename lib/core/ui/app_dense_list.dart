@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
 
 import '../../app/theme/app_theme.dart';
+import 'app_phosphor_icons.dart';
 
 /// Shared density tokens for list/table rows across CRM screens.
 class AppDenseList {
@@ -44,8 +45,8 @@ class AppInvoiceTableCols {
   // Status holds invoice + e-invoice + Akınsoft badges side-by-side.
   static const double status = 268;
   static const double amount = 100;
-  // Actions: send + PDF + ERP + edit + overflow (tight gaps).
-  static const double actions = 196;
+  // Dense rows use six consistent icon actions; meaning is exposed by tooltip.
+  static const double actions = 232;
   static const double leadingGap = 6;
 
   static double get fixedTotal =>
@@ -59,25 +60,36 @@ class AppDenseLeadingIcon extends StatelessWidget {
     required this.icon,
     required this.color,
     this.active = true,
+    this.colorful = true,
   });
 
   final IconData icon;
   final Color color;
   final bool active;
+  final bool colorful;
 
   @override
   Widget build(BuildContext context) {
-    final fg = active ? AppTheme.softFg(color) : AppTheme.textMuted;
+    final fg = active && colorful
+        ? AppTheme.softFg(color)
+        : active
+        ? AppTheme.textSoft
+        : AppTheme.textMuted;
     return Container(
       width: AppDenseList.leading,
       height: AppDenseList.leading,
       decoration: BoxDecoration(
-        color: active
-            ? AppTheme.softTint(color, alpha: 0.16)
-            : AppTheme.surfaceMuted,
+        color: active && colorful
+            ? AppTheme.softTint(color, alpha: AppTheme.isDark ? 0.18 : 0.11)
+            : AppTheme.surfaceSoft,
         borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+        border: Border.all(
+          color: active && colorful
+              ? AppTheme.softBorder(color, alpha: 0.22)
+              : AppTheme.border.withValues(alpha: active ? 0.72 : 0.5),
+        ),
       ),
-      child: Icon(icon, size: 18, color: fg),
+      child: AppPhosphorIcon(icon, size: 18, color: fg),
     );
   }
 }
@@ -123,9 +135,9 @@ class AppDenseInfoChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: AppTheme.softTint(tone, alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppTheme.softBorder(tone, alpha: 0.22)),
+        color: AppTheme.softTint(tone, alpha: 0.09),
+        borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+        border: Border.all(color: AppTheme.softBorder(tone, alpha: 0.15)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -141,7 +153,7 @@ class AppDenseInfoChip extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppTheme.softFg(tone),
                 fontSize: 11,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -209,7 +221,7 @@ class AppDenseListCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleSmall
                               ?.copyWith(
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w500,
                                 fontSize: 14,
                                 height: 1.2,
                                 decoration: titleStruck

@@ -14,6 +14,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../design_system/status_tone.dart';
 
@@ -39,31 +40,31 @@ const Map<String, WorkOrderStatusInfo> _kWorkOrderStatuses = {
     label: 'Açık',
     compactLabel: 'AÇIK',
     tone: DsStatusTone.warning,
-    icon: Icons.radio_button_unchecked_rounded,
+    icon: LucideIcons.circle,
   ),
   'in_progress': WorkOrderStatusInfo(
     label: 'Yapılıyor',
     compactLabel: 'YAPILIYOR',
     tone: DsStatusTone.info,
-    icon: Icons.autorenew_rounded,
+    icon: LucideIcons.refreshCw,
   ),
   'approval_pending': WorkOrderStatusInfo(
     label: 'Onay Bekliyor',
     compactLabel: 'ONAY BEKLİYOR',
     tone: DsStatusTone.info,
-    icon: Icons.hourglass_top_rounded,
+    icon: LucideIcons.hourglass,
   ),
   'done': WorkOrderStatusInfo(
     label: 'Tamamlandı',
     compactLabel: 'TAMAMLANDI',
     tone: DsStatusTone.success,
-    icon: Icons.check_circle_rounded,
+    icon: LucideIcons.circleCheck,
   ),
   'cancelled': WorkOrderStatusInfo(
     label: 'İptal',
     compactLabel: 'İPTAL',
     tone: DsStatusTone.danger,
-    icon: Icons.cancel_rounded,
+    icon: LucideIcons.circleX,
   ),
 };
 
@@ -91,7 +92,7 @@ WorkOrderStatusInfo workOrderStatusInfo(String status) {
     label: fallbackLabel,
     compactLabel: fallbackLabel,
     tone: DsStatusTone.neutral,
-    icon: Icons.help_outline_rounded,
+    icon: LucideIcons.circleHelp,
   );
 }
 

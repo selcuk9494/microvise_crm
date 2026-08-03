@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
@@ -180,7 +181,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
           ? [
               FilledButton.tonalIcon(
                 onPressed: () => setState(() => _reorderMode = false),
-                icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                icon: const Icon(LucideIcons.circleCheck, size: 18),
                 label: const Text('Sıralama Bitti'),
               ),
             ]
@@ -188,19 +189,19 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
               OutlinedButton.icon(
                 onPressed: () =>
                     ref.read(workOrdersBoardProvider.notifier).refresh(),
-                icon: const Icon(Icons.refresh_rounded, size: 18),
+                icon: const Icon(LucideIcons.refreshCw, size: 18),
                 label: const Text('Yenile'),
               ),
               const Gap(10),
               OutlinedButton.icon(
                 onPressed: () => context.go('/is-emirleri/tahsilatlar'),
-                icon: const Icon(Icons.payments_rounded, size: 18),
+                icon: const Icon(LucideIcons.banknote, size: 18),
                 label: const Text('Tahsilatlar'),
               ),
               const Gap(10),
               OutlinedButton.icon(
                 onPressed: () => context.go('/is-emirleri/pano'),
-                icon: const Icon(Icons.view_kanban_rounded, size: 18),
+                icon: const Icon(LucideIcons.columns3, size: 18),
                 label: const Text('Pano Görünümü'),
               ),
               const Gap(10),
@@ -211,7 +212,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                         ref.read(workOrdersBoardProvider.notifier).refresh();
                       }
                     : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(LucideIcons.plus, size: 18),
                 label: const Text('Yeni İş Emri'),
               ),
             ],
@@ -222,7 +223,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
 
           if (items.isEmpty) {
             return const EmptyStateCard(
-              icon: Icons.assignment_rounded,
+              icon: LucideIcons.clipboardList,
               title: 'İş emri bulunamadı',
               message:
                   'Bu hesapta iş emri yok veya yetki/bağlantı nedeniyle liste boş geliyor.',
@@ -325,7 +326,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                         setSheetState(() {});
                                       },
                                       icon: const Icon(
-                                        Icons.event_rounded,
+                                        LucideIcons.calendar,
                                         size: 18,
                                       ),
                                       label: Text(
@@ -354,7 +355,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                         setSheetState(() {});
                                       },
                                       icon: const Icon(
-                                        Icons.event_available_rounded,
+                                        LucideIcons.calendarCheck,
                                         size: 18,
                                       ),
                                       label: Text(
@@ -406,7 +407,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                         Navigator.of(context).pop();
                                       },
                                       icon: const Icon(
-                                        Icons.delete_outline_rounded,
+                                        LucideIcons.trash2,
                                         size: 18,
                                       ),
                                       label: const Text('Temizle'),
@@ -443,7 +444,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                 label: 'Durum: ${_statusLabel(_statusFilter)}',
                                 backgroundColor: AppTheme.filterControlBg,
                                 foregroundColor: AppTheme.filterControlFg,
-                                icon: Icons.circle_rounded,
+                                icon: LucideIcons.circle,
                                 onTap: () async {
                                   final next =
                                       await showModalBottomSheet<String>(
@@ -531,7 +532,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                   controller: _searchController,
                                   onChanged: (_) => setState(() {}),
                                   decoration: const InputDecoration(
-                                    prefixIcon: Icon(Icons.search_rounded),
+                                    prefixIcon: Icon(LucideIcons.search),
                                     hintText: 'Ara',
                                   ),
                                 ),
@@ -539,7 +540,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                               const Gap(10),
                               IconButton.filledTonal(
                                 onPressed: openFiltersSheet,
-                                icon: const Icon(Icons.tune_rounded),
+                                icon: const Icon(LucideIcons.settings2),
                               ),
                             ],
                           ),
@@ -556,7 +557,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                               controller: _searchController,
                               onChanged: (_) => setState(() {}),
                               decoration: const InputDecoration(
-                                prefixIcon: Icon(Icons.search_rounded),
+                                prefixIcon: Icon(LucideIcons.search),
                                 hintText: 'Ara',
                               ),
                             ),
@@ -565,7 +566,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                             label: 'Durum: ${_statusLabel(_statusFilter)}',
                             backgroundColor: AppTheme.filterControlBg,
                             foregroundColor: AppTheme.filterControlFg,
-                            icon: Icons.circle_rounded,
+                            icon: LucideIcons.circle,
                             onTap: () async {
                               final next = await showModalBottomSheet<String>(
                                 context: context,
@@ -631,8 +632,8 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                   setState(() => _reorderMode = !_reorderMode),
                               icon: Icon(
                                 _reorderMode
-                                    ? Icons.check_circle_outline_rounded
-                                    : Icons.drag_handle_rounded,
+                                    ? LucideIcons.circleCheck
+                                    : LucideIcons.gripHorizontal,
                                 size: 18,
                               ),
                               label: Text(
@@ -661,7 +662,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                               if (picked == null) return;
                               setState(() => _fromDate = picked);
                             },
-                            icon: const Icon(Icons.event_rounded, size: 18),
+                            icon: const Icon(LucideIcons.calendar, size: 18),
                             label: Text(
                               _fromDate == null
                                   ? 'Başlangıç'
@@ -681,7 +682,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                               setState(() => _toDate = picked);
                             },
                             icon: const Icon(
-                              Icons.event_available_rounded,
+                              LucideIcons.calendarCheck,
                               size: 18,
                             ),
                             label: Text(
@@ -693,10 +694,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                           FilledButton.tonalIcon(
                             onPressed: () =>
                                 setState(() => _showPassive = !_showPassive),
-                            icon: const Icon(
-                              Icons.visibility_rounded,
-                              size: 18,
-                            ),
+                            icon: const Icon(LucideIcons.eye, size: 18),
                             label: Text(
                               _showPassive ? 'Kayıt: Tümü' : 'Kayıt: Aktif',
                             ),
@@ -721,10 +719,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                 _toDate = null;
                               });
                             },
-                            icon: const Icon(
-                              Icons.delete_outline_rounded,
-                              size: 18,
-                            ),
+                            icon: const Icon(LucideIcons.trash2, size: 18),
                             label: const Text('Temizle'),
                             style: FilledButton.styleFrom(
                               backgroundColor: AppTheme.softTint(
@@ -795,8 +790,8 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                     },
                                     icon: Icon(
                                       _selectionMode
-                                          ? Icons.checklist_rtl_rounded
-                                          : Icons.select_all_rounded,
+                                          ? LucideIcons.listChecks
+                                          : LucideIcons.scan,
                                       size: 18,
                                     ),
                                     label: Text(
@@ -875,7 +870,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                               ),
                                             )
                                           : const Icon(
-                                              Icons.assignment_ind_rounded,
+                                              LucideIcons.contact,
                                               size: 18,
                                             ),
                                       label: const Text('Secilenleri Ata'),
@@ -888,7 +883,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                                   .addAll(openFilteredIds),
                                             ),
                                       icon: const Icon(
-                                        Icons.done_all_rounded,
+                                        LucideIcons.checkCheck,
                                         size: 18,
                                       ),
                                       label: const Text('Tumunu Sec'),
@@ -901,7 +896,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                                                   _selectedWorkOrderIds.clear(),
                                             ),
                                       icon: const Icon(
-                                        Icons.remove_done_rounded,
+                                        LucideIcons.listX,
                                         size: 18,
                                       ),
                                       label: const Text('Secimi Temizle'),
@@ -952,7 +947,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
                 children: [
                   if (header != null) ...[header, const Gap(12)],
                   const EmptyStateCard(
-                    icon: Icons.filter_alt_off_rounded,
+                    icon: LucideIcons.filterX,
                     title: 'Kayıt bulunamadı',
                     message:
                         'Filtrelerinize uyan bir iş emri yok. Filtreleri temizlemeyi deneyin.',
@@ -1075,7 +1070,7 @@ class _WorkOrdersListScreenState extends ConsumerState<WorkOrdersListScreen> {
               AppCard(
                 child: TextField(
                   decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search_rounded),
+                    prefixIcon: Icon(LucideIcons.search),
                     labelText: 'Ara',
                   ),
                 ),
@@ -1193,7 +1188,7 @@ class _StatusPill extends StatelessWidget {
               ),
             ),
             const Gap(6),
-            Icon(Icons.expand_more_rounded, size: 18, color: foregroundColor),
+            Icon(LucideIcons.chevronDown, size: 18, color: foregroundColor),
           ],
         ),
       ),
@@ -1582,8 +1577,8 @@ class _WorkOrderGridCard extends ConsumerWidget {
         final paymentIcon = paymentValue == null
             ? null
             : paymentValue
-            ? Icons.payments_rounded
-            : Icons.money_off_csred_rounded;
+            ? LucideIcons.banknote
+            : LucideIcons.badgeDollarSign;
 
         final meta = [
           if (typeName.isNotEmpty) typeName,
@@ -1684,7 +1679,7 @@ class _WorkOrderGridCard extends ConsumerWidget {
                   PopupMenuButton<String>(
                     padding: EdgeInsets.zero,
                     tooltip: 'İşlemler',
-                    icon: Icon(Icons.more_horiz_rounded, color: iconColor),
+                    icon: Icon(LucideIcons.ellipsis, color: iconColor),
                     itemBuilder: (context) => [
                       const PopupMenuItem(
                         value: 'detail',
@@ -2333,7 +2328,7 @@ class _WorkOrderCard extends ConsumerWidget {
               child: const SizedBox(
                 width: 44,
                 height: 44,
-                child: Center(child: Icon(Icons.drag_handle_rounded)),
+                child: Center(child: Icon(LucideIcons.gripHorizontal)),
               ),
             ),
           ] else ...[
@@ -2389,7 +2384,7 @@ class _WorkOrderCard extends ConsumerWidget {
                     break;
                 }
               },
-              icon: Icon(Icons.more_horiz_rounded, color: iconColor),
+              icon: Icon(LucideIcons.ellipsis, color: iconColor),
             ),
           ],
         ],

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -98,12 +99,12 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
 
   final SignatureController _signatureController = SignatureController(
     penStrokeWidth: 2.5,
-    penColor: const Color(0xFF0F172A),
+    penColor: AppTheme.text,
   );
 
   final SignatureController _personnelSignatureController = SignatureController(
     penStrokeWidth: 2.5,
-    penColor: const Color(0xFF0F172A),
+    penColor: AppTheme.text,
   );
 
   bool _saving = false;
@@ -452,7 +453,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                         ),
                         IconButton(
                           onPressed: () => Navigator.of(sheetContext).pop(),
-                          icon: const Icon(Icons.close_rounded),
+                          icon: const Icon(LucideIcons.x),
                         ),
                       ],
                     ),
@@ -549,7 +550,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Icon(Icons.my_location_rounded),
+                              : const Icon(LucideIcons.locateFixed),
                           label: const Text('Konum Al'),
                         ),
                       ],
@@ -1105,7 +1106,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE2E8F0),
+                    color: AppTheme.border,
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -1284,7 +1285,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                       personnelSignaturePngBytes: personnelSigBytes,
                     );
                   },
-            icon: const Icon(Icons.share_rounded),
+            icon: const Icon(LucideIcons.share2),
           ),
         ],
       ],
@@ -1375,28 +1376,24 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           ),
           const Gap(12),
           _InfoRow(
-            icon: Icons.business_rounded,
+            icon: LucideIcons.building2,
             label: 'Müşteri',
             value: customer.name,
           ),
           const Gap(8),
           _InfoRow(
-            icon: Icons.calendar_today_rounded,
+            icon: LucideIcons.calendarDays,
             label: 'Planlanan Tarih',
             value: dateText,
           ),
           if (branchName.isNotEmpty) ...[
             const Gap(8),
-            _InfoRow(
-              icon: Icons.store_mall_directory_rounded,
-              label: 'Şube',
-              value: branchName,
-            ),
+            _InfoRow(icon: LucideIcons.store, label: 'Şube', value: branchName),
           ],
           if (assigned.isNotEmpty) ...[
             const Gap(8),
             _InfoRow(
-              icon: Icons.badge_rounded,
+              icon: LucideIcons.idCard,
               label: 'Atanan',
               value: assigned,
             ),
@@ -1404,7 +1401,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           if (addressText.isNotEmpty) ...[
             const Gap(8),
             _InfoRow(
-              icon: Icons.home_work_rounded,
+              icon: LucideIcons.building2,
               label: 'Adres',
               value: addressText,
             ),
@@ -1412,7 +1409,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           if (description.isNotEmpty) ...[
             const Gap(8),
             _InfoRow(
-              icon: Icons.notes_rounded,
+              icon: LucideIcons.notebookPen,
               label: 'Açıklama',
               value: description,
             ),
@@ -1422,7 +1419,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             children: [
               Expanded(
                 child: _InfoRow(
-                  icon: Icons.location_on_rounded,
+                  icon: LucideIcons.mapPin,
                   label: 'Konum',
                   value: link == null
                       ? 'Konum yok'
@@ -1438,13 +1435,13 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 OutlinedButton.icon(
                   onPressed: () =>
                       _editWorkOrderLocation(customer, rawLocations),
-                  icon: const Icon(Icons.add_location_alt_rounded, size: 18),
+                  icon: const Icon(LucideIcons.mapPinPlus, size: 18),
                   label: const Text('Konum Ekle'),
                 )
               else ...[
                 OutlinedButton.icon(
                   onPressed: _openDirections,
-                  icon: const Icon(Icons.directions_rounded, size: 18),
+                  icon: const Icon(LucideIcons.navigation, size: 18),
                   label: const Text('Tarif Al'),
                 ),
                 const Gap(6),
@@ -1456,8 +1453,8 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                       _editWorkOrderLocation(customer, rawLocations),
                   icon: Icon(
                     rawLocations.isEmpty
-                        ? Icons.add_location_alt_rounded
-                        : Icons.edit_location_alt_rounded,
+                        ? LucideIcons.mapPinPlus
+                        : LucideIcons.mapPinPen,
                   ),
                 ),
               ],
@@ -1487,7 +1484,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Icon(
-                          Icons.place_rounded,
+                          LucideIcons.mapPin,
                           size: 18,
                           color: AppTheme.textMuted,
                         ),
@@ -1535,7 +1532,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                               );
                             }
                           },
-                          icon: const Icon(Icons.directions_rounded),
+                          icon: const Icon(LucideIcons.navigation),
                         ),
                       ],
                     ),
@@ -1547,7 +1544,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           if (customer.email?.isNotEmpty ?? false) ...[
             const Gap(8),
             _InfoRow(
-              icon: Icons.email_rounded,
+              icon: LucideIcons.mail,
               label: 'E-posta',
               value: customer.email!,
             ),
@@ -1555,7 +1552,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           if (customer.phone1?.isNotEmpty ?? false) ...[
             const Gap(8),
             _InfoRow(
-              icon: Icons.phone_rounded,
+              icon: LucideIcons.phone,
               label: 'Telefon',
               value: customer.phone1!,
               phoneActions: true,
@@ -1566,10 +1563,10 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
             children: [
               Icon(
                 widget.order.paymentRequired == null
-                    ? Icons.help_outline_rounded
+                    ? LucideIcons.circleHelp
                     : widget.order.paymentRequired!
-                    ? Icons.payments_rounded
-                    : Icons.money_off_csred_rounded,
+                    ? LucideIcons.banknote
+                    : LucideIcons.badgeDollarSign,
                 size: 18,
                 color: widget.order.paymentRequired == null
                     ? Colors.grey
@@ -1598,7 +1595,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           if ((widget.order.contactPhone ?? '').trim().isNotEmpty) ...[
             const Gap(8),
             _InfoRow(
-              icon: Icons.phone_in_talk_rounded,
+              icon: LucideIcons.phoneCall,
               iconColor: Colors.red,
               label: 'İrtibat',
               labelColor: Colors.red,
@@ -1610,7 +1607,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
           if (closeNotes.isNotEmpty) ...[
             const Gap(8),
             _InfoRow(
-              icon: Icons.fact_check_rounded,
+              icon: LucideIcons.clipboardCheck,
               label: 'Kapanış',
               value: closeNotes,
             ),
@@ -1646,13 +1643,13 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.my_location_rounded, size: 18),
+                      : const Icon(LucideIcons.locateFixed, size: 18),
                   label: const Text('Konum Al'),
                 ),
               const Gap(10),
               OutlinedButton.icon(
                 onPressed: link == null ? null : _openDirections,
-                icon: const Icon(Icons.directions_rounded, size: 18),
+                icon: const Icon(LucideIcons.navigation, size: 18),
                 label: const Text('Tarif Al'),
               ),
             ],
@@ -1687,7 +1684,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                     onPressed: _saving
                         ? null
                         : () => _updateStatus('in_progress'),
-                    icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                    icon: const Icon(LucideIcons.play, size: 18),
                     label: const Text('Başla'),
                   ),
                 ),
@@ -1695,7 +1692,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _saving ? null : () => _updateStatus('open'),
-                    icon: Icon(Icons.undo_rounded, size: 18),
+                    icon: Icon(LucideIcons.undo2, size: 18),
                     label: const Text('Açığa Al'),
                   ),
                 ),
@@ -1712,7 +1709,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                           ref.invalidate(workOrderCloseNotesDefinitionProvider);
                           setState(() => _isClosing = true);
                         },
-                  icon: const Icon(Icons.check_circle_rounded, size: 18),
+                  icon: const Icon(LucideIcons.circleCheck, size: 18),
                   label: const Text('Kapat'),
                 ),
               ),
@@ -1749,7 +1746,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                   onPressed: _saving
                       ? null
                       : () => setState(() => _payments.add(_PaymentDraft())),
-                  icon: const Icon(Icons.add_rounded, size: 18),
+                  icon: const Icon(LucideIcons.plus, size: 18),
                   label: const Text('Ödeme Ekle'),
                 ),
             ],
@@ -1784,7 +1781,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
               child: Row(
                 children: [
                   Icon(
-                    Icons.currency_exchange_rounded,
+                    LucideIcons.arrowLeftRight,
                     size: 16,
                     color: AppTheme.success,
                   ),
@@ -1813,11 +1810,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 18,
-                    color: AppTheme.textMuted,
-                  ),
+                  Icon(LucideIcons.info, size: 18, color: AppTheme.textMuted),
                   const Gap(10),
                   Expanded(
                     child: Text(
@@ -1984,7 +1977,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                                     onChanged: (v) =>
                                         setSheetState(() => q = v),
                                     decoration: const InputDecoration(
-                                      prefixIcon: Icon(Icons.search_rounded),
+                                      prefixIcon: Icon(LucideIcons.search),
                                       hintText: 'Ara (hat, sim, operatör...)',
                                     ),
                                   ),
@@ -1994,7 +1987,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                                       children: [
                                         ListTile(
                                           leading: const Icon(
-                                            Icons.clear_rounded,
+                                            LucideIcons.eraser,
                                           ),
                                           title: const Text('Seçimi temizle'),
                                           onTap: () =>
@@ -2065,7 +2058,7 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
                       onPressed: _saving || available.isEmpty
                           ? null
                           : openPicker,
-                      icon: const Icon(Icons.search_rounded, size: 18),
+                      icon: const Icon(LucideIcons.search, size: 18),
                       label: Text(
                         selected == null
                             ? (available.isEmpty
@@ -2380,7 +2373,7 @@ class _InfoRow extends StatelessWidget {
                 const Gap(12),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.call_rounded),
+                  leading: const Icon(LucideIcons.phone),
                   title: const Text('Ara'),
                   onTap: () async {
                     Navigator.of(context).pop();
@@ -2398,7 +2391,7 @@ class _InfoRow extends StatelessWidget {
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.chat_bubble_rounded),
+                  leading: const Icon(LucideIcons.messageCircle),
                   title: const Text('WhatsApp'),
                   onTap: () async {
                     Navigator.of(context).pop();
@@ -2422,7 +2415,7 @@ class _InfoRow extends StatelessWidget {
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.copy_rounded),
+                  leading: const Icon(LucideIcons.copy),
                   title: const Text('Kopyala'),
                   onTap: () async {
                     Navigator.of(context).pop();
@@ -2477,7 +2470,7 @@ class _InfoRow extends StatelessWidget {
           IconButton(
             tooltip: 'Kopyala',
             onPressed: copy,
-            icon: Icon(Icons.copy_rounded, size: 18, color: valueColor),
+            icon: Icon(LucideIcons.copy, size: 18, color: valueColor),
           ),
         ],
       ],
@@ -2573,7 +2566,7 @@ class _PaymentRowState extends State<_PaymentRow> {
               IconButton(
                 tooltip: 'Sil',
                 onPressed: widget.onRemove,
-                icon: const Icon(Icons.delete_outline_rounded),
+                icon: const Icon(LucideIcons.trash2),
               ),
           ],
         ),
@@ -2620,7 +2613,7 @@ class _PaymentRowState extends State<_PaymentRow> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  Icons.swap_horiz_rounded,
+                  LucideIcons.arrowLeftRight,
                   size: 14,
                   color: AppTheme.textMuted,
                 ),
@@ -2628,7 +2621,7 @@ class _PaymentRowState extends State<_PaymentRow> {
                 Text(
                   '${widget.money.format(tryAmount)} TL',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF475569),
+                    color: AppTheme.textSoft,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

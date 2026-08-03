@@ -1,6 +1,7 @@
 import 'package:excel/excel.dart' hide Border;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -351,7 +352,7 @@ class _Content extends ConsumerWidget {
                   IconButton(
                     tooltip: 'Geri',
                     onPressed: () => Navigator.of(context).maybePop(),
-                    icon: const Icon(Icons.arrow_back_rounded),
+                    icon: const Icon(LucideIcons.arrowLeft),
                   ),
                   const Gap(8),
                   Expanded(
@@ -416,7 +417,7 @@ class _Content extends ConsumerWidget {
                             ref.invalidate(customersProvider);
                           }
                         : null,
-                    icon: const Icon(Icons.edit_rounded, size: 18),
+                    icon: const Icon(LucideIcons.pencil, size: 18),
                     label: const Text('Düzenle'),
                   ),
                 ],
@@ -540,31 +541,31 @@ class _GeneralTab extends ConsumerWidget {
               _QuickStat(
                 label: 'Şube',
                 value: branchesCount.toString(),
-                icon: Icons.account_tree_rounded,
+                icon: LucideIcons.network,
                 onTap: () => goTab(1),
               ),
               _QuickStat(
                 label: 'Hat',
                 value: activeLines.toString(),
-                icon: Icons.sim_card_rounded,
+                icon: LucideIcons.creditCard,
                 onTap: () => goTab(2),
               ),
               _QuickStat(
                 label: 'Lisans',
                 value: activeLicenses.toString(),
-                icon: Icons.verified_user_rounded,
+                icon: LucideIcons.shieldCheck,
                 onTap: () => goTab(3),
               ),
               _QuickStat(
                 label: 'İş Emri',
                 value: openWorkOrders.toString(),
-                icon: Icons.assignment_rounded,
+                icon: LucideIcons.clipboardList,
                 onTap: () => goTab(5),
               ),
               _QuickStat(
                 label: 'Cihaz',
                 value: deviceCount.toString(),
-                icon: Icons.badge_rounded,
+                icon: LucideIcons.idCard,
                 onTap: () => goTab(4),
               ),
             ],
@@ -619,9 +620,9 @@ class _GeneralTab extends ConsumerWidget {
               ),
               child: Text(
                 detail.notes!,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF0F172A),
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: AppTheme.text),
               ),
             ),
           ],
@@ -728,7 +729,7 @@ class _BranchesTab extends ConsumerWidget {
                   );
                   ref.invalidate(customerBranchesProvider(customerId));
                 },
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(LucideIcons.plus, size: 18),
                 label: const Text('Şube Ekle'),
               ),
             ],
@@ -793,7 +794,7 @@ class _LinesTab extends ConsumerWidget {
                   );
                   ref.invalidate(customerLinesProvider(customerId));
                 },
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(LucideIcons.plus, size: 18),
                 label: const Text('Hat Sat'),
               ),
             ],
@@ -862,7 +863,7 @@ class _LicensesTab extends ConsumerWidget {
                   );
                   ref.invalidate(customerLicensesProvider(customerId));
                 },
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(LucideIcons.plus, size: 18),
                 label: const Text('GMP3 Sat'),
               ),
             ],
@@ -1110,7 +1111,7 @@ class _DeviceRegistriesTabState extends ConsumerState<_DeviceRegistriesTab> {
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.upload_file_rounded, size: 18),
+                      : const Icon(LucideIcons.upload, size: 18),
                   label: const Text('İçe Aktar'),
                 ),
               if (canTransfer) const Gap(10),
@@ -1129,7 +1130,7 @@ class _DeviceRegistriesTabState extends ConsumerState<_DeviceRegistriesTab> {
                       );
                     }
                   },
-                  icon: const Icon(Icons.add_rounded, size: 18),
+                  icon: const Icon(LucideIcons.plus, size: 18),
                   label: const Text('Ekle'),
                 ),
             ],
@@ -1645,7 +1646,7 @@ class _DeviceRegistryEditDialogState
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(false),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -1676,7 +1677,7 @@ class _DeviceRegistryEditDialogState
                     Expanded(
                       child: FilledButton.icon(
                         onPressed: _saving ? null : _save,
-                        icon: const Icon(Icons.save_rounded, size: 18),
+                        icon: const Icon(LucideIcons.save, size: 18),
                         label: const Text('Kaydet'),
                       ),
                     ),
@@ -1831,7 +1832,7 @@ class _BranchItem extends StatelessWidget {
               branch.address!,
               style: Theme.of(
                 context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF475569)),
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textSoft),
             ),
           ],
           if (location != null) ...[
@@ -1840,7 +1841,7 @@ class _BranchItem extends StatelessWidget {
               'Konum: $location',
               style: Theme.of(
                 context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF94A3B8)),
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             ),
           ],
         ],
@@ -2031,9 +2032,9 @@ class _LineItemState extends ConsumerState<_LineItem> {
                   const Gap(4),
                   Text(
                     period,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF94A3B8),
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                   ),
                 ],
               ],
@@ -2492,7 +2493,7 @@ class _AddBranchDialogState extends ConsumerState<_AddBranchDialog> {
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -2798,7 +2799,7 @@ class _EditLineDialogState extends ConsumerState<_EditLineDialog> {
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -2853,7 +2854,7 @@ class _EditLineDialogState extends ConsumerState<_EditLineDialog> {
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: _saving ? null : _pickStart,
-                        icon: const Icon(Icons.date_range_rounded),
+                        icon: const Icon(LucideIcons.calendarDays),
                         label: Text(
                           _start == null ? 'Başlangıç' : df.format(_start!),
                         ),
@@ -2863,7 +2864,7 @@ class _EditLineDialogState extends ConsumerState<_EditLineDialog> {
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: _saving ? null : _pickEnd,
-                        icon: const Icon(Icons.event_busy_rounded),
+                        icon: const Icon(LucideIcons.calendarX),
                         label: Text(_end == null ? 'Bitiş' : df.format(_end!)),
                       ),
                     ),
@@ -3153,7 +3154,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -3242,9 +3243,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                                         onChanged: (v) =>
                                             setSheetState(() => q = v),
                                         decoration: const InputDecoration(
-                                          prefixIcon: Icon(
-                                            Icons.search_rounded,
-                                          ),
+                                          prefixIcon: Icon(LucideIcons.search),
                                           hintText:
                                               'Ara (hat, sim, operatör...)',
                                         ),
@@ -3255,7 +3254,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                                           children: [
                                             ListTile(
                                               leading: const Icon(
-                                                Icons.clear_rounded,
+                                                LucideIcons.eraser,
                                               ),
                                               title: const Text(
                                                 'Seçimi temizle',
@@ -3332,7 +3331,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                           onPressed: _saving || available.isEmpty
                               ? null
                               : openPicker,
-                          icon: const Icon(Icons.search_rounded),
+                          icon: const Icon(LucideIcons.search),
                           label: Text(
                             selected == null
                                 ? (available.isEmpty
@@ -3428,7 +3427,7 @@ class _SellLineDialogState extends ConsumerState<_SellLineDialog> {
                         child: Text(
                           'Başlangıç: $startText\nBitiş: $endText',
                           style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: const Color(0xFF475569)),
+                              ?.copyWith(color: AppTheme.textSoft),
                         ),
                       ),
                     ),
@@ -3660,7 +3659,7 @@ class _EditGmp3DialogState extends ConsumerState<_EditGmp3Dialog> {
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -3738,7 +3737,7 @@ class _EditGmp3DialogState extends ConsumerState<_EditGmp3Dialog> {
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: _saving ? null : _pickStart,
-                        icon: const Icon(Icons.date_range_rounded),
+                        icon: const Icon(LucideIcons.calendarDays),
                         label: Text(
                           _start == null ? 'Başlangıç' : df.format(_start!),
                         ),
@@ -3748,7 +3747,7 @@ class _EditGmp3DialogState extends ConsumerState<_EditGmp3Dialog> {
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: _saving ? null : _pickEnd,
-                        icon: const Icon(Icons.event_busy_rounded),
+                        icon: const Icon(LucideIcons.calendarX),
                         label: Text(_end == null ? 'Bitiş' : df.format(_end!)),
                       ),
                     ),
@@ -3957,7 +3956,7 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -4081,9 +4080,9 @@ class _SellGmp3DialogState extends ConsumerState<_SellGmp3Dialog> {
                   ),
                   child: Text(
                     'Başlangıç: $startText\nBitiş: $endText',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF475569),
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.textSoft),
                   ),
                 ),
                 const Gap(18),
@@ -4344,7 +4343,7 @@ class _TransferLineDialogState extends State<_TransferLineDialog> {
                   IconButton(
                     tooltip: 'Kapat',
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
+                    icon: const Icon(LucideIcons.x),
                   ),
                 ],
               ),
@@ -4494,7 +4493,7 @@ class _ExpiryItem extends StatelessWidget {
                       Text(
                         dateText,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF94A3B8),
+                          color: AppTheme.textMuted,
                         ),
                       ),
                   ],
@@ -4577,7 +4576,7 @@ class _InfoRow extends StatelessWidget {
                 const Gap(12),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.call_rounded),
+                  leading: const Icon(LucideIcons.phone),
                   title: const Text('Ara'),
                   onTap: () async {
                     Navigator.of(sheetContext).pop();
@@ -4595,7 +4594,7 @@ class _InfoRow extends StatelessWidget {
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.chat_bubble_rounded),
+                  leading: const Icon(LucideIcons.messageCircle),
                   title: const Text('WhatsApp'),
                   onTap: () async {
                     Navigator.of(sheetContext).pop();
@@ -4619,7 +4618,7 @@ class _InfoRow extends StatelessWidget {
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.copy_rounded),
+                  leading: const Icon(LucideIcons.copy),
                   title: const Text('Kopyala'),
                   onTap: () async {
                     Navigator.of(sheetContext).pop();
@@ -4673,7 +4672,7 @@ class _InfoRow extends StatelessWidget {
           IconButton(
             tooltip: 'Kopyala',
             onPressed: copy,
-            icon: const Icon(Icons.copy_rounded, size: 18),
+            icon: const Icon(LucideIcons.copy, size: 18),
           ),
         ],
       ],

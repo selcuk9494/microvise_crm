@@ -27,29 +27,37 @@ class AppBadge extends StatelessWidget {
 
     return Container(
       padding: dense
-          ? const EdgeInsets.symmetric(horizontal: 7, vertical: 2)
-          : const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+          ? const EdgeInsets.symmetric(horizontal: 3, vertical: 2)
+          : const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       decoration: BoxDecoration(
-        color: AppTheme.softTint(color, alpha: AppTheme.isDark ? 0.18 : 0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: AppTheme.softBorder(
-            color,
-            alpha: AppTheme.isDark ? 0.32 : 0.24,
-          ),
-        ),
+        color: AppTheme.softTint(color, alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+        border: Border.all(color: AppTheme.softBorder(color, alpha: 0.14)),
       ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          fontWeight: FontWeight.w700,
-          color: fg,
-          fontSize: dense ? 10.5 : 11,
-          height: 1.15,
-          letterSpacing: 0.05,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: dense ? 5 : 6,
+            height: dense ? 5 : 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          SizedBox(width: dense ? 5 : 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w500,
+                color: fg,
+                fontSize: dense ? 10.5 : 11,
+                height: 1.15,
+                letterSpacing: 0.05,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

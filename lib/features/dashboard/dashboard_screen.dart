@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
@@ -277,7 +278,7 @@ List<_KpiItem> _buildTodayItems({
       _KpiItem(
         label: 'Açık İş Emirleri',
         value: metrics.openWorkOrders.toString(),
-        icon: Icons.view_kanban_rounded,
+        icon: LucideIcons.columns3,
         tone: DsStatusTone.info,
         onTap: () => context.go('/is-emirleri'),
       ),
@@ -285,7 +286,7 @@ List<_KpiItem> _buildTodayItems({
       _KpiItem(
         label: 'Bugünkü İşler',
         value: metrics.todayWorkOrders.toString(),
-        icon: Icons.today_rounded,
+        icon: LucideIcons.calendarDays,
         tone: DsStatusTone.info,
         onTap: () => context.go('/is-emirleri'),
       ),
@@ -293,7 +294,7 @@ List<_KpiItem> _buildTodayItems({
       _KpiItem(
         label: 'Devam Eden',
         value: metrics.inProgressWorkOrders.toString(),
-        icon: Icons.timelapse_rounded,
+        icon: LucideIcons.timer,
         tone: DsStatusTone.info,
         onTap: () => context.go('/is-emirleri'),
       ),
@@ -301,7 +302,7 @@ List<_KpiItem> _buildTodayItems({
       _KpiItem(
         label: 'Yakında Süresi Dolacaklar',
         value: metrics.expiringSoon.toString(),
-        icon: Icons.warning_amber_rounded,
+        icon: LucideIcons.triangleAlert,
         tone: metrics.expiringSoon > 0
             ? DsStatusTone.warning
             : DsStatusTone.neutral,
@@ -327,7 +328,7 @@ List<_KpiItem> _buildOverviewItems({
       _KpiItem(
         label: 'Açık Faturalar',
         value: metrics.openInvoices.toString(),
-        icon: Icons.receipt_long_rounded,
+        icon: LucideIcons.receiptText,
         tone: DsStatusTone.info,
         subtitle: money.format(metrics.totalInvoiceAmount),
         onTap: () => context.go('/faturalama'),
@@ -336,7 +337,7 @@ List<_KpiItem> _buildOverviewItems({
       _KpiItem(
         label: 'Gelir (Bu Ay)',
         value: money.format(metrics.revenue),
-        icon: Icons.payments_rounded,
+        icon: LucideIcons.banknote,
         tone: DsStatusTone.info,
         trendPercent: metrics.revenueChangePercent,
         onTap: () => context.go('/raporlar'),
@@ -345,7 +346,7 @@ List<_KpiItem> _buildOverviewItems({
       _KpiItem(
         label: 'Toplam Müşteri',
         value: metrics.totalCustomers.toString(),
-        icon: Icons.groups_rounded,
+        icon: LucideIcons.usersRound,
         tone: DsStatusTone.info,
         onTap: () => context.go('/musteriler'),
       ),
@@ -429,7 +430,7 @@ class _InsightsSection extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const _InsightCardHeader(
-                  icon: Icons.show_chart_rounded,
+                  icon: LucideIcons.chartNoAxesCombined,
                   title: 'Gelir (Son 14 Gün)',
                   subtitle: 'Ödemeler üzerinden günlük toplam.',
                 ),
@@ -455,7 +456,7 @@ class _InsightsSection extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const _InsightCardHeader(
-                  icon: Icons.assignment_rounded,
+                  icon: LucideIcons.clipboardList,
                   title: 'İş Emri Durumu',
                   subtitle: 'Açık, devam eden ve tamamlanan işler.',
                 ),
@@ -480,7 +481,7 @@ class _InsightsSection extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const _InsightCardHeader(
-                  icon: Icons.bolt_rounded,
+                  icon: LucideIcons.zap,
                   title: 'Son Aktiviteler',
                   subtitle: 'İş emirleri ve servis kayıtları.',
                 ),
@@ -795,7 +796,7 @@ class _ExchangeRatesCard extends ConsumerWidget {
                   dsStatusToneColor(DsStatusTone.neutral),
                 ),
                 child: Icon(
-                  Icons.currency_exchange_rounded,
+                  LucideIcons.arrowLeftRight,
                   size: 16,
                   color: AppTheme.categoryIconFg(
                     dsStatusToneColor(DsStatusTone.neutral),
@@ -829,7 +830,7 @@ class _ExchangeRatesCard extends ConsumerWidget {
                 ),
               ),
               Icon(
-                Icons.open_in_new_rounded,
+                LucideIcons.externalLink,
                 size: 18,
                 color: AppTheme.textMuted,
               ),
@@ -860,7 +861,7 @@ class _BankPasswordsCard extends StatelessWidget {
                 dsStatusToneColor(DsStatusTone.neutral),
               ),
               child: Icon(
-                Icons.lock_rounded,
+                LucideIcons.lock,
                 size: 16,
                 color: AppTheme.categoryIconFg(
                   dsStatusToneColor(DsStatusTone.neutral),
@@ -887,11 +888,7 @@ class _BankPasswordsCard extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 18,
-              color: AppTheme.textMuted,
-            ),
+            Icon(LucideIcons.chevronRight, size: 18, color: AppTheme.textMuted),
           ],
         ),
       ),
@@ -909,7 +906,7 @@ class _BankPasswordsCard extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.account_balance_rounded),
+                leading: const Icon(LucideIcons.landmark),
                 title: const Text('İş Bankası'),
                 onTap: () {
                   Navigator.of(context).pop();
@@ -917,7 +914,7 @@ class _BankPasswordsCard extends StatelessWidget {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.account_balance_rounded),
+                leading: const Icon(LucideIcons.landmark),
                 title: const Text('Garanti Bankası'),
                 onTap: () {
                   Navigator.of(context).pop();

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -350,7 +351,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                       OutlinedButton.icon(
                         onPressed: () =>
                             setState(() => _items.add(_ItemDraft())),
-                        icon: const Icon(Icons.add_rounded, size: 18),
+                        icon: const Icon(LucideIcons.plus, size: 18),
                         label: const Text('Kalem Ekle'),
                       ),
                     ],
@@ -699,7 +700,7 @@ class _ItemRow extends StatelessWidget {
               const Gap(8),
               if (onRemove != null)
                 IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                  icon: const Icon(LucideIcons.trash2, size: 20),
                   onPressed: onRemove,
                   tooltip: 'Kaldır',
                 ),

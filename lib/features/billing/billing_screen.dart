@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -166,7 +167,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(invoiceItemsProvider),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
       ],
@@ -204,7 +205,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                     const Gap(8),
                     if (filtered.isEmpty)
                       const EmptyStateCard(
-                        icon: Icons.receipt_long_rounded,
+                        icon: LucideIcons.receiptText,
                         title: 'Kayıt bulunamadı',
                         message: 'Filtrelerinize uyan bir fatura yok.',
                       )
@@ -227,12 +228,12 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
               },
               loading: () => const _BillingListSkeleton(),
               error: (e, _) => EmptyStateCard(
-                icon: Icons.cloud_off_rounded,
+                icon: LucideIcons.cloudOff,
                 title: 'Fatura listesi yüklenemedi',
                 message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
                 action: OutlinedButton.icon(
                   onPressed: () => ref.invalidate(invoiceItemsProvider),
-                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  icon: const Icon(LucideIcons.refreshCw, size: 16),
                   label: const Text('Tekrar Dene'),
                 ),
               ),
@@ -408,7 +409,7 @@ class _BillingFiltersSummaryCard extends StatelessWidget {
             child: TextField(
               controller: queryController,
               decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search_rounded),
+                prefixIcon: Icon(LucideIcons.search),
                 labelText: 'Ara',
                 hintText: 'Müşteri, açıklama, tip',
               ),
@@ -417,7 +418,7 @@ class _BillingFiltersSummaryCard extends StatelessWidget {
           ),
           _CompactFilterDropdown<InvoiceDateFilter>(
             value: filters.date,
-            icon: Icons.date_range_rounded,
+            icon: LucideIcons.calendarDays,
             items: InvoiceDateFilter.values,
             label: (value) => switch (value) {
               InvoiceDateFilter.today => 'Bugün',
@@ -429,7 +430,7 @@ class _BillingFiltersSummaryCard extends StatelessWidget {
           ),
           _CompactFilterDropdown<InvoiceStatusFilter>(
             value: filters.status,
-            icon: Icons.fact_check_rounded,
+            icon: LucideIcons.clipboardCheck,
             items: InvoiceStatusFilter.values,
             label: (value) => switch (value) {
               InvoiceStatusFilter.pending => 'Bekleyen',
@@ -440,7 +441,7 @@ class _BillingFiltersSummaryCard extends StatelessWidget {
           ),
           _CompactFilterDropdown<InvoiceActiveFilter>(
             value: filters.active,
-            icon: Icons.toggle_on_rounded,
+            icon: LucideIcons.toggleRight,
             items: InvoiceActiveFilter.values,
             label: (value) => switch (value) {
               InvoiceActiveFilter.active => 'Aktif',
@@ -454,7 +455,7 @@ class _BillingFiltersSummaryCard extends StatelessWidget {
           _MiniStat(label: 'Bugün', value: counts.today.toString()),
           OutlinedButton.icon(
             onPressed: onClear,
-            icon: const Icon(Icons.clear_rounded, size: 18),
+            icon: const Icon(LucideIcons.eraser, size: 18),
             label: const Text('Sıfırla'),
           ),
         ],
@@ -498,7 +499,7 @@ class _CompactFilterDropdown<T> extends StatelessWidget {
           onChanged: (next) {
             if (next != null) onChanged(next);
           },
-          icon: const Icon(Icons.expand_more_rounded, size: 18),
+          icon: const Icon(LucideIcons.chevronDown, size: 18),
           selectedItemBuilder: (context) => [
             for (final item in items)
               Row(
@@ -554,7 +555,7 @@ class _MiniStat extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -908,7 +909,7 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
                       borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                     ),
                     child: Icon(
-                      Icons.receipt_long_rounded,
+                      LucideIcons.receiptText,
                       size: 20,
                       color: AppTheme.primary,
                     ),
@@ -948,21 +949,21 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
                   SizedBox(
                     width: 170,
                     child: _InvoiceMetaText(
-                      icon: Icons.payments_rounded,
+                      icon: LucideIcons.banknote,
                       text: amountText,
                     ),
                   ),
                   SizedBox(
                     width: 150,
                     child: _InvoiceMetaText(
-                      icon: Icons.calendar_today_rounded,
+                      icon: LucideIcons.calendarDays,
                       text: createdAtText ?? '-',
                     ),
                   ),
                   SizedBox(
                     width: 170,
                     child: _InvoiceMetaText(
-                      icon: Icons.category_rounded,
+                      icon: LucideIcons.shapes,
                       text: item.itemType,
                     ),
                   ),
@@ -983,7 +984,7 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
                       child: const SizedBox(
                         width: 40,
                         height: 40,
-                        child: Icon(Icons.more_horiz_rounded),
+                        child: Icon(LucideIcons.ellipsis),
                       ),
                     )
                   else
@@ -996,25 +997,25 @@ class _InvoiceRowState extends ConsumerState<_InvoiceRow> {
                               : 'Geri Al',
                           onPressed: _saving ? null : _toggleInvoiced,
                           icon: _saving
-                              ? Icons.hourglass_empty_rounded
+                              ? LucideIcons.hourglass
                               : item.status == 'pending'
-                              ? Icons.check_rounded
-                              : Icons.undo_rounded,
+                              ? LucideIcons.check
+                              : LucideIcons.undo2,
                         ),
                         const Gap(6),
                         _TinyActionButton(
                           tooltip: item.isActive ? 'Pasife Al' : 'Aktifleştir',
                           onPressed: _saving ? null : _toggleActive,
                           icon: item.isActive
-                              ? Icons.archive_rounded
-                              : Icons.restore_rounded,
+                              ? LucideIcons.archive
+                              : LucideIcons.rotateCcw,
                         ),
                         if (widget.canDeletePermanently) ...[
                           const Gap(6),
                           _TinyActionButton(
                             tooltip: 'Kalıcı Sil',
                             onPressed: _saving ? null : _deletePermanently,
-                            icon: Icons.delete_forever_rounded,
+                            icon: LucideIcons.trash2,
                           ),
                         ],
                       ],

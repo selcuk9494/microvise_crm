@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -381,12 +382,12 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(scrapFormsProvider),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         FilledButton.icon(
           onPressed: _openCreateDialog,
-          icon: const Icon(Icons.add_rounded, size: 18),
+          icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text('Yeni Hurda Formu'),
         ),
       ],
@@ -408,7 +409,7 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Müşteri',
                       hintText: 'Ad / ünvan ara',
-                      prefixIcon: Icon(Icons.person_search_rounded),
+                      prefixIcon: Icon(LucideIcons.userSearch),
                     ),
                   ),
                 ),
@@ -420,7 +421,7 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Cihaz / Sicil',
                       hintText: 'Marka model veya sicil no',
-                      prefixIcon: Icon(Icons.memory_rounded),
+                      prefixIcon: Icon(LucideIcons.memoryStick),
                     ),
                   ),
                 ),
@@ -440,7 +441,7 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Başlangıç',
                       hintText: 'Tarih seçin',
-                      prefixIcon: Icon(Icons.calendar_today_rounded),
+                      prefixIcon: Icon(LucideIcons.calendarDays),
                     ),
                   ),
                 ),
@@ -458,7 +459,7 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Bitiş',
                       hintText: 'Tarih seçin',
-                      prefixIcon: Icon(Icons.event_rounded),
+                      prefixIcon: Icon(LucideIcons.calendar),
                     ),
                   ),
                 ),
@@ -472,7 +473,7 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                       _showPassive = false;
                     });
                   },
-                  icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
+                  icon: const Icon(LucideIcons.filterX, size: 18),
                   label: const Text('Temizle'),
                 ),
                 FilterChip(
@@ -517,7 +518,7 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
               if (index == 1) return statsCard;
               if (filtered.isEmpty) {
                 return const EmptyStateCard(
-                  icon: Icons.delete_sweep_rounded,
+                  icon: LucideIcons.trash,
                   title: 'Kayıt bulunamadı',
                   message: 'Henüz hurda formu kaydı yok.',
                 );
@@ -568,12 +569,12 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stackTrace) => EmptyStateCard(
-          icon: Icons.cloud_off_rounded,
+          icon: LucideIcons.cloudOff,
           title: 'Hurda formları yüklenemedi',
           message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
           action: OutlinedButton.icon(
             onPressed: () => ref.invalidate(scrapFormsProvider),
-            icon: const Icon(Icons.refresh_rounded, size: 16),
+            icon: const Icon(LucideIcons.refreshCw, size: 16),
             label: const Text('Tekrar Dene'),
           ),
         ),
@@ -650,7 +651,7 @@ class _ScrapRecordCard extends StatelessWidget {
 
     return AppDenseListCard(
       leading: AppDenseLeadingIcon(
-        icon: Icons.recycling_rounded,
+        icon: LucideIcons.recycle,
         color: AppTheme.primary,
         active: record.isActive,
       ),
@@ -661,15 +662,15 @@ class _ScrapRecordCard extends StatelessWidget {
       titleStruck: !record.isActive,
       badge: AppBadge(label: badgeLabel, tone: badgeTone, dense: true),
       meta: [
-        AppDenseInfoChip(icon: Icons.calendar_today_rounded, text: dateText),
+        AppDenseInfoChip(icon: LucideIcons.calendarDays, text: dateText),
         if ((record.rowNumber ?? '').trim().isNotEmpty)
           AppDenseInfoChip(
-            icon: Icons.tag_rounded,
+            icon: LucideIcons.tag,
             text: 'Sıra: ${record.rowNumber!.trim()}',
           ),
         if ((record.interventionPurpose ?? '').trim().isNotEmpty)
           AppDenseInfoChip(
-            icon: Icons.task_alt_rounded,
+            icon: LucideIcons.circleCheck,
             text: record.interventionPurpose!.trim(),
           ),
         FormDocumentMetaChip(document: record.document),
@@ -678,7 +679,7 @@ class _ScrapRecordCard extends StatelessWidget {
         FormRecordIconAction(
           tooltip: 'Yazdır',
           onPressed: onPrint,
-          icon: Icons.print_rounded,
+          icon: LucideIcons.printer,
         ),
         FormDocumentActions(
           document: record.document,
@@ -690,27 +691,25 @@ class _ScrapRecordCard extends StatelessWidget {
           FormRecordIconAction(
             tooltip: 'Düzenle',
             onPressed: onEdit,
-            icon: Icons.edit_rounded,
+            icon: LucideIcons.pencil,
           ),
         if (canEdit)
           FormRecordIconAction(
             tooltip: 'Kopya',
             onPressed: onDuplicate,
-            icon: Icons.content_copy_rounded,
+            icon: LucideIcons.copy,
           ),
         if (canArchive && onToggleActive != null)
           FormRecordIconAction(
             tooltip: record.isActive ? 'Pasife Al' : 'Aktifleştir',
             onPressed: onToggleActive,
-            icon: record.isActive
-                ? Icons.archive_rounded
-                : Icons.restore_rounded,
+            icon: record.isActive ? LucideIcons.archive : LucideIcons.rotateCcw,
           ),
         if (canDeletePermanently && onDeletePermanently != null)
           FormRecordIconAction(
             tooltip: 'Kalıcı Sil',
             onPressed: onDeletePermanently,
-            icon: Icons.delete_forever_rounded,
+            icon: LucideIcons.trash2,
           ),
       ],
     );
@@ -1024,7 +1023,7 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                         onPressed: _saving
                             ? null
                             : () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close_rounded),
+                        icon: const Icon(LucideIcons.x),
                       ),
                     ],
                   ),
@@ -1047,7 +1046,7 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                           ),
                           decoration: const InputDecoration(
                             labelText: 'Tarih',
-                            prefixIcon: Icon(Icons.calendar_today_rounded),
+                            prefixIcon: Icon(LucideIcons.calendarDays),
                           ),
                         ),
                       ),
@@ -1057,7 +1056,7 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                           controller: _rowNumberController,
                           decoration: const InputDecoration(
                             labelText: 'Sıra No',
-                            prefixIcon: Icon(Icons.tag_rounded),
+                            prefixIcon: Icon(LucideIcons.tag),
                           ),
                         ),
                       ),
@@ -1079,7 +1078,7 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                             decoration: const InputDecoration(
                               labelText: 'Adı, Soyadı veya Ünvanı',
                               hintText: 'Müşteriyi seçin',
-                              prefixIcon: Icon(Icons.business_rounded),
+                              prefixIcon: Icon(LucideIcons.building2),
                             ),
                           ),
                         ),
@@ -1204,7 +1203,7 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                           ),
                           decoration: const InputDecoration(
                             labelText: 'Cihazın Kullanılmaya Başlandığı Tarih',
-                            prefixIcon: Icon(Icons.event_available_rounded),
+                            prefixIcon: Icon(LucideIcons.calendarCheck),
                           ),
                         ),
                       ),
@@ -1224,7 +1223,7 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                           ),
                           decoration: const InputDecoration(
                             labelText: 'Cihazın En Son Kullanıldığı Tarih',
-                            prefixIcon: Icon(Icons.event_busy_rounded),
+                            prefixIcon: Icon(LucideIcons.calendarX),
                           ),
                         ),
                       ),
@@ -1381,7 +1380,7 @@ class _ScrapCustomerPickerDialogState
                   ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
+                    icon: const Icon(LucideIcons.x),
                   ),
                 ],
               ),
@@ -1393,7 +1392,7 @@ class _ScrapCustomerPickerDialogState
                 decoration: const InputDecoration(
                   labelText: 'Ara',
                   hintText: 'Firma adı, VKN veya şehir',
-                  prefixIcon: Icon(Icons.search_rounded),
+                  prefixIcon: Icon(LucideIcons.search),
                 ),
               ),
               const Gap(12),
@@ -1423,7 +1422,7 @@ class _ScrapCustomerPickerDialogState
                               ].join(' • '),
                             ),
                             trailing: selected
-                                ? const Icon(Icons.check_circle_rounded)
+                                ? const Icon(LucideIcons.circleCheck)
                                 : null,
                             onTap: () => Navigator.of(context).pop(item),
                           );

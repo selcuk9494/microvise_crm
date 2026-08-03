@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -123,7 +124,7 @@ class _WorkOrderPaymentsScreenState
           onPressed: () => ref.invalidate(
             workOrderPaymentsProvider((from: fromStr, to: toStr)),
           ),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
       ],
@@ -178,7 +179,7 @@ class _WorkOrderPaymentsScreenState
                           if (_to.isBefore(_from)) _to = _from;
                         });
                       },
-                      icon: const Icon(Icons.event_rounded, size: 18),
+                      icon: const Icon(LucideIcons.calendar, size: 18),
                       label: Text('Başlangıç: $fromStr'),
                     ),
                     OutlinedButton.icon(
@@ -195,7 +196,7 @@ class _WorkOrderPaymentsScreenState
                           if (_to.isBefore(_from)) _from = _to;
                         });
                       },
-                      icon: const Icon(Icons.event_available_rounded, size: 18),
+                      icon: const Icon(LucideIcons.calendarCheck, size: 18),
                       label: Text('Bitiş: $toStr'),
                     ),
                   ],
@@ -213,7 +214,7 @@ class _WorkOrderPaymentsScreenState
               data: (items) {
                 if (items.isEmpty) {
                   return const EmptyStateCard(
-                    icon: Icons.payments_rounded,
+                    icon: LucideIcons.banknote,
                     title: 'Kayıt bulunamadı',
                     message: 'Seçili tarih aralığında tahsilat yok.',
                   );
@@ -261,14 +262,14 @@ class _WorkOrderPaymentsScreenState
               },
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, _) => EmptyStateCard(
-                icon: Icons.cloud_off_rounded,
+                icon: LucideIcons.cloudOff,
                 title: 'Tahsilatlar yüklenemedi',
                 message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
                 action: OutlinedButton.icon(
                   onPressed: () => ref.invalidate(
                     workOrderPaymentsProvider((from: fromStr, to: toStr)),
                   ),
-                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  icon: const Icon(LucideIcons.refreshCw, size: 16),
                   label: const Text('Tekrar Dene'),
                 ),
               ),

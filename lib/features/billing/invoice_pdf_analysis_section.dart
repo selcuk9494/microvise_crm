@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -180,26 +181,26 @@ class _InvoicePdfAnalysisSectionState
                 children: [
                   FilledButton.icon(
                     onPressed: state.isLoading ? null : _pickAndImportPdfs,
-                    icon: const Icon(Icons.upload_file_rounded, size: 18),
+                    icon: const Icon(LucideIcons.upload, size: 18),
                     label: const Text('PDF Yukle'),
                   ),
                   OutlinedButton.icon(
                     onPressed: state.entries.isEmpty || state.isLoading
                         ? null
                         : _saveCurrentList,
-                    icon: const Icon(Icons.save_rounded, size: 18),
+                    icon: const Icon(LucideIcons.save, size: 18),
                     label: const Text('Listeyi Kaydet'),
                   ),
                   OutlinedButton.icon(
                     onPressed: state.isLoading ? null : _loadSavedList,
-                    icon: const Icon(Icons.restore_page_rounded, size: 18),
+                    icon: const Icon(LucideIcons.fileClock, size: 18),
                     label: const Text('Kayitli Listeyi Yukle'),
                   ),
                   OutlinedButton.icon(
                     onPressed: state.lastSavedAtMs == null || state.isLoading
                         ? null
                         : _clearSavedList,
-                    icon: const Icon(Icons.auto_delete_rounded, size: 18),
+                    icon: const Icon(LucideIcons.trash2, size: 18),
                     label: const Text('Kayitli Listeyi Sil'),
                   ),
                   OutlinedButton.icon(
@@ -213,7 +214,7 @@ class _InvoicePdfAnalysisSectionState
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.table_view_rounded, size: 18),
+                        : const Icon(LucideIcons.table2, size: 18),
                     label: const Text('Excel Aktar'),
                   ),
                   OutlinedButton.icon(
@@ -226,14 +227,14 @@ class _InvoicePdfAnalysisSectionState
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                        : const Icon(LucideIcons.fileType2, size: 18),
                     label: const Text('PDF Aktar'),
                   ),
                   OutlinedButton.icon(
                     onPressed: state.entries.isEmpty || state.isLoading
                         ? null
                         : notifier.clear,
-                    icon: const Icon(Icons.delete_sweep_rounded, size: 18),
+                    icon: const Icon(LucideIcons.trash, size: 18),
                     label: const Text('Listeyi Temizle'),
                   ),
                 ],
@@ -258,7 +259,7 @@ class _InvoicePdfAnalysisSectionState
                     child: TextField(
                       controller: _queryController,
                       decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.search_rounded),
+                        prefixIcon: const Icon(LucideIcons.search),
                         labelText: 'Ara',
                         hintText: 'Fatura no veya musteri',
                         suffixIcon: _queryController.text.isEmpty
@@ -267,7 +268,7 @@ class _InvoicePdfAnalysisSectionState
                                 tooltip: 'Temizle',
                                 onPressed: () =>
                                     setState(_queryController.clear),
-                                icon: const Icon(Icons.close_rounded),
+                                icon: const Icon(LucideIcons.x),
                               ),
                       ),
                       onChanged: (_) => setState(() {}),
@@ -307,7 +308,7 @@ class _InvoicePdfAnalysisSectionState
                       onPressed: () => _pickFilterDate(isStart: true),
                       child: Row(
                         children: [
-                          const Icon(Icons.event_rounded, size: 18),
+                          const Icon(LucideIcons.calendar, size: 18),
                           const Gap(8),
                           Expanded(
                             child: Text(
@@ -327,7 +328,7 @@ class _InvoicePdfAnalysisSectionState
                       onPressed: () => _pickFilterDate(isStart: false),
                       child: Row(
                         children: [
-                          const Icon(Icons.event_available_rounded, size: 18),
+                          const Icon(LucideIcons.calendarCheck, size: 18),
                           const Gap(8),
                           Expanded(
                             child: Text(
@@ -408,7 +409,7 @@ class _InvoicePdfAnalysisSectionState
                         _queryController.clear();
                       });
                     },
-                    icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
+                    icon: const Icon(LucideIcons.filterX, size: 18),
                     label: const Text('Filtreleri Sifirla'),
                   ),
                 ],
@@ -486,7 +487,9 @@ class _InvoicePdfAnalysisSectionState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Excel aktarimi basarisiz. Lütfen tekrar deneyin.')),
+        const SnackBar(
+          content: Text('Excel aktarimi basarisiz. Lütfen tekrar deneyin.'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _exportingExcel = false);
@@ -512,7 +515,9 @@ class _InvoicePdfAnalysisSectionState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PDF aktarimi basarisiz. Lütfen tekrar deneyin.')),
+        const SnackBar(
+          content: Text('PDF aktarimi basarisiz. Lütfen tekrar deneyin.'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _exportingPdf = false);
@@ -565,7 +570,9 @@ class _InvoicePdfAnalysisSectionState
         ),
       );
     } catch (e) {
-      setState(() => _uploadStatusMessage = 'PDF secilemedi. Lütfen tekrar deneyin.');
+      setState(
+        () => _uploadStatusMessage = 'PDF secilemedi. Lütfen tekrar deneyin.',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('PDF secilemedi. Lütfen tekrar deneyin.')),
@@ -766,7 +773,7 @@ class _InvoicePdfEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const EmptyStateCard(
-      icon: Icons.picture_as_pdf_rounded,
+      icon: LucideIcons.fileType2,
       title: 'Analiz icin henuz PDF yuklenmedi.',
       message:
           'Yukleme sonrasi KDV oran bazli dashboard ve aktarilabilir muhasebe listesi burada gorunur.',
@@ -1023,7 +1030,7 @@ class _FxRateCard extends StatelessWidget {
                 child: _DatePickerField(
                   label: 'Kur Baslangic',
                   value: startDate,
-                  icon: Icons.date_range_rounded,
+                  icon: LucideIcons.calendarDays,
                   onTap: onPickStartDate,
                 ),
               ),
@@ -1032,7 +1039,7 @@ class _FxRateCard extends StatelessWidget {
                 child: _DatePickerField(
                   label: 'Kur Bitis',
                   value: endDate,
-                  icon: Icons.edit_calendar_rounded,
+                  icon: LucideIcons.calendarCog,
                   onTap: onPickEndDate,
                 ),
               ),
@@ -1051,7 +1058,7 @@ class _FxRateCard extends StatelessWidget {
               ),
               FilledButton.icon(
                 onPressed: onSave,
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(LucideIcons.plus, size: 18),
                 label: const Text('Kur Ekle'),
               ),
             ],
@@ -1224,7 +1231,7 @@ class _DatePickerField extends StatelessWidget {
         labelText: label,
         hintText: value == null ? 'Tarih sec' : null,
         prefixIcon: Icon(icon, size: 18),
-        suffixIcon: const Icon(Icons.arrow_drop_down_rounded),
+        suffixIcon: const Icon(LucideIcons.chevronDown),
       ),
       controller: TextEditingController(
         text: value == null ? '' : _formatDate(value),

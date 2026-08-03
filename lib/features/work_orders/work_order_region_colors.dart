@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/format/search_normalize.dart';
 
@@ -124,7 +125,7 @@ Color _parseHexColor(String hex) {
   if (cleaned.length == 8) {
     return Color(int.parse(cleaned, radix: 16));
   }
-  return const Color(0xFF94A3B8);
+  return AppTheme.textMuted;
 }
 
 final workOrderRegionThemeProvider =

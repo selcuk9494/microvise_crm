@@ -53,11 +53,6 @@ class _AppCardState extends State<AppCard> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         curve: Curves.easeOut,
-        transform: Matrix4.translationValues(
-          0,
-          clickable && _hovered ? -1.5 : 0,
-          0,
-        ),
         decoration: BoxDecoration(
           color:
               widget.color ??

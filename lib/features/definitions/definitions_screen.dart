@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 
@@ -647,7 +648,7 @@ class _BrandsTab extends ConsumerWidget {
                         ref.invalidate(deviceBrandsProvider);
                       }
                     : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(LucideIcons.plus, size: 18),
                 label: const Text('Ekle'),
               ),
             ],
@@ -709,7 +710,7 @@ class _ModelsTab extends ConsumerWidget {
                         ref.invalidate(deviceModelsProvider);
                       }
                     : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(LucideIcons.plus, size: 18),
                 label: const Text('Ekle'),
               ),
             ],
@@ -873,12 +874,12 @@ class _BrandRowState extends ConsumerState<_BrandRow> {
             IconButton(
               tooltip: 'Düzenle',
               onPressed: _saving ? null : _edit,
-              icon: const Icon(Icons.edit_rounded),
+              icon: const Icon(LucideIcons.pencil),
             ),
             IconButton(
               tooltip: 'Sil',
               onPressed: _saving ? null : _delete,
-              icon: const Icon(Icons.delete_outline_rounded),
+              icon: const Icon(LucideIcons.trash2),
             ),
           ],
         ],
@@ -1040,12 +1041,12 @@ class _ModelRowState extends ConsumerState<_ModelRow> {
             IconButton(
               tooltip: 'Düzenle',
               onPressed: _saving ? null : _edit,
-              icon: const Icon(Icons.edit_rounded),
+              icon: const Icon(LucideIcons.pencil),
             ),
             IconButton(
               tooltip: 'Sil',
               onPressed: _saving ? null : _delete,
-              icon: const Icon(Icons.delete_outline_rounded),
+              icon: const Icon(LucideIcons.trash2),
             ),
           ],
         ],
@@ -1090,7 +1091,7 @@ Future<void> _showCreateBrandDialog(
                       onPressed: saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -1241,7 +1242,7 @@ Future<void> _showCreateModelDialog(
                       onPressed: saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -1406,7 +1407,7 @@ class _WorkOrderTypesTab extends ConsumerWidget {
                         ref.invalidate(workOrderTypesProvider);
                       }
                     : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(LucideIcons.plus, size: 18),
                 label: const Text('Ekle'),
               ),
             ],
@@ -1501,7 +1502,7 @@ class _RegionColorsTab extends ConsumerWidget {
                         ),
                         IconButton(
                           onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.close_rounded),
+                          icon: const Icon(LucideIcons.x),
                         ),
                       ],
                     ),
@@ -1695,7 +1696,7 @@ class _RegionColorsTab extends ConsumerWidget {
               IconButton(
                 tooltip: 'Yenile',
                 onPressed: () => ref.invalidate(regionColorDefinitionsProvider),
-                icon: const Icon(Icons.refresh_rounded),
+                icon: const Icon(LucideIcons.refreshCw),
               ),
             ],
           ),
@@ -1745,7 +1746,7 @@ class _RegionColorsTab extends ConsumerWidget {
                           ),
                           if (isAdmin)
                             const Icon(
-                              Icons.edit_rounded,
+                              LucideIcons.pencil,
                               color: Color(0xFF94A3B8),
                             ),
                         ],
@@ -1791,7 +1792,7 @@ class _WorkOrderCloseNotesTab extends ConsumerWidget {
                         ref.invalidate(workOrderCloseNotesProvider);
                       }
                     : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(LucideIcons.plus, size: 18),
                 label: const Text('Ekle'),
               ),
             ],
@@ -1950,19 +1951,19 @@ class _WorkOrderCloseNoteRowState
               onPressed: _saving ? null : _toggleActive,
               icon: Icon(
                 item.isActive
-                    ? Icons.pause_circle_outline_rounded
-                    : Icons.play_circle_outline_rounded,
+                    ? LucideIcons.circlePause
+                    : LucideIcons.circlePlay,
               ),
             ),
             IconButton(
               tooltip: 'Düzenle',
               onPressed: _saving ? null : _edit,
-              icon: const Icon(Icons.edit_rounded),
+              icon: const Icon(LucideIcons.pencil),
             ),
             IconButton(
               tooltip: 'Sil',
               onPressed: _saving ? null : _delete,
-              icon: const Icon(Icons.delete_outline_rounded),
+              icon: const Icon(LucideIcons.trash2),
             ),
           ],
         ],
@@ -2010,7 +2011,7 @@ Future<void> _showCreateWorkOrderCloseNoteDialog(
                       onPressed: saving
                           ? null
                           : () => Navigator.of(context).pop(false),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -2303,12 +2304,12 @@ class _WorkOrderTypeRowState extends ConsumerState<_WorkOrderTypeRow> {
             IconButton(
               tooltip: 'Düzenle',
               onPressed: _saving ? null : _edit,
-              icon: const Icon(Icons.edit_rounded),
+              icon: const Icon(LucideIcons.pencil),
             ),
             IconButton(
               tooltip: 'Sil',
               onPressed: _saving ? null : _delete,
-              icon: const Icon(Icons.delete_outline_rounded),
+              icon: const Icon(LucideIcons.trash2),
             ),
           ],
         ],
@@ -2344,7 +2345,7 @@ class _TaxRatesTab extends ConsumerWidget {
                         ref.invalidate(taxRatesProvider);
                       }
                     : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(LucideIcons.plus, size: 18),
                 label: const Text('Ekle'),
               ),
             ],
@@ -2600,12 +2601,12 @@ class _TaxRateRowState extends ConsumerState<_TaxRateRow> {
             IconButton(
               tooltip: 'Düzenle',
               onPressed: _saving ? null : _edit,
-              icon: const Icon(Icons.edit_rounded),
+              icon: const Icon(LucideIcons.pencil),
             ),
             IconButton(
               tooltip: 'Sil',
               onPressed: _saving ? null : _delete,
-              icon: const Icon(Icons.delete_outline_rounded),
+              icon: const Icon(LucideIcons.trash2),
             ),
           ],
         ],
@@ -2644,7 +2645,7 @@ class _BusinessActivityTypesTab extends ConsumerWidget {
                         ref.invalidate(businessActivityTypesProvider);
                       }
                     : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(LucideIcons.plus, size: 18),
                 label: const Text('Ekle'),
               ),
             ],
@@ -2700,7 +2701,7 @@ class _SoftwareCompaniesTab extends ConsumerWidget {
                         ref.invalidate(softwareCompaniesProvider);
                       }
                     : null,
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(LucideIcons.plus, size: 18),
                 label: const Text('Ekle'),
               ),
             ],
@@ -2862,12 +2863,12 @@ class _SoftwareCompanyRowState extends ConsumerState<_SoftwareCompanyRow> {
             IconButton(
               tooltip: 'Düzenle',
               onPressed: _saving ? null : _edit,
-              icon: const Icon(Icons.edit_rounded),
+              icon: const Icon(LucideIcons.pencil),
             ),
             IconButton(
               tooltip: 'Sil',
               onPressed: _saving ? null : _delete,
-              icon: const Icon(Icons.delete_outline_rounded),
+              icon: const Icon(LucideIcons.trash2),
             ),
           ],
         ],
@@ -2913,7 +2914,7 @@ Future<void> _showCreateSoftwareCompanyDialog(
                       onPressed: saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -3166,12 +3167,12 @@ class _BusinessActivityTypeRowState
             IconButton(
               tooltip: 'Düzenle',
               onPressed: _saving ? null : _edit,
-              icon: const Icon(Icons.edit_rounded),
+              icon: const Icon(LucideIcons.pencil),
             ),
             IconButton(
               tooltip: 'Sil',
               onPressed: _saving ? null : _delete,
-              icon: const Icon(Icons.delete_outline_rounded),
+              icon: const Icon(LucideIcons.trash2),
             ),
           ],
         ],
@@ -3218,7 +3219,7 @@ Future<void> _showCreateBusinessActivityTypeDialog(
                       onPressed: saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -3383,7 +3384,7 @@ Future<void> _showCreateWorkOrderTypeDialog(
                       onPressed: saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -3429,7 +3430,7 @@ Future<void> _showCreateWorkOrderTypeDialog(
                         ),
                         child: isSelected
                             ? const Icon(
-                                Icons.check,
+                                LucideIcons.check,
                                 color: Colors.white,
                                 size: 18,
                               )
@@ -3598,7 +3599,7 @@ Future<void> _showCreateTaxRateDialog(
                       onPressed: saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -3861,7 +3862,7 @@ class _ServiceTypesCard<T> extends StatelessWidget {
               if (isAdmin)
                 OutlinedButton.icon(
                   onPressed: onAdd,
-                  icon: const Icon(Icons.add_rounded, size: 18),
+                  icon: const Icon(LucideIcons.plus, size: 18),
                   label: const Text('Ekle'),
                 ),
             ],
@@ -3929,7 +3930,7 @@ class _ServiceTypesCard<T> extends StatelessWidget {
                               child: const SizedBox(
                                 width: 36,
                                 height: 34,
-                                child: Icon(Icons.more_horiz_rounded),
+                                child: Icon(LucideIcons.ellipsis),
                               ),
                             ),
                           ],
@@ -4013,7 +4014,7 @@ Future<void> _showServiceTypeDialog(
                       onPressed: saving
                           ? null
                           : () => Navigator.of(context).pop(false),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -4159,7 +4160,7 @@ Color _parseColor(String hex) {
 /// getirildi. Tek yerden değiştirildiği için 14 çağrı noktasına dokunmaya
 /// gerek kalmadı.
 class _Empty extends StatelessWidget {
-  const _Empty({required this.text, this.icon = Icons.inbox_rounded});
+  const _Empty({required this.text, this.icon = LucideIcons.inbox});
 
   final String text;
   final IconData icon;

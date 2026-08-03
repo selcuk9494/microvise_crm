@@ -1,6 +1,7 @@
 import 'package:excel/excel.dart' as excel;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -1040,7 +1041,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(customersProvider),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         const Gap(10),
@@ -1080,7 +1081,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           child: const SizedBox(
             width: 44,
             height: 40,
-            child: Center(child: Icon(Icons.swap_vert_rounded)),
+            child: Center(child: Icon(LucideIcons.arrowUpDown)),
           ),
         ),
         const Gap(10),
@@ -1093,7 +1094,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   context.go('/musteriler/$id');
                 }
               : null,
-          icon: const Icon(Icons.add_rounded, size: 18),
+          icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text('Yeni Müşteri'),
         ),
       ],
@@ -1153,7 +1154,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 decoration: filterFieldDecoration(
                                   hintText: 'Müşteri, VKN, telefon…',
                                   prefixIcon: const Icon(
-                                    Icons.search_rounded,
+                                    LucideIcons.search,
                                     size: 20,
                                   ),
                                 ),
@@ -1284,7 +1285,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                               onPressed: () =>
                                                   clearFilters(popSheet: true),
                                               icon: const Icon(
-                                                Icons.filter_alt_off_rounded,
+                                                LucideIcons.filterX,
                                                 size: 18,
                                               ),
                                               label: const Text('Temizle'),
@@ -1300,7 +1301,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 minimumSize: const Size(40, 40),
                                 padding: EdgeInsets.zero,
                               ),
-                              child: const Icon(Icons.tune_rounded, size: 18),
+                              child: const Icon(
+                                LucideIcons.settings2,
+                                size: 18,
+                              ),
                             ),
                           ],
                         ),
@@ -1350,8 +1354,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                           ),
                           icon: Icon(
                             compactView
-                                ? Icons.view_agenda_rounded
-                                : Icons.view_compact_alt_rounded,
+                                ? LucideIcons.rows3
+                                : LucideIcons.layoutList,
                             size: 18,
                           ),
                         ),
@@ -1370,7 +1374,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                           decoration: filterFieldDecoration(
                             hintText: 'Müşteri, VKN, telefon…',
                             prefixIcon: const Icon(
-                              Icons.search_rounded,
+                              LucideIcons.search,
                               size: 20,
                             ),
                           ),
@@ -1456,10 +1460,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       const Gap(8),
                       OutlinedButton.icon(
                         onPressed: clearFilters,
-                        icon: const Icon(
-                          Icons.filter_alt_off_rounded,
-                          size: 16,
-                        ),
+                        icon: const Icon(LucideIcons.filterX, size: 16),
                         label: const Text('Temizle'),
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size(0, 40),
@@ -1483,7 +1484,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     data: (pageData) {
                       if (pageData.items.isEmpty) {
                         return const EmptyStateCard(
-                          icon: Icons.people_alt_rounded,
+                          icon: LucideIcons.users,
                           title: 'Müşteri yok',
                           message: 'Filtrelere uygun müşteri bulunamadı.',
                         );
@@ -1514,13 +1515,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     },
                     loading: () => const _CustomersTableSkeleton(),
                     error: (error, _) => EmptyStateCard(
-                      icon: Icons.cloud_off_rounded,
+                      icon: LucideIcons.cloudOff,
                       title: 'Müşteri listesi yüklenemedi',
                       message:
                           'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
                       action: OutlinedButton.icon(
                         onPressed: () => ref.invalidate(customersProvider),
-                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        icon: const Icon(LucideIcons.refreshCw, size: 16),
                         label: const Text('Tekrar Dene'),
                       ),
                     ),
@@ -1542,7 +1543,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     const Gap(12),
                     if (items.isEmpty)
                       const EmptyStateCard(
-                        icon: Icons.people_alt_rounded,
+                        icon: LucideIcons.users,
                         title: 'Müşteri yok',
                         message: 'Filtrelere uygun müşteri bulunamadı.',
                       )
@@ -1604,12 +1605,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   filterCard,
                   const Gap(12),
                   EmptyStateCard(
-                    icon: Icons.cloud_off_rounded,
+                    icon: LucideIcons.cloudOff,
                     title: 'Müşteri listesi yüklenemedi',
                     message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
                     action: OutlinedButton.icon(
                       onPressed: () => ref.invalidate(customersProvider),
-                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      icon: const Icon(LucideIcons.refreshCw, size: 16),
                       label: const Text('Tekrar Dene'),
                     ),
                   ),
@@ -1857,7 +1858,7 @@ class _CustomersTable extends StatelessWidget {
               const Spacer(),
               OutlinedButton.icon(
                 onPressed: onPrevious,
-                icon: const Icon(Icons.chevron_left_rounded),
+                icon: const Icon(LucideIcons.chevronLeft),
                 label: const Text('Önceki'),
               ),
               const Gap(10),
@@ -1879,7 +1880,7 @@ class _CustomersTable extends StatelessWidget {
               const Gap(10),
               FilledButton.icon(
                 onPressed: onNext,
-                icon: const Icon(Icons.chevron_right_rounded),
+                icon: const Icon(LucideIcons.chevronRight),
                 label: const Text('Sonraki'),
               ),
             ],
@@ -2046,14 +2047,14 @@ class _CustomerTableRow extends StatelessWidget {
               width: 72,
               child: _CustomerCountChip(
                 value: customer.activeLineCount,
-                icon: Icons.sim_card_rounded,
+                icon: LucideIcons.creditCard,
               ),
             ),
             SizedBox(
               width: 78,
               child: _CustomerCountChip(
                 value: customer.activeGmp3Count,
-                icon: Icons.verified_rounded,
+                icon: LucideIcons.badgeCheck,
               ),
             ),
             SizedBox(
@@ -2218,7 +2219,7 @@ class _CustomerRowActions extends ConsumerWidget {
         if (!customer.isActive && canDelete)
           const PopupMenuItem(value: 'delete', child: Text('Kalıcı Sil')),
       ],
-      child: const Icon(Icons.more_horiz_rounded),
+      child: const Icon(LucideIcons.ellipsis),
     );
   }
 }

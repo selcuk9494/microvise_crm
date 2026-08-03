@@ -1,6 +1,7 @@
 import 'package:excel/excel.dart' as excel;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -501,7 +502,7 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
             ref.invalidate(linesProvider);
             ref.invalidate(licensesProvider);
           },
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         const Gap(10),
@@ -521,7 +522,7 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
           child: const SizedBox(
             width: 44,
             height: 40,
-            child: Icon(Icons.download_rounded),
+            child: Icon(LucideIcons.download),
           ),
         ),
       ],
@@ -533,7 +534,7 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
                 child: _OverviewCard(
                   label: 'Aktif Hat',
                   value: linesAsync.asData?.value.length.toString() ?? '—',
-                  icon: Icons.sim_card_rounded,
+                  icon: LucideIcons.creditCard,
                   color: AppTheme.primary,
                 ),
               ),
@@ -542,7 +543,7 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
                 child: _OverviewCard(
                   label: 'Aktif Lisans',
                   value: licensesAsync.asData?.value.length.toString() ?? '—',
-                  icon: Icons.key_rounded,
+                  icon: LucideIcons.keyRound,
                   color: AppTheme.success,
                 ),
               ),
@@ -552,7 +553,7 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
                   label: 'Yaklaşan Bitiş',
                   value:
                       '${(linesAsync.asData?.value.where((line) => line.isExpiringSoon).length ?? 0) + (licensesAsync.asData?.value.where((license) => license.isExpiringSoon).length ?? 0)}',
-                  icon: Icons.schedule_rounded,
+                  icon: LucideIcons.clock3,
                   color: AppTheme.warning,
                 ),
               ),
@@ -565,7 +566,7 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
                 child: _OverviewCard(
                   label: 'TURKCELL Hat',
                   value: linesAsync.asData == null ? '—' : '$turkcellAllCount',
-                  icon: Icons.signal_cellular_alt_rounded,
+                  icon: LucideIcons.chartNoAxesColumnIncreasing,
                   color: AppTheme.primary,
                 ),
               ),
@@ -574,7 +575,7 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
                 child: _OverviewCard(
                   label: 'TELSİM Hat',
                   value: linesAsync.asData == null ? '—' : '$telsimAllCount',
-                  icon: Icons.signal_cellular_alt_rounded,
+                  icon: LucideIcons.chartNoAxesColumnIncreasing,
                   color: AppTheme.warning,
                 ),
               ),
@@ -592,7 +593,7 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen>
                   decoration: const InputDecoration(
                     labelText: 'Ara',
                     hintText: 'Müşteri, hat numarası veya lisans adı',
-                    prefixIcon: Icon(Icons.search_rounded),
+                    prefixIcon: Icon(LucideIcons.search),
                   ),
                 );
 
@@ -790,9 +791,9 @@ class _LinesTab extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.phone_android_rounded,
+                      LucideIcons.smartphone,
                       size: 48,
-                      color: const Color(0xFF94A3B8),
+                      color: AppTheme.textMuted,
                     ),
                     const Gap(12),
                     Text(
@@ -951,9 +952,9 @@ class _LicensesTab extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.key_rounded,
+                      LucideIcons.keyRound,
                       size: 48,
-                      color: const Color(0xFF94A3B8),
+                      color: AppTheme.textMuted,
                     ),
                     const Gap(12),
                     Text(
@@ -1298,7 +1299,7 @@ class _LineCardState extends ConsumerState<_LineCard> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                Icons.phone_android_rounded,
+                LucideIcons.smartphone,
                 color: line.isExpired ? AppTheme.error : AppTheme.primary,
                 size: 22,
               ),
@@ -1326,7 +1327,7 @@ class _LineCardState extends ConsumerState<_LineCard> {
                     Text(
                       details,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF94A3B8),
+                        color: AppTheme.textMuted,
                       ),
                     ),
                   ],
@@ -1335,7 +1336,7 @@ class _LineCardState extends ConsumerState<_LineCard> {
                     Text(
                       'Bitiş: ${widget.dateFormat.format(line.expiresAt!)}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF94A3B8),
+                        color: AppTheme.textMuted,
                       ),
                     ),
                   ],
@@ -1427,7 +1428,7 @@ class _LicenseCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                Icons.key_rounded,
+                LucideIcons.keyRound,
                 color: license.isExpired ? AppTheme.error : AppTheme.success,
                 size: 22,
               ),
@@ -1457,7 +1458,7 @@ class _LicenseCard extends StatelessWidget {
                     Text(
                       'Firma: ${license.softwareCompanyName}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF94A3B8),
+                        color: AppTheme.textMuted,
                       ),
                     ),
                   ],
@@ -1466,7 +1467,7 @@ class _LicenseCard extends StatelessWidget {
                     Text(
                       'Bitiş: ${dateFormat.format(license.expiresAt!)}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF94A3B8),
+                        color: AppTheme.textMuted,
                       ),
                     ),
                   ],
@@ -1639,7 +1640,7 @@ class _EditLineFromListDialogState
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -1686,7 +1687,7 @@ class _EditLineFromListDialogState
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: _saving ? null : _pickStart,
-                        icon: const Icon(Icons.date_range_rounded),
+                        icon: const Icon(LucideIcons.calendarDays),
                         label: Text(
                           _start == null ? 'Başlangıç' : df.format(_start!),
                         ),
@@ -1696,7 +1697,7 @@ class _EditLineFromListDialogState
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: _saving ? null : _pickEnd,
-                        icon: const Icon(Icons.event_busy_rounded),
+                        icon: const Icon(LucideIcons.calendarX),
                         label: Text(_end == null ? 'Bitiş' : df.format(_end!)),
                       ),
                     ),

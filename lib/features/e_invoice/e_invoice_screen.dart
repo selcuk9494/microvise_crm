@@ -18,6 +18,7 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/app_phosphor_icons.dart';
 import '../../core/ui/empty_state_card.dart';
 import '../customers/customer_detail_screen.dart';
 import '../customers/customer_model.dart';
@@ -229,13 +230,13 @@ class EInvoiceScreen extends ConsumerWidget {
             ref.invalidate(productsProvider(null));
             ref.invalidate(accountBalancesProvider);
           },
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(AppPhosphorIcons.arrowsCounterClockwise, size: 18),
           label: const Text('Yenile'),
         ),
         const Gap(10),
         FilledButton.icon(
           onPressed: () => _openInvoiceTypeDialog(context, ref),
-          icon: const Icon(Icons.add_rounded, size: 18),
+          icon: const Icon(AppPhosphorIcons.plus, size: 18),
           label: const Text('Yeni Fatura'),
         ),
       ],
@@ -262,7 +263,7 @@ class EInvoiceScreen extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             _TypeTile(
-              icon: Icons.arrow_outward_rounded,
+              icon: AppPhosphorIcons.arrowUpRight,
               color: AppTheme.primary,
               title: 'Satış Faturası',
               subtitle: 'Müşteriye kesilecek e-fatura',
@@ -270,7 +271,7 @@ class EInvoiceScreen extends ConsumerWidget {
             ),
             const Gap(8),
             _TypeTile(
-              icon: Icons.south_west_rounded,
+              icon: AppPhosphorIcons.arrowDownLeft,
               color: AppTheme.warning,
               title: 'Alış Faturası',
               subtitle: 'Tedarikçi/cari borç kaydı',
@@ -316,17 +317,17 @@ class _StatusStrip extends StatelessWidget {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           _InfoPill(
-            icon: Icons.science_rounded,
+            icon: AppPhosphorIcons.flask,
             label: env == 'production' ? 'Canlı ortam' : 'Test ortamı',
             color: env == 'production' ? AppTheme.error : AppTheme.success,
           ),
           _InfoPill(
-            icon: Icons.apartment_rounded,
+            icon: AppPhosphorIcons.buildings,
             label: sellerVkn.isEmpty ? 'VKN bekleniyor' : 'VKN $sellerVkn',
             color: AppTheme.primary,
           ),
           _InfoPill(
-            icon: Icons.key_rounded,
+            icon: AppPhosphorIcons.key,
             label: offline
                 ? 'Backend bekleniyor'
                 : username.isEmpty
@@ -484,31 +485,31 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             _Metric(
               'Satış',
               sales.toString(),
-              Icons.arrow_outward_rounded,
+              AppPhosphorIcons.invoice,
               AppTheme.metricBlue,
             ),
             _Metric(
               'Alış',
               purchases.toString(),
-              Icons.south_west_rounded,
+              AppPhosphorIcons.shoppingCartSimple,
               AppTheme.blueBright,
             ),
             _Metric(
               'Açık Fatura',
               open.toString(),
-              Icons.pending_actions_rounded,
+              AppPhosphorIcons.receipt,
               open > 0 ? AppTheme.metricAmber : AppTheme.metricBlue,
             ),
             _Metric(
               'TL Toplam',
               widget.moneyTry.format(tryTotal),
-              Icons.payments_rounded,
+              AppPhosphorIcons.coins,
               AppTheme.primary,
             ),
             _Metric(
               'USD Toplam',
               usdMoney.format(usdTotal),
-              Icons.attach_money_rounded,
+              AppPhosphorIcons.bank,
               AppTheme.primaryDark,
             ),
           ],
@@ -550,7 +551,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.cloud_download_rounded, size: 18),
+                        : const Icon(AppPhosphorIcons.cloudArrowDown, size: 18),
                     label: const Text('ERP’den Faturaları Çek'),
                   ),
                 ],
@@ -632,7 +633,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                         ? null
                                         : () => _collectSelected(items),
                                     icon: const Icon(
-                                      Icons.payments_rounded,
+                                      AppPhosphorIcons.coins,
                                       size: 18,
                                     ),
                                     label: const Text('Tahsilat'),
@@ -646,7 +647,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                         ? null
                                         : () => _exportSelectedStatement(items),
                                     icon: const Icon(
-                                      Icons.receipt_long_rounded,
+                                      AppPhosphorIcons.receipt,
                                       size: 18,
                                     ),
                                     label: const Text('Toplu Fatura Ekstresi'),
@@ -664,8 +665,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                           ),
                                     icon: Icon(
                                       bulkManualUndo
-                                          ? Icons.undo_rounded
-                                          : Icons.fact_check_rounded,
+                                          ? AppPhosphorIcons.arrowUUpLeft
+                                          : AppPhosphorIcons.handPalm,
                                       size: 18,
                                     ),
                                     label: Text(
@@ -684,7 +685,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                             items,
                                           ),
                                     icon: const Icon(
-                                      Icons.sync_alt_rounded,
+                                      AppPhosphorIcons.barcode,
                                       size: 18,
                                     ),
                                     label: const Text('ERP No'),
@@ -701,7 +702,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                             items,
                                           ),
                                     icon: const Icon(
-                                      Icons.upload_rounded,
+                                      AppPhosphorIcons.cloudArrowUp,
                                       size: 18,
                                     ),
                                     label: const Text('ERP’ye Gönder'),
@@ -715,7 +716,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                         ? null
                                         : () => _downloadSelectedPdfs(items),
                                     icon: const Icon(
-                                      Icons.picture_as_pdf_rounded,
+                                      AppPhosphorIcons.fileMagnifyingGlass,
                                       size: 18,
                                     ),
                                     label: const Text('Toplu indir'),
@@ -730,7 +731,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                         : () =>
                                               _bulkPrepare(items, send: false),
                                     icon: const Icon(
-                                      Icons.data_object_rounded,
+                                      AppPhosphorIcons.bracketsCurly,
                                       size: 18,
                                     ),
                                     label: const Text('Payload'),
@@ -744,7 +745,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                         ? null
                                         : () => _bulkPrepare(items, send: true),
                                     icon: const Icon(
-                                      Icons.cloud_upload_rounded,
+                                      AppPhosphorIcons.cloudArrowUp,
                                       size: 18,
                                     ),
                                     label: const Text('Gönder'),
@@ -832,7 +833,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                           ? null
                                           : () => _collectSelected(items),
                                       icon: const Icon(
-                                        Icons.payments_rounded,
+                                        AppPhosphorIcons.coins,
                                         size: 18,
                                       ),
                                       label: const Text('Tahsilat Yap'),
@@ -850,8 +851,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                             ),
                                       icon: Icon(
                                         bulkManualUndo
-                                            ? Icons.undo_rounded
-                                            : Icons.fact_check_rounded,
+                                            ? AppPhosphorIcons.arrowUUpLeft
+                                            : AppPhosphorIcons.handPalm,
                                         size: 18,
                                       ),
                                       label: Text(
@@ -872,7 +873,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                               items,
                                             ),
                                       icon: const Icon(
-                                        Icons.sync_alt_rounded,
+                                        AppPhosphorIcons.barcode,
                                         size: 18,
                                       ),
                                       label: const Text('Akınsoft No Güncelle'),
@@ -890,7 +891,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                                   items,
                                                 ),
                                       icon: const Icon(
-                                        Icons.upload_rounded,
+                                        AppPhosphorIcons.cloudArrowUp,
                                         size: 18,
                                       ),
                                       label: const Text(
@@ -914,7 +915,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                               ),
                                             )
                                           : const Icon(
-                                              Icons.picture_as_pdf_rounded,
+                                              AppPhosphorIcons
+                                                  .fileMagnifyingGlass,
                                               size: 18,
                                             ),
                                       label: const Text('Toplu PDF'),
@@ -929,7 +931,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                           : () =>
                                                 _exportSelectedStatement(items),
                                       icon: const Icon(
-                                        Icons.receipt_long_rounded,
+                                        AppPhosphorIcons.receipt,
                                         size: 18,
                                       ),
                                       label: const Text(
@@ -956,7 +958,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                               ),
                                             )
                                           : const Icon(
-                                              Icons.data_object_rounded,
+                                              AppPhosphorIcons.bracketsCurly,
                                               size: 18,
                                             ),
                                       label: const Text('Payload Hazırla'),
@@ -979,7 +981,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                               ),
                                             )
                                           : const Icon(
-                                              Icons.cloud_upload_rounded,
+                                              AppPhosphorIcons.cloudArrowUp,
                                               size: 18,
                                             ),
                                       label: Text(apiSendLabel),
@@ -1001,7 +1003,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                               ),
                                             )
                                           : const Icon(
-                                              Icons.delete_forever_rounded,
+                                              AppPhosphorIcons.trash,
                                               size: 18,
                                             ),
                                       label: const Text('Seçilenleri Sil'),
@@ -2024,6 +2026,35 @@ class _EInvoiceListHeader extends StatelessWidget {
   }
 }
 
+class _DuotoneFilterIcon extends StatelessWidget {
+  const _DuotoneFilterIcon({required this.icon, required this.color});
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 44,
+      child: Center(
+        child: Container(
+          width: 29,
+          height: 29,
+          decoration: AppTheme.categoryIconWell(
+            color,
+            radius: AppTheme.radiusXs,
+          ),
+          child: AppPhosphorIcon(
+            icon,
+            size: 16,
+            color: AppTheme.categoryIconFg(color),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _InvoiceFiltersCard extends StatelessWidget {
   const _InvoiceFiltersCard({
     required this.filter,
@@ -2058,7 +2089,10 @@ class _InvoiceFiltersCard extends StatelessWidget {
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 1050;
+          // Keep the desktop-style compact filter row on tablet/web widths.
+          // The former 1050px breakpoint turned most desktop side-panel views
+          // into a very tall mobile form and pushed the invoice list off-screen.
+          final compact = constraints.maxWidth < 600;
           final activeChips = Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -2182,8 +2216,11 @@ class _InvoiceFiltersCard extends StatelessWidget {
                       ),
                     );
                   },
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.visibility_rounded),
+                  decoration: InputDecoration(
+                    prefixIcon: _DuotoneFilterIcon(
+                      icon: AppPhosphorIcons.toggleRight,
+                      color: AppTheme.success,
+                    ),
                     labelText: 'Aktiflik',
                   ),
                 ),
@@ -2233,8 +2270,11 @@ class _InvoiceFiltersCard extends StatelessWidget {
                     clearStatus: (value ?? '').isEmpty,
                   ),
                 ),
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.fact_check_rounded),
+                decoration: InputDecoration(
+                  prefixIcon: _DuotoneFilterIcon(
+                    icon: AppPhosphorIcons.trafficSignal,
+                    color: AppTheme.purple,
+                  ),
                   labelText: 'Açık / Kapalı',
                 ),
               ),
@@ -2289,8 +2329,11 @@ class _InvoiceFiltersCard extends StatelessWidget {
                       clearEInvoiceStatus: (value ?? '').isEmpty,
                     ),
                   ),
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.cloud_done_rounded),
+                  decoration: InputDecoration(
+                    prefixIcon: _DuotoneFilterIcon(
+                      icon: AppPhosphorIcons.rocket,
+                      color: AppTheme.primary,
+                    ),
                     labelText: 'E-Fatura Gönderimi',
                   ),
                 ),
@@ -2299,7 +2342,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
               width: compact ? double.infinity : 170,
               child: OutlinedButton.icon(
                 onPressed: () => _pickDate(context, isStart: true),
-                icon: const Icon(Icons.date_range_rounded, size: 18),
+                icon: const Icon(AppPhosphorIcons.calendarCheck, size: 18),
                 label: Text(startLabel),
               ),
             ),
@@ -2307,18 +2350,21 @@ class _InvoiceFiltersCard extends StatelessWidget {
               width: compact ? double.infinity : 170,
               child: OutlinedButton.icon(
                 onPressed: () => _pickDate(context, isStart: false),
-                icon: const Icon(Icons.event_rounded, size: 18),
+                icon: const Icon(AppPhosphorIcons.calendarX, size: 18),
                 label: Text(endLabel),
               ),
             ),
             OutlinedButton.icon(
               onPressed: onRefresh,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
+              icon: const Icon(
+                AppPhosphorIcons.arrowsCounterClockwise,
+                size: 18,
+              ),
               label: const Text('Yenile'),
             ),
             TextButton.icon(
               onPressed: () => onChanged(const InvoiceFilter(status: 'open')),
-              icon: const Icon(Icons.cleaning_services_rounded, size: 18),
+              icon: const Icon(AppPhosphorIcons.broom, size: 18),
               label: const Text('Temizle'),
             ),
           ];
@@ -2339,7 +2385,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.cloud_download_rounded, size: 18),
+                : const Icon(AppPhosphorIcons.cloudArrowDown, size: 18),
             label: Text(
               pullingErp ? 'Faturalar çekiliyor…' : 'ERP’den Faturaları Çek',
             ),
@@ -2410,7 +2456,7 @@ class _LoadMoreInvoicesButton extends StatelessWidget {
       child: Center(
         child: OutlinedButton.icon(
           onPressed: onPressed,
-          icon: const Icon(Icons.expand_more_rounded, size: 18),
+          icon: const Icon(AppPhosphorIcons.caretDown, size: 18),
           label: Text('Daha fazla göster ($visible / $total)'),
         ),
       ),
@@ -2456,9 +2502,9 @@ class _CustomerFilterButton extends StatelessWidget {
       },
       child: InputDecorator(
         decoration: const InputDecoration(
-          prefixIcon: Icon(Icons.person_search_rounded),
+          prefixIcon: Icon(AppPhosphorIcons.userFocus),
           labelText: 'Cari',
-          suffixIcon: Icon(Icons.search_rounded),
+          suffixIcon: Icon(AppPhosphorIcons.magnifyingGlass),
         ),
         child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
@@ -2521,7 +2567,7 @@ class _CustomerFilterDialogState extends State<_CustomerFilterDialog> {
               autofocus: true,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search_rounded),
+                prefixIcon: Icon(AppPhosphorIcons.magnifyingGlass),
                 hintText: 'Ad, VKN, telefon veya şehir ara',
               ),
             ),
@@ -2553,7 +2599,7 @@ class _CustomerFilterDialogState extends State<_CustomerFilterDialog> {
                     activeGmp3Count: 0,
                   ),
                 ),
-                icon: const Icon(Icons.clear_all_rounded, size: 18),
+                icon: const Icon(AppPhosphorIcons.x, size: 18),
                 label: const Text('Tüm cariler'),
               ),
             ),
@@ -2594,7 +2640,7 @@ class _CustomerFilterDialogState extends State<_CustomerFilterDialog> {
                             overflow: TextOverflow.ellipsis,
                           ),
                           trailing: selected
-                              ? const Icon(Icons.check_circle_rounded)
+                              ? const Icon(AppPhosphorIcons.checkCircle)
                               : null,
                           onTap: () => Navigator.of(context).pop(customer),
                         );
@@ -2683,27 +2729,34 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         (invoice.eInvoiceStatus == 'sent' &&
             invoice.eInvoiceEnvironment == 'test');
 
-    // Mobile Option D: icon chrome + overflow — no cramped labeled strip.
+    // Compact rows scroll horizontally, so actions can keep clear labels.
     if (mobile) {
       final actions = <Widget>[
         _InvoiceIconAction(
           tooltip: sendTooltip,
-          icon: _busy ? Icons.hourglass_top_rounded : Icons.send_rounded,
+          icon: _busy ? Icons.schedule_rounded : Icons.send_rounded,
           tone: _InvoiceActionTone.primary,
           onPressed: _busy || !canSend ? null : () => _prepare(send: true),
         ),
         if (alreadySent)
           _InvoiceIconAction(
             tooltip: 'PDF oluştur / aç',
-            icon: Icons.picture_as_pdf_rounded,
+            icon: Icons.picture_as_pdf_outlined,
             tone: _InvoiceActionTone.danger,
             onPressed: _busy ? null : _printOfficialPdf,
           )
         else
           _InvoiceIconAction(
             tooltip: 'PDF yazdır',
-            icon: Icons.print_rounded,
+            icon: AppPhosphorIcons.printer,
             onPressed: _busy ? null : _print,
+          ),
+        if (alreadySent)
+          _InvoiceIconAction(
+            tooltip: 'Maliye sayfasını aç',
+            icon: Icons.upload_rounded,
+            tone: _InvoiceActionTone.success,
+            onPressed: _busy ? null : _openMaliyeLink,
           ),
         if ((!invoice.isLinkedToAkinsoft || invoice.needsAkinsoftNumberSync) &&
             invoice.isActive &&
@@ -2713,14 +2766,15 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 ? 'Akınsoft fatura numarasını Maliye no ile güncelle'
                 : 'Akınsoft’a fatura gönder',
             icon: invoice.needsAkinsoftNumberSync
-                ? Icons.sync_rounded
-                : Icons.cloud_sync_rounded,
+                ? AppPhosphorIcons.arrowsClockwise
+                : AppPhosphorIcons.cloudArrowUp,
             tone: _InvoiceActionTone.success,
             onPressed: _busy ? null : _pushToAkinsoft,
           ),
         _InvoiceIconAction(
           tooltip: 'Düzenle',
-          icon: Icons.edit_rounded,
+          icon: Icons.edit_outlined,
+          tone: _InvoiceActionTone.purple,
           onPressed: _busy ? null : _edit,
         ),
         PopupMenuButton<String>(
@@ -2734,8 +2788,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 _toggleManual();
               case 'manual_sent':
                 _toggleManualSent();
-              case 'maliye':
-                _openMaliyeLink();
               case 'statement':
                 _statement();
               case 'payload':
@@ -2763,11 +2815,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                       : 'Manuel Gönderildi olarak işaretle',
                 ),
               ),
-            if (alreadySent)
-              const PopupMenuItem(
-                value: 'maliye',
-                child: Text('Maliye sayfasını aç'),
-              ),
             const PopupMenuItem(
               value: 'statement',
               child: Text('Cari ekstre PDF'),
@@ -2784,19 +2831,16 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               const PopupMenuItem(value: 'delete', child: Text('Kalıcı sil')),
           ],
           child: Container(
-            width: AppDenseList.action + 4,
-            height: AppDenseList.action + 4,
+            width: 44,
+            height: 44,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: AppTheme.surfaceMuted.withValues(alpha: 0.9),
-              borderRadius: BorderRadius.circular(AppTheme.radiusXs),
-              border: Border.all(
-                color: AppTheme.border.withValues(alpha: 0.75),
-              ),
+              borderRadius: BorderRadius.circular(13),
             ),
-            child: Icon(
-              Icons.more_horiz_rounded,
-              size: AppDenseList.actionIcon,
+            child: AppPhosphorIcon(
+              AppPhosphorIcons.dotsThree,
+              size: 24,
               color: AppTheme.textSoft,
             ),
           ),
@@ -2813,22 +2857,29 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     final actions = <Widget>[
       _InvoiceIconAction(
         tooltip: sendTooltip,
-        icon: _busy ? Icons.hourglass_top_rounded : Icons.send_rounded,
+        icon: _busy ? Icons.schedule_rounded : Icons.send_rounded,
         tone: _InvoiceActionTone.primary,
         onPressed: _busy || !canSend ? null : () => _prepare(send: true),
       ),
       if (alreadySent)
         _InvoiceIconAction(
           tooltip: 'PDF oluştur / aç',
-          icon: Icons.picture_as_pdf_rounded,
+          icon: Icons.picture_as_pdf_outlined,
           tone: _InvoiceActionTone.danger,
           onPressed: _busy ? null : _printOfficialPdf,
         )
       else
         _InvoiceIconAction(
           tooltip: 'PDF yazdır',
-          icon: Icons.print_rounded,
+          icon: AppPhosphorIcons.printer,
           onPressed: _busy ? null : _print,
+        ),
+      if (alreadySent)
+        _InvoiceIconAction(
+          tooltip: 'Maliye sayfasını aç',
+          icon: Icons.upload_rounded,
+          tone: _InvoiceActionTone.success,
+          onPressed: _busy ? null : _openMaliyeLink,
         ),
       if ((!invoice.isLinkedToAkinsoft || invoice.needsAkinsoftNumberSync) &&
           invoice.isActive &&
@@ -2838,14 +2889,15 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               ? 'Akınsoft fatura numarasını Maliye no ile güncelle'
               : 'Akınsoft’a fatura gönder',
           icon: invoice.needsAkinsoftNumberSync
-              ? Icons.sync_rounded
-              : Icons.cloud_sync_rounded,
+              ? AppPhosphorIcons.arrowsClockwise
+              : AppPhosphorIcons.cloudArrowUp,
           tone: _InvoiceActionTone.success,
           onPressed: _busy ? null : _pushToAkinsoft,
         ),
       _InvoiceIconAction(
         tooltip: 'Düzenle',
-        icon: Icons.edit_rounded,
+        icon: Icons.edit_outlined,
+        tone: _InvoiceActionTone.purple,
         onPressed: _busy ? null : _edit,
       ),
       PopupMenuButton<String>(
@@ -2859,8 +2911,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               _toggleManual();
             case 'manual_sent':
               _toggleManualSent();
-            case 'maliye':
-              _openMaliyeLink();
             case 'statement':
               _statement();
             case 'payload':
@@ -2888,11 +2938,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                     : 'Manuel Gönderildi olarak işaretle',
               ),
             ),
-          if (alreadySent)
-            const PopupMenuItem(
-              value: 'maliye',
-              child: Text('Maliye sayfasını aç'),
-            ),
           const PopupMenuItem(
             value: 'statement',
             child: Text('Cari ekstre PDF'),
@@ -2909,17 +2954,16 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             const PopupMenuItem(value: 'delete', child: Text('Kalıcı sil')),
         ],
         child: Container(
-          width: AppDenseList.action,
-          height: AppDenseList.action,
+          width: 44,
+          height: 44,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: AppTheme.surfaceMuted.withValues(alpha: 0.9),
-            borderRadius: BorderRadius.circular(AppTheme.radiusXs),
-            border: Border.all(color: AppTheme.border.withValues(alpha: 0.55)),
+            borderRadius: BorderRadius.circular(13),
           ),
-          child: Icon(
-            Icons.more_horiz_rounded,
-            size: AppDenseList.actionIcon,
+          child: AppPhosphorIcon(
+            AppPhosphorIcons.dotsThree,
+            size: 24,
             color: AppTheme.textSoft,
           ),
         ),
@@ -2993,12 +3037,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                   children: [
                     AppDenseLeadingIcon(
                       icon: invoice.invoiceType == 'sales'
-                          ? Icons.arrow_outward_rounded
-                          : Icons.south_west_rounded,
+                          ? AppPhosphorIcons.receipt
+                          : AppPhosphorIcons.clipboardText,
                       color: invoice.invoiceType == 'sales'
                           ? AppTheme.primary
                           : AppTheme.warning,
                       active: invoice.isActive,
+                      colorful: true,
                     ),
                     const Gap(AppInvoiceTableCols.leadingGap),
                     Expanded(
@@ -4165,77 +4210,83 @@ class _InvoiceIconAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = _toneColors(tone);
-    final enabled = onPressed != null;
+    final colors = _toneColors(context, tone);
     return Tooltip(
       message: tooltip,
       waitDuration: const Duration(milliseconds: 250),
       child: IconButton(
-        visualDensity: VisualDensity.compact,
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(
-          width: AppDenseList.action,
-          height: AppDenseList.action,
-        ),
+        constraints: const BoxConstraints.tightFor(width: 44, height: 44),
         style: IconButton.styleFrom(
-          backgroundColor: enabled ? colors.background : AppTheme.surfaceMuted,
-          foregroundColor: enabled ? colors.foreground : AppTheme.textMuted,
-          disabledBackgroundColor: AppTheme.surfaceMuted,
-          disabledForegroundColor: AppTheme.textMuted,
+          backgroundColor: colors.background,
+          foregroundColor: colors.foreground,
+          disabledBackgroundColor: colors.background,
+          disabledForegroundColor: colors.foreground.withValues(alpha: 0.72),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTheme.radiusXs),
-            side: BorderSide(
-              color: enabled
-                  ? colors.border.withValues(alpha: 0.55)
-                  : AppTheme.border.withValues(alpha: 0.4),
-            ),
+            borderRadius: BorderRadius.circular(13),
+            side: BorderSide.none,
           ),
         ),
         onPressed: onPressed,
-        icon: Icon(icon, size: AppDenseList.actionIcon),
+        icon: Icon(icon, size: 24),
       ),
     );
   }
 
   static ({Color background, Color foreground, Color border}) _toneColors(
+    BuildContext context,
     _InvoiceActionTone tone,
   ) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
     return switch (tone) {
       _InvoiceActionTone.primary => (
-        background: AppTheme.primary,
-        foreground: Colors.white,
+        background: dark ? const Color(0xFF1D2B45) : const Color(0xFFE7F0FF),
+        foreground: dark ? const Color(0xFF72A7FF) : const Color(0xFF2864D7),
         border: AppTheme.primary,
       ),
       _InvoiceActionTone.success => (
-        background: AppTheme.softTint(AppTheme.success, alpha: 0.16),
-        foreground: AppTheme.softFg(AppTheme.success),
-        border: AppTheme.softBorder(AppTheme.success, alpha: 0.32),
+        background: dark ? const Color(0xFF203833) : const Color(0xFFE2F7EF),
+        foreground: dark ? const Color(0xFF63D4A5) : const Color(0xFF16805E),
+        border: AppTheme.success,
       ),
       _InvoiceActionTone.warning => (
-        background: AppTheme.softTint(AppTheme.warning, alpha: 0.16),
-        foreground: AppTheme.softFg(AppTheme.warning),
-        border: AppTheme.softBorder(AppTheme.warning, alpha: 0.32),
+        background: AppTheme.softTint(AppTheme.warning, alpha: 0.18),
+        foreground: AppTheme.warning,
+        border: AppTheme.warning,
       ),
       _InvoiceActionTone.danger => (
-        background: AppTheme.softTint(AppTheme.error, alpha: 0.14),
-        foreground: AppTheme.softFg(AppTheme.error),
-        border: AppTheme.softBorder(AppTheme.error, alpha: 0.30),
+        background: dark ? const Color(0xFF3B2C33) : const Color(0xFFFFE8EC),
+        foreground: dark ? const Color(0xFFFF8197) : const Color(0xFFC33D59),
+        border: AppTheme.error,
       ),
       _InvoiceActionTone.info => (
-        background: AppTheme.softTint(AppTheme.primary, alpha: 0.14),
-        foreground: AppTheme.softFg(AppTheme.primary),
-        border: AppTheme.softBorder(AppTheme.primary, alpha: 0.28),
+        background: dark ? const Color(0xFF1D2B45) : const Color(0xFFE7F0FF),
+        foreground: dark ? const Color(0xFF72A7FF) : const Color(0xFF2864D7),
+        border: AppTheme.primary,
+      ),
+      _InvoiceActionTone.purple => (
+        background: dark ? const Color(0xFF302D45) : const Color(0xFFF0E9FF),
+        foreground: dark ? const Color(0xFFB18AFF) : const Color(0xFF7042C1),
+        border: AppTheme.purple,
       ),
       _InvoiceActionTone.neutral => (
-        background: AppTheme.surfaceMuted,
-        foreground: AppTheme.text,
+        background: Colors.transparent,
+        foreground: AppTheme.textSoft,
         border: AppTheme.border,
       ),
     };
   }
 }
 
-enum _InvoiceActionTone { neutral, primary, success, warning, danger, info }
+enum _InvoiceActionTone {
+  neutral,
+  primary,
+  success,
+  warning,
+  danger,
+  info,
+  purple,
+}
 
 class _ProductsTab extends ConsumerStatefulWidget {
   const _ProductsTab({required this.moneyTry});
@@ -4357,7 +4408,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                   child: TextField(
                     onChanged: (value) => setState(() => _query = value),
                     decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search_rounded),
+                      prefixIcon: Icon(AppPhosphorIcons.magnifyingGlass),
                       hintText: 'Stok kodu, ürün/hizmet adı, grup ara',
                     ),
                   ),
@@ -4412,13 +4463,13 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.cloud_download_rounded, size: 18),
+                      : const Icon(AppPhosphorIcons.cloudArrowDown, size: 18),
                   label: Text(_pullingErp ? 'Çekiliyor…' : 'ERP’den Çek'),
                 ),
                 const Gap(10),
                 FilledButton.icon(
                   onPressed: () => _showProductDialog(context, ref),
-                  icon: const Icon(Icons.add_rounded, size: 18),
+                  icon: const Icon(AppPhosphorIcons.plus, size: 18),
                   label: const Text('Stok Tanımla'),
                 ),
               ],
@@ -4578,7 +4629,10 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                               child: TextButton.icon(
                                 onPressed: () =>
                                     _showProductDialog(context, ref, product),
-                                icon: const Icon(Icons.edit_rounded, size: 16),
+                                icon: const Icon(
+                                  AppPhosphorIcons.pencil,
+                                  size: 16,
+                                ),
                                 label: const Text('Düzenle'),
                               ),
                             ),
@@ -5006,7 +5060,7 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
                     child: TextField(
                       onChanged: (value) => setState(() => _query = value),
                       decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.search_rounded),
+                        prefixIcon: Icon(AppPhosphorIcons.magnifyingGlass),
                         labelText: 'Cari ara',
                         hintText: 'Firma adı ile filtrele',
                       ),
@@ -5015,13 +5069,16 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
                   const Gap(12),
                   OutlinedButton.icon(
                     onPressed: () => ref.invalidate(accountBalancesProvider),
-                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    icon: const Icon(
+                      AppPhosphorIcons.arrowsCounterClockwise,
+                      size: 18,
+                    ),
                     label: const Text('Yenile'),
                   ),
                   const Gap(10),
                   FilledButton.icon(
                     onPressed: () => _showPaymentDialog(context, ref),
-                    icon: const Icon(Icons.payments_rounded, size: 18),
+                    icon: const Icon(AppPhosphorIcons.money, size: 18),
                     label: const Text('Tahsilat/Ödeme'),
                   ),
                 ],
@@ -5030,13 +5087,13 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
             const Gap(12),
             if (balances.isEmpty)
               const EmptyStateCard(
-                icon: Icons.account_balance_wallet_rounded,
+                icon: AppPhosphorIcons.wallet,
                 title: 'Cari hareket yok',
                 message: 'Henüz kayıtlı bir cari hesap hareketi bulunmuyor.',
               )
             else if (filtered.isEmpty)
               const EmptyStateCard(
-                icon: Icons.search_off_rounded,
+                icon: AppPhosphorIcons.magnifyingGlass,
                 title: 'Sonuç bulunamadı',
                 message: 'Arama ile eşleşen cari bulunamadı.',
               )
@@ -5315,25 +5372,25 @@ class _AccountsSummaryGrid extends StatelessWidget {
           _AccountSummaryCard(
             title: 'Cari Sayısı',
             value: totalAccounts.toString(),
-            icon: Icons.groups_rounded,
+            icon: AppPhosphorIcons.users,
             color: AppTheme.primary,
           ),
           _AccountSummaryCard(
             title: 'Alacak',
             value: money.format(receivable),
-            icon: Icons.arrow_outward_rounded,
+            icon: AppPhosphorIcons.phoneOutgoing,
             color: AppTheme.primary,
           ),
           _AccountSummaryCard(
             title: 'Borç',
             value: money.format(payable),
-            icon: Icons.south_west_rounded,
+            icon: AppPhosphorIcons.phoneIncoming,
             color: AppTheme.error,
           ),
           _AccountSummaryCard(
             title: 'Satış / Tahsilat',
             value: '${money.format(sales)} / ${money.format(collections)}',
-            icon: Icons.receipt_long_rounded,
+            icon: AppPhosphorIcons.receipt,
             color: AppTheme.blueBright,
           ),
         ];
@@ -5539,7 +5596,7 @@ class _AccountTableRow extends StatelessWidget {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.description_rounded),
+                    : const Icon(AppPhosphorIcons.fileText),
               ),
             ),
           ),
@@ -5605,7 +5662,7 @@ class _AccountMobileRow extends StatelessWidget {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.description_rounded),
+                    : const Icon(AppPhosphorIcons.fileText),
               ),
             ],
           ),
@@ -5739,7 +5796,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Icon(
-                            Icons.cloud_off_rounded,
+                            AppPhosphorIcons.cloudSlash,
                             color: AppTheme.warning,
                             size: 20,
                           ),
@@ -5800,7 +5857,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                   Row(
                     children: [
                       Icon(
-                        Icons.account_balance_wallet_rounded,
+                        AppPhosphorIcons.wallet,
                         size: 15,
                         color: AppTheme.textSoft,
                       ),
@@ -5943,7 +6000,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                           ),
                         ),
                         child: Icon(
-                          Icons.storage_rounded,
+                          AppPhosphorIcons.database,
                           color: AppTheme.primary,
                           size: 20,
                         ),
@@ -6071,7 +6128,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Icon(Icons.cable_rounded, size: 18),
+                            : const Icon(AppPhosphorIcons.link, size: 18),
                         label: const Text('Bağlantıyı Test Et'),
                       ),
                       const Gap(10),
@@ -6087,7 +6144,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Icon(Icons.schema_rounded, size: 18),
+                            : const Icon(AppPhosphorIcons.flowArrow, size: 18),
                         label: const Text('Tabloları Analiz Et'),
                       ),
                       const Gap(10),
@@ -6101,7 +6158,10 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Icon(Icons.sync_rounded, size: 18),
+                            : const Icon(
+                                AppPhosphorIcons.arrowsCounterClockwise,
+                                size: 18,
+                              ),
                         label: const Text('ERP’den Veri Çek'),
                       ),
                       const Gap(10),
@@ -6117,7 +6177,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Icon(Icons.hub_rounded, size: 18),
+                            : const Icon(AppPhosphorIcons.flowArrow, size: 18),
                         label: const Text('Toplu Cari Eşleştir'),
                       ),
                       const Gap(10),
@@ -6133,7 +6193,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Icon(Icons.merge_type_rounded, size: 18),
+                            : const Icon(AppPhosphorIcons.gitMerge, size: 18),
                         label: const Text('Çift Carileri Temizle'),
                       ),
                       const Gap(10),
@@ -6147,7 +6207,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Icon(Icons.save_rounded, size: 18),
+                            : const Icon(AppPhosphorIcons.floppyDisk, size: 18),
                         label: const Text('Ayarları Kaydet'),
                       ),
                     ],
@@ -6767,7 +6827,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                           color: Colors.white,
                         ),
                       )
-                    : const Icon(Icons.save_rounded, size: 18),
+                    : const Icon(AppPhosphorIcons.floppyDisk, size: 18),
                 label: Text(
                   savingMatches
                       ? 'Yazılıyor...'
@@ -7290,7 +7350,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(Icons.link_rounded, size: 18),
+              : const Icon(AppPhosphorIcons.link, size: 18),
           label: const Text('Eşleşmeleri Toplu Kaydet'),
         ),
         Tooltip(
@@ -7307,7 +7367,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.sync_rounded, size: 18),
+                : const Icon(AppPhosphorIcons.arrowsCounterClockwise, size: 18),
             label: Text('Sadece Durum Güncelle ($selectedCount)'),
           ),
         ),
@@ -7319,7 +7379,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(Icons.download_done_rounded, size: 18),
+              : const Icon(AppPhosphorIcons.checkCircle, size: 18),
           label: Text('Eşleşmişleri İçe Aktar ($selectedMatchedCount)'),
         ),
         FilledButton(
@@ -7736,7 +7796,9 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                           child: TextField(
                             controller: search,
                             decoration: const InputDecoration(
-                              prefixIcon: Icon(Icons.search_rounded),
+                              prefixIcon: Icon(
+                                AppPhosphorIcons.magnifyingGlass,
+                              ),
                               labelText: 'CRM carisi ara',
                             ),
                             onChanged: (_) {
@@ -7766,7 +7828,10 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Icon(Icons.search_rounded, size: 18),
+                              : const Icon(
+                                  AppPhosphorIcons.magnifyingGlass,
+                                  size: 18,
+                                ),
                           label: const Text('Ara'),
                         ),
                       ],
@@ -7802,8 +7867,8 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                                     selected: selected,
                                     leading: Icon(
                                       selected
-                                          ? Icons.radio_button_checked_rounded
-                                          : Icons.radio_button_off_rounded,
+                                          ? AppPhosphorIcons.circle
+                                          : AppPhosphorIcons.circle,
                                       color: selected
                                           ? AppTheme.primary
                                           : AppTheme.textMuted,
@@ -7892,7 +7957,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.link_rounded, size: 18),
+                      : const Icon(AppPhosphorIcons.link, size: 18),
                   label: const Text('Eşleştir ve Akınsoft’a Yaz'),
                 ),
               ],
@@ -7966,7 +8031,7 @@ class _InvoiceSelectionSection extends StatelessWidget {
                   controller: searchController,
                   onChanged: onCustomerQueryChanged,
                   decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search_rounded),
+                    prefixIcon: Icon(AppPhosphorIcons.magnifyingGlass),
                     hintText: 'Cari veya fatura ara',
                     isDense: true,
                   ),
@@ -8141,7 +8206,10 @@ class _InvoiceSelectionSection extends StatelessWidget {
                             ? const SizedBox.shrink()
                             : OutlinedButton.icon(
                                 onPressed: () => onMatchCustomer(invoice),
-                                icon: const Icon(Icons.link_rounded, size: 16),
+                                icon: const Icon(
+                                  AppPhosphorIcons.link,
+                                  size: 16,
+                                ),
                                 label: const Text('Eşleştir'),
                               ),
                       ),
@@ -8500,10 +8568,10 @@ class _MetricsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 900;
+        final wide = constraints.maxWidth >= 700;
         return GridView.count(
           crossAxisCount: wide ? 5 : 2,
-          childAspectRatio: wide ? 3.8 : 2.6,
+          mainAxisExtent: 72,
           crossAxisSpacing: 8,
           mainAxisSpacing: 8,
           shrinkWrap: true,
@@ -8515,12 +8583,7 @@ class _MetricsRow extends StatelessWidget {
                   horizontal: 12,
                   vertical: 10,
                 ),
-                color: Color.alphaBlend(
-                  metric.accent.withValues(
-                    alpha: AppTheme.isDark ? 0.10 : 0.08,
-                  ),
-                  AppTheme.surface,
-                ),
+                color: AppTheme.surface,
                 child: Row(
                   children: [
                     AppDenseLeadingIcon(
@@ -8538,7 +8601,7 @@ class _MetricsRow extends StatelessWidget {
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
                                   color: AppTheme.textMuted,
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w500,
                                   fontSize: 11,
                                 ),
                           ),
@@ -8548,7 +8611,7 @@ class _MetricsRow extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w600,
                                   fontSize: 14,
                                   height: 1.15,
                                 ),
@@ -8588,13 +8651,13 @@ class _InfoPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = AppTheme.softFg(color);
+    final fg = AppTheme.textSoft;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
       decoration: BoxDecoration(
-        color: AppTheme.softTint(color, alpha: 0.11),
+        color: AppTheme.surfaceSoft,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppTheme.softBorder(color, alpha: 0.12)),
+        border: Border.all(color: AppTheme.border.withValues(alpha: 0.72)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -8605,7 +8668,7 @@ class _InfoPill extends StatelessWidget {
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: fg,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
@@ -8623,14 +8686,17 @@ class _ErrorCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return EmptyStateCard(
-      icon: Icons.error_outline_rounded,
+      icon: AppPhosphorIcons.warningCircle,
       title: 'Bir şeyler ters gitti',
       message: message,
       action: onRetry == null
           ? null
           : OutlinedButton.icon(
               onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
+              icon: const Icon(
+                AppPhosphorIcons.arrowsCounterClockwise,
+                size: 18,
+              ),
               label: const Text('Tekrar Dene'),
             ),
     );
@@ -8875,14 +8941,14 @@ class _InlineStockPriceCellState extends State<_InlineStockPriceCell> {
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.check_rounded, size: 22),
+                  : const Icon(AppPhosphorIcons.check, size: 22),
             ),
             IconButton(
               tooltip: 'İptal',
               visualDensity: VisualDensity.compact,
               constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
               onPressed: _saving ? null : widget.onCancelEdit,
-              icon: const Icon(Icons.close_rounded, size: 20),
+              icon: const Icon(AppPhosphorIcons.x, size: 20),
             ),
           ],
         ),

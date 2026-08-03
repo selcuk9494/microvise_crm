@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
@@ -49,25 +50,25 @@ class _StockScreenState extends ConsumerState<StockScreen> {
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(stockLevelsProvider),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         const Gap(10),
         OutlinedButton.icon(
           onPressed: () => context.go('/urunler'),
-          icon: const Icon(Icons.inventory_2_rounded, size: 18),
+          icon: const Icon(LucideIcons.package, size: 18),
           label: const Text('Ürün Girişi'),
         ),
         const Gap(10),
         FilledButton.icon(
           onPressed: () => _showAdjustmentDialog(context),
-          icon: const Icon(Icons.tune_rounded, size: 18),
+          icon: const Icon(LucideIcons.settings2, size: 18),
           label: const Text('Stok Düzeltme'),
         ),
         const Gap(10),
         FilledButton.icon(
           onPressed: () => _showSerialEntryDialog(context),
-          icon: const Icon(Icons.qr_code_2_rounded, size: 18),
+          icon: const Icon(LucideIcons.qrCode, size: 18),
           label: const Text('Seri Stok Girişi'),
         ),
       ],
@@ -82,9 +83,9 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.inventory_2_rounded,
+                        LucideIcons.package,
                         size: 48,
-                        color: const Color(0xFF94A3B8),
+                        color: AppTheme.textMuted,
                       ),
                       const Gap(12),
                       Text(
@@ -97,7 +98,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                       Text(
                         'Ürün tanımlarken "Stok Takibi" seçeneğini aktif edin.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF94A3B8),
+                          color: AppTheme.textMuted,
                         ),
                       ),
                     ],
@@ -153,7 +154,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                     child: _SummaryCard(
                       title: 'Toplam Ürün',
                       value: stocks.length.toString(),
-                      icon: Icons.inventory_2_rounded,
+                      icon: LucideIcons.package,
                       color: AppTheme.primary,
                     ),
                   ),
@@ -162,7 +163,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                     child: _SummaryCard(
                       title: 'Kritik Stok',
                       value: lowStock.length.toString(),
-                      icon: Icons.warning_rounded,
+                      icon: LucideIcons.triangleAlert,
                       color: lowStock.isEmpty
                           ? AppTheme.success
                           : AppTheme.error,
@@ -173,7 +174,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                     child: _SummaryCard(
                       title: 'Hazır Seri',
                       value: totalAvailableSerials.toString(),
-                      icon: Icons.qr_code_2_rounded,
+                      icon: LucideIcons.qrCode,
                       color: AppTheme.primary,
                     ),
                   ),
@@ -193,7 +194,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.warning_amber_rounded, color: AppTheme.error),
+                      Icon(LucideIcons.triangleAlert, color: AppTheme.error),
                       const Gap(10),
                       Expanded(
                         child: Text(
@@ -258,7 +259,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                         onChanged: (_) => setState(() {}),
                         decoration: const InputDecoration(
                           hintText: 'Sicil veya ürün ara',
-                          prefixIcon: Icon(Icons.search_rounded),
+                          prefixIcon: Icon(LucideIcons.search),
                           isDense: true,
                         ),
                       ),
@@ -297,7 +298,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                   data: (_) {
                     if (filteredSerialRecords.isEmpty) {
                       return const EmptyStateCard(
-                        icon: Icons.qr_code_2_rounded,
+                        icon: LucideIcons.qrCode,
                         title: 'Seri kaydı bulunamadı',
                         message:
                             'Henüz seri stok girişi yapılmadı veya bu filtreyle eşleşen kayıt yok.',
@@ -931,7 +932,7 @@ class _StockCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              isLowStock ? Icons.warning_rounded : Icons.check_circle_rounded,
+              isLowStock ? LucideIcons.triangleAlert : LucideIcons.circleCheck,
               color: isLowStock ? AppTheme.error : AppTheme.success,
               size: 22,
             ),
@@ -961,7 +962,7 @@ class _StockCard extends StatelessWidget {
                       Text(
                         product.code!,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF94A3B8),
+                          color: AppTheme.textMuted,
                           fontFamily: 'monospace',
                         ),
                       ),
@@ -981,7 +982,7 @@ class _StockCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
                     value: percentage,
-                    backgroundColor: const Color(0xFFE2E8F0),
+                    backgroundColor: AppTheme.border,
                     color: isLowStock ? AppTheme.error : AppTheme.success,
                   ),
                 ),
@@ -1031,7 +1032,7 @@ class _SerialInventoryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColor = !record.isActive
-        ? const Color(0xFF94A3B8)
+        ? AppTheme.textMuted
         : record.isConsumed
         ? AppTheme.primary
         : AppTheme.success;
@@ -1061,19 +1062,19 @@ class _SerialInventoryRow extends StatelessWidget {
                 runSpacing: 6,
                 children: [
                   _InlineInfoChip(
-                    icon: Icons.inventory_2_rounded,
+                    icon: LucideIcons.package,
                     label: record.productCode?.trim().isNotEmpty == true
                         ? '${record.productCode} - ${record.productName ?? 'Ürün'}'
                         : (record.productName ?? 'Ürün'),
                   ),
                   if (formattedDate != null)
                     _InlineInfoChip(
-                      icon: Icons.schedule_rounded,
+                      icon: LucideIcons.clock3,
                       label: formattedDate!,
                     ),
                   if ((record.notes ?? '').trim().isNotEmpty)
                     _InlineInfoChip(
-                      icon: Icons.notes_rounded,
+                      icon: LucideIcons.notebookPen,
                       label: record.notes!.trim(),
                     ),
                 ],
@@ -1109,19 +1110,19 @@ class _SerialInventoryRow extends StatelessWidget {
                   if (onEdit != null)
                     OutlinedButton.icon(
                       onPressed: onEdit,
-                      icon: const Icon(Icons.edit_rounded, size: 16),
+                      icon: const Icon(LucideIcons.pencil, size: 16),
                       label: const Text('Düzenle'),
                     ),
                   if (onDelete != null)
                     OutlinedButton.icon(
                       onPressed: onDelete,
-                      icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                      icon: const Icon(LucideIcons.trash2, size: 16),
                       label: const Text('Sil'),
                     ),
                   if (onRestore != null)
                     FilledButton.tonalIcon(
                       onPressed: onRestore,
-                      icon: const Icon(Icons.restore_rounded, size: 16),
+                      icon: const Icon(LucideIcons.rotateCcw, size: 16),
                       label: const Text('Geri Al'),
                     ),
                 ],
@@ -1146,11 +1147,7 @@ class _SerialInventoryRow extends StatelessWidget {
                   color: statusColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  Icons.qr_code_2_rounded,
-                  color: statusColor,
-                  size: 20,
-                ),
+                child: Icon(LucideIcons.qrCode, color: statusColor, size: 20),
               ),
               const Gap(12),
               Expanded(child: mainInfo),
@@ -1177,7 +1174,7 @@ class _InlineInfoChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1188,7 +1185,7 @@ class _InlineInfoChip extends StatelessWidget {
             label,
             style: Theme.of(
               context,
-            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF475569)),
+            ).textTheme.bodySmall?.copyWith(color: AppTheme.textSoft),
           ),
         ],
       ),

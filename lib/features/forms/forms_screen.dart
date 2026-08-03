@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 
@@ -36,7 +37,7 @@ class FormsScreen extends StatelessWidget {
                       title: 'Başvuru Formu',
                       description:
                           'KDV4 ve KDV4A çıktıları ile başvuru kayıtlarını yönetin.',
-                      icon: Icons.description_rounded,
+                      icon: LucideIcons.fileText,
                       accent: AppTheme.primary,
                       buttonLabel: 'Aç',
                       onTap: () => context.go('/formlar/basvuru'),
@@ -46,7 +47,7 @@ class FormsScreen extends StatelessWidget {
                       title: 'Hurda Formu',
                       description:
                           'Hurda cihaz süreçleri için aynı mantıkta yeni form akışı burada olacak.',
-                      icon: Icons.delete_sweep_rounded,
+                      icon: LucideIcons.trash,
                       accent: AppTheme.warning,
                       buttonLabel: 'Aç',
                       onTap: () => context.go('/formlar/hurda'),
@@ -56,7 +57,7 @@ class FormsScreen extends StatelessWidget {
                       title: 'Devir Formu',
                       description:
                           'Devir işlemleri için form girişi ve çıktı şablonunu bu modülde toplayacağız.',
-                      icon: Icons.swap_horiz_rounded,
+                      icon: LucideIcons.arrowLeftRight,
                       accent: AppTheme.primary,
                       buttonLabel: 'Aç',
                       onTap: () => context.go('/formlar/devir'),
@@ -66,7 +67,7 @@ class FormsScreen extends StatelessWidget {
                       title: 'Arıza Formu',
                       description:
                           'Arızalı cihaz kayıtlarını ve servis yönlendirme sürecini yönetin.',
-                      icon: Icons.build_circle_rounded,
+                      icon: LucideIcons.circleGauge,
                       accent: AppTheme.error,
                       buttonLabel: 'Aç',
                       onTap: () => context.go('/formlar/ariza'),
@@ -76,7 +77,7 @@ class FormsScreen extends StatelessWidget {
                       title: 'Seri Takip',
                       description:
                           'Seri numarası bazlı ürün takibini ve durumlarını görüntüleyin.',
-                      icon: Icons.qr_code_2_rounded,
+                      icon: LucideIcons.qrCode,
                       accent: AppTheme.primary,
                       buttonLabel: 'Aç',
                       onTap: () => context.go('/formlar/seri-takip'),
@@ -152,7 +153,7 @@ class _FormEntryCard extends StatelessWidget {
             const Gap(10),
             FilledButton.icon(
               onPressed: onTap,
-              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+              icon: const Icon(LucideIcons.arrowRight, size: 16),
               label: Text(buttonLabel),
             ),
           ],

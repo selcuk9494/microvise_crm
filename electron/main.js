@@ -4,7 +4,7 @@ const os = require('os');
 const { fileURLToPath } = require('url');
 
 const electron = require('electron');
-const { app, BrowserWindow, dialog, shell } = electron;
+const { app, BrowserWindow, dialog, shell, Menu } = electron;
 
 if (!app || typeof app.whenReady !== 'function') {
   console.error(
@@ -296,6 +296,18 @@ function createWindow(url) {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    // Flutter web (CanvasKit) sometimes sizes its rendering surface off the
+    // window's pre-show bounds; the result is a tiny/scaled paint in the
+    // corner of an otherwise-blank window. Nudging the size by 1px right
+    // after show forces a real resize event so Flutter recomputes the
+    // surface against the actual on-screen bounds.
+    const bounds = mainWindow.getBounds();
+    mainWindow.setBounds({ ...bounds, width: bounds.width + 1 });
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setBounds(bounds);
+      }
+    }, 60);
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
@@ -347,10 +359,77 @@ function createWindow(url) {
   return mainWindow.loadURL(url);
 }
 
+/**
+ * Önceden hiç menü/reload kısayolu yoktu: pencere açık kalırken yeni bir
+ * `flutter build web` yapılsa bile kullanıcı sayfayı yenileyemiyordu (yalnızca
+ * uygulamayı tamamen kapatıp yeniden açmak "çalışıyordu", o da Chromium'un
+ * disk cache'i main.dart.js'i eskiden tutarsa yine işe yaramıyordu). Cmd/Ctrl+R
+ * artık cache'i atlayarak (`reloadIgnoringCache`) yeniden yüklüyor.
+ */
+function applyMenu() {
+  const template = [
+    {
+      label: 'Microvise CRM',
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    {
+      label: 'Düzen',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'Görünüm',
+      submenu: [
+        {
+          label: 'Yeniden Yükle',
+          accelerator: 'CmdOrCtrl+R',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.reloadIgnoringCache();
+            }
+          },
+        },
+        {
+          label: 'Geliştirici Araçları',
+          accelerator: 'CmdOrCtrl+Alt+I',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.toggleDevTools();
+            }
+          },
+        },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Pencere',
+      submenu: [{ role: 'minimize' }, { role: 'close' }],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 async function bootstrap() {
   try {
     // app ready sonrası userData/temp erişilebilir; cwd'yi hemen düzelt.
     ensureValidWorkingDirectory(resolveAppRoot());
+    applyMenu();
     localServer = await startBridge();
     await createWindow(localServer.url);
   } catch (err) {

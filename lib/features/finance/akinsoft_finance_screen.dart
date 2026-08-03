@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:http/http.dart' as http;
@@ -211,13 +212,13 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
       actions: [
         OutlinedButton.icon(
           onPressed: _loading ? null : _pull,
-          icon: const Icon(Icons.sync_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Akınsoft’tan Çek'),
         ),
         if (widget.section == 'bankalar')
           FilledButton.icon(
             onPressed: _loading ? null : () => _showBankDialog(),
-            icon: const Icon(Icons.add_rounded, size: 18),
+            icon: const Icon(LucideIcons.plus, size: 18),
             label: const Text('Banka'),
           ),
         if (widget.section == 'bankalar')
@@ -225,25 +226,25 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
             onPressed: _loading || _banks.isEmpty
                 ? null
                 : () => _showAccountDialog(),
-            icon: const Icon(Icons.account_balance_wallet_rounded, size: 18),
+            icon: const Icon(LucideIcons.walletCards, size: 18),
             label: const Text('Hesap'),
           ),
         if (widget.section == 'kasa')
           FilledButton.icon(
             onPressed: _loading ? null : () => _showKasaDialog(),
-            icon: const Icon(Icons.add_rounded, size: 18),
+            icon: const Icon(LucideIcons.plus, size: 18),
             label: const Text('Kasa'),
           ),
         if (widget.section == 'transferler')
           FilledButton.icon(
             onPressed: _loading ? null : () => _showTransferDialog(),
-            icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+            icon: const Icon(LucideIcons.arrowLeftRight, size: 18),
             label: const Text('Transfer'),
           ),
         if (widget.section == 'masraf')
           FilledButton.icon(
             onPressed: _loading ? null : () => _showMasrafDialog(),
-            icon: const Icon(Icons.receipt_long_rounded, size: 18),
+            icon: const Icon(LucideIcons.receiptText, size: 18),
             label: const Text('Masraf'),
           ),
       ],
@@ -598,7 +599,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                       title: const Text('Tarih'),
                       subtitle: Text(DateFormat('dd.MM.yyyy').format(date)),
                       trailing: IconButton(
-                        icon: const Icon(Icons.calendar_month_rounded),
+                        icon: const Icon(LucideIcons.calendarDays),
                         onPressed: () async {
                           final picked = await showDatePicker(
                             context: context,
@@ -761,7 +762,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                       title: const Text('Tarih'),
                       subtitle: Text(DateFormat('dd.MM.yyyy').format(date)),
                       trailing: IconButton(
-                        icon: const Icon(Icons.calendar_month_rounded),
+                        icon: const Icon(LucideIcons.calendarDays),
                         onPressed: () async {
                           final picked = await showDatePicker(
                             context: context,
@@ -797,7 +798,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                         TextButton.icon(
                           onPressed: () =>
                               setLocal(() => lines.add(_MasrafLineDraft())),
-                          icon: const Icon(Icons.add_rounded, size: 18),
+                          icon: const Icon(LucideIcons.plus, size: 18),
                           label: const Text('Kalem'),
                         ),
                       ],
@@ -833,7 +834,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                                       onPressed: () =>
                                           setLocal(() => lines.removeAt(i)),
                                       icon: const Icon(
-                                        Icons.delete_rounded,
+                                        LucideIcons.trash2,
                                         size: 18,
                                       ),
                                     ),
@@ -1332,14 +1333,14 @@ class _DenseRow extends StatelessWidget {
               tooltip: 'Düzenle',
               visualDensity: VisualDensity.compact,
               onPressed: onEdit,
-              icon: const Icon(Icons.edit_rounded, size: 18),
+              icon: const Icon(LucideIcons.pencil, size: 18),
             ),
           if (onDelete != null)
             IconButton(
               tooltip: 'Sil',
               visualDensity: VisualDensity.compact,
               onPressed: onDelete,
-              icon: const Icon(Icons.delete_rounded, size: 18),
+              icon: const Icon(LucideIcons.trash2, size: 18),
             ),
         ],
       ),

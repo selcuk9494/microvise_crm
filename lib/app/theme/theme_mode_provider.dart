@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/storage/app_cache.dart';
@@ -39,9 +40,9 @@ String themeModeLabelTr(ThemeMode mode) {
 
 IconData themeModeIcon(ThemeMode mode) {
   return switch (mode) {
-    ThemeMode.light => Icons.light_mode_rounded,
-    ThemeMode.dark => Icons.dark_mode_rounded,
-    ThemeMode.system => Icons.brightness_auto_rounded,
+    ThemeMode.light => LucideIcons.sun,
+    ThemeMode.dark => LucideIcons.moon,
+    ThemeMode.system => LucideIcons.sunMoon,
   };
 }
 

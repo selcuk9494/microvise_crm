@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:skeletonizer/skeletonizer.dart';
@@ -77,13 +78,13 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(personnelUsersProvider),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         const Gap(10),
         FilledButton.icon(
           onPressed: isAdmin ? () => _openCreateDialog(context) : null,
-          icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+          icon: const Icon(LucideIcons.userPlus, size: 18),
           label: const Text('Yeni Personel'),
         ),
       ],
@@ -151,7 +152,7 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                                     controller: _searchController,
                                     onChanged: (_) => setState(() {}),
                                     decoration: const InputDecoration(
-                                      prefixIcon: Icon(Icons.search_rounded),
+                                      prefixIcon: Icon(LucideIcons.search),
                                       hintText: 'Ara',
                                     ),
                                   ),
@@ -162,7 +163,7 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                                     alpha: 0.12,
                                   ),
                                   foregroundColor: AppTheme.primaryDark,
-                                  icon: Icons.badge_rounded,
+                                  icon: LucideIcons.idCard,
                                   onTap: () async {
                                     final next =
                                         await showModalBottomSheet<String>(
@@ -208,7 +209,7 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                                     setState(() => _roleFilter = 'all');
                                   },
                                   icon: const Icon(
-                                    Icons.delete_outline_rounded,
+                                    LucideIcons.trash2,
                                     size: 18,
                                   ),
                                   label: const Text('Temizle'),
@@ -255,7 +256,7 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                       Expanded(
                         child: filtered.isEmpty
                             ? const EmptyStateCard(
-                                icon: Icons.badge_rounded,
+                                icon: LucideIcons.idCard,
                                 title: 'Kayıt bulunamadı',
                                 message:
                                     'Filtrelerinize uyan bir personel yok.',
@@ -286,12 +287,12 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
               },
               loading: () => const _PersonnelListSkeleton(),
               error: (_, _) => EmptyStateCard(
-                icon: Icons.cloud_off_rounded,
+                icon: LucideIcons.cloudOff,
                 title: 'Personel listesi yüklenemedi',
                 message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
                 action: OutlinedButton.icon(
                   onPressed: () => ref.invalidate(personnelUsersProvider),
-                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  icon: const Icon(LucideIcons.refreshCw, size: 16),
                   label: const Text('Tekrar Dene'),
                 ),
               ),
@@ -383,7 +384,7 @@ class _Header extends StatelessWidget {
               'Kullanıcı',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: const Color(0xFF475569),
+                color: AppTheme.textSoft,
               ),
             ),
           ),
@@ -396,7 +397,7 @@ class _Header extends StatelessWidget {
                 'Rol',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   fontWeight: FontWeight.w800,
-                  color: const Color(0xFF475569),
+                  color: AppTheme.textSoft,
                 ),
               ),
             ),
@@ -448,7 +449,7 @@ class _RolePill extends StatelessWidget {
               ),
             ),
             const Gap(6),
-            Icon(Icons.expand_more_rounded, size: 18, color: foregroundColor),
+            Icon(LucideIcons.chevronDown, size: 18, color: foregroundColor),
           ],
         ),
       ),
@@ -628,7 +629,7 @@ class _UserRowState extends ConsumerState<_UserRow> {
                           onPressed: saving
                               ? null
                               : () => Navigator.of(context).pop(false),
-                          icon: const Icon(Icons.close_rounded),
+                          icon: const Icon(LucideIcons.x),
                         ),
                       ],
                     ),
@@ -769,7 +770,7 @@ class _UserRowState extends ConsumerState<_UserRow> {
                         onPressed: saving
                             ? null
                             : () => Navigator.of(context).pop(false),
-                        icon: const Icon(Icons.close_rounded),
+                        icon: const Icon(LucideIcons.x),
                       ),
                     ],
                   ),
@@ -909,7 +910,7 @@ class _UserRowState extends ConsumerState<_UserRow> {
                         onPressed: saving
                             ? null
                             : () => Navigator.of(context).pop(false),
-                        icon: const Icon(Icons.close_rounded),
+                        icon: const Icon(LucideIcons.x),
                       ),
                     ],
                   ),
@@ -1168,25 +1169,25 @@ class _UserRowState extends ConsumerState<_UserRow> {
           IconButton(
             tooltip: 'Düzenle',
             onPressed: _saving ? null : _editUser,
-            icon: const Icon(Icons.edit_rounded),
+            icon: const Icon(LucideIcons.pencil),
           ),
           const Gap(2),
           IconButton(
             tooltip: 'Yetkiler',
             onPressed: _saving ? null : _editPermissions,
-            icon: const Icon(Icons.admin_panel_settings_rounded),
+            icon: const Icon(LucideIcons.shieldCheck),
           ),
           const Gap(2),
           IconButton(
             tooltip: 'Şifre',
             onPressed: _saving ? null : _setPassword,
-            icon: const Icon(Icons.key_rounded),
+            icon: const Icon(LucideIcons.keyRound),
           ),
           const Gap(2),
           IconButton(
             tooltip: 'Sil',
             onPressed: _saving ? null : _deleteUser,
-            icon: const Icon(Icons.delete_outline_rounded),
+            icon: const Icon(LucideIcons.trash2),
           ),
           const Gap(6),
           SizedBox(
@@ -1329,7 +1330,7 @@ class _CreatePersonnelDialogState
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),

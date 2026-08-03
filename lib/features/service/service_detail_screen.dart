@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:image_picker/image_picker.dart';
@@ -71,7 +72,7 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                     );
                   } catch (_) {}
                 },
-                icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                icon: const Icon(LucideIcons.fileType2, size: 18),
                 label: const Text('PDF'),
               );
             },
@@ -81,7 +82,7 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
               await _bodyKey.currentState?._captureSignatures(delivery: true);
               ref.invalidate(serviceDetailProvider(widget.serviceId));
             },
-            icon: const Icon(Icons.check_rounded, size: 18),
+            icon: const Icon(LucideIcons.check, size: 18),
             label: const Text('Teslim'),
           ),
         ],
@@ -469,11 +470,11 @@ class _BodyState extends ConsumerState<_Body> {
 
     final left = SignatureController(
       penStrokeWidth: 2.5,
-      penColor: const Color(0xFF0F172A),
+      penColor: AppTheme.text,
     );
     final right = SignatureController(
       penStrokeWidth: 2.5,
-      penColor: const Color(0xFF0F172A),
+      penColor: AppTheme.text,
     );
     bool markDone = delivery;
 
@@ -513,7 +514,7 @@ class _BodyState extends ConsumerState<_Body> {
                           IconButton(
                             tooltip: 'Kapat',
                             onPressed: () => Navigator.of(context).pop(false),
-                            icon: const Icon(Icons.close_rounded),
+                            icon: const Icon(LucideIcons.x),
                           ),
                         ],
                       ),
@@ -759,7 +760,7 @@ class _BodyState extends ConsumerState<_Body> {
                     child: const SizedBox(
                       width: 36,
                       height: 34,
-                      child: Icon(Icons.more_horiz_rounded),
+                      child: Icon(LucideIcons.ellipsis),
                     ),
                   ),
                 ],
@@ -936,7 +937,7 @@ class _BodyState extends ConsumerState<_Body> {
             if (_accessoriesReceived)
               OutlinedButton.icon(
                 onPressed: _saving ? null : pickAccessories,
-                icon: const Icon(Icons.tune_rounded, size: 18),
+                icon: const Icon(LucideIcons.settings2, size: 18),
                 label: Text(
                   'Aksesuarları Seç (${_selectedAccessoryTypeIds.length})',
                 ),
@@ -970,7 +971,7 @@ class _BodyState extends ConsumerState<_Body> {
                   onPressed: _saving
                       ? null
                       : () => _captureSignatures(delivery: false),
-                  icon: const Icon(Icons.edit_rounded, size: 18),
+                  icon: const Icon(LucideIcons.pencil, size: 18),
                   label: const Text('Teslim Alım'),
                 ),
                 const Gap(8),
@@ -978,7 +979,7 @@ class _BodyState extends ConsumerState<_Body> {
                   onPressed: _saving
                       ? null
                       : () => _captureSignatures(delivery: true),
-                  icon: const Icon(Icons.check_rounded, size: 18),
+                  icon: const Icon(LucideIcons.check, size: 18),
                   label: const Text('Teslim'),
                 ),
               ],
@@ -992,14 +993,14 @@ class _BodyState extends ConsumerState<_Body> {
                   onPressed: _saving
                       ? null
                       : () => _addImage(ImageSource.camera),
-                  icon: const Icon(Icons.photo_camera_rounded, size: 18),
+                  icon: const Icon(LucideIcons.camera, size: 18),
                   label: const Text('Kamera'),
                 ),
                 OutlinedButton.icon(
                   onPressed: _saving
                       ? null
                       : () => _addImage(ImageSource.gallery),
-                  icon: const Icon(Icons.photo_library_rounded, size: 18),
+                  icon: const Icon(LucideIcons.images, size: 18),
                   label: const Text('Galeri'),
                 ),
               ],
@@ -1060,7 +1061,7 @@ class _BodyState extends ConsumerState<_Body> {
                             TextEditingController(text: 'Yeni adım'),
                           ),
                         ),
-                  icon: const Icon(Icons.add_rounded, size: 18),
+                  icon: const Icon(LucideIcons.plus, size: 18),
                   label: const Text('Ekle'),
                 ),
               ],
@@ -1106,7 +1107,7 @@ class _BodyState extends ConsumerState<_Body> {
                             _stepControllers[i].dispose();
                             _stepControllers.removeAt(i);
                           }),
-                    icon: const Icon(Icons.delete_outline_rounded),
+                    icon: const Icon(LucideIcons.trash2),
                   ),
                 ],
               ),
@@ -1308,11 +1309,10 @@ class _ImageThumb extends StatelessWidget {
                 ? Image.network(
                     imageUrl,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => const Center(
-                      child: Icon(Icons.image_not_supported_rounded),
-                    ),
+                    errorBuilder: (context, error, stackTrace) =>
+                        const Center(child: Icon(LucideIcons.imageOff)),
                   )
-                : const Center(child: Icon(Icons.image_not_supported_rounded)),
+                : const Center(child: Icon(LucideIcons.imageOff)),
           ),
         ),
         if (onRemove != null)
@@ -1330,7 +1330,7 @@ class _ImageThumb extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: AppTheme.border),
                 ),
-                child: const Icon(Icons.close_rounded, size: 18),
+                child: const Icon(LucideIcons.x, size: 18),
               ),
             ),
           ),
@@ -1408,7 +1408,7 @@ class _CostCard extends StatelessWidget {
               ),
               OutlinedButton.icon(
                 onPressed: onAdd,
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(LucideIcons.plus, size: 18),
                 label: const Text('Ekle'),
               ),
             ],
@@ -1483,7 +1483,7 @@ class _LineItemEditor extends StatelessWidget {
           IconButton(
             tooltip: 'Sil',
             onPressed: onRemove,
-            icon: const Icon(Icons.delete_outline_rounded),
+            icon: const Icon(LucideIcons.trash2),
           ),
       ],
     );

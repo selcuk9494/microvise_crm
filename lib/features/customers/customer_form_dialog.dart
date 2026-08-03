@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../app/theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -288,7 +289,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
               setState(() => _cityController.text = value ?? ''),
           decoration: const InputDecoration(
             labelText: 'Şehir',
-            prefixIcon: Icon(Icons.location_city_rounded),
+            prefixIcon: Icon(LucideIcons.building),
           ),
         ),
         loading: () => TextFormField(
@@ -297,7 +298,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
           decoration: const InputDecoration(
             labelText: 'Şehir',
             hintText: 'Şehirler yükleniyor',
-            prefixIcon: Icon(Icons.location_city_rounded),
+            prefixIcon: Icon(LucideIcons.building),
           ),
         ),
         error: (error, stackTrace) => TextFormField(
@@ -306,7 +307,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
           decoration: const InputDecoration(
             labelText: 'Şehir',
             hintText: 'Şehir bulunamadı',
-            prefixIcon: Icon(Icons.location_city_rounded),
+            prefixIcon: Icon(LucideIcons.building),
           ),
         ),
       );
@@ -326,7 +327,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
             setState(() => _countryCode = value?.trim() ?? 'XCT'),
         decoration: const InputDecoration(
           labelText: 'Ülke',
-          prefixIcon: Icon(Icons.public_rounded),
+          prefixIcon: Icon(LucideIcons.globe2),
         ),
       );
     }
@@ -359,7 +360,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
         decoration: const InputDecoration(
           labelText: 'VKN',
           hintText: '10 haneli vergi numarası',
-          prefixIcon: Icon(Icons.badge_rounded),
+          prefixIcon: Icon(LucideIcons.idCard),
           counterText: '',
         ),
         onFieldSubmitted: (_) =>
@@ -382,7 +383,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
         decoration: const InputDecoration(
           labelText: 'TCKN-MŞ',
           hintText: '11 haneli müşteri sicil / TCKN',
-          prefixIcon: Icon(Icons.perm_identity_rounded),
+          prefixIcon: Icon(LucideIcons.userRound),
           counterText: '',
         ),
         onFieldSubmitted: (_) =>
@@ -433,7 +434,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                         onPressed: _saving
                             ? null
                             : () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close_rounded),
+                        icon: const Icon(LucideIcons.x),
                       ),
                     ],
                   ),
@@ -465,7 +466,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                               hintText:
                                                   'Örn. Microvise Teknoloji',
                                               prefixIcon: Icon(
-                                                Icons.business_rounded,
+                                                LucideIcons.building2,
                                               ),
                                             ),
                                             validator: (value) {
@@ -496,9 +497,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                         labelText: 'Adres',
                                         hintText: 'Müşterinin ana adresi',
                                         alignLabelWithHint: true,
-                                        prefixIcon: Icon(
-                                          Icons.location_on_rounded,
-                                        ),
+                                        prefixIcon: Icon(LucideIcons.mapPin),
                                       ),
                                     ),
                                     const Gap(12),
@@ -509,7 +508,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                         labelText: 'Direktör Ad Soyad',
                                         hintText: 'Örn. Ahmet Yılmaz',
                                         prefixIcon: Icon(
-                                          Icons.person_pin_rounded,
+                                          LucideIcons.mapPinCheck,
                                         ),
                                       ),
                                     ),
@@ -530,7 +529,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                       titleLabel: 'Telefon 1 Başlığı',
                                       phoneLabel: 'Telefon 1',
                                       phoneHint: '0 5xx xxx xx xx',
-                                      phoneIcon: Icons.phone_rounded,
+                                      phoneIcon: LucideIcons.phone,
                                     ),
                                     const Gap(12),
                                     _phoneRow(
@@ -539,7 +538,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                       titleLabel: 'Telefon 2 Başlığı',
                                       phoneLabel: 'Telefon 2',
                                       phoneHint: '0 2xx xxx xx xx',
-                                      phoneIcon: Icons.phone_in_talk_rounded,
+                                      phoneIcon: LucideIcons.phoneCall,
                                     ),
                                     const Gap(12),
                                     _phoneRow(
@@ -548,7 +547,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                       titleLabel: 'Telefon 3 Başlığı',
                                       phoneLabel: 'Telefon 3',
                                       phoneHint: 'Opsiyonel',
-                                      phoneIcon: Icons.phone_callback_rounded,
+                                      phoneIcon: LucideIcons.phoneIncoming,
                                     ),
                                   ],
                                 ),
@@ -574,9 +573,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                       decoration: const InputDecoration(
                                         labelText: 'E-posta',
                                         hintText: 'ornek@firma.com',
-                                        prefixIcon: Icon(
-                                          Icons.alternate_email_rounded,
-                                        ),
+                                        prefixIcon: Icon(LucideIcons.atSign),
                                       ),
                                       validator: (value) {
                                         final email = value?.trim() ?? '';
@@ -630,7 +627,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                     labelText: 'Notlar',
                                     hintText: 'Müşteri ile ilgili kısa notlar',
                                     alignLabelWithHint: true,
-                                    prefixIcon: Icon(Icons.notes_rounded),
+                                    prefixIcon: Icon(LucideIcons.notebookPen),
                                   ),
                                 ),
                               ),
@@ -656,7 +653,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                     decoration: const InputDecoration(
                                       labelText: 'Firma Adı',
                                       hintText: 'Örn. Microvise Teknoloji',
-                                      prefixIcon: Icon(Icons.business_rounded),
+                                      prefixIcon: Icon(LucideIcons.building2),
                                     ),
                                     validator: (value) {
                                       if (value == null ||
@@ -678,7 +675,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                               decoration: const InputDecoration(
                                 labelText: 'Firma Adı',
                                 hintText: 'Örn. Microvise Teknoloji',
-                                prefixIcon: Icon(Icons.business_rounded),
+                                prefixIcon: Icon(LucideIcons.building2),
                               ),
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
@@ -702,7 +699,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                               labelText: 'Adres',
                               hintText: 'Müşterinin ana adresi',
                               alignLabelWithHint: true,
-                              prefixIcon: Icon(Icons.location_on_rounded),
+                              prefixIcon: Icon(LucideIcons.mapPin),
                             ),
                           ),
                           const Gap(12),
@@ -712,7 +709,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                             decoration: const InputDecoration(
                               labelText: 'Direktör Ad Soyad',
                               hintText: 'Örn. Ahmet Yılmaz',
-                              prefixIcon: Icon(Icons.person_pin_rounded),
+                              prefixIcon: Icon(LucideIcons.mapPinCheck),
                             ),
                           ),
                         ],
@@ -731,7 +728,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                             decoration: const InputDecoration(
                               labelText: 'E-posta',
                               hintText: 'ornek@firma.com',
-                              prefixIcon: Icon(Icons.alternate_email_rounded),
+                              prefixIcon: Icon(LucideIcons.atSign),
                             ),
                             validator: (value) {
                               final email = value?.trim() ?? '';
@@ -765,7 +762,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                             titleLabel: 'Telefon 1 Başlığı',
                             phoneLabel: 'Telefon 1',
                             phoneHint: '0 5xx xxx xx xx',
-                            phoneIcon: Icons.phone_rounded,
+                            phoneIcon: LucideIcons.phone,
                           ),
                           const Gap(12),
                           _phoneRow(
@@ -774,7 +771,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                             titleLabel: 'Telefon 2 Başlığı',
                             phoneLabel: 'Telefon 2',
                             phoneHint: '0 2xx xxx xx xx',
-                            phoneIcon: Icons.phone_in_talk_rounded,
+                            phoneIcon: LucideIcons.phoneCall,
                           ),
                           const Gap(12),
                           _phoneRow(
@@ -783,7 +780,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                             titleLabel: 'Telefon 3 Başlığı',
                             phoneLabel: 'Telefon 3',
                             phoneHint: 'Opsiyonel',
-                            phoneIcon: Icons.phone_callback_rounded,
+                            phoneIcon: LucideIcons.phoneIncoming,
                           ),
                           const Gap(12),
                           SwitchListTile.adaptive(
@@ -814,7 +811,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                           labelText: 'Notlar',
                           hintText: 'Müşteri ile ilgili kısa notlar',
                           alignLabelWithHint: true,
-                          prefixIcon: Icon(Icons.notes_rounded),
+                          prefixIcon: Icon(LucideIcons.notebookPen),
                         ),
                       ),
                     ),
@@ -836,7 +833,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                   _CustomerLocationDraft(),
                                 ),
                               ),
-                        icon: const Icon(Icons.add_location_alt_rounded),
+                        icon: const Icon(LucideIcons.mapPinPlus),
                         label: const Text('Konum Ekle'),
                       ),
                     ],
@@ -896,8 +893,8 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                 )
                               : Icon(
                                   widget.isEdit
-                                      ? Icons.save_rounded
-                                      : Icons.add_rounded,
+                                      ? LucideIcons.save
+                                      : LucideIcons.plus,
                                   size: 18,
                                 ),
                           label: Text(
@@ -938,7 +935,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
             textInputAction: TextInputAction.next,
             decoration: InputDecoration(
               labelText: titleLabel,
-              prefixIcon: const Icon(Icons.label_outline_rounded),
+              prefixIcon: const Icon(LucideIcons.tag),
             ),
           ),
         ),
@@ -1288,7 +1285,7 @@ class _CustomerLocationCard extends StatelessWidget {
                   decoration: const InputDecoration(
                     labelText: 'Konum Başlığı',
                     hintText: 'Örn. Merkez Ofis',
-                    prefixIcon: Icon(Icons.place_rounded),
+                    prefixIcon: Icon(LucideIcons.mapPin),
                   ),
                 ),
               ),
@@ -1297,7 +1294,7 @@ class _CustomerLocationCard extends StatelessWidget {
                 IconButton(
                   tooltip: 'Konumu sil',
                   onPressed: onRemove,
-                  icon: const Icon(Icons.delete_outline_rounded),
+                  icon: const Icon(LucideIcons.trash2),
                 ),
               ],
             ],
@@ -1311,7 +1308,7 @@ class _CustomerLocationCard extends StatelessWidget {
               labelText: 'Konum Açıklaması',
               hintText: 'Servis giriş kapısı, mağaza içi nokta vb.',
               alignLabelWithHint: true,
-              prefixIcon: Icon(Icons.info_outline_rounded),
+              prefixIcon: Icon(LucideIcons.info),
             ),
           ),
           const Gap(12),
@@ -1323,7 +1320,7 @@ class _CustomerLocationCard extends StatelessWidget {
               labelText: 'Adres',
               hintText: 'Cadde, sokak, no, ilçe...',
               alignLabelWithHint: true,
-              prefixIcon: Icon(Icons.home_work_rounded),
+              prefixIcon: Icon(LucideIcons.building2),
             ),
           ),
           const Gap(12),
@@ -1332,7 +1329,7 @@ class _CustomerLocationCard extends StatelessWidget {
             decoration: const InputDecoration(
               labelText: 'Konum Linki',
               hintText: 'Google Maps / Apple Maps linki',
-              prefixIcon: Icon(Icons.link_rounded),
+              prefixIcon: Icon(LucideIcons.link),
             ),
           ),
           const Gap(12),

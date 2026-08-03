@@ -16,6 +16,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../design_system/status_tone.dart';
 
@@ -48,32 +49,32 @@ ServiceStatusInfo serviceStatusInfo(String status) {
       return const ServiceStatusInfo(
         label: 'Bekliyor',
         tone: DsStatusTone.warning,
-        icon: Icons.hourglass_empty_rounded,
+        icon: LucideIcons.hourglass,
       );
     case 'in_progress':
     case 'approval':
       return const ServiceStatusInfo(
         label: 'Onayda',
         tone: DsStatusTone.info,
-        icon: Icons.hourglass_top_rounded,
+        icon: LucideIcons.hourglass,
       );
     case 'ready':
       return const ServiceStatusInfo(
         label: 'Hazır',
         tone: DsStatusTone.success,
-        icon: Icons.inventory_2_rounded,
+        icon: LucideIcons.package,
       );
     case 'done':
       return const ServiceStatusInfo(
         label: 'Teslim',
         tone: DsStatusTone.success,
-        icon: Icons.check_circle_rounded,
+        icon: LucideIcons.circleCheck,
       );
     case 'cancelled':
       return const ServiceStatusInfo(
         label: 'İptal',
         tone: DsStatusTone.danger,
-        icon: Icons.cancel_rounded,
+        icon: LucideIcons.circleX,
       );
     default:
       final fallbackLabel = status.trim().isEmpty
@@ -82,7 +83,7 @@ ServiceStatusInfo serviceStatusInfo(String status) {
       return ServiceStatusInfo(
         label: fallbackLabel,
         tone: DsStatusTone.neutral,
-        icon: Icons.help_outline_rounded,
+        icon: LucideIcons.circleHelp,
       );
   }
 }

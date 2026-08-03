@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:http/http.dart' as http;
@@ -71,13 +72,13 @@ Future<void> handleFormDocumentAction({
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
-            leading: const Icon(Icons.document_scanner_rounded),
+            leading: const Icon(LucideIcons.scanLine),
             title: const Text('Belge tara'),
             subtitle: const Text('Kamera ile belge yakala'),
             onTap: () => Navigator.of(context).pop('scan'),
           ),
           ListTile(
-            leading: const Icon(Icons.attach_file_rounded),
+            leading: const Icon(LucideIcons.paperclip),
             title: const Text('Dosya yükle'),
             subtitle: const Text('PDF, JPG veya PNG seç'),
             onTap: () => Navigator.of(context).pop('file'),
@@ -378,21 +379,21 @@ class FormDocumentActions extends StatelessWidget {
           tooltip: document.hasDocument ? 'Belgeyi Yenile' : 'Belge Tara/Yükle',
           onPressed: onUpload,
           icon: document.hasDocument
-              ? Icons.upload_file_rounded
-              : Icons.document_scanner_rounded,
+              ? LucideIcons.upload
+              : LucideIcons.scanLine,
         ),
         if (document.hasDocument) ...[
           const Gap(4),
           FormRecordIconAction(
             tooltip: 'Belgeyi İndir',
             onPressed: onDownload,
-            icon: Icons.download_rounded,
+            icon: LucideIcons.download,
           ),
           const Gap(4),
           FormRecordIconAction(
             tooltip: 'Belgeyi Sil',
             onPressed: onDelete,
-            icon: Icons.delete_sweep_rounded,
+            icon: LucideIcons.trash,
           ),
         ],
       ],
@@ -465,7 +466,7 @@ class FormDocumentMetaChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            Icons.attach_file_rounded,
+            LucideIcons.paperclip,
             size: 13,
             color: AppTheme.softFg(AppTheme.success),
           ),

@@ -71,7 +71,7 @@ class _AppPageLayoutState extends State<AppPageLayout> {
       final hasActions =
           normalizedActions != null && normalizedActions.isNotEmpty;
       final titleStyle = Theme.of(context).textTheme.titleLarge?.copyWith(
-        fontWeight: FontWeight.w800,
+        fontWeight: FontWeight.w500,
         height: 1.2,
         letterSpacing: -0.3,
       );
@@ -182,16 +182,11 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                       horizontalPadding,
                       widget.compactHeader ? 4 : 6,
                     ),
-                    child: Container(
+                    child: Padding(
                       padding: EdgeInsets.symmetric(
-                        horizontal: width >= 560
-                            ? (widget.compactHeader ? 14 : 18)
-                            : 14,
-                        vertical: width >= 560
-                            ? (widget.compactHeader ? 8 : 10)
-                            : 10,
+                        horizontal: widget.compactHeader ? 2 : 4,
+                        vertical: widget.compactHeader ? 6 : 8,
                       ),
-                      decoration: AppTheme.panelSurface,
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -205,7 +200,7 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                                       .textTheme
                                       .headlineSmall
                                       ?.copyWith(
-                                        fontWeight: FontWeight.w800,
+                                        fontWeight: FontWeight.w600,
                                         fontSize: widget.compactHeader
                                             ? 20
                                             : null,

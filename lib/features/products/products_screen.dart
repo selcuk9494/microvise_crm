@@ -1,6 +1,7 @@
 import 'package:excel/excel.dart' as excel;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -703,7 +704,7 @@ class ProductsScreen extends ConsumerWidget {
                   child: const SizedBox(
                     width: 36,
                     height: 34,
-                    child: Icon(Icons.download_rounded),
+                    child: Icon(LucideIcons.download),
                   ),
                 ),
               ],
@@ -725,7 +726,7 @@ class ProductsScreen extends ConsumerWidget {
                           child: TextField(
                             decoration: const InputDecoration(
                               hintText: 'Ara (müşteri, hat, SIM, firma...)',
-                              prefixIcon: Icon(Icons.search_rounded),
+                              prefixIcon: Icon(LucideIcons.search),
                               isDense: true,
                             ),
                             onChanged: (v) =>
@@ -738,10 +739,7 @@ class ProductsScreen extends ConsumerWidget {
                                 onPressed: () => ref
                                     .read(showPassiveProvider.notifier)
                                     .set(!showPassive),
-                                icon: const Icon(
-                                  Icons.visibility_rounded,
-                                  size: 18,
-                                ),
+                                icon: const Icon(LucideIcons.eye, size: 18),
                                 label: Text(
                                   showPassive ? 'Kayıt: Tümü' : 'Kayıt: Aktif',
                                 ),
@@ -976,7 +974,7 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                     decoration: const InputDecoration(
                       labelText: 'Müşteri',
                       hintText: 'Müşteri adına göre',
-                      prefixIcon: Icon(Icons.storefront_rounded),
+                      prefixIcon: Icon(LucideIcons.store),
                     ),
                   ),
                 );
@@ -996,7 +994,7 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                           .read(lineEndsFromProvider.notifier)
                           .set(DateTime(picked.year, picked.month, picked.day));
                     },
-                    icon: const Icon(Icons.date_range_rounded, size: 18),
+                    icon: const Icon(LucideIcons.calendarDays, size: 18),
                     label: Text('Bitiş ≥ ${dateLabel(endsFrom)}'),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 32),
@@ -1024,7 +1022,7 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                           .read(lineEndsToProvider.notifier)
                           .set(DateTime(picked.year, picked.month, picked.day));
                     },
-                    icon: const Icon(Icons.event_rounded, size: 18),
+                    icon: const Icon(LucideIcons.calendar, size: 18),
                     label: Text('Bitiş ≤ ${dateLabel(endsTo)}'),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 32),
@@ -1048,7 +1046,7 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                         .read(lineOperatorFilterProvider.notifier)
                         .set(LineOperatorFilter.all);
                   },
-                  icon: const Icon(Icons.clear_rounded, size: 18),
+                  icon: const Icon(LucideIcons.eraser, size: 18),
                   label: const Text('Temizle'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 32),
@@ -1063,7 +1061,7 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
 
                 final exportBtn = OutlinedButton.icon(
                   onPressed: widget.exportAll,
-                  icon: const Icon(Icons.download_rounded, size: 18),
+                  icon: const Icon(LucideIcons.download, size: 18),
                   label: const Text('Dışarı Aktar'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 32),
@@ -1268,7 +1266,7 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                     decoration: const InputDecoration(
                       labelText: 'Müşteri',
                       hintText: 'Müşteri adına göre',
-                      prefixIcon: Icon(Icons.storefront_rounded),
+                      prefixIcon: Icon(LucideIcons.store),
                     ),
                   ),
                 );
@@ -1319,7 +1317,7 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                           .read(licenseEndsFromProvider.notifier)
                           .set(DateTime(picked.year, picked.month, picked.day));
                     },
-                    icon: const Icon(Icons.date_range_rounded, size: 18),
+                    icon: const Icon(LucideIcons.calendarDays, size: 18),
                     label: Text('Bitiş ≥ ${dateLabel(endsFrom)}'),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 32),
@@ -1347,7 +1345,7 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                           .read(licenseEndsToProvider.notifier)
                           .set(DateTime(picked.year, picked.month, picked.day));
                     },
-                    icon: const Icon(Icons.event_rounded, size: 18),
+                    icon: const Icon(LucideIcons.calendar, size: 18),
                     label: Text('Bitiş ≤ ${dateLabel(endsTo)}'),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 32),
@@ -1369,7 +1367,7 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                     ref.read(licenseEndsToProvider.notifier).set(null);
                     ref.read(licenseCompanyFilterProvider.notifier).set('all');
                   },
-                  icon: const Icon(Icons.clear_rounded, size: 18),
+                  icon: const Icon(LucideIcons.eraser, size: 18),
                   label: const Text('Temizle'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 32),
@@ -1384,7 +1382,7 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
 
                 final exportBtn = OutlinedButton.icon(
                   onPressed: widget.exportAll,
-                  icon: const Icon(Icons.download_rounded, size: 18),
+                  icon: const Icon(LucideIcons.download, size: 18),
                   label: const Text('Dışarı Aktar'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 32),
@@ -1561,7 +1559,7 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                     decoration: const InputDecoration(
                       labelText: 'Müşteri Ara',
                       hintText: 'Müşteri adına göre',
-                      prefixIcon: Icon(Icons.search_rounded),
+                      prefixIcon: Icon(LucideIcons.search),
                     ),
                   ),
                 );
@@ -1571,7 +1569,7 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                     _customerController.text = '';
                     ref.read(totalsCustomerSearchProvider.notifier).set('');
                   },
-                  icon: const Icon(Icons.clear_rounded, size: 18),
+                  icon: const Icon(LucideIcons.eraser, size: 18),
                   label: const Text('Temizle'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 32),
@@ -1588,7 +1586,7 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                   onPressed: items.isEmpty
                       ? null
                       : () => _export(context, items),
-                  icon: const Icon(Icons.download_rounded, size: 18),
+                  icon: const Icon(LucideIcons.download, size: 18),
                   label: const Text('Dışarı Aktar'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 32),
@@ -1668,7 +1666,7 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                                 style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(
                                       fontWeight: FontWeight.w800,
-                                      color: const Color(0xFF0F172A),
+                                      color: AppTheme.text,
                                     ),
                               ),
                             ),
@@ -1789,7 +1787,7 @@ class _LineRowState extends ConsumerState<_LineRow> {
                     decoration: item.isActive
                         ? null
                         : TextDecoration.lineThrough,
-                    color: const Color(0xFF0F172A),
+                    color: AppTheme.text,
                   ),
                 ),
                 const Gap(8),
@@ -1972,7 +1970,7 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
                     decoration: item.isActive
                         ? null
                         : TextDecoration.lineThrough,
-                    color: const Color(0xFF0F172A),
+                    color: AppTheme.text,
                   ),
                 ),
                 const Gap(8),
@@ -2110,7 +2108,7 @@ Future<void> _showEditLineDialog(
                       onPressed: saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -2341,7 +2339,7 @@ Future<void> _extendLineAndQueueInvoice(
                     IconButton(
                       tooltip: 'Kapat',
                       onPressed: () => Navigator.of(context).pop(false),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -2607,7 +2605,7 @@ Future<void> _extendLicenseAndQueueInvoice(
                     IconButton(
                       tooltip: 'Kapat',
                       onPressed: () => Navigator.of(context).pop(false),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -2776,7 +2774,7 @@ class _TransferDialogState extends State<_TransferDialog> {
                   IconButton(
                     tooltip: 'Kapat',
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
+                    icon: const Icon(LucideIcons.x),
                   ),
                 ],
               ),
@@ -2837,7 +2835,7 @@ class _TransferDialogState extends State<_TransferDialog> {
 /// boş/hata durumu. Önceden yalnızca ortalanmış gri metindi — uygulamanın
 /// geri kalanındaki `EmptyStateCard` görünümüyle tutarlı hale getirildi.
 class _Empty extends StatelessWidget {
-  const _Empty({required this.text, this.icon = Icons.inbox_rounded});
+  const _Empty({required this.text, this.icon = LucideIcons.inbox});
 
   final String text;
   final IconData icon;

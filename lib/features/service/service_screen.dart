@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
@@ -170,7 +171,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(serviceRecordsProvider(_query)),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         const Gap(10),
@@ -179,7 +180,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
             await _showCreateServiceDialog(context, ref);
             ref.invalidate(serviceRecordsProvider(_query));
           },
-          icon: const Icon(Icons.add_rounded, size: 18),
+          icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text('Yeni Servis'),
         ),
       ],
@@ -292,7 +293,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                               _query = _query.copyWith(search: v, page: 1);
                             }),
                             decoration: const InputDecoration(
-                              prefixIcon: Icon(Icons.search_rounded),
+                              prefixIcon: Icon(LucideIcons.search),
                               hintText: 'Ara (servis no, müşteri, sicil, seri)',
                             ),
                           ),
@@ -301,7 +302,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                           label: 'Durum: ${_statusLabel(_query.status)}',
                           backgroundColor: AppTheme.filterControlBg,
                           foregroundColor: AppTheme.filterControlFg,
-                          icon: Icons.circle_rounded,
+                          icon: LucideIcons.circle,
                           onTap: () async {
                             final next = await showModalBottomSheet<String>(
                               context: context,
@@ -351,7 +352,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                           label: 'Öncelik: ${_priorityLabel(_query.priority)}',
                           backgroundColor: AppTheme.filterControlBg,
                           foregroundColor: AppTheme.filterControlFg,
-                          icon: Icons.flag_rounded,
+                          icon: LucideIcons.flag,
                           onTap: () async {
                             final next = await showModalBottomSheet<String>(
                               context: context,
@@ -407,7 +408,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                               label: 'Teknisyen: $selectedName',
                               backgroundColor: AppTheme.filterControlBg,
                               foregroundColor: AppTheme.filterControlFg,
-                              icon: Icons.person_rounded,
+                              icon: LucideIcons.userRound,
                               onTap: () async {
                                 final techs =
                                     techAsync.asData?.value ??
@@ -449,7 +450,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                               : 'Tarih: ${DateFormat('d MMM', 'tr_TR').format(_query.range!.start)} - ${DateFormat('d MMM', 'tr_TR').format(_query.range!.end)}',
                           backgroundColor: AppTheme.filterControlBg,
                           foregroundColor: AppTheme.filterControlFg,
-                          icon: Icons.date_range_rounded,
+                          icon: LucideIcons.calendarDays,
                           onTap: () async {
                             final picked = await showDateRangePicker(
                               context: context,
@@ -482,10 +483,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                               _query = const ServiceListQuery();
                             });
                           },
-                          icon: const Icon(
-                            Icons.delete_outline_rounded,
-                            size: 18,
-                          ),
+                          icon: const Icon(LucideIcons.trash2, size: 18),
                           label: const Text('Sıfırla'),
                           style: FilledButton.styleFrom(
                             backgroundColor: AppTheme.softTint(AppTheme.error),
@@ -506,7 +504,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                                   );
                                 })
                               : null,
-                          icon: const Icon(Icons.chevron_left_rounded),
+                          icon: const Icon(LucideIcons.chevronLeft),
                         ),
                         Text(
                           '${pageData.page} / ${pageData.totalPages}',
@@ -522,7 +520,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
                                   );
                                 })
                               : null,
-                          icon: const Icon(Icons.chevron_right_rounded),
+                          icon: const Icon(LucideIcons.chevronRight),
                         ),
                       ],
                     );
@@ -553,7 +551,7 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
               Expanded(
                 child: items.isEmpty
                     ? const EmptyStateCard(
-                        icon: Icons.build_circle_rounded,
+                        icon: LucideIcons.circleGauge,
                         title: 'Kayıt bulunamadı',
                         message: 'Filtrelerinize uyan bir servis kaydı yok.',
                       )
@@ -657,12 +655,12 @@ class _ServiceScreenState extends ConsumerState<ServiceScreen> {
           ),
         ),
         error: (error, _) => EmptyStateCard(
-          icon: Icons.cloud_off_rounded,
+          icon: LucideIcons.cloudOff,
           title: 'Servis kayıtları yüklenemedi',
           message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
           action: OutlinedButton.icon(
             onPressed: () => ref.invalidate(serviceRecordsProvider(_query)),
-            icon: const Icon(Icons.refresh_rounded, size: 16),
+            icon: const Icon(LucideIcons.refreshCw, size: 16),
             label: const Text('Tekrar Dene'),
           ),
         ),
@@ -712,7 +710,7 @@ class _StatusPill extends StatelessWidget {
               ),
             ),
             const Gap(6),
-            Icon(Icons.expand_more_rounded, size: 18, color: foregroundColor),
+            Icon(LucideIcons.chevronDown, size: 18, color: foregroundColor),
           ],
         ),
       ),
@@ -1005,7 +1003,7 @@ class _ServiceDetailPanel extends ConsumerWidget {
                     child: const SizedBox(
                       width: 36,
                       height: 34,
-                      child: Icon(Icons.more_horiz_rounded),
+                      child: Icon(LucideIcons.ellipsis),
                     ),
                   ),
                 ],
@@ -1059,7 +1057,7 @@ class _ServiceDetailPanel extends ConsumerWidget {
                           );
                         } catch (_) {}
                       },
-                      icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                      icon: const Icon(LucideIcons.fileType2, size: 18),
                       label: const Text('PDF'),
                     ),
                   ),
@@ -1067,7 +1065,7 @@ class _ServiceDetailPanel extends ConsumerWidget {
                   Expanded(
                     child: FilledButton.icon(
                       onPressed: () => context.go('/servis/${detail.id}'),
-                      icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                      icon: const Icon(LucideIcons.externalLink, size: 18),
                       label: const Text('Aç'),
                     ),
                   ),
@@ -1123,7 +1121,7 @@ class _ServiceDetailPanel extends ConsumerWidget {
                         ref.invalidate(serviceDetailProvider(detail.id));
                         ref.invalidate(serviceRecordsProvider);
                       },
-                      icon: const Icon(Icons.sync_rounded, size: 18),
+                      icon: const Icon(LucideIcons.refreshCw, size: 18),
                       label: const Text('Durum'),
                     ),
                   ),
@@ -1262,9 +1260,9 @@ class _ServiceRow extends StatelessWidget {
                 child: Text(
                   amountText,
                   textAlign: TextAlign.right,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF94A3B8),
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
               Expanded(
@@ -1279,9 +1277,9 @@ class _ServiceRow extends StatelessWidget {
                 child: Text(
                   date,
                   textAlign: TextAlign.right,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF94A3B8),
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
             ],
@@ -1557,7 +1555,7 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -1738,7 +1736,10 @@ class _CreateServiceDialogState extends ConsumerState<_CreateServiceDialog> {
                                           ),
                                         );
                                       },
-                                icon: const Icon(Icons.event_rounded, size: 18),
+                                icon: const Icon(
+                                  LucideIcons.calendar,
+                                  size: 18,
+                                ),
                                 label: Text(
                                   _appointmentAt == null
                                       ? 'Randevu Tarihi (opsiyonel)'

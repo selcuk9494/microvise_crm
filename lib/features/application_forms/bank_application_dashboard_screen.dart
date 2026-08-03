@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
@@ -73,12 +74,12 @@ class BankApplicationDashboardScreen extends ConsumerWidget {
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(applicationFormsProvider),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         FilledButton.icon(
           onPressed: () => context.go('/formlar/basvuru'),
-          icon: const Icon(Icons.add_rounded, size: 18),
+          icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text('Yeni Talep'),
         ),
       ],
@@ -145,12 +146,12 @@ class BankApplicationDashboardScreen extends ConsumerWidget {
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => EmptyStateCard(
-          icon: Icons.cloud_off_rounded,
+          icon: LucideIcons.cloudOff,
           title: 'Banka paneli yüklenemedi',
           message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
           action: OutlinedButton.icon(
             onPressed: () => ref.invalidate(applicationFormsProvider),
-            icon: const Icon(Icons.refresh_rounded, size: 16),
+            icon: const Icon(LucideIcons.refreshCw, size: 16),
             label: const Text('Tekrar Dene'),
           ),
         ),
@@ -394,25 +395,25 @@ class _VisualStats extends StatelessWidget {
         _MetricTile(
           'Toplam',
           metrics.total,
-          Icons.description_rounded,
+          LucideIcons.fileText,
           AppTheme.primary,
         ),
         _MetricTile(
           'Bekleyen',
           metrics.pending,
-          Icons.pending_actions_rounded,
+          LucideIcons.clipboardClock,
           AppTheme.warning,
         ),
         _MetricTile(
           'Onaylı',
           metrics.approved,
-          Icons.verified_rounded,
+          LucideIcons.badgeCheck,
           AppTheme.success,
         ),
         _MetricTile(
           'Sicilli',
           metrics.withRegistry,
-          Icons.memory_rounded,
+          LucideIcons.memoryStick,
           AppTheme.accent,
         ),
       ],
@@ -687,27 +688,27 @@ class _PersonRow extends StatelessWidget {
           runSpacing: 6,
           children: [
             _PersonMiniBadge(
-              icon: Icons.today_rounded,
+              icon: LucideIcons.calendarDays,
               text: 'Bugün ${person.today}',
               color: AppTheme.primary,
             ),
             _PersonMiniBadge(
-              icon: Icons.calendar_month_rounded,
+              icon: LucideIcons.calendarDays,
               text: 'Hafta ${person.thisWeek}',
               color: AppTheme.accent,
             ),
             _PersonMiniBadge(
-              icon: Icons.verified_rounded,
+              icon: LucideIcons.badgeCheck,
               text: '${person.approved} onaylı',
               color: AppTheme.success,
             ),
             _PersonMiniBadge(
-              icon: Icons.pending_actions_rounded,
+              icon: LucideIcons.clipboardClock,
               text: '${person.pending} bekleyen',
               color: AppTheme.warning,
             ),
             _PersonMiniBadge(
-              icon: Icons.memory_rounded,
+              icon: LucideIcons.memoryStick,
               text: '${person.withRegistry} sicilli',
               color: AppTheme.textMuted,
             ),
@@ -814,9 +815,7 @@ class _RecentRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
-              record.isApproved
-                  ? Icons.verified_rounded
-                  : Icons.schedule_rounded,
+              record.isApproved ? LucideIcons.badgeCheck : LucideIcons.clock3,
               color: record.isApproved ? AppTheme.success : AppTheme.warning,
             ),
           ),

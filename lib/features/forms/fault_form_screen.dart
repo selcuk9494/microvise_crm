@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -243,7 +244,7 @@ class _FaultFormScreenState extends ConsumerState<FaultFormScreen> {
                 child: TextField(
                   controller: _customerFilterController,
                   decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.person_rounded),
+                    prefixIcon: Icon(LucideIcons.userRound),
                     labelText: 'Müşteri',
                   ),
                   onChanged: (_) => setState(() {}),
@@ -254,7 +255,7 @@ class _FaultFormScreenState extends ConsumerState<FaultFormScreen> {
                 child: TextField(
                   controller: _deviceFilterController,
                   decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.memory_rounded),
+                    prefixIcon: Icon(LucideIcons.memoryStick),
                     labelText: 'Cihaz / Sicil',
                   ),
                   onChanged: (_) => setState(() {}),
@@ -266,15 +267,13 @@ class _FaultFormScreenState extends ConsumerState<FaultFormScreen> {
                   _deviceFilterController.clear();
                   _showPassive = false;
                 }),
-                icon: const Icon(Icons.clear_rounded, size: 18),
+                icon: const Icon(LucideIcons.eraser, size: 18),
                 label: const Text('Temizle'),
               ),
               OutlinedButton.icon(
                 onPressed: () => setState(() => _showPassive = !_showPassive),
                 icon: Icon(
-                  _showPassive
-                      ? Icons.visibility_off_rounded
-                      : Icons.visibility_rounded,
+                  _showPassive ? LucideIcons.eyeOff : LucideIcons.eye,
                   size: 18,
                 ),
                 label: Text(
@@ -293,13 +292,13 @@ class _FaultFormScreenState extends ConsumerState<FaultFormScreen> {
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(faultFormsProvider),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         const Gap(10),
         FilledButton.icon(
           onPressed: canEdit ? _openCreateDialog : null,
-          icon: const Icon(Icons.add_rounded, size: 18),
+          icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text('Yeni Arıza'),
         ),
       ],
@@ -358,12 +357,12 @@ class _FaultFormScreenState extends ConsumerState<FaultFormScreen> {
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => EmptyStateCard(
-          icon: Icons.cloud_off_rounded,
+          icon: LucideIcons.cloudOff,
           title: 'Arıza formları yüklenemedi',
           message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
           action: OutlinedButton.icon(
             onPressed: () => ref.invalidate(faultFormsProvider),
-            icon: const Icon(Icons.refresh_rounded, size: 16),
+            icon: const Icon(LucideIcons.refreshCw, size: 16),
             label: const Text('Tekrar Dene'),
           ),
         ),
@@ -505,7 +504,7 @@ class _FaultRecordCard extends StatelessWidget {
 
     return AppDenseListCard(
       leading: AppDenseLeadingIcon(
-        icon: Icons.build_circle_rounded,
+        icon: LucideIcons.circleGauge,
         color: AppTheme.primary,
         active: record.isActive,
       ),
@@ -516,10 +515,10 @@ class _FaultRecordCard extends StatelessWidget {
       titleStruck: !record.isActive,
       badge: AppBadge(label: badgeLabel, tone: badgeTone, dense: true),
       meta: [
-        AppDenseInfoChip(icon: Icons.calendar_today_rounded, text: dateText),
+        AppDenseInfoChip(icon: LucideIcons.calendarDays, text: dateText),
         if ((record.companyCodeAndRegistry ?? '').trim().isNotEmpty)
           AppDenseInfoChip(
-            icon: Icons.badge_rounded,
+            icon: LucideIcons.idCard,
             text: record.companyCodeAndRegistry!.trim(),
           ),
         FormDocumentMetaChip(document: record.document),
@@ -528,7 +527,7 @@ class _FaultRecordCard extends StatelessWidget {
         FormRecordIconAction(
           tooltip: 'Yazdır',
           onPressed: onPrint,
-          icon: Icons.print_rounded,
+          icon: LucideIcons.printer,
         ),
         FormDocumentActions(
           document: record.document,
@@ -540,27 +539,25 @@ class _FaultRecordCard extends StatelessWidget {
           FormRecordIconAction(
             tooltip: 'Düzenle',
             onPressed: onEdit,
-            icon: Icons.edit_rounded,
+            icon: LucideIcons.pencil,
           ),
         if (canEdit)
           FormRecordIconAction(
             tooltip: 'Kopya',
             onPressed: onDuplicate,
-            icon: Icons.content_copy_rounded,
+            icon: LucideIcons.copy,
           ),
         if (canArchive && onToggleActive != null)
           FormRecordIconAction(
             tooltip: record.isActive ? 'Pasife Al' : 'Aktifleştir',
             onPressed: onToggleActive,
-            icon: record.isActive
-                ? Icons.archive_rounded
-                : Icons.restore_rounded,
+            icon: record.isActive ? LucideIcons.archive : LucideIcons.rotateCcw,
           ),
         if (canDeletePermanently && onDeletePermanently != null)
           FormRecordIconAction(
             tooltip: 'Kalıcı Sil',
             onPressed: onDeletePermanently,
-            icon: Icons.delete_forever_rounded,
+            icon: LucideIcons.trash2,
           ),
       ],
     );
@@ -773,7 +770,7 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
           decoration: const InputDecoration(
             labelText: 'Müşteri seç',
             hintText: 'Firma adı, VKN veya şehir yazarak ara',
-            prefixIcon: Icon(Icons.search_rounded),
+            prefixIcon: Icon(LucideIcons.search),
           ),
         );
       },
@@ -899,7 +896,7 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
                   child: Row(
                     children: [
                       Icon(
-                        Icons.calendar_today_rounded,
+                        LucideIcons.calendarDays,
                         size: 18,
                         color: AppTheme.primary,
                       ),
@@ -1172,7 +1169,7 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
                               readOnly: true,
                               decoration: const InputDecoration(
                                 labelText: "Son 'Z' Raporu Tarihi",
-                                suffixIcon: Icon(Icons.calendar_today_rounded),
+                                suffixIcon: Icon(LucideIcons.calendarDays),
                               ),
                               onTap: _pickLastZDate,
                             ),
@@ -1431,7 +1428,7 @@ class _FaultCustomerPickerDialogState
                   ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
+                    icon: const Icon(LucideIcons.x),
                   ),
                 ],
               ),
@@ -1443,7 +1440,7 @@ class _FaultCustomerPickerDialogState
                 decoration: const InputDecoration(
                   labelText: 'Ara',
                   hintText: 'Firma adı, VKN veya şehir',
-                  prefixIcon: Icon(Icons.search_rounded),
+                  prefixIcon: Icon(LucideIcons.search),
                 ),
               ),
               const Gap(12),
@@ -1473,7 +1470,7 @@ class _FaultCustomerPickerDialogState
                               ].join(' • '),
                             ),
                             trailing: selected
-                                ? const Icon(Icons.check_circle_rounded)
+                                ? const Icon(LucideIcons.circleCheck)
                                 : null,
                             onTap: () => Navigator.of(context).pop(item),
                           );

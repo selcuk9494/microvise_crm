@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
@@ -255,17 +256,17 @@ class FinanceScreen extends ConsumerWidget {
             ref.invalidate(financeAccountsProvider);
             ref.invalidate(financeTransactionsProvider);
           },
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         FilledButton.icon(
           onPressed: () => _showAccountDialog(context, ref),
-          icon: const Icon(Icons.add_rounded, size: 18),
+          icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text('Hesap Ekle'),
         ),
         FilledButton.tonalIcon(
           onPressed: () => _showTransactionDialog(context, ref),
-          icon: const Icon(Icons.payments_rounded, size: 18),
+          icon: const Icon(LucideIcons.banknote, size: 18),
           label: const Text('Hareket Ekle'),
         ),
       ],
@@ -343,25 +344,25 @@ class _AkinsoftFinanceShortcuts extends StatelessWidget {
         label: 'Bankalar / Hesaplar',
         subtitle: 'Wolvox BANKA_ADI + BANKA_HESAP',
         path: '/finans/akinsoft/bankalar',
-        icon: Icons.account_balance_rounded,
+        icon: LucideIcons.landmark,
       ),
       (
         label: 'Kasa',
         subtitle: 'Wolvox KASA',
         path: '/finans/akinsoft/kasa',
-        icon: Icons.point_of_sale_rounded,
+        icon: LucideIcons.badgeDollarSign,
       ),
       (
         label: 'Transferler',
         subtitle: 'Banka ↔ banka / kasa',
         path: '/finans/akinsoft/transferler',
-        icon: Icons.swap_horiz_rounded,
+        icon: LucideIcons.arrowLeftRight,
       ),
       (
         label: 'Masraf Faturaları',
         subtitle: 'MSF · FATURA_DURUMU=7',
         path: '/finans/akinsoft/masraf',
-        icon: Icons.receipt_long_rounded,
+        icon: LucideIcons.receiptText,
       ),
     ];
 
@@ -416,7 +417,7 @@ class _AkinsoftFinanceShortcuts extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const Icon(Icons.chevron_right_rounded, size: 18),
+                      const Icon(LucideIcons.chevronRight, size: 18),
                     ],
                   ),
                 ),
@@ -452,22 +453,22 @@ class _FinanceSummary extends StatelessWidget {
         _SummaryCard(
           label: 'Banka',
           value: bank.toString(),
-          icon: Icons.account_balance_rounded,
+          icon: LucideIcons.landmark,
         ),
         _SummaryCard(
           label: 'Kasa',
           value: cash.toString(),
-          icon: Icons.point_of_sale_rounded,
+          icon: LucideIcons.badgeDollarSign,
         ),
         _SummaryCard(
           label: 'POS',
           value: pos.toString(),
-          icon: Icons.credit_card_rounded,
+          icon: LucideIcons.creditCard,
         ),
         _SummaryCard(
           label: 'TRY Bakiye',
           value: _money(tryTotal, 'TRY'),
-          icon: Icons.savings_rounded,
+          icon: LucideIcons.piggyBank,
         ),
       ],
     );
@@ -543,7 +544,7 @@ class _FinanceFilters extends ConsumerWidget {
               initialValue: filter.accountId,
               decoration: const InputDecoration(
                 labelText: 'Hesap',
-                prefixIcon: Icon(Icons.account_balance_wallet_rounded),
+                prefixIcon: Icon(LucideIcons.walletCards),
               ),
               items: [
                 const DropdownMenuItem(
@@ -602,7 +603,7 @@ class _FinanceFilters extends ConsumerWidget {
           ),
           OutlinedButton.icon(
             onPressed: () => set(const FinanceFilter()),
-            icon: const Icon(Icons.cleaning_services_rounded, size: 18),
+            icon: const Icon(LucideIcons.sparkles, size: 18),
             label: const Text('Temizle'),
           ),
         ],
@@ -738,8 +739,8 @@ class _TransactionsPanel extends StatelessWidget {
                                 children: [
                                   _IconBox(
                                     icon: isIn
-                                        ? Icons.south_west_rounded
-                                        : Icons.north_east_rounded,
+                                        ? LucideIcons.arrowDownLeft
+                                        : LucideIcons.arrowUpRight,
                                     color: isIn
                                         ? AppTheme.success
                                         : AppTheme.error,
@@ -811,7 +812,7 @@ class _TransactionsPanel extends StatelessWidget {
                               child: IconButton(
                                 tooltip: 'Düzenle',
                                 onPressed: () => onEdit(tx),
-                                icon: const Icon(Icons.edit_rounded),
+                                icon: const Icon(LucideIcons.pencil),
                               ),
                             ),
                           ],
@@ -921,7 +922,7 @@ class _ErrorBox extends StatelessWidget {
             const Gap(10),
             OutlinedButton.icon(
               onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded, size: 16),
+              icon: const Icon(LucideIcons.refreshCw, size: 16),
               label: const Text('Tekrar Dene'),
             ),
           ],
@@ -1243,9 +1244,9 @@ Future<void> _showTransactionDialog(
                 const Gap(10),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.calendar_month_rounded),
+                  leading: const Icon(LucideIcons.calendarDays),
                   title: Text(_date(date)),
-                  trailing: const Icon(Icons.expand_more_rounded),
+                  trailing: const Icon(LucideIcons.chevronDown),
                   onTap: () async {
                     final picked = await showDatePicker(
                       context: context,
@@ -1326,10 +1327,10 @@ Future<void> _showTransactionDialog(
 
 IconData _accountIcon(String type) {
   return switch (type) {
-    'cash' => Icons.point_of_sale_rounded,
-    'pos' => Icons.credit_card_rounded,
-    'other' => Icons.account_balance_wallet_rounded,
-    _ => Icons.account_balance_rounded,
+    'cash' => LucideIcons.badgeDollarSign,
+    'pos' => LucideIcons.creditCard,
+    'other' => LucideIcons.walletCards,
+    _ => LucideIcons.landmark,
   };
 }
 

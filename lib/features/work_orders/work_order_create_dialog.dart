@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 
@@ -409,7 +410,7 @@ class _CreateWorkOrderDialogState
                         onPressed: _saving
                             ? null
                             : () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close_rounded),
+                        icon: const Icon(LucideIcons.x),
                       ),
                     ],
                   ),

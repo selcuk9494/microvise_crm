@@ -5,6 +5,7 @@ import 'package:excel/excel.dart' as excel;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -2290,12 +2291,12 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       actions: [
         OutlinedButton.icon(
           onPressed: _refreshApplicationsSoon,
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         FilledButton.icon(
           onPressed: _openCreateDialog,
-          icon: const Icon(Icons.add_rounded, size: 18),
+          icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text('Yeni Başvuru'),
         ),
       ],
@@ -2378,7 +2379,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Müşteri',
                           hintText: 'Müşteri adına göre ara',
-                          prefixIcon: Icon(Icons.person_search_rounded),
+                          prefixIcon: Icon(LucideIcons.userSearch),
                         ),
                       ),
                       const Gap(10),
@@ -2388,7 +2389,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Cihaz / Sicil No',
                           hintText: 'Dosya veya cihaz sicili',
-                          prefixIcon: Icon(Icons.confirmation_num_rounded),
+                          prefixIcon: Icon(LucideIcons.ticketCheck),
                         ),
                       ),
                       const Gap(10),
@@ -2446,7 +2447,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                 });
                                 Navigator.of(context).pop();
                               },
-                              icon: const Icon(Icons.filter_alt_off_rounded),
+                              icon: const Icon(LucideIcons.filterX),
                               label: const Text('Temizle'),
                             ),
                           ),
@@ -2472,7 +2473,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                               controller: _customerFilterController,
                               onChanged: (_) => setState(() {}),
                               decoration: const InputDecoration(
-                                prefixIcon: Icon(Icons.person_search_rounded),
+                                prefixIcon: Icon(LucideIcons.userSearch),
                                 hintText: 'Müşteri ara',
                               ),
                             ),
@@ -2480,7 +2481,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           const Gap(10),
                           IconButton.filledTonal(
                             onPressed: openMobileFiltersSheet,
-                            icon: const Icon(Icons.tune_rounded),
+                            icon: const Icon(LucideIcons.settings2),
                           ),
                         ],
                       ),
@@ -2497,7 +2498,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           controller: _customerFilterController,
                           onChanged: (_) => setState(() {}),
                           decoration: const InputDecoration(
-                            prefixIcon: Icon(Icons.person_search_rounded),
+                            prefixIcon: Icon(LucideIcons.userSearch),
                             hintText: 'Müşteri ara',
                           ),
                         ),
@@ -2508,7 +2509,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           controller: _registryFilterController,
                           onChanged: (_) => setState(() {}),
                           decoration: const InputDecoration(
-                            prefixIcon: Icon(Icons.confirmation_num_rounded),
+                            prefixIcon: Icon(LucideIcons.ticketCheck),
                             hintText: 'Cihaz / sicil no',
                           ),
                         ),
@@ -2559,7 +2560,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                             _todayOnly = false;
                           });
                         },
-                        icon: const Icon(Icons.filter_alt_off_rounded),
+                        icon: const Icon(LucideIcons.filterX),
                         label: const Text('Temizle'),
                       ),
                     ],
@@ -2581,17 +2582,17 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                     _CompactStat(
                       label: 'Toplam',
                       value: records.length.toString(),
-                      icon: Icons.description_rounded,
+                      icon: LucideIcons.fileText,
                     ),
                     _CompactStat(
                       label: 'Filtrelenen',
                       value: filtered.length.toString(),
-                      icon: Icons.filter_alt_rounded,
+                      icon: LucideIcons.funnel,
                     ),
                     _CompactStat(
                       label: 'Bugün',
                       value: todayCount.toString(),
-                      icon: Icons.today_rounded,
+                      icon: LucideIcons.calendarDays,
                       selected: _todayOnly,
                       onTap: () => setState(() {
                         _todayOnly = !_todayOnly;
@@ -2625,8 +2626,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           },
                           icon: Icon(
                             allFilteredSelected
-                                ? Icons.deselect_rounded
-                                : Icons.select_all_rounded,
+                                ? LucideIcons.squareDashed
+                                : LucideIcons.scan,
                             size: 18,
                           ),
                           label: Text(
@@ -2671,7 +2672,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           FilledButton.icon(
                             onPressed: () =>
                                 _approveRecordsBulk(selectedRecords),
-                            icon: const Icon(Icons.verified_rounded, size: 18),
+                            icon: const Icon(LucideIcons.badgeCheck, size: 18),
                             label: Text(
                               'Toplu Onayla (${selectedRecords.where((record) => record.isPendingApproval).length})',
                             ),
@@ -2680,7 +2681,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           OutlinedButton.icon(
                             onPressed: () =>
                                 _unapproveRecordsBulk(selectedRecords),
-                            icon: const Icon(Icons.undo_rounded, size: 18),
+                            icon: const Icon(LucideIcons.undo2, size: 18),
                             label: Text(
                               'Onayı Geri Al (${selectedApprovedRecords.length})',
                             ),
@@ -2691,7 +2692,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           OutlinedButton.icon(
                             onPressed: () =>
                                 _setRecordsPassiveBulk(selectedRecords),
-                            icon: const Icon(Icons.archive_rounded, size: 18),
+                            icon: const Icon(LucideIcons.archive, size: 18),
                             label: Text(
                               'Pasife Al (${selectedActiveRecords.length})',
                             ),
@@ -2702,10 +2703,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           FilledButton.icon(
                             onPressed: () =>
                                 _deletePassiveRecordsBulk(selectedRecords),
-                            icon: const Icon(
-                              Icons.delete_forever_rounded,
-                              size: 18,
-                            ),
+                            icon: const Icon(LucideIcons.trash2, size: 18),
                             label: Text(
                               'Pasifleri Sil (${selectedPassiveRecords.length})',
                             ),
@@ -2714,10 +2712,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           FilledButton.icon(
                             onPressed: () =>
                                 _openCreateWorkOrdersDialog(selectedRecords),
-                            icon: const Icon(
-                              Icons.playlist_add_rounded,
-                              size: 18,
-                            ),
+                            icon: const Icon(LucideIcons.listPlus, size: 18),
                             label: Text(
                               'İş Emri Oluştur (${selectedRecords.length})',
                             ),
@@ -2727,7 +2722,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                             selectedRecords,
                             kind: ApplicationPrintKind.kdv,
                           ),
-                          icon: const Icon(Icons.print_rounded, size: 18),
+                          icon: const Icon(LucideIcons.printer, size: 18),
                           label: Text(
                             'KDV4 Yazdır (${selectedRecords.length})',
                           ),
@@ -2738,7 +2733,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                               selectedRecords,
                               kind: ApplicationPrintKind.kdv4a,
                             ),
-                            icon: const Icon(Icons.print_rounded, size: 18),
+                            icon: const Icon(LucideIcons.printer, size: 18),
                             label: Text(
                               'KDV4A Yazdır (${selectedRecords.length})',
                             ),
@@ -2746,17 +2741,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           FilledButton.icon(
                             onPressed: () =>
                                 _exportForTaxOffice(selectedRecords),
-                            icon: const Icon(Icons.download_rounded, size: 18),
+                            icon: const Icon(LucideIcons.download, size: 18),
                             label: Text(
                               'Vergi Dairesine Gönder (${selectedRecords.length})',
                             ),
                           ),
                           OutlinedButton.icon(
                             onPressed: () => _exportForTsm(selectedRecords),
-                            icon: const Icon(
-                              Icons.table_chart_rounded,
-                              size: 18,
-                            ),
+                            icon: const Icon(LucideIcons.table2, size: 18),
                             label: Text(
                               'TSM\'e Gönder (${selectedRecords.length})',
                             ),
@@ -2818,7 +2810,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                         ListTile(
                                           leading: Icon(
                                             _approvalFilter == 'pending'
-                                                ? Icons.pending_actions_rounded
+                                                ? LucideIcons.clipboardClock
                                                 : Icons
                                                       .pending_actions_outlined,
                                           ),
@@ -2837,8 +2829,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                         ListTile(
                                           leading: Icon(
                                             _approvalFilter == 'approved'
-                                                ? Icons.verified_rounded
-                                                : Icons.verified_rounded,
+                                                ? LucideIcons.badgeCheck
+                                                : LucideIcons.badgeCheck,
                                           ),
                                           title: Text(
                                             'Onaylanmış ($approvedCount)',
@@ -2854,9 +2846,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                           },
                                         ),
                                         ListTile(
-                                          leading: const Icon(
-                                            Icons.list_alt_rounded,
-                                          ),
+                                          leading: const Icon(LucideIcons.list),
                                           title: const Text('Tüm Başvurular'),
                                           selected: _approvalFilter == 'all',
                                           onTap: () {
@@ -2870,8 +2860,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                           ListTile(
                                             leading: Icon(
                                               allFilteredSelected
-                                                  ? Icons.deselect_rounded
-                                                  : Icons.select_all_rounded,
+                                                  ? LucideIcons.squareDashed
+                                                  : LucideIcons.scan,
                                             ),
                                             title: Text(
                                               allFilteredSelected
@@ -2908,7 +2898,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                               ))
                                             ListTile(
                                               leading: const Icon(
-                                                Icons.verified_rounded,
+                                                LucideIcons.badgeCheck,
                                               ),
                                               title: Text(
                                                 'Toplu Onayla (${selectedRecords.where((record) => record.isPendingApproval).length})',
@@ -2925,7 +2915,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                                   .isNotEmpty)
                                             ListTile(
                                               leading: const Icon(
-                                                Icons.undo_rounded,
+                                                LucideIcons.undo2,
                                               ),
                                               title: Text(
                                                 'Onayı Geri Al (${selectedApprovedRecords.length})',
@@ -2942,7 +2932,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                               selectedActiveRecords.isNotEmpty)
                                             ListTile(
                                               leading: const Icon(
-                                                Icons.archive_rounded,
+                                                LucideIcons.archive,
                                               ),
                                               title: Text(
                                                 'Pasife Al (${selectedActiveRecords.length})',
@@ -2959,7 +2949,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                               selectedPassiveRecords.isNotEmpty)
                                             ListTile(
                                               leading: const Icon(
-                                                Icons.delete_forever_rounded,
+                                                LucideIcons.trash2,
                                               ),
                                               title: Text(
                                                 'Pasifleri Kalıcı Sil (${selectedPassiveRecords.length})',
@@ -2974,7 +2964,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                           if (canUseInternalApplicationActions)
                                             ListTile(
                                               leading: const Icon(
-                                                Icons.playlist_add_rounded,
+                                                LucideIcons.listPlus,
                                               ),
                                               title: Text(
                                                 'İş Emri Oluştur (${selectedRecords.length})',
@@ -2988,7 +2978,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                             ),
                                           ListTile(
                                             leading: const Icon(
-                                              Icons.print_rounded,
+                                              LucideIcons.printer,
                                             ),
                                             title: Text(
                                               'KDV4 Yazdır (${selectedRecords.length})',
@@ -3004,7 +2994,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                           if (canUseInternalApplicationActions) ...[
                                             ListTile(
                                               leading: const Icon(
-                                                Icons.print_rounded,
+                                                LucideIcons.printer,
                                               ),
                                               title: Text(
                                                 'KDV4A Yazdır (${selectedRecords.length})',
@@ -3020,7 +3010,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                             ),
                                             ListTile(
                                               leading: const Icon(
-                                                Icons.download_rounded,
+                                                LucideIcons.download,
                                               ),
                                               title: Text(
                                                 'Vergi Dairesine Gönder (${selectedRecords.length})',
@@ -3034,7 +3024,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                             ),
                                             ListTile(
                                               leading: const Icon(
-                                                Icons.table_chart_rounded,
+                                                LucideIcons.table2,
                                               ),
                                               title: Text(
                                                 'TSM\'e Gönder (${selectedRecords.length})',
@@ -3054,7 +3044,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                             },
                           );
                         },
-                        icon: const Icon(Icons.more_horiz_rounded, size: 18),
+                        icon: const Icon(LucideIcons.ellipsis, size: 18),
                         label: Text(
                           selectedRecords.isEmpty
                               ? 'İşlemler'
@@ -3878,13 +3868,13 @@ class _BankApplicationFormDialogState
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.document_scanner_rounded),
+                leading: const Icon(LucideIcons.scanLine),
                 title: const Text('Belge tara'),
                 subtitle: const Text('Kamera ile kırpılmış PDF oluştur'),
                 onTap: () => Navigator.of(context).pop('scan'),
               ),
               ListTile(
-                leading: const Icon(Icons.attach_file_rounded),
+                leading: const Icon(LucideIcons.paperclip),
                 title: const Text('Dosya seç'),
                 subtitle: const Text('Hazır PDF veya görsel yükle'),
                 onTap: () => Navigator.of(context).pop('file'),
@@ -4311,7 +4301,7 @@ class _BankApplicationFormDialogState
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: Icon(Icons.close_rounded),
+                      icon: Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -4364,7 +4354,7 @@ class _BankApplicationFormDialogState
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Icon(Icons.search_rounded),
+                              : const Icon(LucideIcons.search),
                           label: const Text('Sorgula'),
                         ),
                       ),
@@ -4641,7 +4631,7 @@ class _BankBusinessActivityField extends StatelessWidget {
                 filled: true,
                 fillColor: AppTheme.surface,
                 border: OutlineInputBorder(),
-                suffixIcon: Icon(Icons.search_rounded, size: 18),
+                suffixIcon: Icon(LucideIcons.search, size: 18),
               ),
               validator: (value) {
                 if ((value ?? '').trim().isEmpty) return 'Meslek türü yazın.';
@@ -4729,7 +4719,7 @@ class _BankDocumentField extends StatelessWidget {
       child: Row(
         children: [
           Icon(
-            hasFile ? Icons.task_rounded : Icons.upload_file_rounded,
+            hasFile ? LucideIcons.clipboardCheck : LucideIcons.upload,
             color: hasFile ? AppTheme.success : AppTheme.textMuted,
           ),
           const Gap(10),
@@ -4758,7 +4748,7 @@ class _BankDocumentField extends StatelessWidget {
           const Gap(10),
           OutlinedButton.icon(
             onPressed: onPick,
-            icon: const Icon(Icons.attach_file_rounded, size: 18),
+            icon: const Icon(LucideIcons.paperclip, size: 18),
             label: Text(hasFile ? 'Değiştir' : 'Yükle'),
           ),
         ],
@@ -4789,7 +4779,7 @@ class _BankDateField extends StatelessWidget {
           filled: true,
           fillColor: AppTheme.surface,
           border: const OutlineInputBorder(),
-          suffixIcon: const Icon(Icons.calendar_today_rounded, size: 18),
+          suffixIcon: const Icon(LucideIcons.calendarDays, size: 18),
         ),
         child: Text(
           value,
@@ -5896,7 +5886,7 @@ class _ApplicationFormDialogState
                 children: [
                   OutlinedButton.icon(
                     onPressed: _saving ? null : _pickSerialFromTracking,
-                    icon: Icon(Icons.playlist_add_rounded, size: 18),
+                    icon: Icon(LucideIcons.listPlus, size: 18),
                     label: const Text('Seri Seç'),
                   ),
                   const Gap(10),
@@ -5929,7 +5919,7 @@ class _ApplicationFormDialogState
                       ? 'Tek sicil no girin'
                       : 'Sicilleri alt alta veya virgülle girin',
                   alignLabelWithHint: true,
-                  prefixIcon: const Icon(Icons.qr_code_2_rounded),
+                  prefixIcon: const Icon(LucideIcons.qrCode),
                 ),
                 validator: (value) {
                   final raw = value?.trim() ?? '';
@@ -5976,8 +5966,8 @@ class _ApplicationFormDialogState
                     children: [
                       Icon(
                         isActive
-                            ? Icons.check_circle_rounded
-                            : Icons.pause_circle_filled_rounded,
+                            ? LucideIcons.circleCheck
+                            : LucideIcons.circlePause,
                         color: isActive ? AppTheme.success : AppTheme.textMuted,
                       ),
                       const Gap(10),
@@ -6017,7 +6007,7 @@ class _ApplicationFormDialogState
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline_rounded, color: AppTheme.textMuted),
+                    Icon(LucideIcons.info, color: AppTheme.textMuted),
                     const Gap(10),
                     Expanded(
                       child: Text(
@@ -6034,7 +6024,7 @@ class _ApplicationFormDialogState
                               productName: _productNameController.text,
                             )
                           : null,
-                      icon: const Icon(Icons.add_rounded, size: 18),
+                      icon: const Icon(LucideIcons.plus, size: 18),
                       label: const Text('Seri Takibe Ekle'),
                     ),
                   ],
@@ -6172,7 +6162,7 @@ class _ApplicationFormDialogState
                         onPressed: _saving
                             ? null
                             : () => Navigator.of(context).pop(),
-                        icon: Icon(Icons.close_rounded),
+                        icon: Icon(LucideIcons.x),
                       ),
                     ],
                   ),
@@ -6384,7 +6374,7 @@ class _SerialTrackingPickerDialogState
                   ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
+                    icon: const Icon(LucideIcons.x),
                   ),
                 ],
               ),
@@ -6393,7 +6383,7 @@ class _SerialTrackingPickerDialogState
                 controller: _searchController,
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
-                  prefixIcon: Icon(Icons.search_rounded),
+                  prefixIcon: Icon(LucideIcons.search),
                   hintText: 'Sicil no veya ürün adı ara',
                 ),
               ),
@@ -6432,8 +6422,8 @@ class _SerialTrackingPickerDialogState
                                     onPressed: () => _toggle(item, true),
                                     icon: Icon(
                                       selected
-                                          ? Icons.radio_button_checked_rounded
-                                          : Icons.radio_button_off_rounded,
+                                          ? LucideIcons.circleDot
+                                          : LucideIcons.circle,
                                       color: selected
                                           ? AppTheme.primary
                                           : AppTheme.textMuted,
@@ -6529,7 +6519,7 @@ class _ApplicationFormLogsDialog extends ConsumerWidget {
                   ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
+                    icon: const Icon(LucideIcons.x),
                   ),
                 ],
               ),
@@ -6907,14 +6897,14 @@ class _ApplicationRecordCard extends StatelessWidget {
                                     .isNotEmpty ??
                                 false) ...[
                               _InfoChip(
-                                icon: Icons.storefront_rounded,
+                                icon: LucideIcons.store,
                                 text: record.businessActivityName!,
                               ),
                               const Gap(4),
                             ],
                             if (record.brandModel.isNotEmpty)
                               _InfoChip(
-                                icon: Icons.developer_board_rounded,
+                                icon: LucideIcons.cpu,
                                 text: record.brandModel,
                               ),
                           ],
@@ -6927,7 +6917,7 @@ class _ApplicationRecordCard extends StatelessWidget {
               Expanded(
                 flex: 15,
                 child: _ApplicationListMeta(
-                  icon: Icons.calendar_today_rounded,
+                  icon: LucideIcons.calendarDays,
                   label: 'Tarih',
                   value: dateText,
                 ),
@@ -6935,7 +6925,7 @@ class _ApplicationRecordCard extends StatelessWidget {
               Expanded(
                 flex: 16,
                 child: _ApplicationListMeta(
-                  icon: Icons.folder_open_rounded,
+                  icon: LucideIcons.folderOpen,
                   label: 'Dosya',
                   value: record.fileRegistryNumber?.trim().isNotEmpty == true
                       ? record.fileRegistryNumber!.trim()
@@ -6946,8 +6936,8 @@ class _ApplicationRecordCard extends StatelessWidget {
                 flex: 16,
                 child: _ApplicationListMeta(
                   icon: record.isApproved
-                      ? Icons.verified_rounded
-                      : Icons.memory_rounded,
+                      ? LucideIcons.badgeCheck
+                      : LucideIcons.memoryStick,
                   label: record.isApproved ? 'Onaylı Sicil' : 'Cihaz',
                   value: record.stockRegistryNumber?.trim().isNotEmpty == true
                       ? record.stockRegistryNumber!.trim()
@@ -6990,26 +6980,26 @@ class _ApplicationRecordCard extends StatelessWidget {
                       if (canApprove && record.isPendingApproval)
                         _RecordPrimaryAction(
                           onPressed: onApprove,
-                          icon: Icons.verified_rounded,
+                          icon: LucideIcons.badgeCheck,
                           label: 'Onayla',
                           primary: true,
                         )
                       else if (canApprove && record.isApproved)
                         _RecordPrimaryAction(
                           onPressed: onUnapprove,
-                          icon: Icons.undo_rounded,
+                          icon: LucideIcons.undo2,
                           label: 'Geri Al',
                         )
                       else if (canModify)
                         _RecordPrimaryAction(
                           onPressed: onEdit,
-                          icon: Icons.edit_rounded,
+                          icon: LucideIcons.pencil,
                           label: 'Düzenle',
                         )
                       else
                         _RecordPrimaryAction(
                           onPressed: onPrintKdv,
-                          icon: Icons.print_rounded,
+                          icon: LucideIcons.printer,
                           label: 'KDV4',
                         ),
                       const Gap(8),
@@ -7025,7 +7015,7 @@ class _ApplicationRecordCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: AppTheme.border),
                           ),
-                          child: const Icon(Icons.more_horiz_rounded, size: 20),
+                          child: const Icon(LucideIcons.ellipsis, size: 20),
                         ),
                       ),
                     ],
@@ -7103,21 +7093,21 @@ class _ApplicationRecordCard extends StatelessWidget {
                   onSelected: handleMenuSelection,
                   child: const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: Icon(Icons.more_horiz_rounded),
+                    child: Icon(LucideIcons.ellipsis),
                   ),
                 )
               else ...[
                 if (canModify) ...[
                   _ActionButton(
                     onPressed: onEdit,
-                    icon: Icons.edit_rounded,
+                    icon: LucideIcons.pencil,
                     label: 'Düzenle',
                   ),
                   const Gap(4),
                   if (canPrintKdv4a) ...[
                     _ActionButton(
                       onPressed: onDuplicate,
-                      icon: Icons.content_copy_rounded,
+                      icon: LucideIcons.copy,
                       label: 'Kopya',
                     ),
                     const Gap(4),
@@ -7125,14 +7115,14 @@ class _ApplicationRecordCard extends StatelessWidget {
                 ],
                 _ActionButton(
                   onPressed: onPrintKdv,
-                  icon: Icons.print_rounded,
+                  icon: LucideIcons.printer,
                   label: 'KDV4',
                 ),
                 const Gap(4),
                 if (record.hasTaxpayerRegistrationDocument) ...[
                   _ActionButton(
                     onPressed: onViewDocument,
-                    icon: Icons.attach_file_rounded,
+                    icon: LucideIcons.paperclip,
                     label: 'Belge',
                   ),
                   const Gap(4),
@@ -7140,7 +7130,7 @@ class _ApplicationRecordCard extends StatelessWidget {
                 if (canApprove && record.isApproved) ...[
                   _ActionButton(
                     onPressed: onUploadApprovalDocument,
-                    icon: Icons.document_scanner_rounded,
+                    icon: LucideIcons.scanLine,
                     label: record.hasApprovalDocument ? 'Yenile' : 'Yükle',
                     primary: !record.hasApprovalDocument,
                   ),
@@ -7149,21 +7139,21 @@ class _ApplicationRecordCard extends StatelessWidget {
                 if (record.hasApprovalDocument) ...[
                   _ActionButton(
                     onPressed: onShareApprovalDocument,
-                    icon: Icons.ios_share_rounded,
+                    icon: LucideIcons.share2,
                     label: 'Paylaş',
                   ),
                   const Gap(4),
                 ],
                 _ActionButton(
                   onPressed: onViewLogs,
-                  icon: Icons.history_rounded,
+                  icon: LucideIcons.history,
                   label: 'Log',
                 ),
                 const Gap(4),
                 if (canPrintKdv4a) ...[
                   _ActionButton(
                     onPressed: onPrintKdv4a,
-                    icon: Icons.picture_as_pdf_rounded,
+                    icon: LucideIcons.fileType2,
                     label: 'KDV4A',
                     primary: true,
                   ),
@@ -7172,7 +7162,7 @@ class _ApplicationRecordCard extends StatelessWidget {
                 if (canApprove && record.isPendingApproval) ...[
                   _ActionButton(
                     onPressed: onApprove,
-                    icon: Icons.verified_rounded,
+                    icon: LucideIcons.badgeCheck,
                     label: 'Onayla',
                     primary: true,
                   ),
@@ -7181,7 +7171,7 @@ class _ApplicationRecordCard extends StatelessWidget {
                 if (canApprove && record.isApproved) ...[
                   _ActionButton(
                     onPressed: onUnapprove,
-                    icon: Icons.undo_rounded,
+                    icon: LucideIcons.undo2,
                     label: 'Geri Al',
                   ),
                   const Gap(4),
@@ -7189,7 +7179,7 @@ class _ApplicationRecordCard extends StatelessWidget {
                 if (canCreateWorkOrder)
                   _ActionButton(
                     onPressed: onCreateWorkOrder,
-                    icon: Icons.playlist_add_rounded,
+                    icon: LucideIcons.listPlus,
                     label: 'İş Emri',
                   ),
                 if (canChangeActive) ...[
@@ -7197,8 +7187,8 @@ class _ApplicationRecordCard extends StatelessWidget {
                   _ActionButton(
                     onPressed: onToggleActive,
                     icon: record.isActive
-                        ? Icons.delete_outline_rounded
-                        : Icons.restore_rounded,
+                        ? LucideIcons.trash2
+                        : LucideIcons.rotateCcw,
                     label: record.isActive ? 'Pasif' : 'Aktif',
                   ),
                 ],
@@ -7206,7 +7196,7 @@ class _ApplicationRecordCard extends StatelessWidget {
                   const Gap(4),
                   _ActionButton(
                     onPressed: onDeletePermanently,
-                    icon: Icons.delete_forever_rounded,
+                    icon: LucideIcons.trash2,
                     label: 'Kalıcı Sil',
                   ),
                 ],
@@ -7218,37 +7208,34 @@ class _ApplicationRecordCard extends StatelessWidget {
             spacing: 4,
             runSpacing: 4,
             children: [
-              _InfoChip(icon: Icons.calendar_today_rounded, text: dateText),
+              _InfoChip(icon: LucideIcons.calendarDays, text: dateText),
               if (record.fileRegistryNumber?.trim().isNotEmpty ?? false)
                 _InfoChip(
-                  icon: Icons.folder_open_rounded,
+                  icon: LucideIcons.folderOpen,
                   text: 'Dosya: ${record.fileRegistryNumber}',
                 ),
               if (record.stockRegistryNumber?.trim().isNotEmpty ?? false)
                 _InfoChip(
                   icon: record.isApproved
-                      ? Icons.verified_rounded
-                      : Icons.memory_rounded,
+                      ? LucideIcons.badgeCheck
+                      : LucideIcons.memoryStick,
                   text: record.isApproved
                       ? 'Onaylı Sicil: ${record.stockRegistryNumber}'
                       : 'Cihaz: ${record.stockRegistryNumber}',
                   highlighted: record.isApproved,
                 ),
               if (record.brandModel.isNotEmpty)
-                _InfoChip(
-                  icon: Icons.developer_board_rounded,
-                  text: record.brandModel,
-                ),
+                _InfoChip(icon: LucideIcons.cpu, text: record.brandModel),
               if (record.businessActivityName?.trim().isNotEmpty ?? false)
                 _InfoChip(
-                  icon: Icons.storefront_rounded,
+                  icon: LucideIcons.store,
                   text: record.businessActivityName!,
                 ),
               if (record.isApproved)
                 _InfoChip(
                   icon: record.hasApprovalDocument
-                      ? Icons.picture_as_pdf_rounded
-                      : Icons.upload_file_rounded,
+                      ? LucideIcons.fileType2
+                      : LucideIcons.upload,
                   text: record.hasApprovalDocument
                       ? 'Onay belgesi var'
                       : 'Onay belgesi yok',
@@ -7555,7 +7542,7 @@ class _ApplicationWorkOrderDialogState
                       onPressed: _saving
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: Icon(Icons.close_rounded),
+                      icon: Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -7607,7 +7594,7 @@ class _ApplicationWorkOrderDialogState
                     child: InputDecorator(
                       decoration: const InputDecoration(
                         labelText: 'Planlanan Tarih',
-                        suffixIcon: Icon(Icons.calendar_today_rounded),
+                        suffixIcon: Icon(LucideIcons.calendarDays),
                       ),
                       child: Text(
                         _scheduledDate == null
@@ -7751,7 +7738,7 @@ class _ApplicationWorkOrderDialogState
                     Expanded(
                       child: FilledButton.icon(
                         onPressed: _saving || _loading ? null : _submit,
-                        icon: const Icon(Icons.playlist_add_rounded, size: 18),
+                        icon: const Icon(LucideIcons.listPlus, size: 18),
                         label: Text(
                           widget.recordCount == 1 ? 'Oluştur' : 'Toplu Oluştur',
                         ),
@@ -7797,9 +7784,9 @@ class _FilterDateField extends StatelessWidget {
               if (onClear != null)
                 IconButton(
                   onPressed: onClear,
-                  icon: Icon(Icons.close_rounded, size: 16),
+                  icon: Icon(LucideIcons.x, size: 16),
                 ),
-              Icon(Icons.calendar_today_rounded, size: 18),
+              Icon(LucideIcons.calendarDays, size: 18),
               const Gap(8),
             ],
           ),
@@ -7858,7 +7845,7 @@ class _ApplicationDatePickerDialogState
                   ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
+                    icon: const Icon(LucideIcons.x),
                   ),
                 ],
               ),
@@ -8287,7 +8274,7 @@ class _DateField extends StatelessWidget {
           fillColor: AppTheme.surface,
           border: OutlineInputBorder(),
           contentPadding: EdgeInsets.symmetric(horizontal: 15, vertical: 13),
-          suffixIcon: Icon(Icons.calendar_today_rounded, size: 16),
+          suffixIcon: Icon(LucideIcons.calendarDays, size: 16),
         ),
         child: Text(
           format.format(value),
@@ -8342,16 +8329,14 @@ class _BusinessActivityMultiSelectField extends StatelessWidget {
           fillColor: AppTheme.surface,
           border: OutlineInputBorder(),
           contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          suffixIcon: Icon(Icons.arrow_drop_down_rounded),
+          suffixIcon: Icon(LucideIcons.chevronDown),
         ),
         child: Text(
           label,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-            color: selectedItems.isEmpty
-                ? AppTheme.textMuted
-                : AppTheme.text,
+            color: selectedItems.isEmpty ? AppTheme.textMuted : AppTheme.text,
             fontWeight: FontWeight.w600,
             fontSize: 13.5,
           ),
@@ -8553,11 +8538,11 @@ class _BusinessActivityPickerDialogState
                               height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.add_rounded),
+                          : const Icon(LucideIcons.plus),
                     ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
+                    icon: const Icon(LucideIcons.x),
                   ),
                 ],
               ),
@@ -8566,7 +8551,7 @@ class _BusinessActivityPickerDialogState
                 controller: _searchController,
                 decoration: const InputDecoration(
                   hintText: 'Ara...',
-                  prefixIcon: Icon(Icons.search_rounded),
+                  prefixIcon: Icon(LucideIcons.search),
                   isDense: true,
                   border: OutlineInputBorder(),
                 ),
@@ -8618,15 +8603,13 @@ class _BusinessActivityPickerDialogState
                                           ? null
                                           : () =>
                                                 _upsertActivity(initial: item),
-                                      icon: const Icon(Icons.edit_rounded),
+                                      icon: const Icon(LucideIcons.pencil),
                                     ),
                                     IconButton(
                                       onPressed: _saving
                                           ? null
                                           : () => _deleteActivity(item),
-                                      icon: const Icon(
-                                        Icons.delete_outline_rounded,
-                                      ),
+                                      icon: const Icon(LucideIcons.trash2),
                                     ),
                                   ],
                                 )
@@ -8721,7 +8704,7 @@ class _CustomerPickerField extends StatelessWidget {
               ),
               suffixIcon: IconButton(
                 onPressed: onPickCustomer,
-                icon: const Icon(Icons.search_rounded, size: 18),
+                icon: const Icon(LucideIcons.search, size: 18),
               ),
             ),
           ),
@@ -8737,7 +8720,7 @@ class _CustomerPickerField extends StatelessWidget {
               fontSize: 12,
             ),
           ),
-          icon: const Icon(Icons.edit_rounded, size: 16),
+          icon: const Icon(LucideIcons.pencil, size: 16),
           label: const Text('Düzenle'),
         ),
         const Gap(8),
@@ -8751,7 +8734,7 @@ class _CustomerPickerField extends StatelessWidget {
               fontSize: 12,
             ),
           ),
-          icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+          icon: const Icon(LucideIcons.userPlus, size: 16),
           label: const Text('Yeni'),
         ),
       ],
@@ -8813,7 +8796,7 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
                   ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
+                    icon: const Icon(LucideIcons.x),
                   ),
                 ],
               ),
@@ -8825,7 +8808,7 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
                 decoration: const InputDecoration(
                   labelText: 'Ara',
                   hintText: 'Firma adı, VKN veya şehir',
-                  prefixIcon: Icon(Icons.search_rounded),
+                  prefixIcon: Icon(LucideIcons.search),
                 ),
               ),
               const Gap(12),
@@ -8857,7 +8840,7 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
                               ].join(' • '),
                             ),
                             trailing: selected
-                                ? const Icon(Icons.check_circle_rounded)
+                                ? const Icon(LucideIcons.circleCheck)
                                 : null,
                             onTap: () => Navigator.of(context).pop(item),
                           );

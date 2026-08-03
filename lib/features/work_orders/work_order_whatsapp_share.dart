@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../app/theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:gap/gap.dart';
@@ -76,7 +77,7 @@ Future<void> shareWorkOrderPdfWithWhatsAppPrompt({
             for (final opt in options)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.chat_bubble_rounded),
+                leading: const Icon(LucideIcons.messageCircle),
                 title: Text(opt.label),
                 subtitle: Text(opt.phone),
                 onTap: () =>
@@ -84,14 +85,14 @@ Future<void> shareWorkOrderPdfWithWhatsAppPrompt({
               ),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.add_call),
+              leading: const Icon(LucideIcons.phoneCall),
               title: const Text('Başka numara'),
               onTap: () =>
                   Navigator.of(context).pop(const _ShareAction.other()),
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.share_rounded),
+              leading: const Icon(LucideIcons.share2),
               title: const Text('Sadece paylaş'),
               onTap: () =>
                   Navigator.of(context).pop(const _ShareAction.shareOnly()),

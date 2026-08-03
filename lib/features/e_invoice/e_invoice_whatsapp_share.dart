@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../app/theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:gap/gap.dart';
@@ -87,7 +88,7 @@ Future<void> shareEInvoicePdfWithWhatsApp({
             for (final opt in options)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.chat_bubble_rounded),
+                leading: const Icon(LucideIcons.messageCircle),
                 title: Text(opt.label),
                 subtitle: Text(opt.phone),
                 onTap: () =>
@@ -95,14 +96,14 @@ Future<void> shareEInvoicePdfWithWhatsApp({
               ),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.add_call),
+              leading: const Icon(LucideIcons.phoneCall),
               title: const Text('Başka numara'),
               onTap: () =>
                   Navigator.of(context).pop(const _ShareAction.other()),
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.picture_as_pdf_rounded),
+              leading: const Icon(LucideIcons.fileType2),
               title: const Text('Sadece PDF aç'),
               onTap: () =>
                   Navigator.of(context).pop(const _ShareAction.openPdfOnly()),

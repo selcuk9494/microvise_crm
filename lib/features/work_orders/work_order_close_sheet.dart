@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -56,12 +57,12 @@ class _WorkOrderCloseSheetState extends ConsumerState<_WorkOrderCloseSheet> {
 
   final SignatureController _signatureController = SignatureController(
     penStrokeWidth: 2.5,
-    penColor: const Color(0xFF0F172A),
+    penColor: AppTheme.text,
   );
 
   final SignatureController _personnelSignatureController = SignatureController(
     penStrokeWidth: 2.5,
-    penColor: const Color(0xFF0F172A),
+    penColor: AppTheme.text,
   );
 
   bool _saving = false;
@@ -1089,7 +1090,7 @@ class _SheetBody extends StatelessWidget {
           width: 40,
           height: 4,
           decoration: BoxDecoration(
-            color: const Color(0xFFE2E8F0),
+            color: AppTheme.border,
             borderRadius: BorderRadius.circular(999),
           ),
         ),
@@ -1293,7 +1294,7 @@ class _SheetBody extends StatelessWidget {
                         ),
                         OutlinedButton.icon(
                           onPressed: onAddPayment,
-                          icon: const Icon(Icons.add_rounded, size: 18),
+                          icon: const Icon(LucideIcons.plus, size: 18),
                           label: const Text('Ödeme Ekle'),
                         ),
                       ],
@@ -1506,7 +1507,7 @@ class _SheetBody extends StatelessWidget {
                                                   setSheetState(() => q = v),
                                               decoration: const InputDecoration(
                                                 prefixIcon: Icon(
-                                                  Icons.search_rounded,
+                                                  LucideIcons.search,
                                                 ),
                                                 hintText:
                                                     'Ara (hat, sim, operatör...)',
@@ -1518,7 +1519,7 @@ class _SheetBody extends StatelessWidget {
                                                 children: [
                                                   ListTile(
                                                     leading: const Icon(
-                                                      Icons.clear_rounded,
+                                                      LucideIcons.eraser,
                                                     ),
                                                     title: const Text(
                                                       'Seçimi temizle',
@@ -1589,10 +1590,7 @@ class _SheetBody extends StatelessWidget {
                                 onPressed: saving || available.isEmpty
                                     ? null
                                     : openPicker,
-                                icon: const Icon(
-                                  Icons.search_rounded,
-                                  size: 18,
-                                ),
+                                icon: const Icon(LucideIcons.search, size: 18),
                                 label: Text(
                                   selected == null
                                       ? (available.isEmpty
@@ -1851,7 +1849,7 @@ class _PaymentRowState extends State<_PaymentRow> {
           IconButton(
             tooltip: 'Sil',
             onPressed: widget.onRemove,
-            icon: const Icon(Icons.delete_outline_rounded),
+            icon: const Icon(LucideIcons.trash2),
           ),
       ],
     );

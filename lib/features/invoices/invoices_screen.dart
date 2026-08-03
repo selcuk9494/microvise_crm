@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -65,13 +66,13 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(invoicesProvider),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         const Gap(10),
         FilledButton.icon(
           onPressed: () => _showInvoiceTypeDialog(context),
-          icon: const Icon(Icons.add_rounded, size: 18),
+          icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text('Yeni Fatura'),
         ),
       ],
@@ -115,9 +116,9 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              Icons.receipt_long_rounded,
+                              LucideIcons.receiptText,
                               size: 48,
-                              color: const Color(0xFF94A3B8),
+                              color: AppTheme.textMuted,
                             ),
                             const Gap(12),
                             Text(
@@ -179,10 +180,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                   color: AppTheme.success.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  Icons.arrow_upward_rounded,
-                  color: AppTheme.success,
-                ),
+                child: Icon(LucideIcons.arrowUp, color: AppTheme.success),
               ),
               title: const Text('Satış Faturası'),
               subtitle: const Text('Müşteriye kesilen fatura'),
@@ -197,10 +195,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                   color: AppTheme.error.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  Icons.arrow_downward_rounded,
-                  color: AppTheme.error,
-                ),
+                child: Icon(LucideIcons.arrowDown, color: AppTheme.error),
               ),
               title: const Text('Alış Faturası'),
               subtitle: const Text('Tedarikçiden alınan fatura'),
@@ -431,8 +426,8 @@ class _InvoiceCard extends StatelessWidget {
               ),
               child: Icon(
                 invoice.invoiceType == 'sales'
-                    ? Icons.arrow_upward_rounded
-                    : Icons.arrow_downward_rounded,
+                    ? LucideIcons.arrowUp
+                    : LucideIcons.arrowDown,
                 color: invoice.invoiceType == 'sales'
                     ? AppTheme.success
                     : AppTheme.error,
@@ -469,15 +464,15 @@ class _InvoiceCard extends StatelessWidget {
                   Row(
                     children: [
                       Icon(
-                        Icons.calendar_today_rounded,
+                        LucideIcons.calendarDays,
                         size: 12,
-                        color: const Color(0xFF94A3B8),
+                        color: AppTheme.textMuted,
                       ),
                       const Gap(4),
                       Text(
                         dateText,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF94A3B8),
+                          color: AppTheme.textMuted,
                         ),
                       ),
                     ],
@@ -542,12 +537,12 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         title: const Text('Fatura Detayı'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.print_rounded),
+            icon: const Icon(LucideIcons.printer),
             tooltip: 'Yazdır / PDF',
             onPressed: () => _exportPdf(context),
           ),
           IconButton(
-            icon: const Icon(Icons.email_rounded),
+            icon: const Icon(LucideIcons.mail),
             tooltip: 'E-posta Gönder',
             onPressed: () => _sendEmail(context),
           ),
@@ -759,7 +754,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         if (invoice.status == 'open' || invoice.status == 'partial')
           FilledButton.icon(
             onPressed: () => _addPayment(context, invoice),
-            icon: const Icon(Icons.payment_rounded),
+            icon: const Icon(LucideIcons.walletCards),
             label: const Text('Ödeme / Tahsilat Ekle'),
           ),
       ],

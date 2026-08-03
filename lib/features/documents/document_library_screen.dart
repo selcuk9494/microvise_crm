@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:http/http.dart' as http;
@@ -71,14 +72,14 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
                   ref.invalidate(faultFormsProvider);
                   ref.invalidate(transferFormsProvider);
                 },
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
       ],
       body: recordsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => EmptyStateCard(
-          icon: Icons.cloud_off_rounded,
+          icon: LucideIcons.cloudOff,
           title: 'Belgeler yüklenemedi',
           message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
           action: OutlinedButton.icon(
@@ -88,7 +89,7 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
               ref.invalidate(faultFormsProvider);
               ref.invalidate(transferFormsProvider);
             },
-            icon: const Icon(Icons.refresh_rounded, size: 16),
+            icon: const Icon(LucideIcons.refreshCw, size: 16),
             label: const Text('Tekrar Dene'),
           ),
         ),
@@ -159,7 +160,7 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
                         child: TextField(
                           controller: _searchController,
                           decoration: const InputDecoration(
-                            prefixIcon: Icon(Icons.search_rounded),
+                            prefixIcon: Icon(LucideIcons.search),
                             hintText: 'Firma, dosya no veya belge adı ara',
                             border: OutlineInputBorder(),
                           ),
@@ -168,7 +169,7 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
                       _FilterMenu(
                         width: compact ? constraints.maxWidth : fieldWidth,
                         value: _typeFilter,
-                        icon: Icons.description_rounded,
+                        icon: LucideIcons.fileText,
                         items: const {
                           'all': 'Tüm Belgeler',
                           'taxpayer': 'Yükümlü Belgesi',
@@ -183,7 +184,7 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
                       _FilterMenu(
                         width: compact ? constraints.maxWidth : fieldWidth,
                         value: _storageFilter,
-                        icon: Icons.storage_rounded,
+                        icon: LucideIcons.database,
                         items: const {
                           'all': 'Tüm Kaynaklar',
                           'storage': 'Storage',
@@ -224,7 +225,7 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
                                 ..addAll(items.map((item) => item.key));
                             }
                           }),
-                    icon: const Icon(Icons.select_all_rounded, size: 18),
+                    icon: const Icon(LucideIcons.scan, size: 18),
                     label: Text(
                       selectedItems.length == items.length && items.isNotEmpty
                           ? 'Seçimi Kaldır'
@@ -235,14 +236,14 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
                     onPressed: _busy || selectedItems.isEmpty
                         ? null
                         : () => _downloadZip(selectedItems),
-                    icon: const Icon(Icons.download_rounded, size: 18),
+                    icon: const Icon(LucideIcons.download, size: 18),
                     label: const Text('Toplu İndir'),
                   ),
                   OutlinedButton.icon(
                     onPressed: _busy || selectedItems.isEmpty
                         ? null
                         : () => _deleteItems(selectedItems),
-                    icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                    icon: const Icon(LucideIcons.trash2, size: 18),
                     label: const Text('Toplu Sil'),
                   ),
                 ],
@@ -253,7 +254,7 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
         const Gap(12),
         if (items.isEmpty)
           const EmptyStateCard(
-            icon: Icons.folder_off_rounded,
+            icon: LucideIcons.folderX,
             title: 'Belge bulunamadı',
             message: 'Filtrelerinize uyan bir belge yok.',
           )
@@ -724,12 +725,12 @@ class _DocumentRow extends StatelessWidget {
       children: [
         OutlinedButton.icon(
           onPressed: busy ? null : onDownload,
-          icon: const Icon(Icons.download_rounded, size: 18),
+          icon: const Icon(LucideIcons.download, size: 18),
           label: const Text('İndir'),
         ),
         OutlinedButton.icon(
           onPressed: busy ? null : onDelete,
-          icon: const Icon(Icons.delete_outline_rounded, size: 18),
+          icon: const Icon(LucideIcons.trash2, size: 18),
           label: const Text('Sil'),
         ),
       ],

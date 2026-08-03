@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -36,13 +37,13 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(productsProvider),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         const Gap(10),
         FilledButton.icon(
           onPressed: () => _showProductDialog(context, null),
-          icon: const Icon(Icons.add_rounded, size: 18),
+          icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text('Yeni Ürün'),
         ),
       ],
@@ -102,9 +103,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              Icons.inventory_2_rounded,
+                              LucideIcons.package,
                               size: 48,
-                              color: const Color(0xFF94A3B8),
+                              color: AppTheme.textMuted,
                             ),
                             const Gap(12),
                             Text(
@@ -436,10 +437,10 @@ class _ProductCard extends StatelessWidget {
               ),
               child: Icon(
                 product.productType == 'service'
-                    ? Icons.build_rounded
+                    ? LucideIcons.wrench
                     : product.productType == 'part'
-                    ? Icons.settings_rounded
-                    : Icons.inventory_2_rounded,
+                    ? LucideIcons.settings2
+                    : LucideIcons.package,
                 color: AppTheme.primary,
                 size: 22,
               ),
@@ -477,15 +478,15 @@ class _ProductCard extends StatelessWidget {
                     Row(
                       children: [
                         Icon(
-                          Icons.inventory_rounded,
+                          LucideIcons.package,
                           size: 12,
-                          color: const Color(0xFF94A3B8),
+                          color: AppTheme.textMuted,
                         ),
                         const Gap(4),
                         Text(
                           'Stok Takipli',
                           style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: const Color(0xFF94A3B8)),
+                              ?.copyWith(color: AppTheme.textMuted),
                         ),
                       ],
                     ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:gap/gap.dart';
 
 import '../../app/theme/app_theme.dart';
@@ -69,7 +70,7 @@ class LoginCredentialFields extends StatelessWidget {
           alignment: Alignment.centerRight,
           child: TextButton.icon(
             onPressed: loading ? null : onFillSavedCredential,
-            icon: const Icon(Icons.password_rounded, size: 18),
+            icon: const Icon(LucideIcons.rectangleEllipsis, size: 18),
             label: const Text('Kayıtlı şifreyi doldur'),
           ),
         ),

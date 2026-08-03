@@ -48,7 +48,7 @@ class DsStatusBadge extends StatelessWidget {
     required this.label,
     required this.tone,
     this.dense = false,
-    this.showDot = false,
+    this.showDot = true,
   });
 
   final String label;
@@ -58,21 +58,20 @@ class DsStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = dsStatusToneColor(tone);
     final fg = dsStatusToneForeground(tone);
 
     return Container(
       padding: dense
-          ? const EdgeInsets.symmetric(horizontal: 7, vertical: 2)
-          : const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+          ? const EdgeInsets.symmetric(horizontal: 3, vertical: 2)
+          : const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       decoration: BoxDecoration(
-        color: AppTheme.softTint(color, alpha: AppTheme.isDark ? 0.18 : 0.14),
-        borderRadius: BorderRadius.circular(999),
+        color: AppTheme.softTint(
+          dsStatusToneColor(tone),
+          alpha: AppTheme.isDark ? 0.10 : 0.08,
+        ),
+        borderRadius: BorderRadius.circular(AppTheme.radiusXs),
         border: Border.all(
-          color: AppTheme.softBorder(
-            color,
-            alpha: AppTheme.isDark ? 0.32 : 0.24,
-          ),
+          color: AppTheme.softBorder(dsStatusToneColor(tone), alpha: 0.14),
         ),
       ),
       child: Row(
@@ -91,7 +90,7 @@ class DsStatusBadge extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               color: fg,
               fontSize: dense ? 10.5 : 11,
               height: 1.15,

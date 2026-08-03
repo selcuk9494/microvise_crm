@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -385,12 +386,12 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
       actions: [
         OutlinedButton.icon(
           onPressed: () => ref.invalidate(transferFormsProvider),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
+          icon: const Icon(LucideIcons.refreshCw, size: 18),
           label: const Text('Yenile'),
         ),
         FilledButton.icon(
           onPressed: _openCreateDialog,
-          icon: const Icon(Icons.add_rounded, size: 18),
+          icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text('Yeni Devir Formu'),
         ),
       ],
@@ -411,7 +412,7 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
                     onChanged: (_) => setState(() {}),
                     decoration: const InputDecoration(
                       labelText: 'Devreden / Devralan',
-                      prefixIcon: Icon(Icons.people_alt_rounded),
+                      prefixIcon: Icon(LucideIcons.users),
                     ),
                   ),
                 ),
@@ -422,7 +423,7 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
                     onChanged: (_) => setState(() {}),
                     decoration: const InputDecoration(
                       labelText: 'Cihaz / Sicil',
-                      prefixIcon: Icon(Icons.memory_rounded),
+                      prefixIcon: Icon(LucideIcons.memoryStick),
                     ),
                   ),
                 ),
@@ -441,7 +442,7 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
                     ),
                     decoration: const InputDecoration(
                       labelText: 'Başlangıç',
-                      prefixIcon: Icon(Icons.calendar_today_rounded),
+                      prefixIcon: Icon(LucideIcons.calendarDays),
                     ),
                   ),
                 ),
@@ -458,7 +459,7 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
                     ),
                     decoration: const InputDecoration(
                       labelText: 'Bitiş',
-                      prefixIcon: Icon(Icons.event_rounded),
+                      prefixIcon: Icon(LucideIcons.calendar),
                     ),
                   ),
                 ),
@@ -472,7 +473,7 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
                       _showPassive = false;
                     });
                   },
-                  icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
+                  icon: const Icon(LucideIcons.filterX, size: 18),
                   label: const Text('Temizle'),
                 ),
                 FilterChip(
@@ -512,7 +513,7 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
               if (index == 1) return statsCard;
               if (filtered.isEmpty) {
                 return const EmptyStateCard(
-                  icon: Icons.swap_horiz_rounded,
+                  icon: LucideIcons.arrowLeftRight,
                   title: 'Kayıt bulunamadı',
                   message: 'Henüz devir formu kaydı yok.',
                 );
@@ -563,12 +564,12 @@ class _TransferFormScreenState extends ConsumerState<TransferFormScreen> {
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stackTrace) => EmptyStateCard(
-          icon: Icons.cloud_off_rounded,
+          icon: LucideIcons.cloudOff,
           title: 'Devir formları yüklenemedi',
           message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
           action: OutlinedButton.icon(
             onPressed: () => ref.invalidate(transferFormsProvider),
-            icon: const Icon(Icons.refresh_rounded, size: 16),
+            icon: const Icon(LucideIcons.refreshCw, size: 16),
             label: const Text('Tekrar Dene'),
           ),
         ),
@@ -646,7 +647,7 @@ class _TransferRecordCard extends StatelessWidget {
 
     return AppDenseListCard(
       leading: AppDenseLeadingIcon(
-        icon: Icons.swap_horiz_rounded,
+        icon: LucideIcons.arrowLeftRight,
         color: AppTheme.primary,
         active: record.isActive,
       ),
@@ -657,15 +658,15 @@ class _TransferRecordCard extends StatelessWidget {
       titleStruck: !record.isActive,
       badge: AppBadge(label: badgeLabel, tone: badgeTone, dense: true),
       meta: [
-        AppDenseInfoChip(icon: Icons.calendar_today_rounded, text: dateText),
+        AppDenseInfoChip(icon: LucideIcons.calendarDays, text: dateText),
         if ((record.rowNumber ?? '').trim().isNotEmpty)
           AppDenseInfoChip(
-            icon: Icons.tag_rounded,
+            icon: LucideIcons.tag,
             text: 'Sıra: ${record.rowNumber!.trim()}',
           ),
         if ((record.deviceSerialNo ?? '').trim().isNotEmpty)
           AppDenseInfoChip(
-            icon: Icons.badge_rounded,
+            icon: LucideIcons.idCard,
             text: record.deviceSerialNo!.trim(),
           ),
         FormDocumentMetaChip(document: record.document),
@@ -674,7 +675,7 @@ class _TransferRecordCard extends StatelessWidget {
         FormRecordIconAction(
           tooltip: 'Yazdır',
           onPressed: onPrint,
-          icon: Icons.print_rounded,
+          icon: LucideIcons.printer,
         ),
         FormDocumentActions(
           document: record.document,
@@ -686,27 +687,25 @@ class _TransferRecordCard extends StatelessWidget {
           FormRecordIconAction(
             tooltip: 'Düzenle',
             onPressed: onEdit,
-            icon: Icons.edit_rounded,
+            icon: LucideIcons.pencil,
           ),
         if (canEdit)
           FormRecordIconAction(
             tooltip: 'Kopya',
             onPressed: onDuplicate,
-            icon: Icons.content_copy_rounded,
+            icon: LucideIcons.copy,
           ),
         if (canArchive && onToggleActive != null)
           FormRecordIconAction(
             tooltip: record.isActive ? 'Pasife Al' : 'Aktifleştir',
             onPressed: onToggleActive,
-            icon: record.isActive
-                ? Icons.archive_rounded
-                : Icons.restore_rounded,
+            icon: record.isActive ? LucideIcons.archive : LucideIcons.rotateCcw,
           ),
         if (canDeletePermanently && onDeletePermanently != null)
           FormRecordIconAction(
             tooltip: 'Kalıcı Sil',
             onPressed: onDeletePermanently,
-            icon: Icons.delete_forever_rounded,
+            icon: LucideIcons.trash2,
           ),
       ],
     );
@@ -1065,7 +1064,7 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
                         onPressed: _saving
                             ? null
                             : () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close_rounded),
+                        icon: const Icon(LucideIcons.x),
                       ),
                     ],
                   ),
@@ -1093,7 +1092,7 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
                           onTap: _pickTransferDate,
                           decoration: const InputDecoration(
                             labelText: 'Devir Tarihi',
-                            prefixIcon: Icon(Icons.event_rounded),
+                            prefixIcon: Icon(LucideIcons.calendar),
                           ),
                         ),
                       ),
@@ -1123,7 +1122,7 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
                                 ),
                                 decoration: const InputDecoration(
                                   labelText: 'Devreden Ünvanı',
-                                  prefixIcon: Icon(Icons.arrow_upward_rounded),
+                                  prefixIcon: Icon(LucideIcons.arrowUp),
                                 ),
                               ),
                             ),
@@ -1142,9 +1141,7 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
                                 ),
                                 decoration: const InputDecoration(
                                   labelText: 'Devralan Ünvanı',
-                                  prefixIcon: Icon(
-                                    Icons.arrow_downward_rounded,
-                                  ),
+                                  prefixIcon: Icon(LucideIcons.arrowDown),
                                 ),
                               ),
                             ),
@@ -1523,7 +1520,7 @@ class _TransferCustomerPickerDialogState
                   ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
+                    icon: const Icon(LucideIcons.x),
                   ),
                 ],
               ),
@@ -1535,7 +1532,7 @@ class _TransferCustomerPickerDialogState
                 decoration: const InputDecoration(
                   labelText: 'Ara',
                   hintText: 'Firma adı, VKN veya şehir',
-                  prefixIcon: Icon(Icons.search_rounded),
+                  prefixIcon: Icon(LucideIcons.search),
                 ),
               ),
               const Gap(12),
@@ -1565,7 +1562,7 @@ class _TransferCustomerPickerDialogState
                               ].join(' • '),
                             ),
                             trailing: selected
-                                ? const Icon(Icons.check_circle_rounded)
+                                ? const Icon(LucideIcons.circleCheck)
                                 : null,
                             onTap: () => Navigator.of(context).pop(item),
                           );

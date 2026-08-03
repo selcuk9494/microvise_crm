@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -247,7 +248,7 @@ class ReportsScreen extends ConsumerWidget {
                 const Spacer(),
                 OutlinedButton.icon(
                   onPressed: () => ref.invalidate(reportsDataProvider),
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  icon: const Icon(LucideIcons.refreshCw, size: 18),
                   label: const Text('Yenile'),
                 ),
               ],
@@ -376,12 +377,12 @@ class ReportsScreen extends ConsumerWidget {
               child: AppCard(child: SizedBox(height: 320)),
             ),
             error: (_, _) => EmptyStateCard(
-              icon: Icons.cloud_off_rounded,
+              icon: LucideIcons.cloudOff,
               title: 'Raporlar yüklenemedi',
               message: 'Bağlantı sorunu olabilir. Lütfen tekrar deneyin.',
               action: OutlinedButton.icon(
                 onPressed: () => ref.invalidate(reportsDataProvider),
-                icon: const Icon(Icons.refresh_rounded, size: 16),
+                icon: const Icon(LucideIcons.refreshCw, size: 16),
                 label: const Text('Tekrar Dene'),
               ),
             ),
@@ -524,7 +525,7 @@ class _StatusRow extends StatelessWidget {
             textAlign: TextAlign.right,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w700,
-              color: const Color(0xFF0F172A),
+              color: AppTheme.text,
             ),
           ),
         ),

@@ -30,8 +30,9 @@ class EmptyStateCard extends StatelessWidget {
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                color: AppTheme.primarySoft,
+                color: AppTheme.surfaceMuted,
                 borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                border: Border.all(color: AppTheme.border),
               ),
               child: Icon(icon, color: AppTheme.primary, size: 26),
             ),
@@ -40,7 +41,7 @@ class EmptyStateCard extends StatelessWidget {
               title,
               style: Theme.of(
                 context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500),
               textAlign: TextAlign.center,
             ),
             const Gap(6),

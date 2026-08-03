@@ -12,6 +12,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:gap/gap.dart';
 
 import '../app/theme/app_theme.dart';
@@ -62,7 +63,11 @@ class DsKpiTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        border: Border.all(color: AppTheme.border.withValues(alpha: 0.65)),
+        border: Border.all(
+          color: AppTheme.border.withValues(
+            alpha: AppTheme.isDark ? 0.9 : 0.72,
+          ),
+        ),
         boxShadow: AppTheme.cardShadow,
       ),
       child: Row(
@@ -90,7 +95,7 @@ class DsKpiTile extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppTheme.textMuted,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const Gap(2),
@@ -103,7 +108,7 @@ class DsKpiTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w500,
                           fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
@@ -120,7 +125,7 @@ class DsKpiTile extends StatelessWidget {
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
                                   color: subtitleColor ?? AppTheme.textMuted,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w500,
                                 ),
                           ),
                         ),
@@ -185,7 +190,7 @@ class _TrendDelta extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
-          isUp ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+          isUp ? LucideIcons.arrowUp : LucideIcons.arrowDown,
           size: 12,
           color: color,
         ),
@@ -193,7 +198,7 @@ class _TrendDelta extends StatelessWidget {
           '%$formatted',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: color,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w500,
             fontSize: 11,
           ),
         ),
