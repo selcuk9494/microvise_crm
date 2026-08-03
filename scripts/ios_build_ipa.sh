@@ -14,6 +14,7 @@ echo "Using API_BASE_URL=$API_BASE_URL"
 
 flutter build ipa \
   --release \
+  --no-tree-shake-icons \
   --export-options-plist ios/ExportOptions_appstore.plist \
   --dart-define=SdkRoot="$SDKROOT_PATH" \
   --dart-define=API_BASE_URL="$API_BASE_URL"
