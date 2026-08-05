@@ -724,8 +724,8 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                     : validItems[i].notes,
                 'quantity': validItems[i].quantity,
                 'unit': validItems[i].unit,
-                'unit_price': validItems[i].exclusiveUnitPrice(
-                  _pricesIncludeVat,
+                'unit_price': _round2(
+                  validItems[i].exclusiveUnitPrice(_pricesIncludeVat),
                 ),
                 'tax_rate': validItems[i].taxRate,
                 'tax_amount': validItems[i].taxAmount(_pricesIncludeVat),
@@ -2761,7 +2761,9 @@ class _EInvoiceItemDraft {
   double exclusiveUnitPrice(bool pricesIncludeVat) {
     final entered = unitPrice;
     if (!pricesIncludeVat || taxRate <= 0) return entered;
-    return entered / (1 + taxRate / 100);
+    // KDV dahil → hariç çevirirken 2 hane; aksi halde 350/1.05=333.333…
+    // DB/Maliye toplamında 0,01 sapma üretir.
+    return _round2(entered / (1 + taxRate / 100));
   }
 
   double subtotal(bool pricesIncludeVat) =>

@@ -466,7 +466,7 @@ function validateInvoiceForEInvoice(settings, invoice, now = new Date()) {
     const price = Number(item.unit_price);
     const discount = Number(item.discount_amount || 0);
     const taxRate = Number(item.tax_rate || 0);
-    const base = qty * price;
+    const base = Number.isFinite(qty) && Number.isFinite(price) ? lineNetAmount(item) : NaN;
     const specialMatrah = item.special_matrah === true;
     if (!cleanText(item.description)) errors.push(`${prefix} açıklaması zorunludur.`);
     if (!Number.isFinite(qty) || qty <= 0) errors.push(`${prefix} miktarı sıfırdan büyük olmalıdır.`);
@@ -801,10 +801,18 @@ async function fetchInvoice(invoiceId) {
   return result.rows[0] || null;
 }
 
-function lineTaxAmount(item) {
+// Satır matrahı: qty*unit_price önce 2 haneye yuvarlanır. KDV dahil
+// faturalarda exclusive unit_price (ör. 350/1.05) uzun kesirli kalır;
+// yuvarlamadan toplanırsa 655.305…→655.31 olur, satır satır 655.30 iken
+// Maliye "Fatura/Vergi dahil/Ödenecek toplam tutarsız" döner.
+function lineNetAmount(item) {
   const qty = Number(item.quantity || 0);
   const price = Number(item.unit_price || 0);
-  const base = qty * price;
+  return round2(qty * price);
+}
+
+function lineTaxAmount(item) {
+  const base = lineNetAmount(item);
   const discount = round2(Number(item.discount_amount || 0));
   const taxRate = Number(item.tax_rate || 0);
   if (item.special_matrah === true) return 0;
@@ -839,11 +847,14 @@ function buildPayload({ settings, invoice, number: numberOverride }) {
   const malHizmetler = items.map((item) => {
     const qty = Number(item.quantity || 0);
     const price = Number(item.unit_price || 0);
-    const base = qty * price;
+    const base = lineNetAmount(item);
     const discount = round2(Number(item.discount_amount || 0));
     const taxRate = Number(item.tax_rate || 0);
     const specialMatrah = item.special_matrah === true;
     const taxAmount = lineTaxAmount(item);
+    // fiyat, yuvarlanmış satır matrahına bölünerek üretilir; böylece
+    // Maliye'nin round(fiyat*miktar) hesabı header toplamıyla örtüşür.
+    const unitPriceForPayload = qty > 0 ? base / qty : round2(price);
     faturaToplami += base;
     iskontoToplami += discount;
     kdvToplami += taxAmount;
@@ -851,7 +862,7 @@ function buildPayload({ settings, invoice, number: numberOverride }) {
     return {
       adi,
       birimMiktari: qty,
-      fiyat: price,
+      fiyat: unitPriceForPayload,
       birimTurKod: unitCode(item.unit),
       aciklama: distinctLineAciklama(adi, item),
       saticiUrunKodu: cleanText(item.product_id),
@@ -1184,7 +1195,7 @@ function buildEInvoicePdfFileName(invoice) {
       invoice?.customers?.name,
     'cari',
   );
-  return `${invoiceNumber}_${customerName}.pdf`;
+  return `${customerName}_${invoiceNumber}.pdf`;
 }
 
 async function uploadEInvoicePdf({ invoiceId, invoice, verificationCode, pdf }) {

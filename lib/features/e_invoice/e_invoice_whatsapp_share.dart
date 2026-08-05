@@ -153,7 +153,7 @@ Future<void> shareEInvoicePdfWithWhatsApp({
   final shareText = customerName.isEmpty ? number : '$number - $customerName';
   final fileName = customerName.isEmpty
       ? '$number.pdf'
-      : '${number}_$customerName.pdf';
+      : '${customerName}_$number.pdf';
 
   var sharedOrOpened = false;
   // Electron/web open-pdf: dosyayı doğrudan aç. Mobilde _local/open-pdf geçersiz;

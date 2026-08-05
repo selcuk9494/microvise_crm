@@ -7,7 +7,7 @@ cd "$ROOT"
 echo "==> Flutter web (Electron, same-origin /api)"
 flutter --version
 flutter pub get
-flutter build web --release \
+flutter build web --release --no-tree-shake-icons \
   --pwa-strategy=none \
   --dart-define=API_BASE_URL=/api \
   --dart-define=DISABLE_SUPABASE=true

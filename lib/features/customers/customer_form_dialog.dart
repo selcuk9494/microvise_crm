@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/format/search_normalize.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_section_card.dart';
@@ -18,6 +19,7 @@ class CustomerFormData {
     this.id,
     required this.name,
     this.city,
+    this.taxOffice,
     this.address,
     this.countryCode = 'XCT',
     this.country = 'Kuzey Kıbrıs Türk Cumhuriyeti',
@@ -39,6 +41,7 @@ class CustomerFormData {
   final String? id;
   final String name;
   final String? city;
+  final String? taxOffice;
   final String? address;
   final String countryCode;
   final String country;
@@ -93,6 +96,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _cityController;
+  late final TextEditingController _taxOfficeController;
   late final TextEditingController _addressController;
   late final TextEditingController _directorNameController;
   late final TextEditingController _emailController;
@@ -105,11 +109,13 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   late final TextEditingController _phone3TitleController;
   late final TextEditingController _phone3Controller;
   late final TextEditingController _notesController;
+  late final TextEditingController _taxLookupController;
   late String _countryCode;
   late bool _isActive;
   List<_CustomerLocationDraft> _locationDrafts = [];
   bool _saving = false;
   bool _loadingLocations = false;
+  bool _lookupLoading = false;
   final _vknFocusNode = FocusNode();
   final _tcknMsFocusNode = FocusNode();
 
@@ -119,6 +125,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     final initial = widget.initialData;
     _nameController = TextEditingController(text: initial?.name ?? '');
     _cityController = TextEditingController(text: initial?.city ?? '');
+    _taxOfficeController = TextEditingController(text: initial?.taxOffice ?? '');
     _addressController = TextEditingController(text: initial?.address ?? '');
     _countryCode = initial?.countryCode ?? 'XCT';
     _directorNameController = TextEditingController(
@@ -127,6 +134,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     _emailController = TextEditingController(text: initial?.email ?? '');
     _vknController = TextEditingController(text: initial?.vkn ?? '');
     _tcknMsController = TextEditingController(text: initial?.tcknMs ?? '');
+    _taxLookupController = TextEditingController();
     _phone1TitleController = TextEditingController(
       text: initial?.phone1Title ?? 'Yetkili',
     );
@@ -158,7 +166,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     });
     _tcknMsFocusNode.addListener(() {
       if (!_tcknMsFocusNode.hasFocus) {
-        _padDigitsController(_tcknMsController, length: 11);
+        _normalizeTcknMsField();
       }
     });
   }
@@ -167,11 +175,13 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   void dispose() {
     _nameController.dispose();
     _cityController.dispose();
+    _taxOfficeController.dispose();
     _addressController.dispose();
     _directorNameController.dispose();
     _emailController.dispose();
     _vknController.dispose();
     _tcknMsController.dispose();
+    _taxLookupController.dispose();
     _vknFocusNode.dispose();
     _tcknMsFocusNode.dispose();
     _phone1TitleController.dispose();
@@ -265,56 +275,77 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     final isWide = width >= 1160;
     final isMedium = width >= 860;
 
-    Widget buildCityField() {
+    Widget buildLocationDropdown({
+      required TextEditingController controller,
+      required String label,
+      required IconData icon,
+      String emptyHint = 'Seç',
+    }) {
       return citiesAsync.when(
-        data: (cities) => DropdownButtonFormField<String?>(
-          initialValue: _cityController.text.trim().isEmpty
-              ? null
-              : _cityController.text.trim(),
-          items: [
-            const DropdownMenuItem<String?>(
-              value: null,
-              child: Text('Şehir seç'),
-            ),
-            ...cities
-                .where((city) => city.isActive)
-                .map(
-                  (city) => DropdownMenuItem<String?>(
-                    value: city.name,
-                    child: Text(city.name),
-                  ),
+        data: (cities) {
+          final active = cities.where((city) => city.isActive).toList();
+          final current = controller.text.trim();
+          final matched = _resolveDropdownValue(current, active);
+          return DropdownButtonFormField<String?>(
+            key: ValueKey<String>('$label|$matched'),
+            initialValue: matched,
+            items: [
+              DropdownMenuItem<String?>(
+                value: null,
+                child: Text(emptyHint),
+              ),
+              ...active.map(
+                (city) => DropdownMenuItem<String?>(
+                  value: city.name,
+                  child: Text(city.name),
                 ),
-          ],
-          onChanged: (value) =>
-              setState(() => _cityController.text = value ?? ''),
-          decoration: const InputDecoration(
-            labelText: 'Şehir',
-            prefixIcon: Icon(LucideIcons.building),
-          ),
-        ),
+              ),
+            ],
+            onChanged: (value) => setState(() => controller.text = value ?? ''),
+            decoration: InputDecoration(
+              labelText: label,
+              prefixIcon: Icon(icon),
+            ),
+          );
+        },
         loading: () => TextFormField(
-          controller: _cityController,
+          controller: controller,
           enabled: false,
-          decoration: const InputDecoration(
-            labelText: 'Şehir',
-            hintText: 'Şehirler yükleniyor',
-            prefixIcon: Icon(LucideIcons.building),
+          decoration: InputDecoration(
+            labelText: label,
+            hintText: 'Yükleniyor',
+            prefixIcon: Icon(icon),
           ),
         ),
         error: (error, stackTrace) => TextFormField(
-          controller: _cityController,
+          controller: controller,
           textInputAction: TextInputAction.next,
-          decoration: const InputDecoration(
-            labelText: 'Şehir',
-            hintText: 'Şehir bulunamadı',
-            prefixIcon: Icon(LucideIcons.building),
+          decoration: InputDecoration(
+            labelText: label,
+            hintText: 'Liste yüklenemedi',
+            prefixIcon: Icon(icon),
           ),
         ),
       );
     }
 
+    Widget buildCityField() => buildLocationDropdown(
+      controller: _cityController,
+      label: 'Şehir',
+      icon: LucideIcons.building,
+      emptyHint: 'Şehir seç',
+    );
+
+    Widget buildTaxOfficeField() => buildLocationDropdown(
+      controller: _taxOfficeController,
+      label: 'Vergi Dairesi',
+      icon: LucideIcons.landmark,
+      emptyHint: 'Vergi dairesi seç',
+    );
+
     Widget buildCountryField() {
       return DropdownButtonFormField<String>(
+        key: ValueKey<String>(_countryCode),
         initialValue: _countryCode,
         items: const [
           DropdownMenuItem(
@@ -347,6 +378,74 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       return null;
     }
 
+    String? validateTcknMs(String? value) {
+      final normalized = _normalizeTcknMsValue(value ?? '');
+      if (normalized == null || normalized.isEmpty) {
+        return 'TCKN-MŞ zorunlu';
+      }
+      if (RegExp(r'[A-ZÇĞİÖŞÜ]', caseSensitive: false).hasMatch(normalized)) {
+        if (normalized.length < 5 || normalized.length > 11) {
+          return 'Mükellef no 5–11 karakter olmalı';
+        }
+        if (!RegExp(r'\d').hasMatch(normalized)) {
+          return 'Geçerli bir MŞ / kimlik no girin';
+        }
+        return null;
+      }
+      if (normalized.length != 11) {
+        return 'TCKN-MŞ tam olarak 11 hane olmalı';
+      }
+      return null;
+    }
+
+    Widget buildTaxLookupField() {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _taxLookupController,
+                  enabled: !_lookupLoading && !_saving,
+                  textInputAction: TextInputAction.search,
+                  onFieldSubmitted: (_) => _runTaxLookup(),
+                  decoration: const InputDecoration(
+                    labelText: 'Mükellef Sorgula',
+                    hintText: 'Kimlik, VKN veya MŞ19660',
+                    prefixIcon: Icon(LucideIcons.search),
+                  ),
+                ),
+              ),
+              const Gap(12),
+              SizedBox(
+                height: 56,
+                child: FilledButton.tonalIcon(
+                  onPressed: (_lookupLoading || _saving) ? null : _runTaxLookup,
+                  icon: _lookupLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(LucideIcons.search),
+                  label: Text(_lookupLoading ? 'Aranıyor…' : 'Ara'),
+                ),
+              ),
+            ],
+          ),
+          const Gap(6),
+          Text(
+            'Vergi dairesinden ünvan, VKN, TCKN-MŞ ve adresi otomatik doldurur.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppTheme.textMuted,
+            ),
+          ),
+        ],
+      );
+    }
+
     Widget buildVknField() {
       return TextFormField(
         controller: _vknController,
@@ -375,21 +474,21 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
         controller: _tcknMsController,
         focusNode: _tcknMsFocusNode,
         textInputAction: TextInputAction.next,
-        keyboardType: TextInputType.number,
+        textCapitalization: TextCapitalization.characters,
         inputFormatters: [
-          FilteringTextInputFormatter.digitsOnly,
+          FilteringTextInputFormatter.allow(
+            RegExp(r'[0-9A-Za-zÇĞİÖŞÜçğıöşü]'),
+          ),
           LengthLimitingTextInputFormatter(11),
         ],
         decoration: const InputDecoration(
           labelText: 'TCKN-MŞ',
-          hintText: '11 haneli müşteri sicil / TCKN',
+          hintText: '11 haneli TCKN veya MŞ…',
           prefixIcon: Icon(LucideIcons.userRound),
           counterText: '',
         ),
-        onFieldSubmitted: (_) =>
-            _padDigitsController(_tcknMsController, length: 11),
-        validator: (value) =>
-            validateRequiredDigits(value, length: 11, fieldLabel: 'TCKN-MŞ'),
+        onFieldSubmitted: (_) => _normalizeTcknMsField(),
+        validator: validateTcknMs,
       );
     }
 
@@ -453,6 +552,8 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                 padding: const EdgeInsets.all(14),
                                 child: Column(
                                   children: [
+                                    buildTaxLookupField(),
+                                    const Gap(12),
                                     Row(
                                       children: [
                                         Expanded(
@@ -485,6 +586,8 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                                         ),
                                       ],
                                     ),
+                                    const Gap(12),
+                                    buildTaxOfficeField(),
                                     const Gap(12),
                                     buildCountryField(),
                                     const Gap(12),
@@ -642,6 +745,8 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                       padding: const EdgeInsets.all(14),
                       child: Column(
                         children: [
+                          buildTaxLookupField(),
+                          const Gap(12),
                           if (isMedium)
                             Row(
                               children: [
@@ -687,6 +792,8 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
                             const Gap(12),
                             buildCityField(),
                           ],
+                          const Gap(12),
+                          buildTaxOfficeField(),
                           const Gap(12),
                           buildCountryField(),
                           const Gap(12),
@@ -957,7 +1064,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
 
   Future<void> _submit() async {
     _padDigitsController(_vknController, length: 10);
-    _padDigitsController(_tcknMsController, length: 11);
+    _normalizeTcknMsField();
     if (!_formKey.currentState!.validate()) return;
 
     final apiClient = ref.read(apiClientProvider);
@@ -972,10 +1079,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       _vknController.text,
       length: 10,
     );
-    final normalizedTcknMs = _normalizeDigitsFixedLength(
-      _tcknMsController.text,
-      length: 11,
-    );
+    final normalizedTcknMs = _normalizeTcknMsValue(_tcknMsController.text);
     _vknController.text = normalizedVkn ?? '';
     _tcknMsController.text = normalizedTcknMs ?? '';
 
@@ -1011,6 +1115,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     final payload = {
       'name': _nameController.text.trim(),
       'city': _nullIfEmpty(_cityController.text),
+      'tax_office': _nullIfEmpty(_taxOfficeController.text),
       'address': _nullIfEmpty(_addressController.text),
       'country_code': _countryCode,
       'country': _countryCode == 'TUR'
@@ -1159,12 +1264,197 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  /// Dropdown value must exist in items; otherwise null (avoids assertion).
+  String? _resolveDropdownValue(
+    String current,
+    List<CityDefinition> cities,
+  ) {
+    if (current.isEmpty) return null;
+    for (final city in cities) {
+      if (city.name == current) return city.name;
+    }
+    return _matchLocationName(current, cities);
+  }
+
+  /// Exact (tr case-insensitive) then fuzzy contains match on name/code.
+  String? _matchLocationName(
+    String raw,
+    List<CityDefinition> cities,
+  ) {
+    final needle = _normalizeLocationKey(raw);
+    if (needle.isEmpty || cities.isEmpty) return null;
+
+    for (final city in cities) {
+      if (_normalizeLocationKey(city.name) == needle) return city.name;
+      final code = city.code?.trim() ?? '';
+      if (code.isNotEmpty && _normalizeLocationKey(code) == needle) {
+        return city.name;
+      }
+    }
+
+    String? containsHit;
+    for (final city in cities) {
+      final nameKey = _normalizeLocationKey(city.name);
+      if (nameKey.isEmpty) continue;
+      if (needle.contains(nameKey) || nameKey.contains(needle)) {
+        if (containsHit != null && containsHit != city.name) {
+          return null; // ambiguous
+        }
+        containsHit = city.name;
+      }
+    }
+    return containsHit;
+  }
+
+  String _normalizeLocationKey(String? value) {
+    var s = normalizeSearchText(value ?? '');
+    s = s.replaceAll(RegExp(r'\s+bel\.?\s*$'), '');
+    s = s.replaceAll(RegExp(r'[^a-z0-9]+'), '');
+    return s;
+  }
+
   String? _normalizeDigitsFixedLength(String value, {required int length}) {
     final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return null;
     if (digits.length == length) return digits;
     if (digits.length > length) return digits.substring(0, length);
     return digits.padLeft(length, '0');
+  }
+
+  /// TCKN (11 hane, soldan 0 pad) veya MŞ mükellef no (harf korunur).
+  String? _normalizeTcknMsValue(String value) {
+    final raw = value.trim().replaceAll(RegExp(r'[\s\-_.]'), '');
+    if (raw.isEmpty) return null;
+    final cleaned = raw.replaceAll(
+      RegExp(r'[^0-9A-Za-zÇĞİÖŞÜçğıöşü]'),
+      '',
+    );
+    if (cleaned.isEmpty) return null;
+    if (RegExp(r'[A-Za-zÇĞİÖŞÜçğıöşü]').hasMatch(cleaned)) {
+      return _toTurkishUpper(cleaned);
+    }
+    return _normalizeDigitsFixedLength(cleaned, length: 11);
+  }
+
+  String _toTurkishUpper(String value) {
+    return value
+        .replaceAll('i', 'İ')
+        .replaceAll('ı', 'I')
+        .replaceAll('ş', 'Ş')
+        .replaceAll('ğ', 'Ğ')
+        .replaceAll('ü', 'Ü')
+        .replaceAll('ö', 'Ö')
+        .replaceAll('ç', 'Ç')
+        .toUpperCase();
+  }
+
+  void _normalizeTcknMsField() {
+    final normalized = _normalizeTcknMsValue(_tcknMsController.text);
+    if (normalized == null || normalized.isEmpty) return;
+    if (normalized == _tcknMsController.text) return;
+    _tcknMsController.value = TextEditingValue(
+      text: normalized,
+      selection: TextSelection.collapsed(offset: normalized.length),
+    );
+  }
+
+  Future<void> _runTaxLookup() async {
+    final apiClient = ref.read(apiClientProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final q = _taxLookupController.text.trim();
+    if (q.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Kimlik no, VKN veya MŞ mükellef numarası girin.'),
+        ),
+      );
+      return;
+    }
+    if (apiClient == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Mükellef sorgusu için API bağlantısı gerekli (yerel sunucu / API_BASE_URL).',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _lookupLoading = true);
+    try {
+      final result = await apiClient.getJson(
+        '/tax-lookup',
+        queryParameters: {'q': q},
+      );
+      if (!mounted) return;
+
+      final name = (result['name'] ?? '').toString().trim();
+      final vknRaw = (result['vkn'] ?? '').toString().trim();
+      final kimlikNo = (result['kimlikNo'] ?? '').toString().trim();
+      final address = (result['address'] ?? '').toString().trim();
+      final cityRaw = (result['city'] ?? '').toString().trim();
+      final taxOfficeRaw = (result['taxOffice'] ?? '').toString().trim();
+
+      if (name.isNotEmpty) {
+        _nameController.text = name;
+      }
+      final normalizedVkn = _normalizeDigitsFixedLength(vknRaw, length: 10);
+      if (normalizedVkn != null && normalizedVkn.isNotEmpty) {
+        _vknController.text = normalizedVkn;
+      }
+
+      // MŞ veya kimlik → TCKN-MŞ; yoksa sorgu değeri harfliyse onu kullan.
+      final tcknSource = kimlikNo.isNotEmpty
+          ? kimlikNo
+          : (RegExp(r'[A-Za-zÇĞİÖŞÜçğıöşü]').hasMatch(q) ? q : '');
+      final normalizedTckn = _normalizeTcknMsValue(tcknSource);
+      if (normalizedTckn != null && normalizedTckn.isNotEmpty) {
+        _tcknMsController.text = normalizedTckn;
+      }
+
+      if (address.isNotEmpty && _addressController.text.trim().isEmpty) {
+        _addressController.text = address;
+      }
+
+      final cities =
+          ref.read(cityDefinitionsProvider).asData?.value ?? const [];
+      final activeCities =
+          cities.where((city) => city.isActive).toList(growable: false);
+      final matchedCity = _matchLocationName(cityRaw, activeCities);
+      final matchedTaxOffice = _matchLocationName(
+        taxOfficeRaw.isNotEmpty ? taxOfficeRaw : cityRaw,
+        activeCities,
+      );
+      if (matchedCity != null) {
+        _cityController.text = matchedCity;
+      }
+      if (matchedTaxOffice != null) {
+        _taxOfficeController.text = matchedTaxOffice;
+      }
+
+      if (_countryCode != 'XCT') {
+        setState(() => _countryCode = 'XCT');
+      } else {
+        setState(() {});
+      }
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            name.isNotEmpty
+                ? 'Bulundu: $name'
+                : 'Mükellef bilgileri dolduruldu.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      final message = error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) setState(() => _lookupLoading = false);
+    }
   }
 
   Future<void> _saveCustomerLocations(

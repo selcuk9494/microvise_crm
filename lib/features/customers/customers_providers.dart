@@ -7,7 +7,7 @@ import 'customer_model.dart';
 
 const customerPageSize = 50;
 const _customerBaseSelect =
-    'id,name,city,address,country_code,country,email,vkn,tckn_ms,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,notes,is_active,created_at';
+    'id,name,city,tax_office,address,country_code,country,email,vkn,tckn_ms,phone_1,phone_1_title,phone_2,phone_2_title,phone_3,phone_3_title,notes,is_active,created_at';
 const _customerDirectorSelect = '$_customerBaseSelect,director_name';
 
 final customerFiltersProvider =

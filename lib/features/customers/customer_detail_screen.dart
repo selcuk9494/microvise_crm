@@ -281,6 +281,7 @@ class CustomerDetailScreen extends ConsumerWidget {
                 id: customerId,
                 name: 'Microvise Teknoloji A.Ş.',
                 city: 'İstanbul',
+                taxOffice: 'Kadıköy',
                 address: 'Maslak Mah. Büyükdere Cad.',
                 countryCode: 'TUR',
                 country: 'Türkiye',
@@ -394,6 +395,7 @@ class _Content extends ConsumerWidget {
                                 id: detail.id,
                                 name: detail.name,
                                 city: detail.city,
+                                taxOffice: detail.taxOffice,
                                 address: detail.address,
                                 countryCode: detail.countryCode,
                                 country: detail.country,
@@ -579,6 +581,8 @@ class _GeneralTab extends ConsumerWidget {
           ),
           const Gap(10),
           _InfoRow(label: 'Şehir', value: detail.city ?? '—'),
+          const Gap(10),
+          _InfoRow(label: 'Vergi Dairesi', value: detail.taxOffice ?? '—'),
           const Gap(10),
           _InfoRow(label: 'Adres', value: detail.address ?? '—'),
           const Gap(10),
@@ -4742,6 +4746,7 @@ class CustomerDetail {
     required this.id,
     required this.name,
     required this.city,
+    required this.taxOffice,
     required this.address,
     required this.countryCode,
     required this.country,
@@ -4763,6 +4768,7 @@ class CustomerDetail {
   final String id;
   final String name;
   final String? city;
+  final String? taxOffice;
   final String? address;
   final String countryCode;
   final String country;
@@ -4785,6 +4791,7 @@ class CustomerDetail {
       id: json['id'].toString(),
       name: (json['name'] ?? '').toString(),
       city: json['city']?.toString(),
+      taxOffice: json['tax_office']?.toString(),
       address: json['address']?.toString(),
       countryCode: (json['country_code'] ?? 'XCT').toString(),
       country: (json['country'] ?? 'Kuzey Kıbrıs Türk Cumhuriyeti').toString(),

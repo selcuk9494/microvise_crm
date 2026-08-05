@@ -278,6 +278,7 @@ module.exports = async (req, res) => {
               id,
               name,
               city,
+              tax_office,
               address,
               country_code,
               country,

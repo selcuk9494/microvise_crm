@@ -6,10 +6,12 @@
   "description": "Microvise CRM — Flutter web + local API / Akınsoft bridge (Electron)",
   "main": "electron/main.js",
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "mssql": "^12.5.5",
     "pdfkit": "^0.17.2",
     "pg": "^8.16.3",
     "qrcode": "^1.5.4",
+    "ws": "^8.21.2",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -18,13 +20,14 @@
   },
   "scripts": {
     "test:e-invoice": "node --test test/e_invoice_vkn_test.js",
+    "test:tax-lookup": "node --test test/tax_lookup_test.js",
     "vercel-build": "bash ./scripts/vercel_build.sh",
     "local-web": "bash ./scripts/local_web.sh",
     "local-web-dev": "bash ./scripts/local_web_run.sh",
     "local-web-dev-local-api": "bash ./scripts/local_web_dev_local_api.sh",
     "import-sicil": "node ./scripts/import_device_registries_from_xls.js ./dokuman/sicil.xls",
     "akinsoft:probe": "node ./scripts/akinsoft_mssql_probe.js",
-    "electron:build-web": "flutter build web --release --pwa-strategy=none --dart-define=API_BASE_URL=/api --dart-define=DISABLE_SUPABASE=true",
+    "electron:build-web": "flutter build web --release --no-tree-shake-icons --pwa-strategy=none --dart-define=API_BASE_URL=/api --dart-define=DISABLE_SUPABASE=true",
     "electron": "npm run electron:build-web && env -u ELECTRON_RUN_AS_NODE electron .",
     "electron:dev": "env -u ELECTRON_RUN_AS_NODE electron .",
     "electron:mac": "bash ./scripts/electron_build_mac.sh",

@@ -2161,6 +2161,7 @@ class _CustomerRowActions extends ConsumerWidget {
                 id: customer.id,
                 name: customer.name,
                 city: customer.city,
+                taxOffice: customer.taxOffice,
                 address: customer.address,
                 countryCode: customer.countryCode,
                 country: customer.country,

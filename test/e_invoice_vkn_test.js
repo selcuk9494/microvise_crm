@@ -373,6 +373,97 @@ test('satır KDV yuvarlaması ile özet toplamını tutarlı üretir', () => {
   );
 });
 
+test('KDV dahil kesirli exclusive birim fiyatında satır matrahı toplamı tutarlı', () => {
+  // UI: KDV dahil 350/90/130/120/6×1.80 → exclusive 350/1.05 vb. (yuvarlanmadan DB'ye).
+  // Yuvarlamadan toplanırsa faturaToplami 655.31 / vergiDahil 700.81;
+  // satır satır 2 hane: 655.30 / 700.80 (Maliye beklediği).
+  const invoice = {
+    ...validInvoice(),
+    currency: 'USD',
+    exchange_rate: 42.5,
+    prices_include_vat: true,
+    subtotal: 655.3,
+    discount_total: 0,
+    tax_total: 45.5,
+    grand_total: 700.8,
+    items: [
+      {
+        description: 'PAX A910SF',
+        quantity: 1,
+        unit: 'Adet',
+        unit_price: 350 / 1.05,
+        tax_rate: 5,
+        tax_amount: 16.67,
+        discount_amount: 0,
+      },
+      {
+        description: 'PAX BASE',
+        quantity: 1,
+        unit: 'Adet',
+        unit_price: 90 / 1.05,
+        tax_rate: 5,
+        tax_amount: 4.29,
+        discount_amount: 0,
+      },
+      {
+        description: 'S210 PINPAD',
+        quantity: 1,
+        unit: 'Adet',
+        unit_price: 130 / 1.05,
+        tax_rate: 5,
+        tax_amount: 6.19,
+        discount_amount: 0,
+      },
+      {
+        description: 'GMP3 ENTEGRASYONU 2026 YILI',
+        quantity: 1,
+        unit: 'Adet',
+        unit_price: 120 / 1.16,
+        tax_rate: 16,
+        tax_amount: 16.55,
+        discount_amount: 0,
+      },
+      {
+        description: 'GPRS DATA 2026 YILI (6AY)',
+        quantity: 6,
+        unit: 'Adet',
+        unit_price: 1.8 / 1.2,
+        tax_rate: 20,
+        tax_amount: 1.8,
+        discount_amount: 0,
+      },
+    ],
+  };
+
+  const unroundedSum =
+    invoice.items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+  assert.ok(Math.abs(unroundedSum - 655.3054187) < 1e-6);
+  assert.equal(Math.round(unroundedSum * 100) / 100, 655.31);
+
+  const built = buildPayload({ settings: validSettings(), invoice });
+  const sent = built.payload.faturalar[0];
+  const lineTaxes = sent.malHizmetler.map((item) => item.vergiler[0].vergiTutari);
+  const lineNets = sent.malHizmetler.map((item) =>
+    Math.round(item.birimMiktari * item.fiyat * 100) / 100,
+  );
+
+  assert.deepEqual(lineNets, [333.33, 85.71, 123.81, 103.45, 9]);
+  assert.deepEqual(lineTaxes, [16.67, 4.29, 6.19, 16.55, 1.8]);
+  assert.equal(sent.faturaToplami, 655.3);
+  assert.equal(sent.kdvToplami, 45.5);
+  assert.equal(sent.vergiDahilToplam, 700.8);
+  assert.equal(sent.odenecekToplam, 700.8);
+  assert.equal(
+    sent.faturaToplami,
+    Math.round(lineNets.reduce((sum, value) => sum + value, 0) * 100) / 100,
+  );
+  assert.equal(
+    sent.vergiDahilToplam,
+    Math.round((sent.faturaToplami - sent.iskontoToplami + sent.kdvToplami) * 100) /
+      100,
+  );
+});
+
 test('Türkiye firmasının 10 haneli VKN değerini yabancı belge olarak korur', () => {
   const invoice = validInvoice();
   invoice.customer = {

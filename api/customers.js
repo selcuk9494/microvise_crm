@@ -112,6 +112,20 @@ function normalizeDigits(value) {
   return digits ? digits : null;
 }
 
+/** TCKN (rakam) veya MŞ mükellef no (harf+rakam) — harfler korunur. */
+function normalizeTcknMs(value) {
+  const raw = String(value || '')
+    .trim()
+    .replace(/[\s\-_.]/g, '');
+  if (!raw) return null;
+  const cleaned = raw.replace(/[^0-9A-Za-zÇĞİÖŞÜçğıöşü]/g, '');
+  if (!cleaned) return null;
+  if (/[A-Za-zÇĞİÖŞÜçğıöşü]/.test(cleaned)) {
+    return cleaned.toLocaleUpperCase('tr-TR');
+  }
+  return cleaned;
+}
+
 function isValidStoredVkn(value) {
   return value == null || /^[0-9]{10}$/.test(value);
 }
@@ -205,6 +219,7 @@ module.exports = async (req, res) => {
       const payloadRaw = {
         name,
         city: body.city ? String(body.city).trim() : null,
+        tax_office: body.tax_office ? String(body.tax_office).trim() : null,
         address: body.address ? String(body.address).trim() : null,
         country_code: String(body.country_code || 'XCT').trim().toUpperCase(),
         country: String(
@@ -216,7 +231,7 @@ module.exports = async (req, res) => {
         director_name: body.director_name ? String(body.director_name).trim() : null,
         email: normalizeEmail(body.email),
         vkn: normalizeDigits(body.vkn),
-        tckn_ms: normalizeDigits(body.tckn_ms),
+        tckn_ms: normalizeTcknMs(body.tckn_ms),
         phone_1_title: body.phone_1_title ? String(body.phone_1_title).trim() : null,
         phone_1: body.phone_1 ? String(body.phone_1).trim() : null,
         phone_2_title: body.phone_2_title ? String(body.phone_2_title).trim() : null,
@@ -298,6 +313,10 @@ module.exports = async (req, res) => {
       const payloadRaw = {
         name: body.name == null ? undefined : String(body.name || '').trim() || null,
         city: body.city == null ? undefined : String(body.city || '').trim() || null,
+        tax_office:
+          body.tax_office == null
+            ? undefined
+            : String(body.tax_office || '').trim() || null,
         address: body.address == null ? undefined : String(body.address || '').trim() || null,
         country_code:
           body.country_code == null
@@ -313,7 +332,8 @@ module.exports = async (req, res) => {
             : String(body.director_name || '').trim() || null,
         email: body.email == null ? undefined : normalizeEmail(body.email),
         vkn: body.vkn == null ? undefined : normalizeDigits(body.vkn),
-        tckn_ms: body.tckn_ms == null ? undefined : normalizeDigits(body.tckn_ms),
+        tckn_ms:
+          body.tckn_ms == null ? undefined : normalizeTcknMs(body.tckn_ms),
         phone_1_title:
           body.phone_1_title == null
             ? undefined
@@ -466,6 +486,7 @@ module.exports = async (req, res) => {
             c.id,
             c.name,
             c.city,
+            c.tax_office,
             c.address,
             c.country_code,
             c.country,
@@ -508,6 +529,7 @@ module.exports = async (req, res) => {
           c.id,
           c.name,
           c.city,
+          c.tax_office,
           c.address,
           c.country_code,
           c.country,

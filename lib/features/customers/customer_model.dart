@@ -3,6 +3,7 @@ class Customer {
     required this.id,
     required this.name,
     required this.city,
+    required this.taxOffice,
     required this.address,
     required this.countryCode,
     required this.country,
@@ -25,6 +26,7 @@ class Customer {
   final String id;
   final String name;
   final String? city;
+  final String? taxOffice;
   final String? address;
   final String countryCode;
   final String country;
@@ -48,6 +50,7 @@ class Customer {
       id: json['id'].toString(),
       name: (json['name'] ?? '').toString(),
       city: json['city']?.toString(),
+      taxOffice: json['tax_office']?.toString(),
       address: json['address']?.toString(),
       countryCode: json['country_code']?.toString() ?? 'XCT',
       country: json['country']?.toString() ?? 'Kuzey Kıbrıs Türk Cumhuriyeti',

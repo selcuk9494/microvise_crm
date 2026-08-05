@@ -1220,7 +1220,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               url: pdfUrl,
               fileName: customer.isEmpty
                   ? '$number.pdf'
-                  : '${number}_$customer.pdf',
+                  : '${customer}_$number.pdf',
               localPath: (localPath != null && localPath.isNotEmpty)
                   ? localPath
                   : null,
@@ -2580,6 +2580,7 @@ class _CustomerFilterDialogState extends State<_CustomerFilterDialog> {
                     id: '',
                     name: 'Cari: Tümü',
                     city: null,
+                    taxOffice: null,
                     address: null,
                     countryCode: 'XCT',
                     country: 'Kuzey Kıbrıs Türk Cumhuriyeti',
@@ -3866,7 +3867,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     final shareText = customer.isEmpty ? number : '$number - $customer';
     final fileName = customer.isEmpty
         ? '$number.pdf'
-        : '${number}_$customer.pdf';
+        : '${customer}_$number.pdf';
 
     final shareUrl = isLocalOpenPdfUrl(pdfUrl) ? '' : pdfUrl;
 

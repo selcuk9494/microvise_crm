@@ -496,6 +496,7 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
                     ),
                   ),
                   const Spacer(),
+                  const _ThemeModeControl(compact: true),
                   IconButton(
                     tooltip: 'Hesap',
                     onPressed: widget.onAccountTap,
@@ -815,7 +816,16 @@ Future<void> _showMobileAccountSheet(
                   ],
                 ),
               ),
-              const Gap(12),
+              const Gap(16),
+              Text(
+                'Tema',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Gap(8),
+              const _MobileThemeModePicker(),
+              const Gap(16),
               FilledButton.tonalIcon(
                 onPressed: () async {
                   ref
@@ -1051,8 +1061,14 @@ class _TopBar extends StatelessWidget {
   }
 }
 
+/// Masaüstü üst çubuk + mobil menü için ortak tema seçici.
+///
+/// `compact: true` yalnızca ikon gösterir (mobil Modüller sayfası);
+/// masaüstünde etiket + açılır menü kullanılır.
 class _ThemeModeControl extends ConsumerWidget {
-  const _ThemeModeControl();
+  const _ThemeModeControl({this.compact = false});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1065,35 +1081,51 @@ class _ThemeModeControl extends ConsumerWidget {
           borderRadius: BorderRadius.circular(AppTheme.radiusSm),
           onTap: () =>
               controller.isOpen ? controller.close() : controller.open(),
-          child: Container(
-            height: 40,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: AppTheme.surface.withValues(alpha: 0.85),
-              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-              border: Border.all(color: AppTheme.border.withValues(alpha: 0.4)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(themeModeIcon(mode), size: 18, color: AppTheme.textSoft),
-                const Gap(8),
-                Text(
-                  themeModeLabelTr(mode),
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.text,
-                    fontWeight: FontWeight.w700,
+          child: compact
+              ? SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: Icon(
+                    themeModeIcon(mode),
+                    size: 20,
+                    color: AppTheme.textSoft,
+                  ),
+                )
+              : Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surface.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                    border: Border.all(
+                      color: AppTheme.border.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        themeModeIcon(mode),
+                        size: 18,
+                        color: AppTheme.textSoft,
+                      ),
+                      const Gap(8),
+                      Text(
+                        themeModeLabelTr(mode),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.text,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Gap(2),
+                      Icon(
+                        AppPhosphorIcons.caretDown,
+                        size: 18,
+                        color: AppTheme.textMuted,
+                      ),
+                    ],
                   ),
                 ),
-                const Gap(2),
-                Icon(
-                  AppPhosphorIcons.caretDown,
-                  size: 18,
-                  color: AppTheme.textMuted,
-                ),
-              ],
-            ),
-          ),
         ),
       ),
       menuChildren: [
@@ -1126,6 +1158,54 @@ class _ThemeModeControl extends ConsumerWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// Mobil hesap sayfasındaki Açık / Koyu / Oto segment seçici.
+class _MobileThemeModePicker extends ConsumerWidget {
+  const _MobileThemeModePicker();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+
+    return SegmentedButton<ThemeMode>(
+      showSelectedIcon: false,
+      style: ButtonStyle(
+        visualDensity: VisualDensity.compact,
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 8),
+        ),
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return AppTheme.primary;
+          return AppTheme.textSoft;
+        }),
+        side: WidgetStatePropertyAll(
+          BorderSide(color: AppTheme.border.withValues(alpha: 0.7)),
+        ),
+      ),
+      segments: [
+        for (final option in const [
+          ThemeMode.light,
+          ThemeMode.dark,
+          ThemeMode.system,
+        ])
+          ButtonSegment<ThemeMode>(
+            value: option,
+            icon: Icon(themeModeIcon(option), size: 16),
+            label: Text(
+              themeModeLabelTr(option),
+              overflow: TextOverflow.ellipsis,
+            ),
+            tooltip: 'Tema: ${themeModeLabelTr(option)}',
+          ),
+      ],
+      selected: {mode},
+      onSelectionChanged: (selected) {
+        if (selected.isEmpty) return;
+        ref.read(themeModeProvider.notifier).setMode(selected.first);
+      },
     );
   }
 }
