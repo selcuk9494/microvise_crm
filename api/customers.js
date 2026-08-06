@@ -263,7 +263,7 @@ module.exports = async (req, res) => {
       if (payload.vkn) {
         const existing = await query(
           `
-            select id, name
+            select id, name, is_active
             from public.customers
             where vkn = $1
             limit 1
@@ -273,11 +273,16 @@ module.exports = async (req, res) => {
         if ((existing.rows || []).length) {
           const row = existing.rows[0] || {};
           const existingName = String(row.name || '').trim();
+          const isActive = row.is_active !== false;
+          const base = existingName
+            ? `Bu VKN ile kayıtlı müşteri var: ${existingName}`
+            : 'Bu VKN ile kayıtlı müşteri var.';
           return badRequest(
+            req,
             res,
-            existingName
-              ? `Bu VKN ile kayıtlı müşteri var: ${existingName}`
-              : 'Bu VKN ile kayıtlı müşteri var.',
+            isActive
+              ? base
+              : `${base} (pasif kayıt — listede pasifleri gösterip düzenleyin)`,
           );
         }
       }
@@ -381,7 +386,7 @@ module.exports = async (req, res) => {
       if (Object.prototype.hasOwnProperty.call(payload, 'vkn') && payload.vkn) {
         const existing = await query(
           `
-            select id, name
+            select id, name, is_active
             from public.customers
             where vkn = $1 and id <> $2
             limit 1
@@ -391,11 +396,16 @@ module.exports = async (req, res) => {
         if ((existing.rows || []).length) {
           const row = existing.rows[0] || {};
           const existingName = String(row.name || '').trim();
+          const isActive = row.is_active !== false;
+          const base = existingName
+            ? `Bu VKN ile kayıtlı müşteri var: ${existingName}`
+            : 'Bu VKN ile kayıtlı müşteri var.';
           return badRequest(
+            req,
             res,
-            existingName
-              ? `Bu VKN ile kayıtlı müşteri var: ${existingName}`
-              : 'Bu VKN ile kayıtlı müşteri var.',
+            isActive
+              ? base
+              : `${base} (pasif kayıt — listede pasifleri gösterip düzenleyin)`,
           );
         }
       }

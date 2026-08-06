@@ -370,7 +370,7 @@ class _AkinsoftFinanceShortcuts extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Akınsoft Finans (canlı senkron)',
+          'SAP Finans (canlı senkron)',
           style: Theme.of(
             context,
           ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),

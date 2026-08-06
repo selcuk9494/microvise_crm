@@ -9,6 +9,7 @@ import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/format/app_date_time.dart';
 import '../../core/ui/app_card.dart';
+import '../billing/application_form_invoice_link.dart';
 import '../customers/customers_providers.dart';
 import '../work_orders/currency_service.dart';
 import 'invoice_model.dart';
@@ -35,7 +36,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   String? _selectedCustomerId;
   DateTime _invoiceDate = normalizeAppDate(DateTime.now());
   DateTime? _dueDate = normalizeAppDate(DateTime.now());
-  String _currency = 'TRY';
+  late String _currency;
   double _exchangeRate = 1.0;
 
   final List<_ItemDraft> _items = [];
@@ -45,7 +46,6 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   @override
   void initState() {
     super.initState();
-    _loadRates();
 
     if (widget.editInvoice != null) {
       final inv = widget.editInvoice!;
@@ -74,13 +74,48 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
         );
       }
     } else {
+      // Yeni satış faturası: varsayılan USD + KDV hariç.
+      _currency = widget.invoiceType == 'sales' ? 'USD' : 'TRY';
       _items.add(_ItemDraft());
     }
+    _loadRates();
   }
 
   Future<void> _loadRates() async {
-    _rates = await CurrencyService.getExchangeRates();
-    if (mounted) setState(() {});
+    final apiClient = ref.read(apiClientProvider);
+    _rates = await CurrencyService.getExchangeRates(apiClient: apiClient);
+    if (!mounted) return;
+    setState(() {
+      if (widget.editInvoice == null && _currency != 'TRY') {
+        _exchangeRate = _rates[_currency] ?? _exchangeRate;
+      }
+    });
+  }
+
+  Future<void> _ensureCurrentExchangeRate() async {
+    if (_currency == 'TRY') {
+      _exchangeRate = 1.0;
+      return;
+    }
+    final autoRate = _rates[_currency];
+    final looksManual =
+        _exchangeRate > 1 &&
+        autoRate != null &&
+        autoRate > 0 &&
+        (_exchangeRate - autoRate).abs() / autoRate > 0.0005;
+    if (widget.editInvoice != null || looksManual) {
+      return;
+    }
+    final apiClient = ref.read(apiClientProvider);
+    final rates = await CurrencyService.getExchangeRates(apiClient: apiClient);
+    if (!mounted) return;
+    final fresh = rates[_currency];
+    setState(() {
+      _rates = rates;
+      if (fresh != null && fresh > 0) {
+        _exchangeRate = fresh;
+      }
+    });
   }
 
   @override
@@ -308,6 +343,9 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                                   ? 1.0
                                   : (_rates[v] ?? 1.0);
                             });
+                            if (v != 'TRY' && ((_rates[v] ?? 0) <= 1)) {
+                              _loadRates();
+                            }
                           },
                           decoration: const InputDecoration(
                             labelText: 'Para Birimi',
@@ -455,6 +493,9 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
     }
 
     try {
+      await _ensureCurrentExchangeRate();
+      if (!mounted) return;
+
       String invoiceNumber;
       if (widget.editInvoice != null) {
         invoiceNumber = widget.editInvoice!.invoiceNumber;
@@ -480,7 +521,9 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
         'invoice_date': formatAppDateIso(_invoiceDate),
         'due_date': _dueDate == null ? null : formatAppDateIso(_dueDate!),
         'currency': _currency,
-        'exchange_rate': _exchangeRate,
+        'exchange_rate': _currency == 'TRY' ? 1.0 : _exchangeRate,
+        // Klasik satış/alış formu fiyatları KDV hariç girer.
+        'prices_include_vat': false,
         'status': status,
         'notes': _notesController.text.trim().isEmpty
             ? null
@@ -564,6 +607,13 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
             'table': 'invoice_items',
             'rows': itemsData,
           },
+        );
+      }
+
+      if (widget.invoiceType == 'sales') {
+        await fillInvoiceDeviceNotesFromApplicationForms(
+          apiClient,
+          invoiceId: invoiceId,
         );
       }
 
@@ -768,8 +818,9 @@ class _ItemRow extends StatelessWidget {
                   initialValue: item.taxRate,
                   items: const [
                     DropdownMenuItem(value: 0.0, child: Text('%0')),
-                    DropdownMenuItem(value: 1.0, child: Text('%1')),
+                    DropdownMenuItem(value: 5.0, child: Text('%5')),
                     DropdownMenuItem(value: 10.0, child: Text('%10')),
+                    DropdownMenuItem(value: 16.0, child: Text('%16')),
                     DropdownMenuItem(value: 20.0, child: Text('%20')),
                   ],
                   onChanged: (v) {

@@ -336,6 +336,801 @@ async function materializeTaxpayerRegistrationDocument(values, formIdHint) {
   return next;
 }
 
+function textOrEmpty(value) {
+  return String(value ?? '').trim();
+}
+
+function round2(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+function round4(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round((n + Number.EPSILON) * 10000) / 10000;
+}
+
+const FX_FALLBACK = { USD: 49, EUR: 56.5, GBP: 66 };
+let mutateHalkbankRatesCache = { fetchedAtMs: 0, rates: null };
+
+function parseTrNumber(input) {
+  const v = String(input || '').trim();
+  if (!v) return null;
+  const normalized = v.replace(/\./g, '').replace(',', '.');
+  const n = Number.parseFloat(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseHalkbankSelling(html, slug) {
+  const idx = html.indexOf(`/halkbank/${slug}`);
+  if (idx < 0) return null;
+  const slice = html.substring(idx, Math.min(html.length, idx + 1000));
+  const bold = [...slice.matchAll(/<td class="text-bold"[^>]*>([^<]+)<\/td>/g)].map(
+    (m) => String(m[1] || '').trim(),
+  );
+  return parseTrNumber(bold[1]);
+}
+
+async function fetchHalkbankSellingRates() {
+  const nowMs = Date.now();
+  if (
+    mutateHalkbankRatesCache.rates &&
+    nowMs - mutateHalkbankRatesCache.fetchedAtMs < 60 * 1000
+  ) {
+    return mutateHalkbankRatesCache.rates;
+  }
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 9000);
+    const response = await fetch('https://kur.doviz.com/halkbank', {
+      signal: controller.signal,
+      headers: { 'user-agent': 'microvise-crm/1.0' },
+    });
+    clearTimeout(timer);
+    if (!response.ok) throw new Error(`halkbank http ${response.status}`);
+    const html = await response.text();
+    if (!html || html.length < 1000) throw new Error('halkbank empty');
+    const rates = {
+      USD: parseHalkbankSelling(html, 'amerikan-dolari') || FX_FALLBACK.USD,
+      EUR: parseHalkbankSelling(html, 'euro') || FX_FALLBACK.EUR,
+      GBP: parseHalkbankSelling(html, 'sterlin') || FX_FALLBACK.GBP,
+    };
+    mutateHalkbankRatesCache = { fetchedAtMs: nowMs, rates };
+    return rates;
+  } catch (_) {
+    return { ...FX_FALLBACK };
+  }
+}
+
+async function resolveProductForApplicationForm(form) {
+  const productId = textOrEmpty(form.stock_product_id);
+  if (productId) {
+    const byId = await query(
+      `
+        select id, name, code, sale_price, tax_rate, currency, unit
+        from public.products
+        where id = $1::uuid
+          and coalesce(is_active, true) = true
+        limit 1
+      `,
+      [productId],
+    );
+    if (byId.rows?.[0]) return byId.rows[0];
+  }
+
+  const model = textOrEmpty(form.model_name);
+  const brand = textOrEmpty(form.brand_name);
+  const stockName = textOrEmpty(form.stock_product_name);
+  if (!model && !brand && !stockName) return null;
+
+  const result = await query(
+    `
+      select id, name, code, sale_price, tax_rate, currency, unit,
+        (
+          case
+            when $1::text <> '' and lower(name) = lower($1) then 100
+            when $1::text <> '' and name ilike $1 then 90
+            when $1::text <> '' and name ilike '%' || $1 || '%' then 70
+            else 0
+          end
+          + case
+              when $2::text <> '' and $1::text <> ''
+                and name ilike '%' || $2 || '%' || $1 || '%'
+              then 40
+              when $2::text <> '' and name ilike '%' || $2 || '%' then 15
+              else 0
+            end
+          + case
+              when $3::text <> '' and lower(name) = lower($3) then 50
+              when $3::text <> '' and name ilike '%' || $3 || '%' then 25
+              else 0
+            end
+        )::int as score
+      from public.products
+      where coalesce(is_active, true) = true
+        and (
+          ($1::text <> '' and name ilike '%' || $1 || '%')
+          or ($2::text <> '' and name ilike '%' || $2 || '%')
+          or ($3::text <> '' and name ilike '%' || $3 || '%')
+        )
+      order by score desc, sale_price desc nulls last, name asc
+      limit 1
+    `,
+    [model, brand, stockName],
+  );
+  const row = result.rows?.[0];
+  return row && row.score > 0 ? row : null;
+}
+
+async function setApplicationFormInvoiceNumber(formId, invoiceNumber) {
+  const number = textOrEmpty(invoiceNumber);
+  if (!number) return;
+  await query(
+    `
+      update public.application_forms
+      set invoice_number = $2
+      where id = $1::uuid
+        and (
+          invoice_number is null
+          or btrim(invoice_number) = ''
+          or invoice_number = $2
+        )
+    `,
+    [formId, number],
+  );
+}
+
+async function markApplicationFormBillingQueueInvoiced(formId) {
+  try {
+    await query(
+      `
+        update public.invoice_items
+        set
+          status = 'invoiced',
+          invoiced_at = coalesce(invoiced_at, now())
+        where source_table = 'application_forms'
+          and source_id = $1::uuid
+          and invoice_id is null
+          and coalesce(status, 'pending') = 'pending'
+      `,
+      [formId],
+    );
+  } catch (_) {
+    // Eski şemada source/status kolonları yoksa sessiz geç.
+  }
+}
+
+async function findExistingSalesInvoiceForForm(form, formId, customerId) {
+  const explicitInvoice = textOrEmpty(form.invoice_number);
+  if (explicitInvoice) {
+    const byNumber = await query(
+      `
+        select i.id, i.invoice_number
+        from public.invoices i
+        where coalesce(i.invoice_type, 'sales') = 'sales'
+          and coalesce(i.is_active, true) = true
+          and coalesce(i.status, '') <> 'cancelled'
+          and (
+            i.invoice_number = $1
+            or i.invoice_number ilike '%' || $1
+            or regexp_replace(i.invoice_number, '^\\d{9}-', '') = $1
+          )
+          and (
+            i.customer_id = $2::uuid
+            or $2::text = ''
+          )
+        order by i.invoice_date desc nulls last
+        limit 1
+      `,
+      [explicitInvoice, customerId],
+    );
+    if (byNumber.rows?.[0]) return byNumber.rows[0];
+  }
+
+  const byNotes = await query(
+    `
+      select i.id, i.invoice_number
+      from public.invoices i
+      where i.customer_id = $1::uuid
+        and coalesce(i.invoice_type, 'sales') = 'sales'
+        and coalesce(i.is_active, true) = true
+        and coalesce(i.status, '') <> 'cancelled'
+        and coalesce(i.notes, '') ilike '%' || $2 || '%'
+      order by i.created_at desc nulls last
+      limit 1
+    `,
+    [customerId, formId],
+  );
+  return byNotes.rows?.[0] || null;
+}
+
+async function ensureInvoiceLineNotes(invoiceId, registry) {
+  const note = textOrEmpty(registry).toUpperCase();
+  if (!note) {
+    const anyLine = await query(
+      `
+        select id
+        from public.invoice_items
+        where invoice_id = $1::uuid
+        order by coalesce(sort_order, 0), created_at nulls last
+        limit 1
+      `,
+      [invoiceId],
+    );
+    return anyLine.rows?.[0]?.id || null;
+  }
+
+  const existing = await query(
+    `
+      select id
+      from public.invoice_items
+      where invoice_id = $1::uuid
+        and upper(btrim(coalesce(notes, ''))) = $2
+      order by coalesce(sort_order, 0), created_at nulls last
+      limit 1
+    `,
+    [invoiceId, note],
+  );
+  if (existing.rows?.[0]?.id) return existing.rows[0].id;
+
+  const empty = await query(
+    `
+      select id
+      from public.invoice_items
+      where invoice_id = $1::uuid
+        and nullif(btrim(coalesce(notes, '')), '') is null
+      order by coalesce(sort_order, 0), created_at nulls last
+      limit 1
+    `,
+    [invoiceId],
+  );
+  const itemId = empty.rows?.[0]?.id;
+  if (!itemId) return null;
+
+  await query(
+    `
+      update public.invoice_items
+      set notes = $2
+      where id = $1::uuid
+    `,
+    [itemId, note],
+  );
+  return itemId;
+}
+
+async function createSalesInvoiceForApplicationForm(form, formId, customerId) {
+  const product = await resolveProductForApplicationForm(form);
+  const brand = textOrEmpty(form.brand_name);
+  const model = textOrEmpty(form.model_name);
+  const stockName = textOrEmpty(form.stock_product_name);
+  const description =
+    textOrEmpty(product?.name) ||
+    [brand, model].filter(Boolean).join(' ').trim() ||
+    stockName ||
+    'ÖKC';
+  const unit = textOrEmpty(product?.unit) || 'Adet';
+  const taxRate = Number(product?.tax_rate);
+  const safeTaxRate = Number.isFinite(taxRate) ? taxRate : 20;
+  // Satış birim fiyatı KDV hariç; KDV ürün oranıyla ayrıca hesaplanır.
+  const unitPrice = round4(Number(product?.sale_price) || 0);
+  const taxAmount = round2(unitPrice * (safeTaxRate / 100));
+  const lineTotal = round2(unitPrice + taxAmount);
+  // Yalnızca yeni başvuru formu taslakları için varsayılan: KDV hariç + USD.
+  // Mevcut / WOLVOX'tan gelen faturaları güncellemez; sync import ayrı yoldan gider.
+  const currency = 'USD';
+  const rates = await fetchHalkbankSellingRates();
+  const exchangeRate = round4(rates.USD || FX_FALLBACK.USD || 1);
+
+  const numberResult = await query(
+    `select public.generate_invoice_number('sales') as value`,
+  );
+  const invoiceNumber =
+    textOrEmpty(numberResult.rows?.[0]?.value) ||
+    `STŞ-${Date.now()}`;
+
+  const registry = textOrEmpty(form.stock_registry_number).toUpperCase();
+  const invoiceDate =
+    form.application_date || new Date().toISOString().slice(0, 10);
+
+  const invoiceInsert = await query(
+    `
+      insert into public.invoices (
+        invoice_number,
+        invoice_type,
+        customer_id,
+        invoice_date,
+        currency,
+        exchange_rate,
+        prices_include_vat,
+        status,
+        notes,
+        is_active
+      )
+      values (
+        $1, 'sales', $2::uuid, $3::date, $4, $5, false, 'draft', null, true
+      )
+      returning id, invoice_number
+    `,
+    [invoiceNumber, customerId, invoiceDate, currency, exchangeRate],
+  );
+  const invoice = invoiceInsert.rows?.[0];
+  if (!invoice?.id) {
+    const err = new Error('Satış faturası oluşturulamadı.');
+    err.statusCode = 500;
+    throw err;
+  }
+
+  const itemInsert = await query(
+    `
+      insert into public.invoice_items (
+        invoice_id,
+        product_id,
+        customer_id,
+        item_type,
+        source_table,
+        source_id,
+        source_event,
+        source_label,
+        description,
+        notes,
+        quantity,
+        unit,
+        unit_price,
+        tax_rate,
+        tax_amount,
+        discount_rate,
+        discount_amount,
+        line_total,
+        sort_order,
+        status,
+        is_active
+      )
+      values (
+        $1::uuid,
+        $2::uuid,
+        $3::uuid,
+        'application_form',
+        'application_forms',
+        $4::uuid,
+        'application_form_sales_invoice',
+        'Başvuru Formu',
+        $5,
+        $6,
+        1,
+        $7,
+        $8,
+        $9,
+        $10,
+        0,
+        0,
+        $11,
+        0,
+        'invoiced',
+        true
+      )
+      returning id
+    `,
+    [
+      invoice.id,
+      product?.id || null,
+      customerId,
+      formId,
+      description,
+      registry || null,
+      unit,
+      unitPrice,
+      safeTaxRate,
+      taxAmount,
+      lineTotal,
+    ],
+  );
+
+  await setApplicationFormInvoiceNumber(formId, invoice.invoice_number);
+  await markApplicationFormBillingQueueInvoiced(formId);
+
+  return {
+    created: true,
+    linked: true,
+    registry: registry || null,
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoice_number,
+    invoiceItemId: itemInsert.rows?.[0]?.id || null,
+    status: 'draft',
+    currency,
+    exchangeRate,
+    unitPrice,
+    taxRate: safeTaxRate,
+    productId: product?.id || null,
+    productName: description,
+    reason: product ? null : 'product_not_found_zero_price',
+  };
+}
+
+/**
+ * Başvuru formu için satış e-faturası oluşturur / bağlar.
+ * 1) Formda invoice_number veya form notu ile mevcut fatura varsa tekrar oluşturmaz
+ * 2) Uygun açık kalem varsa sicili notes'a yazar
+ * 3) Yoksa E-Fatura listesinde görünen taslak satış faturası + kalem oluşturur
+ */
+async function linkApplicationFormDeviceToInvoice(body) {
+  await ensureInvoiceItemsTable();
+  await ensureInvoicePricesIncludeVatColumn();
+
+  const formId = textOrEmpty(body.applicationFormId || body.formId || body.id);
+  if (!formId) {
+    const err = new Error('applicationFormId zorunludur.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const formResult = await query(
+    `
+      select
+        id,
+        customer_id,
+        model_name,
+        brand_name,
+        stock_product_id,
+        stock_product_name,
+        stock_registry_number,
+        invoice_number,
+        application_date::date as application_date
+      from public.application_forms
+      where id = $1::uuid
+      limit 1
+    `,
+    [formId],
+  );
+  const form = formResult.rows?.[0];
+  if (!form) {
+    const err = new Error('Başvuru formu bulunamadı.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const registry = textOrEmpty(form.stock_registry_number).toUpperCase();
+  const customerId = textOrEmpty(form.customer_id);
+  if (!customerId) {
+    return {
+      created: false,
+      linked: false,
+      reason: 'missing_customer',
+    };
+  }
+
+  // 1) Bu başvuruya zaten bağlı fatura varsa tekrar oluşturma.
+  const existing = await findExistingSalesInvoiceForForm(
+    form,
+    formId,
+    customerId,
+  );
+  if (existing?.id) {
+    const itemId = await ensureInvoiceLineNotes(existing.id, registry);
+    // Eski taslaklarda header notuna yazılmış başvuru id'sini temizle
+    await query(
+      `
+        update public.invoices
+        set notes = null
+        where id = $1::uuid
+          and status = 'draft'
+          and notes ~* '^Başvuru formu:\\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\s*$'
+      `,
+      [existing.id],
+    );
+    await setApplicationFormInvoiceNumber(formId, existing.invoice_number);
+    await markApplicationFormBillingQueueInvoiced(formId);
+    return {
+      created: false,
+      linked: true,
+      reason: 'already_linked',
+      registry: registry || null,
+      invoiceId: existing.id,
+      invoiceNumber: existing.invoice_number,
+      invoiceItemId: itemId,
+    };
+  }
+
+  const model = textOrEmpty(form.model_name);
+  const explicitInvoice = textOrEmpty(form.invoice_number);
+
+  // 2) Müşteri + model / numara ile uygun mevcut kaleme bağlan.
+  if (registry || model || explicitInvoice) {
+    const match = await query(
+      `
+        with candidates as (
+          select
+            ii.id as item_id,
+            i.id as invoice_id,
+            i.invoice_number,
+            i.invoice_date,
+            (
+              case
+                when $4::text <> ''
+                  and (
+                    i.invoice_number = $4
+                    or i.invoice_number ilike '%' || $4
+                    or regexp_replace(i.invoice_number, '^\\d{9}-', '') = $4
+                  )
+                then 100
+                else 0
+              end
+              + case
+                  when $3::text <> ''
+                    and (
+                      ii.description ilike '%' || $3 || '%'
+                      or coalesce(p.name, '') ilike '%' || $3 || '%'
+                    )
+                  then 50
+                  else 0
+                end
+              + case
+                  when $2::text = '' then 0
+                  when nullif(btrim(coalesce(ii.notes, '')), '') is null then 10
+                  when upper(btrim(ii.notes)) = $2 then 5
+                  else -100
+                end
+              - least(
+                  abs(
+                    extract(
+                      epoch from (
+                        i.invoice_date::timestamp
+                        - coalesce($5::date, current_date)::timestamp
+                      )
+                    ) / 86400.0
+                  ),
+                  45
+                )::int
+            )::int as score
+          from public.invoices i
+          join public.invoice_items ii
+            on ii.invoice_id = i.id
+          left join public.products p
+            on p.id = ii.product_id
+          where i.customer_id = $1::uuid
+            and coalesce(i.invoice_type, 'sales') = 'sales'
+            and coalesce(i.is_active, true) = true
+            and coalesce(i.status, '') <> 'cancelled'
+            and (
+              (
+                $4::text <> ''
+                and (
+                  i.invoice_number = $4
+                  or i.invoice_number ilike '%' || $4
+                  or regexp_replace(i.invoice_number, '^\\d{9}-', '') = $4
+                )
+              )
+              or (
+                $3::text <> ''
+                and (
+                  ii.description ilike '%' || $3 || '%'
+                  or coalesce(p.name, '') ilike '%' || $3 || '%'
+                )
+                and i.invoice_date between
+                  coalesce($5::date, current_date) - 45
+                  and coalesce($5::date, current_date) + 45
+              )
+            )
+            and (
+              $2::text = ''
+              or nullif(btrim(coalesce(ii.notes, '')), '') is null
+              or upper(btrim(ii.notes)) = $2
+            )
+        )
+        select item_id, invoice_id, invoice_number, score
+        from candidates
+        where score > 0
+        order by score desc, invoice_date desc nulls last
+        limit 1
+      `,
+      [
+        customerId,
+        registry,
+        model,
+        explicitInvoice,
+        form.application_date || null,
+      ],
+    );
+
+    const row = match.rows?.[0];
+    if (row?.item_id) {
+      if (registry) {
+        await query(
+          `
+            update public.invoice_items
+            set notes = $2
+            where id = $1::uuid
+          `,
+          [row.item_id, registry],
+        );
+      }
+      await setApplicationFormInvoiceNumber(formId, row.invoice_number);
+      await markApplicationFormBillingQueueInvoiced(formId);
+      return {
+        created: false,
+        linked: true,
+        reason: 'matched_existing_line',
+        registry: registry || null,
+        invoiceId: row.invoice_id,
+        invoiceNumber: row.invoice_number,
+        invoiceItemId: row.item_id,
+      };
+    }
+  }
+
+  // 3) Uygun fatura yoksa E-Fatura taslağı oluştur.
+  return createSalesInvoiceForApplicationForm(form, formId, customerId);
+}
+
+/**
+ * Başvuru kaydı sonrası: müşteri varsa taslak satış e-faturası oluştur / bağla.
+ * Form kaydını bozmamak için hata fırlatmaz; sonucu döner.
+ */
+async function maybeLinkApplicationFormInvoice(formId) {
+  const id = textOrEmpty(formId);
+  if (!id) return null;
+  try {
+    return await linkApplicationFormDeviceToInvoice({ applicationFormId: id });
+  } catch (error) {
+    return {
+      created: false,
+      linked: false,
+      reason: 'error',
+      error: error?.message || String(error),
+    };
+  }
+}
+
+/**
+ * Satış faturası kaydından sonra: boş kalem açıklamalarına, aynı müşteriye ait
+ * eşleşen başvuru formu cihaz sicillerini yazar.
+ */
+async function fillInvoiceDeviceNotesFromApplicationForms(body) {
+  const invoiceId = textOrEmpty(body.invoiceId);
+  if (!invoiceId) {
+    const err = new Error('invoiceId zorunludur.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const invoiceResult = await query(
+    `
+      select id, customer_id, invoice_number, invoice_date::date as invoice_date,
+             coalesce(invoice_type, 'sales') as invoice_type
+      from public.invoices
+      where id = $1::uuid
+      limit 1
+    `,
+    [invoiceId],
+  );
+  const invoice = invoiceResult.rows?.[0];
+  if (!invoice) {
+    const err = new Error('Fatura bulunamadı.');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (invoice.invoice_type !== 'sales') {
+    return { updated: 0, reason: 'not_sales' };
+  }
+  const customerId = textOrEmpty(invoice.customer_id);
+  if (!customerId) {
+    return { updated: 0, reason: 'missing_customer' };
+  }
+
+  const lines = await query(
+    `
+      select
+        ii.id,
+        ii.description,
+        ii.notes,
+        coalesce(p.name, '') as product_name
+      from public.invoice_items ii
+      left join public.products p on p.id = ii.product_id
+      where ii.invoice_id = $1::uuid
+        and nullif(btrim(coalesce(ii.notes, '')), '') is null
+      order by coalesce(ii.sort_order, 0), ii.created_at nulls last
+    `,
+    [invoiceId],
+  );
+
+  const usedRegistries = new Set();
+  let updated = 0;
+  const links = [];
+
+  for (const line of lines.rows || []) {
+    const haystack = `${line.description || ''} ${line.product_name || ''}`
+      .trim()
+      .toLocaleLowerCase('tr-TR');
+    if (!haystack) continue;
+
+    const forms = await query(
+      `
+        select
+          id,
+          model_name,
+          stock_registry_number,
+          application_date::date as application_date
+        from public.application_forms
+        where customer_id = $1::uuid
+          and coalesce(is_active, true) = true
+          and nullif(btrim(coalesce(stock_registry_number, '')), '') is not null
+          and application_date between
+            coalesce($2::date, current_date) - 45
+            and coalesce($2::date, current_date) + 45
+        order by application_date desc nulls last, created_at desc nulls last
+      `,
+      [customerId, invoice.invoice_date || null],
+    );
+
+    let best = null;
+    for (const form of forms.rows || []) {
+      const registry = textOrEmpty(form.stock_registry_number).toUpperCase();
+      if (!registry || usedRegistries.has(registry)) continue;
+      const model = textOrEmpty(form.model_name).toLocaleLowerCase('tr-TR');
+      if (!model || !haystack.includes(model)) continue;
+
+      // Sicil başka bir fatura kaleminde kullanılıyorsa atla.
+      const taken = await query(
+        `
+          select 1
+          from public.invoice_items ii
+          join public.invoices i on i.id = ii.invoice_id
+          where upper(btrim(coalesce(ii.notes, ''))) = $1
+            and ii.invoice_id is not null
+            and coalesce(i.is_active, true) = true
+            and coalesce(i.status, '') <> 'cancelled'
+          limit 1
+        `,
+        [registry],
+      );
+      if (taken.rows?.length) continue;
+
+      best = { form, registry };
+      break;
+    }
+
+    if (!best) continue;
+
+    await query(
+      `
+        update public.invoice_items
+        set notes = $2
+        where id = $1::uuid
+          and nullif(btrim(coalesce(notes, '')), '') is null
+      `,
+      [line.id, best.registry],
+    );
+    usedRegistries.add(best.registry);
+
+    const invoiceNumber = textOrEmpty(invoice.invoice_number);
+    if (invoiceNumber) {
+      await query(
+        `
+          update public.application_forms
+          set invoice_number = $2
+          where id = $1::uuid
+            and (
+              invoice_number is null
+              or btrim(invoice_number) = ''
+              or invoice_number = $2
+            )
+        `,
+        [best.form.id, invoiceNumber],
+      );
+    }
+
+    updated += 1;
+    links.push({
+      invoiceItemId: line.id,
+      applicationFormId: best.form.id,
+      registry: best.registry,
+    });
+  }
+
+  return { updated, links, invoiceNumber: invoice.invoice_number };
+}
+
 const allowedTables = new Set([
   'application_forms',
   'branches',
@@ -1093,6 +1888,43 @@ module.exports = async (req, res) => {
         throw error;
       }
     }
+    if (
+      op === 'linkApplicationFormDeviceToInvoice' ||
+      op === 'ensureApplicationFormSalesInvoice'
+    ) {
+      if (
+        !hasPageAccess(user, 'formlar') &&
+        !hasPageAccess(user, 'e_fatura') &&
+        !hasPageAccess(user, 'faturalama')
+      ) {
+        return forbidden(req, res);
+      }
+      try {
+        return ok(req, res, await linkApplicationFormDeviceToInvoice(body));
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'fillInvoiceDeviceNotesFromApplicationForms') {
+      if (
+        !hasPageAccess(user, 'e_fatura') &&
+        !hasPageAccess(user, 'formlar') &&
+        !hasPageAccess(user, 'faturalama')
+      ) {
+        return forbidden(req, res);
+      }
+      try {
+        return ok(
+          req,
+          res,
+          await fillInvoiceDeviceNotesFromApplicationForms(body),
+        );
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
     if (op === 'uploadFormDocument') {
       const uploadTable = String(body.table || '').trim();
       if (!['scrap_forms', 'transfer_forms', 'fault_forms'].includes(uploadTable)) {
@@ -1230,6 +2062,7 @@ module.exports = async (req, res) => {
         await assertApplicationFormsMutable({ op, values });
       }
       const result = await upsertRow({ table, values, returningRow, user });
+      let invoiceLink = null;
       if (table === 'application_forms' && result.id) {
         const after = await selectApplicationFormAuditRow(result.id);
         await insertApplicationFormLog({
@@ -1239,8 +2072,21 @@ module.exports = async (req, res) => {
           after,
           user,
         });
+        if (textOrEmpty(after?.customer_id || values?.customer_id)) {
+          invoiceLink = await maybeLinkApplicationFormInvoice(result.id);
+        } else {
+          invoiceLink = {
+            created: false,
+            linked: false,
+            reason: 'missing_customer',
+          };
+        }
       }
-      return ok(req, res, { ok: true, ...result });
+      return ok(req, res, {
+        ok: true,
+        ...result,
+        ...(invoiceLink ? { invoiceLink } : {}),
+      });
     }
 
     if (op === 'delete') {
@@ -1285,6 +2131,7 @@ module.exports = async (req, res) => {
         await assertApplicationFormsMutable({ op, values, filters });
       }
       await updateWhere({ table, values, filters, user });
+      let invoiceLink = null;
       if (table === 'application_forms' && formId) {
         const after = await selectApplicationFormAuditRow(formId);
         const action =
@@ -1300,8 +2147,14 @@ module.exports = async (req, res) => {
           after,
           user,
         });
+        if (textOrEmpty(after?.customer_id)) {
+          invoiceLink = await maybeLinkApplicationFormInvoice(formId);
+        }
       }
-      return ok(req, res, { ok: true });
+      return ok(req, res, {
+        ok: true,
+        ...(invoiceLink ? { invoiceLink } : {}),
+      });
     }
 
     if (op === 'deleteWhere') {

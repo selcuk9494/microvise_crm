@@ -222,7 +222,18 @@ module.exports = async (req, res) => {
       if (!requirePage(req, user, 'finans', res)) return;
     }
     if (resource === 'halkbank_exchange_rates') {
-      if (!requirePage(req, user, 'panel', res)) return;
+      // Panel + fatura/iş emri: fatura oluştururken güncel kur için.
+      if (
+        !requireAnyPage(req, user, [
+          'panel',
+          'e_fatura',
+          'faturalama',
+          'finans',
+          'is_emirleri',
+        ], res)
+      ) {
+        return;
+      }
     }
     if (resource === 'definition_region_colors') {
       if (!requirePage(req, user, 'tanimlamalar', res)) return;

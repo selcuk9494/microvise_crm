@@ -25,6 +25,7 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../billing/application_form_invoice_link.dart';
 import '../billing/invoice_queue_helper.dart';
 import '../customers/web_download_helper.dart'
     if (dart.library.io) '../customers/io_download_helper.dart';
@@ -1302,6 +1303,11 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
             },
           );
         }
+        await linkApplicationFormDeviceToInvoice(
+          apiClient,
+          applicationFormId: record.id,
+          throwOnFailure: false,
+        );
       } else {
         if (client == null) return;
         await client
@@ -1476,6 +1482,11 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
               },
             );
           }
+          await linkApplicationFormDeviceToInvoice(
+            apiClient,
+            applicationFormId: record.id,
+            throwOnFailure: false,
+          );
         } else {
           if (client == null) return;
           await client
@@ -5300,6 +5311,14 @@ class _ApplicationFormDialogState
       ).showSnackBar(const SnackBar(content: Text('Ürün ismi girin.')));
       return;
     }
+    if ((customer?.id ?? '').trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('E-Fatura için müşteri seçin.'),
+        ),
+      );
+      return;
+    }
     if (registryNumbers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('En az bir sicil numarası seçin.')),
@@ -5366,6 +5385,7 @@ class _ApplicationFormDialogState
       if (widget.isEdit) {
         final primaryRegistry = registryNumbers.first;
         Map<String, dynamic> inserted;
+        Object? invoiceLinkError;
         if (apiClient != null) {
           final response = await apiClient.postJson(
             '/mutate',
@@ -5383,6 +5403,11 @@ class _ApplicationFormDialogState
             },
           );
           inserted = (response['row'] as Map?)?.cast<String, dynamic>() ?? {};
+          try {
+            assertApplicationFormInvoiceLink(response);
+          } catch (e) {
+            invoiceLinkError = e;
+          }
         } else {
           inserted = await client!
               .from('application_forms')
@@ -5452,6 +5477,16 @@ class _ApplicationFormDialogState
                 },
               );
             }
+            if ((record.customerId ?? '').trim().isNotEmpty) {
+              try {
+                await linkApplicationFormDeviceToInvoice(
+                  apiClient,
+                  applicationFormId: record.id,
+                );
+              } catch (e) {
+                invoiceLinkError ??= e;
+              }
+            }
           } else {
             if (client != null) {
               if (oldRegistry.isNotEmpty && oldRegistry != registry) {
@@ -5479,10 +5514,26 @@ class _ApplicationFormDialogState
                 });
               }
             }
+            final linkClient = ref.read(apiClientProvider);
+            if (linkClient != null &&
+                (record.customerId ?? '').trim().isNotEmpty) {
+              try {
+                await linkApplicationFormDeviceToInvoice(
+                  linkClient,
+                  applicationFormId: record.id,
+                );
+              } catch (e) {
+                invoiceLinkError ??= e;
+              }
+            }
           }
         } catch (_) {}
 
         if (!mounted) return;
+        if (invoiceLinkError != null) {
+          await showApplicationFormInvoiceError(context, invoiceLinkError);
+          if (!mounted) return;
+        }
         Navigator.of(context).pop([ApplicationFormRecord.fromJson(inserted)]);
         return;
       }
@@ -5502,6 +5553,7 @@ class _ApplicationFormDialogState
               .toList(growable: false);
 
       final List<ApplicationFormRecord> insertedRecords;
+      Object? invoiceLinkError;
       if (apiClient != null) {
         final rows = <Map<String, dynamic>>[];
         for (final payload in payloads) {
@@ -5516,6 +5568,11 @@ class _ApplicationFormDialogState
           );
           final row = (response['row'] as Map?)?.cast<String, dynamic>();
           if (row != null && row.isNotEmpty) rows.add(row);
+          try {
+            assertApplicationFormInvoiceLink(response);
+          } catch (e) {
+            invoiceLinkError ??= e;
+          }
         }
         insertedRecords = rows
             .map(ApplicationFormRecord.fromJson)
@@ -5539,7 +5596,7 @@ class _ApplicationFormDialogState
                       '${modelName != null && modelName.isNotEmpty ? ' / $modelName' : ''}'
                       '${inserted.stockRegistryNumber?.trim().isNotEmpty ?? false ? ' / ${inserted.stockRegistryNumber!.trim()}' : ''}',
                   'amount': null,
-                  'currency': 'TRY',
+                  'currency': 'USD',
                   'status': 'pending',
                   'is_active': true,
                   'source_event': 'application_form_created',
@@ -5548,6 +5605,17 @@ class _ApplicationFormDialogState
               ],
             },
           );
+          // Sunucu upsert sırasında fatura oluşturur; yine de eşitlemek için dene.
+          if ((inserted.customerId ?? customer?.id ?? '').trim().isNotEmpty) {
+            try {
+              await linkApplicationFormDeviceToInvoice(
+                apiClient,
+                applicationFormId: inserted.id,
+              );
+            } catch (e) {
+              invoiceLinkError ??= e;
+            }
+          }
         }
 
         try {
@@ -5656,6 +5724,24 @@ class _ApplicationFormDialogState
           );
         }
 
+        // E-Fatura taslağı oluştur / bağla (API üzerinden).
+        final linkClient = ref.read(apiClientProvider);
+        if (linkClient != null) {
+          for (final inserted in insertedRecords) {
+            if ((inserted.customerId ?? customer?.id ?? '').trim().isEmpty) {
+              continue;
+            }
+            try {
+              await linkApplicationFormDeviceToInvoice(
+                linkClient,
+                applicationFormId: inserted.id,
+              );
+            } catch (e) {
+              invoiceLinkError ??= e;
+            }
+          }
+        }
+
         try {
           final nowIso = DateTime.now().toIso8601String();
           for (final inserted in insertedRecords) {
@@ -5723,6 +5809,10 @@ class _ApplicationFormDialogState
       }
 
       if (!mounted) return;
+      if (invoiceLinkError != null) {
+        await showApplicationFormInvoiceError(context, invoiceLinkError);
+        if (!mounted) return;
+      }
       Navigator.of(context).pop(insertedRecords);
     } finally {
       if (mounted) setState(() => _saving = false);

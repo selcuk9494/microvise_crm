@@ -134,9 +134,11 @@ class _WorkOrderDetailSheetState extends ConsumerState<_WorkOrderDetailSheet> {
   Future<void> _loadExchangeRates() async {
     setState(() => _loadingRates = true);
     try {
-      _exchangeRates = await CurrencyService.getExchangeRates();
+      _exchangeRates = await CurrencyService.getExchangeRates(
+        apiClient: ref.read(apiClientProvider),
+      );
     } catch (_) {
-      _exchangeRates = {'USD': 34.50, 'EUR': 37.20, 'GBP': 43.80};
+      _exchangeRates = {'USD': 49.0, 'EUR': 56.5, 'GBP': 66.0};
     }
     if (mounted) setState(() => _loadingRates = false);
   }

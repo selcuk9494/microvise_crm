@@ -202,6 +202,10 @@ async function handleAkinsoftTestConnection(req, res) {
   }
 }
 
+// CRM MSSQL bağlantılarının program_name değeri (dm_exec_sessions).
+// Havuzdaki DATABASE S kilitlerini WOLVOX engeli sanmamak için kullanılır.
+const AKINSOFT_CRM_APP_NAME = 'microvise-crm';
+
 function buildAkinsoftSqlConfig(body) {
   // UI her istekte şifreyi gönderir; yerelde kalıcı olsun ki CLI/senkron da çalışsın.
   try {
@@ -269,6 +273,8 @@ function buildAkinsoftSqlConfig(body) {
         encrypt: false,
         trustServerCertificate: true,
         enableArithAbort: true,
+        // CRM havuzunu WOLVOX/SSMS'ten ayırt etmek için (dm_exec_sessions.program_name).
+        appName: AKINSOFT_CRM_APP_NAME,
       },
       connectionTimeout: 8000,
       requestTimeout: 90000,
@@ -288,6 +294,464 @@ function withTimeout(promise, ms, message) {
     timer = setTimeout(() => reject(new Error(message)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+// Akınsoft/WOLVOX MSSQL yazımında kilit bekleme süresi (ms). WOLVOX açıkken
+// ilgili tablolar kilitli olabilir; 180 sn beklemek yerine bu sürede net hata
+// döndürürüz. Ortam değişkeni ile ayarlanabilir.
+const AKINSOFT_LOCK_TIMEOUT_MS = Math.max(
+  Number(process.env.AKINSOFT_LOCK_TIMEOUT_MS || 0) || 15000,
+  1000,
+);
+
+// Yanıttaki build etiketi — istemci/log'da hangi sunucu kodunun yanıt verdiğini gösterir.
+const AKINSOFT_SERVER_BUILD = 'stok-fiyat-kdv-haric-v16';
+
+// Geçici 1222 için kısa üstel retry (yalnızca gerçek kilit hatasında ödenir).
+// Happy path: ilk deneme başarılıysa backoff / retry maliyeti yok.
+const AKINSOFT_LOCK_RETRY_MAX = Math.max(
+  Number(process.env.AKINSOFT_LOCK_RETRY_MAX || 0) || 3,
+  1,
+);
+const AKINSOFT_LOCK_RETRY_BASE_MS = Math.max(
+  Number(process.env.AKINSOFT_LOCK_RETRY_BASE_MS || 0) || 200,
+  50,
+);
+const AKINSOFT_LOCK_RETRY_CAP_MS = Math.max(
+  Number(process.env.AKINSOFT_LOCK_RETRY_CAP_MS || 0) || 800,
+  AKINSOFT_LOCK_RETRY_BASE_MS,
+);
+// TX-order (BLKODU rezervasyonu TX dışı) ile self-lock giderildi; batch arası bekleme gerekmez.
+const AKINSOFT_INTER_INVOICE_DELAY_MS = Math.max(
+  Number(
+    process.env.AKINSOFT_INTER_INVOICE_DELAY_MS === undefined
+      ? 0
+      : process.env.AKINSOFT_INTER_INVOICE_DELAY_MS,
+  ) || 0,
+  0,
+);
+// Lock DMV monitor: hızlı başarıda hiç sorgu atılmaz (lazy start).
+const AKINSOFT_LOCK_MONITOR_DELAY_MS = Math.max(
+  Number(process.env.AKINSOFT_LOCK_MONITOR_DELAY_MS || 0) || 2000,
+  0,
+);
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Lazy lock monitor: delayMs dolmadan işlem biterse DMV sorgusu yok. */
+function startAkinsoftLockMonitor(pool, sql, spid, { delayMs, intervalMs, maxTicks } = {}) {
+  const startDelay =
+    delayMs == null ? AKINSOFT_LOCK_MONITOR_DELAY_MS : Math.max(Number(delayMs) || 0, 0);
+  const tickMs = Math.max(Number(intervalMs) || 1000, 200);
+  const ticks = Math.max(Number(maxTicks) || 14, 1);
+  let stop = false;
+  let selfWait = null;
+  let wakeSleep = null;
+  const interruptibleSleep = (ms) =>
+    new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        wakeSleep = null;
+        resolve();
+      }, ms);
+      wakeSleep = () => {
+        clearTimeout(timer);
+        wakeSleep = null;
+        resolve();
+      };
+    });
+  const promise = (async () => {
+    if (!spid) return;
+    if (startDelay > 0) {
+      await interruptibleSleep(startDelay);
+      if (stop) return;
+    }
+    for (let k = 0; k < ticks && !stop; k += 1) {
+      try {
+        const w = await pool.request().input('spid', sql.Int, spid).query(`
+          select top 1
+            r.status as reqStatus, r.command as command,
+            r.wait_type as waitType, r.wait_resource as waitResource,
+            r.blocking_session_id as blockingSessionId,
+            bs.program_name as blockerProgram, bs.host_name as blockerHost,
+            bs.login_name as blockerLogin, bs.status as blockerStatus,
+            datediff(second, bs.last_request_start_time, getdate()) as blockerIdleSec
+          from sys.dm_exec_requests r
+          left join sys.dm_exec_sessions bs on bs.session_id = r.blocking_session_id
+          where r.session_id = @spid
+            and (r.wait_type is not null or r.blocking_session_id <> 0)
+        `);
+        const row = w.recordset?.[0];
+        if (row && (row.waitType || row.blockingSessionId)) {
+          selfWait = {
+            command: textOrNull(row.command),
+            waitType: textOrNull(row.waitType),
+            waitResource: textOrNull(row.waitResource),
+            blockingSessionId: row.blockingSessionId || 0,
+            blockerProgram: textOrNull(row.blockerProgram),
+            blockerHost: textOrNull(row.blockerHost),
+            blockerLogin: textOrNull(row.blockerLogin),
+            blockerStatus: textOrNull(row.blockerStatus),
+            blockerIdleSec: row.blockerIdleSec ?? null,
+          };
+          if (row.blockingSessionId) break;
+        }
+      } catch (_) {
+        // monitor opsiyonel
+      }
+      if (stop) break;
+      await interruptibleSleep(tickMs);
+    }
+  })();
+  return {
+    get selfWait() {
+      return selfWait;
+    },
+    stop() {
+      stop = true;
+      if (wakeSleep) wakeSleep();
+    },
+    async done() {
+      stop = true;
+      if (wakeSleep) wakeSleep();
+      try {
+        await promise;
+      } catch (_) {}
+    },
+  };
+}
+
+function extractAkinsoftSqlError(error) {
+  if (!error) return null;
+  const info = error?.originalError?.info || {};
+  const number = Number(error.number ?? info.number ?? 0) || null;
+  const message = String(error.message || error || '').slice(0, 500);
+  if (!number && !message) return null;
+  return {
+    number,
+    code: textOrNull(error.code) || null,
+    message,
+    state: error.state ?? info.state ?? null,
+    class: error.class ?? info.class ?? null,
+    procName: textOrNull(error.procName ?? info.procName),
+    lineNumber: error.lineNumber ?? info.lineNumber ?? null,
+  };
+}
+
+// fn(attempt) sonuç döndürmeli. __lock true ise backoff ile tekrar dener.
+async function withAkinsoftLockRetry(fn, { label } = {}) {
+  const attempts = [];
+  let last = null;
+  for (let attempt = 0; attempt < AKINSOFT_LOCK_RETRY_MAX; attempt += 1) {
+    last = await fn(attempt);
+    if (!last || last.ok || !last.__lock) {
+      if (last && attempts.length) last.lockRetries = attempts;
+      if (last) delete last.__lock;
+      return last;
+    }
+    attempts.push({
+      attempt: attempt + 1,
+      label: label || null,
+      phase: last.phase || null,
+      reason: last.reason || null,
+      sqlError: last.sqlError || null,
+      selfWait: last.selfWait || null,
+    });
+    if (attempt + 1 >= AKINSOFT_LOCK_RETRY_MAX) break;
+    const delay = Math.min(
+      AKINSOFT_LOCK_RETRY_CAP_MS,
+      AKINSOFT_LOCK_RETRY_BASE_MS * 2 ** attempt,
+    );
+    await sleepMs(delay);
+  }
+  if (last) {
+    last.lockRetries = attempts;
+    delete last.__lock;
+  }
+  return last;
+}
+
+// node-mssql / tedious / kendi appName — bunlar "WOLVOX açık" sayılmaz.
+function isOwnAkinsoftProgram(programName) {
+  const p = String(programName || '').trim().toLowerCase();
+  if (!p) return false;
+  return (
+    p === 'node-mssql' ||
+    p === String(AKINSOFT_CRM_APP_NAME).toLowerCase() ||
+    p.includes('microvise') ||
+    p.includes('tedious') ||
+    p.includes('node-mssql')
+  );
+}
+
+function isWolvoxLikeProgram(programName) {
+  const p = String(programName || '').toLowerCase();
+  return (
+    p.includes('wolvox') ||
+    p.includes('werp') ||
+    p.includes('akinsoft') ||
+    p.includes('akınsoft')
+  );
+}
+
+// DATABASE düzeyinde S (shared) her bağlantıda vardır; yazmayı engellemez.
+// Gerçek engel: KEY/PAGE/RID/OBJECT/HOBT vb. üzerinde X/U/IX/IU/SIX/...
+function isHarmlessDatabaseSharedLock(lock) {
+  const type = String(lock?.resourceType || '').toUpperCase();
+  const mode = String(lock?.requestMode || '').toUpperCase();
+  return type === 'DATABASE' && (mode === 'S' || mode === 'IS');
+}
+
+function isMeaningfulAkinsoftLock(lock) {
+  if (!lock || isHarmlessDatabaseSharedLock(lock)) return false;
+  const type = String(lock.resourceType || '').toUpperCase();
+  const mode = String(lock.requestMode || '').toUpperCase();
+  // DB-level shared/intent-shared gürültü; diğer her şey potansiyel engel.
+  if (type === 'DATABASE') return !(mode === 'S' || mode === 'IS');
+  // Sch-S çoğu zaman zararsız; Sch-M bloklar.
+  if (mode === 'SCH-S') return false;
+  return true;
+}
+
+function isExternalOrMeaningfulSession(session, meaningfulLocks) {
+  if (!session) return false;
+  if (Number(session.blockingSessionId || 0) > 0) return true;
+  if (isWolvoxLikeProgram(session.programName)) return true;
+  if (!isOwnAkinsoftProgram(session.programName)) return true;
+  // Kendi havuz oturumu: yalnız anlamlı (satır/nesne) kilit tutuyorsa ilgili.
+  const sid = Number(session.sessionId);
+  return (meaningfulLocks || []).some((l) => Number(l.sessionId) === sid);
+}
+
+// MSSQL/tedious ham hatalarını kullanıcıya anlamlı Türkçe nedene çevirir.
+// Not: WOLVOX varsayımı kesin değil; blockers geldikten sonra
+// refineAkinsoftLockItemReasons ile netleştirilir.
+function describeAkinsoftSqlError(error) {
+  if (!error) return 'Bilinmeyen Akınsoft hatası.';
+  const number = Number(
+    error.number ?? error?.originalError?.info?.number ?? 0,
+  );
+  const code = String(error.code || '');
+  const message = String(error.message || error);
+  if (number === 1222 || /lock request time out/i.test(message)) {
+    return (
+      'Akınsoft kaydı kilitli — WOLVOX’ta ilgili cari/fatura/stok ekranı açık ' +
+      'olabilir. WOLVOX’u kapatıp (veya kaydı bırakıp) tekrar deneyin.'
+    );
+  }
+  if (
+    code === 'ETIMEOUT' ||
+    /Timeout: Request failed to complete/i.test(message)
+  ) {
+    return (
+      'Akınsoft SQL isteği zaman aşımına uğradı — kayıt kilitli ya da bağlantı ' +
+      'yavaş olabilir. WOLVOX açıksa kapatıp tekrar deneyin.'
+    );
+  }
+  return message;
+}
+
+function describeAkinsoftLockReasonFromEvidence({ blockers, selfWait } = {}) {
+  const blockerProg = textOrNull(selfWait?.blockerProgram);
+  if (blockerProg && isWolvoxLikeProgram(blockerProg)) {
+    return (
+      'Akınsoft kaydı kilitli — WOLVOX’ta ilgili cari/fatura/stok ekranı açık ' +
+      'olabilir. WOLVOX’u kapatıp (veya kaydı bırakıp) tekrar deneyin.'
+    );
+  }
+  if (blockerProg && isOwnAkinsoftProgram(blockerProg)) {
+    return (
+      'Akınsoft kaydı kısa süreliğe kilitlendi — engelleyen WOLVOX değil, ' +
+      'CRM’in başka bir SQL bağlantısı (eşzamanlı SAP senkronu olabilir). ' +
+      'Birkaç saniye sonra tekrar deneyin.'
+    );
+  }
+  const locks = Array.isArray(blockers?.locks) ? blockers.locks : [];
+  const sessions = Array.isArray(blockers?.sessions) ? blockers.sessions : [];
+  const hasWolvox =
+    locks.some((l) => isWolvoxLikeProgram(l.programName)) ||
+    sessions.some((s) => isWolvoxLikeProgram(s.programName));
+  if (hasWolvox) {
+    return (
+      'Akınsoft kaydı kilitli — WOLVOX’ta ilgili cari/fatura/stok ekranı açık ' +
+      'olabilir. WOLVOX’u kapatıp (veya kaydı bırakıp) tekrar deneyin.'
+    );
+  }
+  const onlyOwnNoise =
+    locks.length === 0 &&
+    sessions.every((s) => isOwnAkinsoftProgram(s.programName));
+  if (onlyOwnNoise || (locks.length === 0 && sessions.length === 0)) {
+    return (
+      'Akınsoft kaydı kısa süreliğe kilitlendi; şu an görünen engelleyici ' +
+      'WOLVOX değil (yalnızca CRM SQL havuz bağlantıları veya kilit kalkmış). ' +
+      'Birkaç saniye sonra tekrar deneyin.'
+    );
+  }
+  const sample = locks[0] || sessions[0];
+  const who = [
+    textOrNull(sample?.programName),
+    textOrNull(sample?.hostName),
+  ]
+    .filter(Boolean)
+    .join(' @ ');
+  return (
+    'Akınsoft kaydı kilitli' +
+    (who ? ` (${who})` : '') +
+    '. Engelleyen oturumu kapatıp tekrar deneyin.'
+  );
+}
+
+// Kilit hatası olan item.reason metinlerini blockers/selfWait kanıtına göre düzelt.
+function refineAkinsoftLockItemReasons(items, blockers) {
+  if (!Array.isArray(items) || !items.length) return items;
+  for (const it of items) {
+    if (!it || it.ok) continue;
+    if (!/kilitli|zaman aşımına uğrad/i.test(String(it.reason || ''))) continue;
+    it.reason = describeAkinsoftLockReasonFromEvidence({
+      blockers,
+      selfWait: it.selfWait || null,
+    });
+  }
+  return items;
+}
+
+// LOCK_TIMEOUT oturum ayarını verilen bağlantıya uygular. Yazma akışında ilk
+// MSSQL isteği olarak çağrılırsa, aynı akıştaki sonraki ardışık pool.request()
+// çağrıları (cari arama/oluşturma, mükerrer FATURA kontrolü, FATURA_NO güncelleme)
+// aynı bağlantıyı yeniden kullandığından hepsi kilit sınırından yararlanır.
+async function applyAkinsoftLockTimeout(pool) {
+  try {
+    await pool.request().query(`set lock_timeout ${AKINSOFT_LOCK_TIMEOUT_MS}`);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// Bir hatanın SQL kilit zaman aşımı (error 1222) olup olmadığını söyler.
+function isAkinsoftLockError(error) {
+  const number = Number(
+    error?.number ?? error?.originalError?.info?.number ?? 0,
+  );
+  return (
+    number === 1222 || /lock request time out/i.test(String(error?.message || ''))
+  );
+}
+
+// Kilit oluştuğunda anlamlı engelleyicileri döndürür. CRM havuzunun
+// DATABASE S kilitleri / idle node-mssql oturumları raporlanmaz (false positive).
+// VIEW SERVER STATE gerekir; yetki yoksa boş döner.
+async function getAkinsoftLockHolders(pool) {
+  const out = {
+    locks: [],
+    sessions: [],
+    ignoredOwnLocks: 0,
+    ignoredOwnSessions: 0,
+  };
+  // (1) Başka oturumların kilitleri — zararsız DATABASE S ve yalnız kendi
+  // havuzunun anlamsız kilitleri elenir; @@spid zaten dışarıda.
+  try {
+    const locks = await pool.request().query(`
+      set lock_timeout 4000;
+      select top 100
+        es.session_id as sessionId,
+        es.login_name as loginName,
+        es.host_name as hostName,
+        es.program_name as programName,
+        db_name(tl.resource_database_id) as dbName,
+        tl.resource_type as resourceType,
+        tl.request_mode as requestMode,
+        tl.request_status as requestStatus,
+        case when tl.resource_type = 'OBJECT'
+             then object_name(tl.resource_associated_entity_id, tl.resource_database_id)
+             else null end as objectName
+      from sys.dm_tran_locks tl
+      join sys.dm_exec_sessions es
+        on es.session_id = tl.request_session_id
+      where tl.request_session_id <> @@spid
+        and es.is_user_process = 1
+    `);
+    const raw = (locks.recordset || []).map((r) => ({
+      sessionId: r.sessionId,
+      loginName: textOrNull(r.loginName),
+      hostName: textOrNull(r.hostName),
+      programName: textOrNull(r.programName),
+      dbName: textOrNull(r.dbName),
+      resourceType: textOrNull(r.resourceType),
+      requestMode: textOrNull(r.requestMode),
+      requestStatus: textOrNull(r.requestStatus),
+      objectName: textOrNull(r.objectName),
+    }));
+    const meaningful = [];
+    for (const lock of raw) {
+      if (!isMeaningfulAkinsoftLock(lock)) {
+        out.ignoredOwnLocks += 1;
+        continue;
+      }
+      // Kendi havuzunun DATABASE dışı kilitleri (paralel senkron) anlamlıdır.
+      meaningful.push(lock);
+    }
+    out.locks = meaningful;
+  } catch (error) {
+    out.locksError = `Kilit sorgulanamadı: ${error?.message || error}`;
+  }
+  // (2) Bu DB'ye bağlı kullanıcı oturumları — idle CRM havuzu gizlenir;
+  // WOLVOX / yabancı / aktif bloklayan oturumlar kalır.
+  try {
+    const sessions = await pool.request().query(`
+      set lock_timeout 4000;
+      select top 100
+        es.session_id as sessionId,
+        es.login_name as loginName,
+        es.host_name as hostName,
+        es.program_name as programName,
+        es.status as status,
+        es.last_request_start_time as lastRequestStart,
+        er.blocking_session_id as blockingSessionId,
+        er.command as command,
+        er.wait_type as waitType,
+        er.wait_resource as waitResource
+      from sys.dm_exec_sessions es
+      left join sys.dm_exec_requests er on er.session_id = es.session_id
+      where es.session_id <> @@spid
+        and es.is_user_process = 1
+        and (es.database_id = db_id() or er.database_id = db_id())
+    `);
+    const rawSessions = (sessions.recordset || []).map((r) => ({
+      sessionId: r.sessionId,
+      loginName: textOrNull(r.loginName),
+      hostName: textOrNull(r.hostName),
+      programName: textOrNull(r.programName),
+      status: textOrNull(r.status),
+      lastRequestStart: r.lastRequestStart || null,
+      blockingSessionId: r.blockingSessionId || 0,
+      command: textOrNull(r.command),
+      waitType: textOrNull(r.waitType),
+      waitResource: textOrNull(r.waitResource),
+    }));
+    const kept = [];
+    for (const session of rawSessions) {
+      if (isExternalOrMeaningfulSession(session, out.locks)) {
+        kept.push(session);
+      } else {
+        out.ignoredOwnSessions += 1;
+      }
+    }
+    out.sessions = kept;
+    out.hasRealExternalBlocker =
+      out.locks.some((l) => !isOwnAkinsoftProgram(l.programName)) ||
+      out.sessions.some(
+        (s) =>
+          isWolvoxLikeProgram(s.programName) ||
+          (!isOwnAkinsoftProgram(s.programName) &&
+            (Number(s.blockingSessionId || 0) > 0 ||
+              String(s.status || '').toLowerCase() === 'running')),
+      );
+  } catch (error) {
+    out.sessionsError = `Oturumlar sorgulanamadı: ${error?.message || error}`;
+  }
+  return out;
 }
 
 function upsertEnvFileValues(filePath, values) {
@@ -556,7 +1020,59 @@ function numberOrZero(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+/** null/boş dışında finite sayı; 0 geçerli KDV yüzdeidir (|| 20 ile karıştırma). */
+function optionalNumber(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const parsed = Number.parseFloat(String(value).replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * WOLVOX STOK/HIZMET/fatura KDV yüzdesi.
+ * KDV_ORANI doğrudan yüzde tutar (1/2/3 index değil). Satış > TPT > alış.
+ * `|| 20` kullanılmaz: %0 ve %1 korunur; yalnızca tüm adaylar null ise fallback.
+ */
+function resolveAkinsoftVatPercent(row, fallback = 20) {
+  const rate =
+    optionalNumber(row?.KDV_ORANI) ??
+    optionalNumber(row?.KDV_ORANI_SATIS_TPT) ??
+    optionalNumber(row?.taxRate ?? row?.tax_rate) ??
+    optionalNumber(row?.KDV_ORANI_ALIS);
+  return rate == null ? fallback : rate;
+}
+
 const PAYMENT_CLOSE_TOLERANCE = 0.02;
+// WOLVOX: FATURA.FATURA_NO = varchar(30), CARIHR.EVRAK_NO = varchar(20).
+// E-fatura no 20 karakteri aşınca tahsilat EVRAK_NO kırpılır; birebir eşleşme kaçırılır.
+const AKINSOFT_CARIHR_EVRAK_NO_MAX_LEN = 20;
+
+function akinsoftCariHrEvrakVariants(invoiceNumber) {
+  const no = textOrNull(invoiceNumber);
+  if (!no) return [];
+  const variants = [no];
+  if (no.length > AKINSOFT_CARIHR_EVRAK_NO_MAX_LEN) {
+    variants.push(no.slice(0, AKINSOFT_CARIHR_EVRAK_NO_MAX_LEN));
+  }
+  return variants;
+}
+
+/** CARIHR.EVRAK_NO → pull edilen FATURA_NO (kırpık eşleşme dahil). */
+function resolveAkinsoftCariHrInvoiceNumber(evrakNo, invoiceNumbers) {
+  const key = textOrNull(evrakNo);
+  if (!key) return null;
+  const list = Array.isArray(invoiceNumbers) ? invoiceNumbers : [];
+  if (list.includes(key)) return key;
+  const prefixMatches = list.filter(
+    (no) =>
+      typeof no === 'string' &&
+      no.length > key.length &&
+      no.startsWith(key),
+  );
+  if (prefixMatches.length === 1) return prefixMatches[0];
+  // Tek aday yoksa güvenli taraf: kırpık anahtarı kullanma.
+  return prefixMatches.length === 0 ? key : null;
+}
 
 function normalizeCurrency(value) {
   const text = textOrNull(value);
@@ -658,18 +1174,31 @@ function isAkinsoftForeignAccount(row) {
 }
 
 function resolveAkinsoftItemCurrency(row) {
-  if (isAkinsoftLocalAccount(row)) return 'TRY';
-  if (isAkinsoftForeignAccount(row)) {
-    const symbolCurrency = normalizeCurrency(
-      pick(row, ['SIMGE', 'DOVIZ_BIRIMI', 'DOVIZ_ADI', 'DVZ_BIRIMI']),
-    );
-    return symbolCurrency === 'TRY' ? 'USD' : symbolCurrency;
+  // Wolvox TL faturalarında satır KPBDVZ=0 olsa bile DOVIZ_BIRIMI='TL' gelebilir.
+  // Açık sembol her zaman kazanır; TL/TRY asla USD'ye zorlanmaz.
+  const symbolRaw = pick(row, ['SIMGE', 'DOVIZ_BIRIMI', 'DOVIZ_ADI', 'DVZ_BIRIMI']);
+  if (textOrNull(symbolRaw)) {
+    return normalizeCurrency(symbolRaw);
   }
+
+  if (isAkinsoftLocalAccount(row)) return 'TRY';
+
+  if (isAkinsoftForeignAccount(row)) {
+    // Sembol yok + KPBDVZ=0: DVZ tutarı boşsa KPB/TRY kullan (boş DVZ→USD 0 yazmayı engelle).
+    const tryAmounts = resolveAkinsoftItemAmounts(row, 'TRY');
+    const usdAmounts = resolveAkinsoftItemAmounts(row, 'USD');
+    const hasForeign =
+      numberOrZero(usdAmounts.netTotal) > 0 || numberOrZero(usdAmounts.unitPrice) > 0;
+    const hasTry =
+      numberOrZero(tryAmounts.netTotal) > 0 || numberOrZero(tryAmounts.unitPrice) > 0;
+    if (!hasForeign && hasTry) return 'TRY';
+    return 'USD';
+  }
+
   return normalizeCurrency(
     pick(row, [
       'SIMGE',
       'DOVIZ_BIRIMI',
-      'DOVIZ_KULLAN',
       'DOVIZ_ADI',
       'DVZ_BIRIMI',
       'PARA_BIRIMI',
@@ -687,6 +1216,110 @@ function localEInvoiceNumber(value) {
   return String(value ?? '')
     .trim()
     .replace(/^\d{9,11}-/, '');
+}
+
+/** Benzersiz, boş olmayan fatura no listesi (STŞ / Maliye / ERP). */
+function uniqueInvoiceNumbers(...values) {
+  const out = [];
+  const seen = new Set();
+  for (const value of values) {
+    const text = textOrNull(value);
+    if (!text) continue;
+    const key = text.toLocaleUpperCase('tr-TR');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+    const local = localEInvoiceNumber(text);
+    if (local && local !== text) {
+      const localKey = local.toLocaleUpperCase('tr-TR');
+      if (!seen.has(localKey)) {
+        seen.add(localKey);
+        out.push(local);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Aynı resmi / ERP numarasıyla mevcut FATURA veya orphan CARIHR (FTO_*) bul.
+ * WOLVOX’ta FATURA_NO unique DEĞİL; mükerrer create’i engellemek için zorunlu.
+ */
+async function findExistingAkinsoftFaturaByNumbers(pool, sql, numbers) {
+  const list = uniqueInvoiceNumbers(...(Array.isArray(numbers) ? numbers : [numbers]));
+  if (!list.length) return null;
+
+  const faturaReq = pool.request();
+  const faturaParams = list.map((no, index) => {
+    const name = `fn${index}`;
+    faturaReq.input(name, sql.NVarChar(64), no);
+    return `@${name}`;
+  });
+  const fatura = await faturaReq.query(`
+    set lock_timeout ${AKINSOFT_LOCK_TIMEOUT_MS};
+    select top 20
+      cast(BLKODU as nvarchar(64)) as sourceId,
+      FATURA_NO as invoiceNumber,
+      TARIHI as invoiceDate
+    from dbo.FATURA with (nolock)
+    where FATURA_NO in (${faturaParams.join(', ')})
+    order by
+      case when FATURA_NO = ${faturaParams[0]} then 0 else 1 end,
+      TARIHI desc,
+      BLKODU desc
+  `);
+  if (fatura.recordset?.length) {
+    const row = fatura.recordset[0];
+    return {
+      sourceId: String(row.sourceId),
+      invoiceNumber: textOrNull(row.invoiceNumber),
+      via: 'fatura',
+      matchCount: fatura.recordset.length,
+      allSourceIds: fatura.recordset.map((r) => String(r.sourceId)),
+    };
+  }
+
+  const cariReq = pool.request();
+  const cariParams = list.map((no, index) => {
+    const name = `en${index}`;
+    cariReq.input(name, sql.NVarChar(64), no);
+    return `@${name}`;
+  });
+  const cari = await cariReq.query(`
+    set lock_timeout ${AKINSOFT_LOCK_TIMEOUT_MS};
+    select top 20
+      cast(BLKODU as nvarchar(64)) as cariHrId,
+      EVRAK_NO as invoiceNumber,
+      cast(ENTEGRASYON as nvarchar(40)) as entegrasyon,
+      ISLEM_TURU as islemTuru
+    from dbo.CARIHR with (nolock)
+    where EVRAK_NO in (${cariParams.join(', ')})
+      and (
+        ENTEGRASYON like N'FTO[_]%'
+        or ENTEGRASYON like N'FTK[_]%'
+        or ISLEM_TURU in (4, 9)
+      )
+    order by TARIHI desc, BLKODU desc
+  `);
+  if (!cari.recordset?.length) return null;
+
+  let recoveredSourceId = null;
+  for (const row of cari.recordset) {
+    const ent = String(row.entegrasyon || '');
+    const m = ent.match(/^FT[OK]_(\d+)$/i);
+    if (m) {
+      recoveredSourceId = m[1];
+      break;
+    }
+  }
+  return {
+    sourceId: recoveredSourceId,
+    invoiceNumber: textOrNull(cari.recordset[0].invoiceNumber),
+    via: 'carihr',
+    matchCount: cari.recordset.length,
+    orphanCariHr: true,
+    allSourceIds: recoveredSourceId ? [recoveredSourceId] : [],
+  };
 }
 
 function taxNumberOrNull(value) {
@@ -1188,7 +1821,17 @@ async function upsertAkinsoftSyncMap(
   );
 }
 
+const _akinsoftSchemaCache = {
+  exists: new Map(),
+  columns: new Map(),
+  identity: new Map(),
+};
+
 async function akinsoftTableExists(pool, tableName) {
+  const key = String(tableName || '').toUpperCase();
+  if (_akinsoftSchemaCache.exists.has(key)) {
+    return _akinsoftSchemaCache.exists.get(key);
+  }
   const result = await pool
     .request()
     .input('table', tableName)
@@ -1197,10 +1840,16 @@ async function akinsoftTableExists(pool, tableName) {
       from INFORMATION_SCHEMA.TABLES
       where TABLE_SCHEMA = 'dbo' and TABLE_NAME = @table
     `);
-  return result.recordset.length > 0;
+  const ok = result.recordset.length > 0;
+  _akinsoftSchemaCache.exists.set(key, ok);
+  return ok;
 }
 
 async function akinsoftTableColumnSet(pool, tableName) {
+  const key = String(tableName || '').toUpperCase();
+  if (_akinsoftSchemaCache.columns.has(key)) {
+    return _akinsoftSchemaCache.columns.get(key);
+  }
   const result = await pool
     .request()
     .input('table', tableName)
@@ -1209,7 +1858,9 @@ async function akinsoftTableColumnSet(pool, tableName) {
       from INFORMATION_SCHEMA.COLUMNS
       where TABLE_SCHEMA = 'dbo' and TABLE_NAME = @table
     `);
-  return new Set(result.recordset.map((row) => String(row.name).toUpperCase()));
+  const cols = new Set(result.recordset.map((row) => String(row.name).toUpperCase()));
+  _akinsoftSchemaCache.columns.set(key, cols);
+  return cols;
 }
 
 function normalizeProductSnapshot(product) {
@@ -1223,7 +1874,7 @@ function normalizeProductSnapshot(product) {
     description: textOrNull(product.description) || '',
     category: textOrNull(product.category) || '',
     unit: textOrNull(product.unit) || 'Adet',
-    taxRate: Number(numberOrZero(product.taxRate ?? product.tax_rate) || 20),
+    taxRate: Number(resolveAkinsoftVatPercent(product)),
     group:
       textOrNull(product.group ?? product.akinsoft_group) ||
       textOrNull(product.category) ||
@@ -1273,7 +1924,7 @@ function mapAkinsoftHizmetRow(row) {
     code: textOrNull(row.OZEL_KODU) || `HZM-${blkodu}`,
     name,
     unit: textOrNull(row.BIRIMI) || 'Adet',
-    taxRate: numberOrZero(row.KDV_ORANI) || 20,
+    taxRate: resolveAkinsoftVatPercent(row),
     group:
       textOrNull(row.GRUBU) ||
       textOrNull(row.ARA_GRUBU) ||
@@ -1287,12 +1938,119 @@ function mapAkinsoftHizmetRow(row) {
     description: textOrNull(row.ACIKLAMA),
     currency,
     purchasePrice: 0,
+    // WOLVOX HIZMET Fiyatlar sekmesi KDV hariç tutulur.
     salePrice: hasDoviz ? dovizPrice : kpbPrice,
     productType: 'service',
     trackStock: false,
     isActive: row.AKTIF == null ? true : Number(row.AKTIF) !== 0,
     createdAt: null,
   };
+}
+
+/** STOK_FIYAT HESAP / KPB_MI → CRM currency (WOLVOX $ → USD, TL → TRY). */
+function resolveAkinsoftStokCurrency(row, salePrice) {
+  const hesap = textOrNull(row.SATIS_HESAP ?? row.HESAP);
+  const dovizBirimi = textOrNull(row.DOVIZ_BIRIMI);
+  const kpbMi = Number(row.SATIS_KPB_MI);
+  if (salePrice > 0) {
+    if (hesap) return normalizeCurrency(hesap);
+    if (kpbMi === 2) return normalizeCurrency(dovizBirimi) || 'USD';
+    if (kpbMi === 1) return 'TRY';
+  }
+  if (Number(row.DOVIZ_KULLAN) === 1 && dovizBirimi) {
+    return normalizeCurrency(dovizBirimi) || 'USD';
+  }
+  if (dovizBirimi) {
+    const cur = normalizeCurrency(dovizBirimi);
+    if (cur !== 'TRY') return cur;
+  }
+  return 'TRY';
+}
+
+/**
+ * WOLVOX STOK kartı → CRM product.
+ * Satış fiyatı dbo.STOK_FIYAT (ALIS_SATIS=2) üzerinden gelir; FIYATI KDV hariçtir.
+ * Döviz satırı (KPB_MI=2 / HESAP=$) varsa TL satırına tercih edilir.
+ */
+function mapAkinsoftStokRow(row) {
+  const salePrice = numberOrZero(row.SATIS_FIYATI ?? row.FIYATI);
+  return {
+    sourceId: String(row.BLKODU),
+    code: textOrNull(row.STOKKODU),
+    name: textOrNull(row.STOK_ADI) || `Stok ${row.BLKODU}`,
+    unit: textOrNull(row.BIRIMI) || textOrNull(row.BIRIMI_2) || 'Adet',
+    taxRate: resolveAkinsoftVatPercent(row),
+    group:
+      textOrNull(row.ARA_GRUBU) ||
+      textOrNull(row.OZEL_KODU1) ||
+      textOrNull(row.OZEL_KODU2),
+    subGroup:
+      textOrNull(row.ALT_GRUBU) ||
+      textOrNull(row.OZEL_KODU2) ||
+      textOrNull(row.OZEL_KODU3),
+    category:
+      textOrNull(row.ARA_GRUBU) ||
+      textOrNull(row.OZEL_KODU1) ||
+      textOrNull(row.OZEL_KODU2),
+    description:
+      [row.ACIKLAMA1, row.ACIKLAMA2].map(textOrNull).filter(Boolean).join(' ') ||
+      null,
+    currency: resolveAkinsoftStokCurrency(row, salePrice),
+    purchasePrice: 0,
+    salePrice,
+    productType: 'product',
+    trackStock: true,
+    createdAt: dateOrIso(row.KAYIT_TARIHI),
+  };
+}
+
+/** STOK select + OUTER APPLY preferred SATIŞ FİYATI -1 (döviz öncelikli). */
+function buildAkinsoftStokSelectSql({ hasStokFiyat, whereClause, topParam }) {
+  const top = topParam ? `top (${topParam})` : '';
+  const priceSelect = hasStokFiyat
+    ? `
+            pf.FIYATI as SATIS_FIYATI,
+            pf.HESAP as SATIS_HESAP,
+            pf.KPB_MI as SATIS_KPB_MI`
+    : `
+            cast(null as float) as SATIS_FIYATI,
+            cast(null as varchar(16)) as SATIS_HESAP,
+            cast(null as smallint) as SATIS_KPB_MI`;
+  const fromJoin = hasStokFiyat
+    ? `
+          from dbo.STOK s
+          outer apply (
+            select top 1
+              f.FIYATI,
+              f.HESAP,
+              f.KPB_MI
+            from dbo.STOK_FIYAT f
+            where f.BLSTKODU = s.BLKODU
+              and f.ALIS_SATIS = 2
+              and f.FIYATI > 0
+            order by
+              case when f.FIYAT_NO = 1 then 0 else 1 end,
+              case
+                when f.KPB_MI = 2 then 0
+                when upper(ltrim(rtrim(isnull(f.HESAP, '')))) not in ('', 'TL', 'TRY', 'KPB')
+                  then 0
+                else 1
+              end,
+              f.FIYATI desc
+          ) pf`
+    : `
+          from dbo.STOK s`;
+  return `
+          select ${top}
+            s.BLKODU, s.STOKKODU, s.STOK_ADI, s.BIRIMI, s.KDV_ORANI, s.KDV_ORANI_ALIS,
+            s.KDV_ORANI_SATIS_TPT, s.OZEL_KODU1,
+            s.OZEL_KODU2, s.OZEL_KODU3, s.ARA_GRUBU, s.ALT_GRUBU, s.KAYIT_TARIHI,
+            s.ACIKLAMA1, s.ACIKLAMA2, s.DOVIZ_BIRIMI, s.DOVIZ_KULLAN,
+            ${priceSelect.trim()}
+          ${fromJoin}
+          where ${whereClause}
+          order by s.BLKODU desc
+        `;
 }
 
 function resolveAkinsoftLineProductSourceId(row) {
@@ -1675,25 +2433,19 @@ async function resolveAkinsoftCustomerRows(customers, externalRows = []) {
   return result;
 }
 
-async function handleAkinsoftPull(req, res) {
-  if (req.method !== 'POST') {
-    return send(
-      res,
-      405,
-      { 'Content-Type': 'application/json; charset=utf-8' },
-      JSON.stringify({ ok: false, error: 'POST gerekli.' }),
-    );
-  }
-
-  const body = await readJson(req);
+async function pullAkinsoftDataset(body) {
   const sql = require('mssql');
   const { database, config } = buildAkinsoftSqlConfig(body);
   const limit = Math.max(1, Math.min(Number(body.limit || 2000), 5000));
+  // pull-and-update: tam stok/hizmet kataloğu yerine yalnızca fatura
+  // kalemlerinde geçen ürünleri çeker (büyük STOK/HIZMET taraması atlanır).
+  const liteCatalog =
+    body?.syncMode === 'pull-and-update' || body?.liteCatalog === true;
   const pool = await connectAkinsoftPool(config);
 
   try {
     const warnings = [];
-    const [hasFatura, hasFaturaHr, hasFaturaKdv, hasCari, hasStok, hasHizmet, hasCariHr] =
+    const [hasFatura, hasFaturaHr, hasFaturaKdv, hasCari, hasStok, hasHizmet, hasCariHr, hasStokFiyat] =
       await Promise.all([
         akinsoftTableExists(pool, 'FATURA'),
         akinsoftTableExists(pool, 'FATURAHR'),
@@ -1702,6 +2454,7 @@ async function handleAkinsoftPull(req, res) {
         akinsoftTableExists(pool, 'STOK'),
         akinsoftTableExists(pool, 'HIZMET'),
         akinsoftTableExists(pool, 'CARIHR'),
+        akinsoftTableExists(pool, 'STOK_FIYAT'),
       ]);
 
     let customers = [];
@@ -1723,57 +2476,30 @@ async function handleAkinsoftPull(req, res) {
       website: textOrNull(row.WEB),
       createdAt: dateOrIso(row.KAYIT_TARIHI),
     });
-    if (hasCari) {
+    if (hasCari && !liteCatalog) {
       const countResult = await pool
         .request()
         .query(`select count_big(1) as total from dbo.CARI`);
       customerCount = Number(countResult.recordset[0]?.total || 0);
     }
-    const mapProductRow = (row) => ({
-          sourceId: String(row.BLKODU),
-          code: textOrNull(row.STOKKODU),
-          name: textOrNull(row.STOK_ADI) || `Stok ${row.BLKODU}`,
-          unit: textOrNull(row.BIRIMI) || textOrNull(row.BIRIMI_2) || 'Adet',
-          taxRate: numberOrZero(row.KDV_ORANI) || 20,
-          group:
-            textOrNull(row.ARA_GRUBU) ||
-            textOrNull(row.OZEL_KODU1) ||
-            textOrNull(row.OZEL_KODU2),
-          subGroup:
-            textOrNull(row.ALT_GRUBU) ||
-            textOrNull(row.OZEL_KODU2) ||
-            textOrNull(row.OZEL_KODU3),
-          category:
-            textOrNull(row.ARA_GRUBU) ||
-            textOrNull(row.OZEL_KODU1) ||
-            textOrNull(row.OZEL_KODU2),
-          description:
-            [row.ACIKLAMA1, row.ACIKLAMA2].map(textOrNull).filter(Boolean).join(' ') ||
-            null,
-          currency: 'TRY',
-          purchasePrice: 0,
-          salePrice: 0,
-          productType: 'product',
-          trackStock: true,
-          createdAt: dateOrIso(row.KAYIT_TARIHI),
-        });
+    // Stok/hizmet kartları (fiyat dahil) her zaman çekilir; lite yalnızca CARI'yı atlar.
+    const mapProductRow = mapAkinsoftStokRow;
     if (hasStok) {
       const countResult = await pool
         .request()
         .query(`select count_big(1) as total from dbo.STOK`);
       productCount = Number(countResult.recordset[0]?.total || 0);
       // Fatura kalemlerinden bağımsız: yeni açılan stoklar da gelsin.
+      // Fiyat: STOK_FIYAT satış (KDV hariç) + döviz hesabı ($/TL).
       products = (
-        await pool.request().input('limit', sql.Int, limit).query(`
-          select top (@limit)
-            BLKODU, STOKKODU, STOK_ADI, BIRIMI, KDV_ORANI, OZEL_KODU1,
-            OZEL_KODU2, OZEL_KODU3, ARA_GRUBU, ALT_GRUBU, KAYIT_TARIHI,
-            ACIKLAMA1, ACIKLAMA2
-          from dbo.STOK
-          where coalesce(STOK_ADI, '') <> ''
-             or coalesce(STOKKODU, '') <> ''
-          order by BLKODU desc
-        `)
+        await pool.request().input('limit', sql.Int, limit).query(
+          buildAkinsoftStokSelectSql({
+            hasStokFiyat,
+            whereClause: `coalesce(s.STOK_ADI, '') <> ''
+             or coalesce(s.STOKKODU, '') <> ''`,
+            topParam: '@limit',
+          }),
+        )
       ).recordset.map(mapProductRow);
     }
     if (hasHizmet) {
@@ -1838,11 +2564,16 @@ async function handleAkinsoftPull(req, res) {
           headers.map((row) => Number(row.BLCRKODU)).filter(Number.isFinite),
         ),
       ];
-      if (customerIds.length && hasCari) {
+      const invoiceNumbers = headers
+        .map((row) => textOrNull(row.FATURA_NO))
+        .filter(Boolean);
+
+      const fetchInvoiceCustomers = async () => {
+        if (!(customerIds.length && hasCari)) return [];
         const request = pool.request();
         customerIds.forEach((id, index) => request.input(`cid${index}`, sql.Int, id));
         const paramList = customerIds.map((_, index) => `@cid${index}`).join(',');
-        const usedCustomers = (
+        return (
           await request.query(`
             select
               BLKODU, CARIKODU, TICARI_UNVANI, ADI, SOYADI, VERGI_DAIRESI,
@@ -1851,75 +2582,87 @@ async function handleAkinsoftPull(req, res) {
             where BLKODU in (${paramList})
           `)
         ).recordset.map(mapCustomerRow);
+      };
+
+      const fetchInvoiceItems = async () => {
+        if (!(ids.length && hasFaturaHr)) return [];
+        const request = pool.request();
+        ids.forEach((id, index) => request.input(`id${index}`, sql.Int, id));
+        const paramList = ids.map((_, index) => `@id${index}`).join(',');
+        return (
+          await request.query(`
+            select *
+            from dbo.FATURAHR
+            where BLFTKODU in (${paramList})
+            order by BLFTKODU, BLKODU
+          `)
+        ).recordset;
+      };
+
+      const fetchCariHr = async () => {
+        if (!(invoiceNumbers.length && hasCariHr)) {
+          return { rows: [], reliable: Boolean(hasCariHr) };
+        }
+        try {
+          // Uzun e-fatura no'ları CARIHR.EVRAK_NO (varchar 20) içinde kırpık
+          // tutulur; tam FATURA_NO ile IN eşleşmesi kaçırır → durum open kalır.
+          const lookupNumbers = [
+            ...new Set(invoiceNumbers.flatMap(akinsoftCariHrEvrakVariants)),
+          ];
+          const request = pool.request();
+          request.timeout = 25000;
+          lookupNumbers.forEach((no, index) =>
+            request.input(`no${index}`, sql.NVarChar, no),
+          );
+          const paramList = lookupNumbers.map((_, index) => `@no${index}`).join(',');
+          const rows = (
+            await request.query(`
+              select EVRAK_NO, KPB_BTUT, KPB_ATUT, DVZ_BTUT, DVZ_ATUT
+              from dbo.CARIHR
+              where EVRAK_NO in (${paramList})
+                and coalesce(SILINDI, 0) = 0
+            `)
+          ).recordset;
+          return { rows, reliable: true };
+        } catch (error) {
+          warnings.push(
+            `Cari hareketleri okunamadı; ödeme/durum bilgisi eksik olabilir: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          return { rows: [], reliable: false };
+        }
+      };
+
+      const fetchKdv = async () => {
+        if (!(ids.length && hasFaturaKdv)) return [];
+        const request = pool.request();
+        ids.forEach((id, index) => request.input(`id${index}`, sql.Int, id));
+        const paramList = ids.map((_, index) => `@id${index}`).join(',');
+        return (
+          await request.query(`
+            select BLFTKODU, KDV_ORANI, KDV_MATRAHI, KDV_TUTARI
+            from dbo.FATURA_KDV
+            where BLFTKODU in (${paramList})
+          `)
+        ).recordset;
+      };
+
+      const [usedCustomers, itemRows, cariHrPack, kdvRows] = await Promise.all([
+        fetchInvoiceCustomers(),
+        fetchInvoiceItems(),
+        fetchCariHr(),
+        fetchKdv(),
+      ]);
+      if (usedCustomers.length) {
         const bySource = new Map(customers.map((row) => [String(row.sourceId), row]));
         for (const customer of usedCustomers) {
           bySource.set(String(customer.sourceId), customer);
         }
         customers = [...bySource.values()];
       }
-      const itemRows = [];
-      const kdvRows = [];
-      const cariHrRows = [];
-      let cariHrPaymentReliable = Boolean(hasCariHr);
-      if (ids.length && hasFaturaHr) {
-        const request = pool.request();
-        ids.forEach((id, index) => request.input(`id${index}`, sql.Int, id));
-        const paramList = ids.map((_, index) => `@id${index}`).join(',');
-        itemRows.push(
-          ...(
-            await request.query(`
-              select *
-              from dbo.FATURAHR
-              where BLFTKODU in (${paramList})
-              order by BLFTKODU, BLKODU
-            `)
-          ).recordset,
-        );
-      }
-      const invoiceNumbers = headers
-        .map((row) => textOrNull(row.FATURA_NO))
-        .filter(Boolean);
-      if (invoiceNumbers.length && hasCariHr) {
-        try {
-          const request = pool.request();
-          request.timeout = 25000;
-          invoiceNumbers.forEach((no, index) =>
-            request.input(`no${index}`, sql.NVarChar, no),
-          );
-          const paramList = invoiceNumbers.map((_, index) => `@no${index}`).join(',');
-          cariHrRows.push(
-            ...(
-              await request.query(`
-                select EVRAK_NO, KPB_BTUT, KPB_ATUT, DVZ_BTUT, DVZ_ATUT
-                from dbo.CARIHR
-                where EVRAK_NO in (${paramList})
-                  and coalesce(SILINDI, 0) = 0
-              `)
-            ).recordset,
-          );
-        } catch (error) {
-          cariHrPaymentReliable = false;
-          warnings.push(
-            `Cari hareketleri okunamadı; ödeme/durum bilgisi eksik olabilir: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
-      }
-      if (ids.length && hasFaturaKdv) {
-        const request = pool.request();
-        ids.forEach((id, index) => request.input(`id${index}`, sql.Int, id));
-        const paramList = ids.map((_, index) => `@id${index}`).join(',');
-        kdvRows.push(
-          ...(
-            await request.query(`
-              select BLFTKODU, KDV_ORANI, KDV_MATRAHI, KDV_TUTARI
-              from dbo.FATURA_KDV
-              where BLFTKODU in (${paramList})
-            `)
-          ).recordset,
-        );
-      }
+      const cariHrRows = cariHrPack.rows;
+      let cariHrPaymentReliable = cariHrPack.reliable;
       const productIds = [
         ...new Set(
           itemRows
@@ -1939,14 +2682,13 @@ async function handleAkinsoftPull(req, res) {
             .map((_, index) => `@pid${index}`)
             .join(',');
           const extra = (
-            await request.query(`
-              select
-                BLKODU, STOKKODU, STOK_ADI, BIRIMI, KDV_ORANI, OZEL_KODU1,
-                OZEL_KODU2, OZEL_KODU3, ARA_GRUBU, ALT_GRUBU, KAYIT_TARIHI,
-                ACIKLAMA1, ACIKLAMA2
-              from dbo.STOK
-              where BLKODU in (${paramList})
-            `)
+            await request.query(
+              buildAkinsoftStokSelectSql({
+                hasStokFiyat,
+                whereClause: `s.BLKODU in (${paramList})`,
+                topParam: null,
+              }),
+            )
           ).recordset.map(mapProductRow);
           products = [...products, ...extra];
         }
@@ -2032,11 +2774,14 @@ async function handleAkinsoftPull(req, res) {
 
       const cariHrByInvoiceNo = new Map();
       for (const row of cariHrRows) {
-        const key = textOrNull(row.EVRAK_NO);
-        if (!key) continue;
-        const list = cariHrByInvoiceNo.get(key) || [];
+        const mappedNo = resolveAkinsoftCariHrInvoiceNumber(
+          row.EVRAK_NO,
+          invoiceNumbers,
+        );
+        if (!mappedNo) continue;
+        const list = cariHrByInvoiceNo.get(mappedNo) || [];
         list.push(row);
-        cariHrByInvoiceNo.set(key, list);
+        cariHrByInvoiceNo.set(mappedNo, list);
       }
 
       invoices = headers.map((row) => {
@@ -2051,19 +2796,38 @@ async function handleAkinsoftPull(req, res) {
         ];
         const headerCurrencyValue = pick(row, [
               'DOVIZ_BIRIMI',
-              'DOVIZ_KULLAN',
               'DOVIZ_ADI',
               'DVZ_BIRIMI',
               'PARA_BIRIMI',
               'DOVIZ',
             ]);
+        const headerDovizKullan = parseAkinsoftBool(pick(row, ['DOVIZ_KULLAN']));
         const itemCurrencies = rawItems
           .map((item) => textOrNull(item.currency))
           .filter(Boolean);
         const foreignItemCurrency = itemCurrencies.find((item) => item !== 'TRY');
-        const currency = foreignItemCurrency || (
+        let currency = foreignItemCurrency || (
           itemCurrencies.length ? 'TRY' : normalizeCurrency(headerCurrencyValue)
         );
+        // Başlık TL ise (DOVIZ_KULLAN=0 veya DOVIZ_BIRIMI=TL) satır yanlış sınıflansa bile TRY kal.
+        const headerIsTry =
+          headerDovizKullan === false ||
+          (textOrNull(headerCurrencyValue) != null &&
+            normalizeCurrency(headerCurrencyValue) === 'TRY');
+        if (headerIsTry && currency !== 'TRY') {
+          const tryAmountSum = rawItems.reduce(
+            (sum, item) => sum + numberOrZero(item.amountsByCurrency?.TRY?.netTotal),
+            0,
+          );
+          const foreignAmountSum = rawItems.reduce(
+            (sum, item) =>
+              sum + numberOrZero(item.amountsByCurrency?.FOREIGN?.netTotal),
+            0,
+          );
+          if (tryAmountSum > 0 && foreignAmountSum <= 0) {
+            currency = 'TRY';
+          }
+        }
         const items = rawItems.map((item) => {
           const amounts =
             (currency === 'TRY'
@@ -2317,7 +3081,20 @@ async function handleAkinsoftPull(req, res) {
               Math.abs(numberOrZero(row.grand_total) - numberOrZero(invoice.grandTotal)) <=
               PAYMENT_CLOSE_TOLERANCE;
             if (sameStatus && sameCurrency && sameTotal) return null;
-            return { ...invoice, importAction: 'update' };
+            // Sağlıklı TL faturayı boş/döviz pull ile full rewrite etme.
+            const crmIsHealthyTry =
+              normalizeCurrency(row.currency) === 'TRY' &&
+              numberOrZero(row.grand_total) > PAYMENT_CLOSE_TOLERANCE;
+            const pulledIsEmptyForeign =
+              normalizeCurrency(invoice.currency) !== 'TRY' &&
+              numberOrZero(invoice.grandTotal) <= PAYMENT_CLOSE_TOLERANCE;
+            if (crmIsHealthyTry && pulledIsEmptyForeign) {
+              if (sameStatus) return null;
+              return { ...invoice, importAction: 'update', updateKind: 'status' };
+            }
+            // Yalnız ödeme/durum farkıysa tam yeniden yazım gereksiz.
+            const updateKind = sameCurrency && sameTotal ? 'status' : 'full';
+            return { ...invoice, importAction: 'update', updateKind };
           })
           .filter(Boolean);
       }
@@ -2361,46 +3138,60 @@ async function handleAkinsoftPull(req, res) {
       );
     }
 
-    return send(
-      res,
-      200,
-      { 'Content-Type': 'application/json; charset=utf-8' },
-      JSON.stringify({
-        ok: true,
-        database,
-        tables: {
-          FATURA: hasFatura,
-          FATURAHR: hasFaturaHr,
-          FATURA_KDV: hasFaturaKdv,
-          CARI: hasCari,
-          STOK: hasStok,
-          HIZMET: hasHizmet,
-          CARIHR: hasCariHr,
-        },
-        counts: {
-          customers: customerCount || customers.length,
-          products: productCount || products.length,
-          stok: hasStok ? productCount - hizmetCount : 0,
-          hizmet: hizmetCount,
-          productsSelected: products.length,
-          productsUnchanged,
-          invoices: invoices.length,
-          rawInvoices: rawInvoiceCount || invoices.length,
-          filteredInvoices: Math.max(0, (rawInvoiceCount || invoices.length) - invoices.length),
-          invoiceItems: invoices.reduce((sum, item) => sum + item.items.length, 0),
-          unmatchedCustomers: invoices.filter(
-            (item) => item.customerMatch?.matched !== true,
-          ).length,
-        },
-        warnings,
-        customers,
-        products,
-        invoices,
-      }),
-    );
+    return {
+      ok: true,
+      database,
+      tables: {
+        FATURA: hasFatura,
+        FATURAHR: hasFaturaHr,
+        FATURA_KDV: hasFaturaKdv,
+        CARI: hasCari,
+        STOK: hasStok,
+        HIZMET: hasHizmet,
+        CARIHR: hasCariHr,
+      },
+      counts: {
+        customers: customerCount || customers.length,
+        products: productCount || products.length,
+        stok: hasStok ? productCount - hizmetCount : 0,
+        hizmet: hizmetCount,
+        productsSelected: products.length,
+        productsUnchanged,
+        invoices: invoices.length,
+        rawInvoices: rawInvoiceCount || invoices.length,
+        filteredInvoices: Math.max(0, (rawInvoiceCount || invoices.length) - invoices.length),
+        invoiceItems: invoices.reduce((sum, item) => sum + item.items.length, 0),
+        unmatchedCustomers: invoices.filter(
+          (item) => item.customerMatch?.matched !== true,
+        ).length,
+      },
+      warnings,
+      customers,
+      products,
+      invoices,
+    };
   } finally {
     await pool.close();
   }
+}
+
+async function handleAkinsoftPull(req, res) {
+  if (req.method !== 'POST') {
+    return send(
+      res,
+      405,
+      { 'Content-Type': 'application/json; charset=utf-8' },
+      JSON.stringify({ ok: false, error: 'POST gerekli.' }),
+    );
+  }
+  const body = await readJson(req);
+  const data = await pullAkinsoftDataset(body);
+  return send(
+    res,
+    200,
+    { 'Content-Type': 'application/json; charset=utf-8' },
+    JSON.stringify(data),
+  );
 }
 
 // Yalnızca ödeme/durum bilgisini tazeler: yeni fatura, cari, stok ve kalem
@@ -2419,81 +3210,148 @@ async function syncAkinsoftInvoiceStatuses(query, invoices, reportProgress) {
     total: invoices.length,
   });
 
-  for (let index = 0; index < invoices.length; index += 1) {
-    const invoice = invoices[index];
+  const actionable = [];
+  for (const invoice of invoices) {
     const invoiceNumber = textOrNull(invoice.invoiceNumber);
-    const report = () =>
+    if (!invoiceNumber) continue;
+    if (invoice.paymentReliable === false) {
+      unreliable += 1;
+      continue;
+    }
+    actionable.push(invoice);
+  }
+
+  const sourceIds = [
+    ...new Set(
+      actionable
+        .map((invoice) => textOrNull(invoice.sourceId))
+        .filter(Boolean),
+    ),
+  ];
+  const idBySource = new Map();
+  if (sourceIds.length) {
+    const mapped = await query(
+      `
+        select m.source_id, m.local_id as id
+        from public.akinsoft_sync_map m
+        where m.source_system = 'akinsoft'
+          and m.source_type = 'invoice'
+          and m.source_id = any($1::text[])
+      `,
+      [sourceIds],
+    );
+    for (const row of mapped.rows) {
+      const sourceId = textOrNull(row.source_id);
+      const id = textOrNull(row.id);
+      if (sourceId && id) idBySource.set(sourceId, id);
+    }
+  }
+
+  const unresolvedNumbers = [];
+  for (const invoice of actionable) {
+    const sourceId = textOrNull(invoice.sourceId);
+    if (sourceId && idBySource.has(sourceId)) continue;
+    const invoiceNumber = textOrNull(invoice.invoiceNumber);
+    if (invoiceNumber) unresolvedNumbers.push(invoiceNumber);
+  }
+  const idByNumber = new Map();
+  if (unresolvedNumbers.length) {
+    const found = await query(
+      `
+        select id, erp_invoice_number, invoice_number
+        from public.invoices
+        where erp_invoice_number = any($1::text[])
+           or invoice_number = any($1::text[])
+      `,
+      [unresolvedNumbers],
+    );
+    for (const row of found.rows) {
+      const erp = textOrNull(row.erp_invoice_number);
+      const inv = textOrNull(row.invoice_number);
+      const id = textOrNull(row.id);
+      if (!id) continue;
+      if (erp) idByNumber.set(erp, id);
+    }
+    for (const row of found.rows) {
+      const inv = textOrNull(row.invoice_number);
+      const id = textOrNull(row.id);
+      if (inv && id && !idByNumber.has(inv)) idByNumber.set(inv, id);
+    }
+  }
+
+  const updatesById = new Map();
+  for (let index = 0; index < actionable.length; index += 1) {
+    const invoice = actionable[index];
+    const invoiceNumber = textOrNull(invoice.invoiceNumber);
+    const sourceId = textOrNull(invoice.sourceId);
+    let invoiceId =
+      (sourceId && idBySource.get(sourceId)) ||
+      (invoiceNumber && idByNumber.get(invoiceNumber)) ||
+      null;
+    if (!invoiceId) {
+      notFound += 1;
+      if (missing.length < 50 && invoiceNumber) missing.push(invoiceNumber);
+      continue;
+    }
+    updatesById.set(invoiceId, {
+      id: invoiceId,
+      paidAmount: numberOrZero(invoice.paidAmount),
+      status: textOrNull(invoice.status) || 'open',
+      invoiceNumber,
+    });
+    if (
+      index === 0 ||
+      index + 1 === actionable.length ||
+      (index + 1) % 50 === 0
+    ) {
       reportProgress(index + 1, {
         stage: 'status',
         stageLabel: 'Fatura durumları güncelleniyor',
         total: invoices.length,
         invoiceNumber,
       });
+    }
+  }
+  const updates = [...updatesById.values()];
 
-    if (!invoiceNumber) {
-      report();
-      continue;
-    }
-    if (invoice.paymentReliable === false) {
-      unreliable += 1;
-      report();
-      continue;
-    }
-
-    let invoiceId = null;
-    if (invoice.sourceId != null) {
-      const mapped = await findAkinsoftMappedLocalId(
-        query,
-        'invoice',
-        invoice.sourceId,
-      );
-      invoiceId = mapped.rows?.[0]?.id || null;
-    }
-    if (!invoiceId) {
-      const found = await query(
-        `
-          select id
-          from public.invoices
-          where erp_invoice_number = $1
-             or invoice_number = $1
-          order by (erp_invoice_number = $1) desc
-          limit 1
-        `,
-        [invoiceNumber],
-      );
-      invoiceId = found.rows[0]?.id || null;
-    }
-    if (!invoiceId) {
-      notFound += 1;
-      if (missing.length < 50) missing.push(invoiceNumber);
-      report();
-      continue;
-    }
-
-    const status = textOrNull(invoice.status) || 'open';
+  if (updates.length) {
     const result = await query(
       `
-        update public.invoices
-        set paid_amount = $2,
-            status = $3,
+        update public.invoices i
+        set paid_amount = v.paid_amount,
+            status = v.status,
             updated_at = now()
-        where id = $1
+        from (
+          select *
+          from unnest($1::uuid[], $2::numeric[], $3::text[])
+            as t(id, paid_amount, status)
+        ) v
+        where i.id = v.id
           and (
-            coalesce(paid_amount, 0) is distinct from $2
-            or coalesce(status, '') is distinct from $3
+            coalesce(i.paid_amount, 0) is distinct from v.paid_amount
+            or coalesce(i.status, '') is distinct from v.status
           )
-        returning id
+        returning i.id, i.status
       `,
-      [invoiceId, numberOrZero(invoice.paidAmount), status],
+      [
+        updates.map((row) => row.id),
+        updates.map((row) => row.paidAmount),
+        updates.map((row) => row.status),
+      ],
     );
-    if (result.rows.length) {
-      updated += 1;
+    updated = result.rows.length;
+    for (const row of result.rows) {
+      const status = textOrNull(row.status) || 'open';
       if (statusCounts[status] != null) statusCounts[status] += 1;
-    } else {
-      unchanged += 1;
     }
-    report();
+    unchanged = Math.max(0, updates.length - updated);
   }
+
+  reportProgress(invoices.length, {
+    stage: 'status',
+    stageLabel: 'Fatura durumları güncellendi',
+    total: invoices.length,
+  });
 
   return {
     statusOnly: true,
@@ -2794,7 +3652,12 @@ async function importAkinsoftDataset(data, onProgress) {
             product_type = $11,
             track_stock = $12,
             sale_price = case when $13::numeric > 0 then $13 else sale_price end,
-            currency = coalesce($14, currency),
+            currency = case
+              when $13::numeric > 0 then coalesce($14, currency)
+              when $14 is not null and $14 <> '' and coalesce(sale_price, 0) = 0
+                then $14
+              else currency
+            end,
             is_active = true
           where id = $1
         `,
@@ -2805,7 +3668,7 @@ async function importAkinsoftDataset(data, onProgress) {
           textOrNull(product.description),
           textOrNull(product.category),
           textOrNull(product.unit) || 'Adet',
-          numberOrZero(product.taxRate) || 20,
+          resolveAkinsoftVatPercent(product),
           textOrNull(product.group),
           textOrNull(product.subGroup),
           sourceId,
@@ -2837,7 +3700,12 @@ async function importAkinsoftDataset(data, onProgress) {
               when excluded.sale_price > 0 then excluded.sale_price
               else public.products.sale_price
             end,
-            currency = coalesce(excluded.currency, public.products.currency),
+            currency = case
+              when excluded.sale_price > 0 then coalesce(excluded.currency, public.products.currency)
+              when coalesce(public.products.sale_price, 0) = 0
+                then coalesce(excluded.currency, public.products.currency)
+              else public.products.currency
+            end,
             akinsoft_group = excluded.akinsoft_group,
             akinsoft_sub_group = excluded.akinsoft_sub_group,
             akinsoft_source_id = excluded.akinsoft_source_id,
@@ -2853,7 +3721,7 @@ async function importAkinsoftDataset(data, onProgress) {
           textOrNull(product.unit) || 'Adet',
           numberOrZero(product.purchasePrice),
           salePrice,
-          numberOrZero(product.taxRate) || 20,
+          resolveAkinsoftVatPercent(product),
           currency,
           trackStock,
           textOrNull(product.group),
@@ -2880,7 +3748,7 @@ async function importAkinsoftDataset(data, onProgress) {
           textOrNull(product.category),
           productType,
           textOrNull(product.unit) || 'Adet',
-          numberOrZero(product.taxRate) || 20,
+          resolveAkinsoftVatPercent(product),
           salePrice,
           currency,
           trackStock,
@@ -2908,7 +3776,7 @@ async function importAkinsoftDataset(data, onProgress) {
       description: textOrNull(product.description),
       category: textOrNull(product.category),
       unit: textOrNull(product.unit) || 'Adet',
-      taxRate: numberOrZero(product.taxRate) || 20,
+      taxRate: resolveAkinsoftVatPercent(product),
       salePrice,
       currency,
       productType,
@@ -3396,6 +4264,284 @@ async function handleAkinsoftImportJob(req, res) {
       job.current = job.total;
       job.percent = 100;
       job.summary = summary;
+      job.updatedAt = new Date().toISOString();
+    })
+    .catch((error) => {
+      job.status = 'error';
+      job.error = error instanceof Error ? error.message : String(error);
+      job.updatedAt = new Date().toISOString();
+    });
+  return send(
+    res,
+    202,
+    { 'Content-Type': 'application/json; charset=utf-8' },
+    JSON.stringify({ ok: true, jobId: id, job }),
+  );
+}
+
+// Tek aksiyon: SAP'tan yeni/değişen faturaları çek, ödeme-durum
+// güncellemesini uygula, eşleşmiş yenileri içe aktar.
+async function runAkinsoftPullAndUpdate(body, reportProgress) {
+  const report = (current, extra = {}) => {
+    if (!reportProgress) return;
+    reportProgress({
+      stage: extra.stage || 'pull',
+      stageLabel: extra.stageLabel || 'SAP faturaları çekiliyor',
+      current: Number.isFinite(current) ? current : 0,
+      total: Number.isFinite(extra.total) ? extra.total : 1,
+      invoiceNumber: extra.invoiceNumber ?? null,
+      ...extra,
+    });
+  };
+
+  report(0, {
+    stage: 'pull',
+    stageLabel: 'SAP faturaları çekiliyor',
+    total: 1,
+  });
+  const pull = await pullAkinsoftDataset({
+    ...body,
+    syncMode: 'pull-and-update',
+  });
+  const invoices = Array.isArray(pull.invoices) ? pull.invoices : [];
+  report(1, {
+    stage: 'pull',
+    stageLabel: 'SAP faturaları çekildi',
+    total: 1,
+  });
+
+  const matched = (invoice) => invoice?.customerMatch?.matched === true;
+  // status: yalnızca ödeme/durum farkı → hızlı sync
+  // full / unmatched update: tam yeniden yazım veya sadece status (eşleşmeyen)
+  const isStatusOnlyUpdate = (invoice) =>
+    invoice.importAction === 'update' &&
+    (invoice.updateKind === 'status' || !matched(invoice));
+  const toStatusOnly = invoices.filter(isStatusOnlyUpdate);
+  const toImport = invoices.filter(
+    (invoice) =>
+      matched(invoice) &&
+      (invoice.importAction === 'new' ||
+        invoice.importAction === 'restore' ||
+        (invoice.importAction === 'update' && invoice.updateKind !== 'status')),
+  );
+  const needReview = invoices.filter(
+    (invoice) =>
+      !matched(invoice) &&
+      (invoice.importAction === 'new' || invoice.importAction === 'restore'),
+  );
+
+  let statusSync = {
+    checked: 0,
+    updated: 0,
+    unchanged: 0,
+    notFound: 0,
+    unreliable: 0,
+    statusCounts: { paid: 0, partial: 0, open: 0 },
+    missingInvoiceNumbers: [],
+  };
+  let importSummary = {
+    customers: 0,
+    products: 0,
+    invoices: 0,
+    invoiceItems: 0,
+    productsCreated: 0,
+    productsUpdated: 0,
+    productsSkipped: 0,
+  };
+
+  if (toStatusOnly.length) {
+    const { query } = require(path.join(rootDir, 'api', '_lib', 'db.js'));
+    const statusResult = await syncAkinsoftInvoiceStatuses(
+      query,
+      toStatusOnly,
+      (current, extra = {}) =>
+        report(current, {
+          stage: 'status',
+          stageLabel: 'Ödeme/durum güncelleniyor',
+          total: toStatusOnly.length,
+          ...extra,
+        }),
+    );
+    statusSync = statusResult.statusSync || statusSync;
+  }
+
+  if (toImport.length) {
+    const selectedCustomerSources = new Set(
+      toImport
+        .map((invoice) => textOrNull(invoice.customerSourceId))
+        .filter(Boolean),
+    );
+    const relatedCustomers = (Array.isArray(pull.customers) ? pull.customers : []).filter(
+      (customer) => selectedCustomerSources.has(textOrNull(customer.sourceId)),
+    );
+    importSummary = await importAkinsoftDataset(
+      {
+        ...pull,
+        settings: body,
+        invoices: toImport,
+        customers: relatedCustomers,
+        products: Array.isArray(pull.products) ? pull.products : [],
+        statusOnly: false,
+      },
+      ({ stage, stageLabel, current, total, invoiceNumber }) =>
+        report(current, {
+          stage: stage || 'invoices',
+          stageLabel: stageLabel || 'Yeni faturalar yazılıyor',
+          total,
+          invoiceNumber,
+        }),
+    );
+
+    const needsProductPush = toImport.some(
+      (invoice) =>
+        invoice.importAction === 'new' || invoice.importAction === 'restore',
+    );
+    if (needsProductPush) {
+      try {
+        report(0, {
+          stage: 'products_push',
+          stageLabel: 'CRM stokları Akınsoft’a yazılıyor',
+          total: 1,
+        });
+        const sql = require('mssql');
+        const { config } = buildAkinsoftSqlConfig(body);
+        config.requestTimeout = Math.max(Number(config.requestTimeout || 0), 180000);
+        const pool = await connectAkinsoftPool(config);
+        try {
+          const { query } = require(path.join(rootDir, 'api', '_lib', 'db.js'));
+          importSummary.productsPush = await pushUnmappedCrmProductsToAkinsoft(
+            pool,
+            sql,
+            query,
+          );
+        } finally {
+          await pool.close();
+        }
+        report(1, {
+          stage: 'products_push',
+          stageLabel: 'CRM stokları yazıldı',
+          total: 1,
+        });
+      } catch (error) {
+        importSummary.productsPush = {
+          created: 0,
+          matched: 0,
+          failed: 0,
+          error: error?.message || String(error),
+        };
+      }
+    } else {
+      importSummary.productsPush = {
+        created: 0,
+        matched: 0,
+        failed: 0,
+        skipped: true,
+      };
+    }
+  }
+
+  const importUpdateTargets = toImport.filter(
+    (invoice) => invoice.importAction === 'update',
+  ).length;
+  const importCreateTargets = Math.max(0, toImport.length - importUpdateTargets);
+  const importedTotal = Number(importSummary.invoices || 0);
+  // İçe aktarılanların bir kısmı güncelleme, kalanı yeni/restore kabul edilir.
+  const created = Math.min(importCreateTargets, importedTotal);
+  const importedUpdates = Math.max(0, importedTotal - created);
+  const updated = Number(statusSync.updated || 0) + importedUpdates;
+  const failed =
+    Number(statusSync.notFound || 0) +
+    Number(statusSync.unreliable || 0) +
+    Number(importSummary.skipped?.missingCustomerMatch || 0) +
+    Number(importSummary.productsPush?.failed || 0);
+
+  return {
+    ok: true,
+    database: pull.database,
+    tables: pull.tables,
+    counts: pull.counts,
+    warnings: pull.warnings,
+    customers: pull.customers,
+    products: pull.products,
+    invoices: pull.invoices,
+    needReviewInvoices: needReview,
+    summary: {
+      pulled: invoices.length,
+      created,
+      updated,
+      failed,
+      unchanged: Number(statusSync.unchanged || 0),
+      needReview: needReview.length,
+      statusSync,
+      import: importSummary,
+    },
+  };
+}
+
+async function handleAkinsoftPullAndUpdate(req, res) {
+  if (req.method === 'GET') {
+    const id = req.query?.id;
+    const job = id ? akinsoftJobs.get(id) : null;
+    if (!job) {
+      return send(
+        res,
+        404,
+        { 'Content-Type': 'application/json; charset=utf-8' },
+        JSON.stringify({ ok: false, error: 'İş bulunamadı.' }),
+      );
+    }
+    return send(
+      res,
+      200,
+      { 'Content-Type': 'application/json; charset=utf-8' },
+      JSON.stringify({ ok: true, job }),
+    );
+  }
+  if (req.method !== 'POST') {
+    return send(
+      res,
+      405,
+      { 'Content-Type': 'application/json; charset=utf-8' },
+      JSON.stringify({ ok: false, error: 'GET veya POST gerekli.' }),
+    );
+  }
+  const body = await readJson(req);
+  const id =
+    typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const job = {
+    id,
+    type: 'pull-and-update',
+    status: 'running',
+    stage: 'pull',
+    stageLabel: 'SAP faturaları çekiliyor',
+    total: 1,
+    current: 0,
+    percent: 0,
+    currentInvoiceNumber: null,
+    summary: null,
+    result: null,
+    error: null,
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  akinsoftJobs.set(id, job);
+  runAkinsoftPullAndUpdate(body, ({ stage, stageLabel, current, total, invoiceNumber }) => {
+    job.stage = stage || job.stage;
+    job.stageLabel = stageLabel || job.stageLabel;
+    job.current = Number.isFinite(current) ? current : job.current;
+    job.total = Number.isFinite(total) ? total : job.total;
+    job.currentInvoiceNumber = invoiceNumber || null;
+    job.percent = job.total ? Math.floor((job.current / job.total) * 100) : 0;
+    job.updatedAt = new Date().toISOString();
+  })
+    .then((result) => {
+      job.status = 'done';
+      job.current = job.total;
+      job.percent = 100;
+      job.summary = result.summary;
+      job.result = result;
       job.updatedAt = new Date().toISOString();
     })
     .catch((error) => {
@@ -3929,96 +5075,264 @@ async function readAkinsoftInvoiceNumberBySourceId(pool, sql, sourceId) {
   return textOrNull(result.recordset?.[0]?.invoiceNumber);
 }
 
-async function writeAkinsoftInvoiceNumber(pool, sql, item) {
+// FATURA UPDATE'ini kendi transaction bağlantısında çalıştırır.
+// Kilit beklerken (lazy) engelleyiciyi yakalar; hızlı başarıda DMV maliyeti yok.
+async function monitoredFaturaUpdate(pool, sql, whereSql, binder) {
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  let mon = null;
+  try {
+    const sp = await new sql.Request(tx).query('select @@spid as spid');
+    const spid = Number(sp.recordset?.[0]?.spid);
+    const req = new sql.Request(tx);
+    binder(req);
+    const updateP = req.query(`
+      set lock_timeout ${AKINSOFT_LOCK_TIMEOUT_MS};
+      update dbo.FATURA set FATURA_NO = @newNumber where ${whereSql};
+      select @@rowcount as affected;
+    `);
+    mon = startAkinsoftLockMonitor(pool, sql, spid);
+    try {
+      const res = await updateP;
+      await mon.done();
+      const affected = Number(res.recordset?.[0]?.affected || 0);
+      await tx.commit();
+      return { affected, errNo: 0, selfWait: mon.selfWait };
+    } catch (e) {
+      await mon.done();
+      try { await tx.rollback(); } catch (_) {}
+      const errNo = Number(e?.number ?? e?.originalError?.info?.number ?? 0);
+      return { affected: 0, errNo, selfWait: mon.selfWait };
+    }
+  } catch (e) {
+    if (mon) await mon.done();
+    try { await tx.rollback(); } catch (_) {}
+    return {
+      affected: 0,
+      errNo: Number(e?.number ?? e?.originalError?.info?.number ?? 0),
+      selfWait: mon?.selfWait || null,
+    };
+  }
+}
+
+async function attemptWriteAkinsoftInvoiceNumber(pool, sql, item) {
   const newNumber = textOrNull(item.newNumber);
   const sourceId = textOrNull(item.sourceId);
   let oldNumber = textOrNull(item.oldNumber);
   if (!newNumber) {
     return { ok: false, reason: 'Yeni fatura numarası yok.' };
   }
+  let blkodu = Number(sourceId);
+  if (!Number.isFinite(blkodu)) blkodu = null;
 
-  // BLKODU biliniyorsa Akınsoft’taki güncel numarayı esas al.
-  if (sourceId) {
-    const current = await readAkinsoftInvoiceNumberBySourceId(pool, sql, sourceId);
-    if (current) oldNumber = current;
-  }
-
-  if (oldNumber && oldNumber === newNumber) {
-    return { ok: true, skipped: true, reason: 'Numara zaten aynı.', oldNumber };
-  }
-
-  const existing = await pool
-    .request()
-    .input('newNumber', sql.NVarChar(64), newNumber)
-    .input('sourceId', sql.NVarChar(64), sourceId)
-    .query(`
-      select top 1
-        cast(BLKODU as nvarchar(64)) as sourceId,
-        FATURA_NO as invoiceNumber
-      from dbo.FATURA
-      where FATURA_NO = @newNumber
-        and (
-          @sourceId is null
-          or cast(BLKODU as nvarchar(64)) <> @sourceId
-        )
-    `);
-  if (existing.recordset?.length) {
+  // Okumalar NOLOCK + autocommit (kilit beklemez).
+  try {
+    if (blkodu != null) {
+      const cur = await pool.request().input('b', sql.BigInt, blkodu).query(
+        `set lock_timeout ${AKINSOFT_LOCK_TIMEOUT_MS}; select top 1 FATURA_NO as n from dbo.FATURA with (nolock) where BLKODU = @b`,
+      );
+      const c = textOrNull(cur.recordset?.[0]?.n);
+      if (c) oldNumber = c;
+    }
+    if (oldNumber && oldNumber === newNumber) {
+      return { ok: true, skipped: true, reason: 'Numara zaten aynı.', oldNumber };
+    }
+    const existing = await pool.request()
+      .input('newNumber', sql.NVarChar(64), newNumber)
+      .input('b', sql.BigInt, blkodu)
+      .query(`set lock_timeout ${AKINSOFT_LOCK_TIMEOUT_MS}; select top 1 cast(BLKODU as nvarchar(64)) as sourceId from dbo.FATURA with (nolock) where FATURA_NO = @newNumber and (@b is null or BLKODU <> @b)`);
+    if (existing.recordset?.length) {
+      return {
+        ok: false,
+        reason: `Akınsoft’ta ${newNumber} numarası başka bir faturada kullanılıyor.`,
+        oldNumber,
+        conflictSourceId: String(existing.recordset[0].sourceId),
+      };
+    }
+    if (blkodu == null && oldNumber) {
+      const r = await pool.request().input('o', sql.NVarChar(64), oldNumber).query(
+        `set lock_timeout ${AKINSOFT_LOCK_TIMEOUT_MS}; select top 1 BLKODU as b from dbo.FATURA with (nolock) where FATURA_NO = @o`,
+      );
+      const b = Number(r.recordset?.[0]?.b);
+      if (Number.isFinite(b)) blkodu = b;
+    }
+  } catch (error) {
     return {
       ok: false,
-      reason: `Akınsoft’ta ${newNumber} numarası başka bir faturada kullanılıyor.`,
+      reason: describeAkinsoftSqlError(error),
       oldNumber,
-      conflictSourceId: String(existing.recordset[0].sourceId),
+      __lock: isAkinsoftLockError(error),
+      sqlError: extractAkinsoftSqlError(error),
+      phase: 'read',
     };
   }
 
-  let updated = 0;
-  if (sourceId) {
-    const byId = await pool
-      .request()
-      .input('sourceId', sql.NVarChar(64), sourceId)
-      .input('newNumber', sql.NVarChar(64), newNumber)
-      .query(`
-        update dbo.FATURA
-        set FATURA_NO = @newNumber
-        where cast(BLKODU as nvarchar(64)) = @sourceId
-      `);
-    updated = Number(byId.rowsAffected?.[0] || 0);
+  // Ana güncelleme — canlı bekleme yakalama ile.
+  // Yalnızca BLKODU ile güncelle: FATURA_NO unique değil; no ile update
+  // aynı STŞ’li birden fazla satırı tek seferde Maliye no’ya çevirir.
+  let upd;
+  if (blkodu != null) {
+    upd = await monitoredFaturaUpdate(pool, sql, 'BLKODU = @b', (r) => {
+      r.input('newNumber', sql.NVarChar(64), newNumber);
+      r.input('b', sql.BigInt, blkodu);
+    });
+  } else {
+    return {
+      ok: false,
+      reason: 'Akınsoft fatura eşlemesi (BLKODU) bulunamadı.',
+      oldNumber,
+    };
   }
-  if (!updated && oldNumber) {
-    const byNo = await pool
-      .request()
-      .input('oldNumber', sql.NVarChar(64), oldNumber)
-      .input('newNumber', sql.NVarChar(64), newNumber)
-      .query(`
-        update dbo.FATURA
-        set FATURA_NO = @newNumber
-        where FATURA_NO = @oldNumber
-      `);
-    updated = Number(byNo.rowsAffected?.[0] || 0);
+
+  if (upd.errNo) {
+    const lockFail = upd.errNo === 1222;
+    return {
+      ok: false,
+      reason: lockFail
+        ? describeAkinsoftLockReasonFromEvidence({ selfWait: upd.selfWait })
+        : describeAkinsoftSqlError({ number: upd.errNo }),
+      oldNumber,
+      __lock: lockFail,
+      sqlError: {
+        number: upd.errNo,
+        message: lockFail
+          ? 'Lock request time out period exceeded.'
+          : `SQL error ${upd.errNo}`,
+      },
+      selfWait: upd.selfWait || null,
+      phase: 'update',
+    };
   }
-  if (!updated) {
+  if (!upd.affected) {
     return {
       ok: false,
       reason: oldNumber
         ? `Akınsoft’ta ${oldNumber} numaralı fatura bulunamadı.`
         : 'Akınsoft fatura eşlemesi (BLKODU) bulunamadı.',
       oldNumber,
+      selfWait: upd.selfWait || null,
     };
   }
 
-  if (oldNumber && oldNumber !== newNumber) {
-    await pool
-      .request()
-      .input('oldNumber', sql.NVarChar(64), oldNumber)
-      .input('newNumber', sql.NVarChar(64), newNumber)
-      .query(`
-        update dbo.CARIHR
-        set EVRAK_NO = @newNumber
-        where EVRAK_NO = @oldNumber
-      `);
+  let cariHrUpdated = null;
+  if (oldNumber && oldNumber !== newNumber && blkodu != null) {
+    try {
+      // SADECE bu faturaya bağlı hareketler — aynı STŞ no ile
+      // birden fazla CARIHR varsa hepsini tek Maliye no’ya çekmeyi engeller.
+      await pool.request()
+        .input('o', sql.NVarChar(64), oldNumber)
+        .input('newNumber', sql.NVarChar(64), newNumber)
+        .input('fto', sql.NVarChar(40), `FTO_${blkodu}`)
+        .input('ftk', sql.NVarChar(40), `FTK_${blkodu}`)
+        .query(`
+          set lock_timeout ${AKINSOFT_LOCK_TIMEOUT_MS};
+          update dbo.CARIHR
+          set EVRAK_NO = @newNumber
+          where EVRAK_NO = @o
+            and (
+              ENTEGRASYON = @fto
+              or ENTEGRASYON = @ftk
+            )
+        `);
+      cariHrUpdated = true;
+    } catch (_) {
+      cariHrUpdated = false;
+    }
+  } else if (oldNumber && oldNumber !== newNumber) {
+    // BLKODU yoksa eski geniş güncelleme yerine güvenli red.
+    cariHrUpdated = false;
   }
+  return { ok: true, updated: upd.affected, oldNumber, sourceId: blkodu != null ? String(blkodu) : null, cariHrUpdated, selfWait: upd.selfWait || null };
+}
 
-  return { ok: true, updated, oldNumber };
+// Kilit garantisi: FATURA'da OBJECT kilidi tutan ve belirli süredir işlem
+// yapmayan (bayat/asılı) WOLVOX oturumlarını bulur ve KILL eder. Aktif kullanıcıyı
+// vurmamak için yalnızca last_request_start_time eşiği geçmiş oturumları hedefler.
+// 'sa' sysadmin olduğundan KILL yetkisi vardır. Öldürülen oturumları döndürür.
+async function killStaleAkinsoftFaturaLockers(pool, sql, maxAgeSeconds) {
+  const maxAge = Math.max(
+    Number(
+      maxAgeSeconds ?? process.env.AKINSOFT_KILL_STALE_AFTER_SEC ?? 20,
+    ) || 20,
+    5,
+  );
+  const killed = [];
+  try {
+    const found = await pool.request().input('maxAge', sql.Int, maxAge).query(`
+      set lock_timeout 4000;
+      select distinct
+        es.session_id as sessionId,
+        es.program_name as programName,
+        es.host_name as hostName,
+        datediff(second, es.last_request_start_time, getdate()) as ageSeconds,
+        es.status as status
+      from sys.dm_exec_sessions es
+      join sys.dm_tran_locks tl
+        on tl.request_session_id = es.session_id
+      where es.session_id <> @@spid
+        and es.is_user_process = 1
+        and (
+          es.program_name like '%WERP%'
+          or es.program_name like '%Wolvox%'
+          or es.program_name like '%WOLVOX%'
+          or es.program_name like '%AKINSOFT%'
+        )
+        and tl.resource_database_id = db_id()
+        and es.open_transaction_count > 0
+        and es.status = 'sleeping'
+        and es.last_request_start_time < dateadd(second, -@maxAge, getdate())
+    `);
+    for (const row of found.recordset || []) {
+      const sid = Number(row.sessionId);
+      if (!Number.isFinite(sid)) continue;
+      try {
+        await pool.request().query(`kill ${sid}`);
+        killed.push({
+          sessionId: sid,
+          programName: textOrNull(row.programName),
+          hostName: textOrNull(row.hostName),
+          ageSeconds: Number(row.ageSeconds) || null,
+        });
+      } catch (e) {
+        killed.push({
+          sessionId: sid,
+          programName: textOrNull(row.programName),
+          hostName: textOrNull(row.hostName),
+          killError: String(e?.message || e),
+        });
+      }
+    }
+  } catch (_) {
+    // tespit/temizlik opsiyonel
+  }
+  return killed;
+}
+
+// Numara güncelleme sarmalayıcısı: 1222'de bayat WOLVOX temizliği + backoff retry.
+async function writeAkinsoftInvoiceNumber(pool, sql, item) {
+  return withAkinsoftLockRetry(
+    async (attempt) => {
+      let result = await attemptWriteAkinsoftInvoiceNumber(pool, sql, item);
+      if (result.ok || !result.__lock) {
+        return result;
+      }
+      // İlk kilit denemesinde bayat WOLVOX oturumlarını bir kez temizle.
+      if (attempt === 0) {
+        const killed = await killStaleAkinsoftFaturaLockers(pool, sql).catch(
+          () => [],
+        );
+        result.killedSessions = killed;
+        if (killed.length) {
+          await sleepMs(250);
+          const retry = await attemptWriteAkinsoftInvoiceNumber(pool, sql, item);
+          retry.killedSessions = killed;
+          return retry;
+        }
+      }
+      return result;
+    },
+    { label: 'push-invoice-number' },
+  );
 }
 
 async function findAkinsoftSourceByLocalId(query, sourceType, localId) {
@@ -4040,6 +5354,10 @@ async function findAkinsoftSourceByLocalId(query, sourceType, localId) {
 }
 
 async function akinsoftColumnIsIdentity(pool, tableName, columnName = 'BLKODU') {
+  const key = `${String(tableName || '').toUpperCase()}.${String(columnName || '').toUpperCase()}`;
+  if (_akinsoftSchemaCache.identity.has(key)) {
+    return _akinsoftSchemaCache.identity.get(key);
+  }
   const result = await pool.request().query(`
     select COLUMNPROPERTY(
       OBJECT_ID(N'dbo.${String(tableName).replace(/'/g, "''")}'),
@@ -4047,29 +5365,38 @@ async function akinsoftColumnIsIdentity(pool, tableName, columnName = 'BLKODU') 
       'IsIdentity'
     ) as is_identity
   `);
-  return Number(result.recordset?.[0]?.is_identity) === 1;
+  const ok = Number(result.recordset?.[0]?.is_identity) === 1;
+  _akinsoftSchemaCache.identity.set(key, ok);
+  return ok;
 }
 
 /**
  * Wolvox BLKODU allocator: SQL Server sequence dbo.{TABLE}_GEN via
  * SP_GEN_ID + NEXT VALUE FOR (see e.g. STOK_FIYAT_SFD_TRG).
  * Never use bare max(BLKODU)+1 — it steals IDs the sequence will reissue.
+ *
+ * requestFactory (opsiyonel): () => sql.Request — açık transaction bağlantısı.
+ * TX açıkken pool.request() ile max(BLKODU) almak, diğer havuz oturumunun
+ * kendi X kilitlerine çarpıp 1222 self-lock üretir.
  */
-async function akinsoftNextBlkoduSafe(pool, tableName) {
+async function akinsoftNextBlkoduSafe(pool, tableName, requestFactory) {
   const sql = require('mssql');
   const safe = String(tableName || '').replace(/[^A-Za-z0-9_]/g, '');
   if (!safe) throw new Error('Geçersiz tablo adı.');
   const genName = `${safe}_GEN`;
+  const newRequest = () =>
+    typeof requestFactory === 'function' ? requestFactory() : pool.request();
 
-  const maxResult = await pool.request().query(`
+  const maxResult = await newRequest().query(`
+    set lock_timeout ${AKINSOFT_LOCK_TIMEOUT_MS};
     select isnull(max(try_convert(bigint, BLKODU)), 0) as max_id
-    from dbo.${safe}
+    from dbo.${safe} with (nolock)
   `);
   const maxId = Number(maxResult.recordset?.[0]?.max_id || 0);
 
   let seqCurrent = null;
   try {
-    const seqResult = await pool.request().query(`
+    const seqResult = await newRequest().query(`
       select convert(bigint, current_value) as cv
       from sys.sequences
       where schema_id = schema_id(N'dbo') and name = N'${genName}'
@@ -4084,7 +5411,7 @@ async function akinsoftNextBlkoduSafe(pool, tableName) {
   if (seqCurrent == null) {
     // Ensure sequence exists (encrypted SP_GEN_ID creates {name} sequence when missing).
     try {
-      const genReq = pool.request();
+      const genReq = newRequest();
       genReq.input('GEN_NAME', sql.VarChar(32), genName);
       genReq.input('INCREMENT', sql.Int, 1);
       genReq.output('GEN_VALUE', sql.BigInt);
@@ -4093,7 +5420,7 @@ async function akinsoftNextBlkoduSafe(pool, tableName) {
       // Fall through to max+1 if sequence cannot be created.
     }
     try {
-      const seqResult = await pool.request().query(`
+      const seqResult = await newRequest().query(`
         select convert(bigint, current_value) as cv
         from sys.sequences
         where schema_id = schema_id(N'dbo') and name = N'${genName}'
@@ -4110,11 +5437,11 @@ async function akinsoftNextBlkoduSafe(pool, tableName) {
     // Sequence current_value is last issued. If behind table max, restart so
     // NEXT VALUE returns maxId+1 (same IDs Wolvox would otherwise collide on).
     if (seqCurrent < maxId) {
-      await pool.request().query(`
+      await newRequest().query(`
         alter sequence dbo.${genName} restart with ${maxId + 1}
       `);
     }
-    const nextResult = await pool.request().query(`
+    const nextResult = await newRequest().query(`
       select next value for dbo.${genName} as next_id
     `);
     const nextId = Number(nextResult.recordset?.[0]?.next_id);
@@ -4160,9 +5487,10 @@ function akinsoftCurrencySymbol(currency) {
 
 async function resolveAkinsoftFxRates(pool, currency, exchangeRate) {
   const symbol = akinsoftCurrencySymbol(currency);
-  const fallback = Math.max(Number(exchangeRate) || 0, 0.000001);
-  let alis = fallback;
-  let satis = fallback;
+  // Faturadaki CRM kuru SAP/Akınsoft'a gitmeli (oluşturulurken güncel satış kuru).
+  const crmRate = Math.max(Number(exchangeRate) || 0, 0);
+  let alis = crmRate > 0 ? crmRate : 0.000001;
+  let satis = crmRate > 0 ? crmRate : 0.000001;
   try {
     const result = await pool
       .request()
@@ -4178,14 +5506,18 @@ async function resolveAkinsoftFxRates(pool, currency, exchangeRate) {
         order by TARIHI desc
       `);
     const row = result.recordset?.[0];
-    if (row?.alis > 0) alis = Number(row.alis);
-    if (row?.satis > 0) satis = Number(row.satis);
-    // CRM kuru varsa satış kurunu ona sabitle; alış yoksa DOVIZ'den kalsın.
-    if (fallback > 1) {
-      satis = fallback;
-      if (!(alis > 0) || Math.abs(alis - fallback) / fallback > 0.25) {
-        alis = fallback;
+    if (crmRate > 0) {
+      // Satış = CRM fatura kuru. Alış: DOVIZ yakınsa onu kullan, değilse CRM.
+      satis = crmRate;
+      const dovizAlis = Number(row?.alis) || 0;
+      if (dovizAlis > 0 && Math.abs(dovizAlis - crmRate) / crmRate <= 0.25) {
+        alis = dovizAlis;
+      } else {
+        alis = crmRate;
       }
+    } else {
+      if (row?.alis > 0) alis = Number(row.alis);
+      if (row?.satis > 0) satis = Number(row.satis);
     }
   } catch (_) {
     // DOVIZ tablosu yoksa CRM kuru ile devam.
@@ -4557,12 +5889,10 @@ async function createAkinsoftStok(pool, sql, query, product, cached = null) {
     textOrNull(product.description),
   );
   setFirstColumn(values, columns, ['BIRIMI'], textOrNull(product.unit) || 'Adet');
-  setFirstColumn(
-    values,
-    columns,
-    ['KDV_ORANI'],
-    numberOrZero(product.tax_rate) || 20,
-  );
+  const vatPercent = resolveAkinsoftVatPercent(product);
+  setFirstColumn(values, columns, ['KDV_ORANI'], vatPercent);
+  setFirstColumn(values, columns, ['KDV_ORANI_ALIS'], vatPercent);
+  setFirstColumn(values, columns, ['KDV_ORANI_SATIS_TPT'], vatPercent);
   setFirstColumn(
     values,
     columns,
@@ -4682,7 +6012,7 @@ async function pushUnmappedCrmProductsToAkinsoft(pool, sql, query) {
         errors.push({
           productId: product.id,
           name: product.name,
-          reason: error?.message || String(error),
+          reason: describeAkinsoftSqlError(error),
         });
       }
     }
@@ -4739,7 +6069,7 @@ async function resolveAkinsoftCustomerForPush(pool, sql, query, invoice) {
   });
 }
 
-async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
+async function attemptWriteAkinsoftInvoiceCreate(pool, sql, query, invoice) {
   const invoiceId = textOrNull(invoice.id);
   const maliyeNumber = localEInvoiceNumber(invoice.e_invoice_number);
   const invoiceNumber =
@@ -4752,6 +6082,10 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
   if (!Array.isArray(invoice.items) || invoice.items.length === 0) {
     return { ok: false, reason: 'Faturada kalem yok.' };
   }
+
+  // Cari arama/oluşturma, mükerrer FATURA kontrolü ve stok/döviz sorguları da
+  // transaction dışında çalışır; bu bağlantıya da kilit sınırı uygula.
+  await applyAkinsoftLockTimeout(pool);
 
   const existingMap = await findAkinsoftSourceByLocalId(query, 'invoice', invoiceId);
   if (existingMap?.source_id) {
@@ -4784,42 +6118,52 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
     source_name: customerRef.sourceName,
   };
 
-  const duplicate = await pool
-    .request()
-    .input('invoiceNumber', sql.NVarChar(64), invoiceNumber)
-    .query(`
-      select top 1 cast(BLKODU as nvarchar(64)) as sourceId
-      from dbo.FATURA
-      where FATURA_NO = @invoiceNumber
-    `);
-  if (duplicate.recordset?.length) {
-    const sourceId = String(duplicate.recordset[0].sourceId);
-    await upsertAkinsoftSyncMap(query, {
-      sourceType: 'invoice',
-      sourceId,
-      sourceCode: invoiceNumber,
-      sourceName: textOrNull(invoice.customer_name),
-      localTable: 'invoices',
-      localId: invoiceId,
-    });
-    await query(
-      `
-        update public.invoices
-        set erp_invoice_number = coalesce(nullif(trim(erp_invoice_number), ''), $2),
-            erp_invoice_number_synced_at = now(),
-            akinsoft_sync_status = 'synced',
-            akinsoft_synced_at = now(),
-            akinsoft_sync_error = null,
-            updated_at = now()
-        where id = $1::uuid
-      `,
-      [invoiceId, invoiceNumber],
-    );
+  const duplicate = await findExistingAkinsoftFaturaByNumbers(pool, sql, [
+    invoiceNumber,
+    maliyeNumber,
+    invoice.erp_invoice_number,
+    invoice.invoice_number,
+  ]);
+  if (duplicate?.sourceId || duplicate?.orphanCariHr) {
+    if (duplicate.sourceId) {
+      await upsertAkinsoftSyncMap(query, {
+        sourceType: 'invoice',
+        sourceId: String(duplicate.sourceId),
+        sourceCode: invoiceNumber,
+        sourceName: textOrNull(invoice.customer_name),
+        localTable: 'invoices',
+        localId: invoiceId,
+      });
+      await query(
+        `
+          update public.invoices
+          set erp_invoice_number = coalesce(nullif(trim(erp_invoice_number), ''), $2),
+              erp_invoice_number_synced_at = now(),
+              akinsoft_sync_status = 'synced',
+              akinsoft_synced_at = now(),
+              akinsoft_sync_error = null,
+              updated_at = now()
+          where id = $1::uuid
+        `,
+        [invoiceId, invoiceNumber],
+      );
+      return {
+        ok: true,
+        skipped: true,
+        reason: duplicate.orphanCariHr
+          ? 'Akınsoft’ta aynı numaralı cari hareket vardı; FATURA satırı yok/eksik — yeni fatura oluşturulmadı, eşleme güncellendi.'
+          : duplicate.matchCount > 1
+            ? `Akınsoft’ta aynı numaralı ${duplicate.matchCount} fatura vardı; ilkine eşlendi, yeni kayıt yazılmadı.`
+            : 'Akınsoft’ta aynı numaralı fatura vardı; eşleme güncellendi.',
+        sourceId: String(duplicate.sourceId),
+        invoiceNumber,
+      };
+    }
     return {
-      ok: true,
-      skipped: true,
-      reason: 'Akınsoft’ta aynı numaralı fatura vardı; eşleme güncellendi.',
-      sourceId,
+      ok: false,
+      reason:
+        `Akınsoft’ta ${invoiceNumber} için fatura başlığı olmadan cari hareket var (muhtemel mükerrer/orphan). ` +
+        'Yeni FATURA yazılmadı — WOLVOX’ta manuel kontrol edin.',
       invoiceNumber,
     };
   }
@@ -4959,10 +6303,93 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
 
   const faturaIdentity = await akinsoftColumnIsIdentity(pool, 'FATURA', 'BLKODU');
   const lineIdentity = await akinsoftColumnIsIdentity(pool, 'FATURAHR', 'BLKODU');
+
+  // TX açılmadan metadata + BLKODU rezervasyonu. TX sırasında pool.request()
+  // (ayrı bağlantı) ile max(BLKODU)/metadata almak self-lock 1222 üretir.
+  const hasFaturaKur =
+    !isTry && (await akinsoftTableExists(pool, 'FATURA_KUR'));
+  const kurColumns = hasFaturaKur
+    ? await akinsoftTableColumnSet(pool, 'FATURA_KUR')
+    : null;
+  const kurIdentity = hasFaturaKur
+    ? await akinsoftColumnIsIdentity(pool, 'FATURA_KUR', 'BLKODU')
+    : true;
+  const hasFaturaKdv = await akinsoftTableExists(pool, 'FATURA_KDV');
+  const kdvColumns = hasFaturaKdv
+    ? await akinsoftTableColumnSet(pool, 'FATURA_KDV')
+    : null;
+  const kdvIdentity = hasFaturaKdv
+    ? await akinsoftColumnIsIdentity(pool, 'FATURA_KDV', 'BLKODU')
+    : true;
+  const cariHrIdentity =
+    hasCariHr && cariHrColumns.size
+      ? await akinsoftColumnIsIdentity(pool, 'CARIHR', 'BLKODU')
+      : true;
+
+  const kdvRates = (() => {
+    const byRate = new Map();
+    for (const line of linePayloads) {
+      const rate = Number(line.taxRate) || 0;
+      const cur = byRate.get(rate) || { matrah: 0, tax: 0 };
+      cur.matrah += isTry ? line.net : line.net * kpbFactor;
+      cur.tax += isTry ? line.tax : line.tax * kpbFactor;
+      byRate.set(rate, cur);
+    }
+    return byRate;
+  })();
+
+  let reservedFaturaBlkodu = null;
+  const reservedLineBlkodus = [];
+  let reservedKurBlkodu = null;
+  let reservedCariHrBlkodu = null;
+  const reservedKdvBlkodus = [];
+  try {
+    if (!faturaIdentity) {
+      reservedFaturaBlkodu = await akinsoftNextBlkoduSafe(pool, 'FATURA');
+    }
+    // Her satır için sequence'den ayrı ID al. Tek ID + lineBlkodu++ sequence'i
+    // geride bırakır; Wolvox sonraki SP_GEN_ID ile PK çakışması üretir.
+    if (!lineIdentity) {
+      for (let i = 0; i < linePayloads.length; i += 1) {
+        reservedLineBlkodus.push(await akinsoftNextBlkoduSafe(pool, 'FATURAHR'));
+      }
+    }
+    if (hasFaturaKur && !kurIdentity) {
+      reservedKurBlkodu = await akinsoftNextBlkoduSafe(pool, 'FATURA_KUR');
+    }
+    if (hasFaturaKdv && !kdvIdentity) {
+      for (let i = 0; i < kdvRates.size; i += 1) {
+        reservedKdvBlkodus.push(await akinsoftNextBlkoduSafe(pool, 'FATURA_KDV'));
+      }
+    }
+    if (hasCariHr && cariHrColumns.size && !cariHrIdentity) {
+      reservedCariHrBlkodu = await akinsoftNextBlkoduSafe(pool, 'CARIHR');
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      reason: isAkinsoftLockError(error)
+        ? describeAkinsoftLockReasonFromEvidence({})
+        : describeAkinsoftSqlError(error),
+      __lock: isAkinsoftLockError(error),
+      sqlError: extractAkinsoftSqlError(error),
+      phase: 'reserve',
+    };
+  }
+
   const transaction = new sql.Transaction(pool);
   await transaction.begin();
+  let createSelfWait = null;
+  let mon = null;
+  try {
+    const sp = await new sql.Request(transaction).query('select @@spid as spid');
+    mon = startAkinsoftLockMonitor(pool, sql, Number(sp.recordset?.[0]?.spid));
+  } catch (_) {}
   try {
     const txRequest = () => new sql.Request(transaction);
+    // Bu transaction'ın bağlantısında kilit beklemesini sınırla; WOLVOX kaydı
+    // kilitliyse INSERT 180 sn asılı kalmak yerine ~15 sn'de 1222 hatası verir.
+    await txRequest().query(`set lock_timeout ${AKINSOFT_LOCK_TIMEOUT_MS}`);
     const insertWithTx = async (tableName, columns, values) => {
       const safeTable = String(tableName || '').replace(/[^A-Za-z0-9_]/g, '');
       const entries = Object.entries(values).filter(
@@ -4993,7 +6420,7 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
 
     const header = {};
     if (!faturaIdentity) {
-      header.BLKODU = await akinsoftNextBlkoduSafe(pool, 'FATURA');
+      header.BLKODU = reservedFaturaBlkodu;
     }
     setFirstColumn(header, faturaColumns, ['FATURA_NO'], invoiceNumber);
     setFirstColumn(header, faturaColumns, ['TARIHI'], invoiceDate);
@@ -5217,14 +6644,11 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
     }
     const faturaBlkodu = Number(faturaSourceId);
 
-    let lineBlkodu = lineIdentity
-      ? null
-      : await akinsoftNextBlkoduSafe(pool, 'FATURAHR');
+    let lineIdx = 0;
     for (const line of linePayloads) {
       const row = {};
       if (!lineIdentity) {
-        row.BLKODU = lineBlkodu;
-        lineBlkodu += 1;
+        row.BLKODU = reservedLineBlkodus[lineIdx++];
       }
       setFirstColumn(row, lineColumns, ['BLFTKODU'], faturaBlkodu);
       if (line.productSourceId != null) {
@@ -5342,12 +6766,10 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
     }
 
     // Wolvox döviz faturası için FATURA_KUR şart (yoksa liste DVZ görür, form TL açılır).
-    if (!isTry && (await akinsoftTableExists(pool, 'FATURA_KUR'))) {
-      const kurColumns = await akinsoftTableColumnSet(pool, 'FATURA_KUR');
+    if (hasFaturaKur && kurColumns) {
       const kurRow = {};
-      const kurIdentity = await akinsoftColumnIsIdentity(pool, 'FATURA_KUR', 'BLKODU');
       if (!kurIdentity) {
-        kurRow.BLKODU = await akinsoftNextBlkoduSafe(pool, 'FATURA_KUR');
+        kurRow.BLKODU = reservedKurBlkodu;
       }
       setFirstColumn(kurRow, kurColumns, ['BLFTKODU'], faturaBlkodu);
       setFirstColumn(kurRow, kurColumns, ['DOVIZ_BIRIMI'], fxRates.symbol);
@@ -5357,21 +6779,12 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
     }
 
     // Referans faturadaki gibi KDV özeti (FATURA_KDV) yazılmazsa form bozulabiliyor.
-    if (await akinsoftTableExists(pool, 'FATURA_KDV')) {
-      const kdvColumns = await akinsoftTableColumnSet(pool, 'FATURA_KDV');
-      const kdvIdentity = await akinsoftColumnIsIdentity(pool, 'FATURA_KDV', 'BLKODU');
-      const byRate = new Map();
-      for (const line of linePayloads) {
-        const rate = Number(line.taxRate) || 0;
-        const cur = byRate.get(rate) || { matrah: 0, tax: 0 };
-        cur.matrah += isTry ? line.net : line.net * kpbFactor;
-        cur.tax += isTry ? line.tax : line.tax * kpbFactor;
-        byRate.set(rate, cur);
-      }
-      for (const [rate, amounts] of byRate.entries()) {
+    if (hasFaturaKdv && kdvColumns) {
+      let kdvIdx = 0;
+      for (const [rate, amounts] of kdvRates.entries()) {
         const kdvRow = {};
         if (!kdvIdentity) {
-          kdvRow.BLKODU = await akinsoftNextBlkoduSafe(pool, 'FATURA_KDV');
+          kdvRow.BLKODU = reservedKdvBlkodus[kdvIdx++];
         }
         setFirstColumn(kdvRow, kdvColumns, ['BLFTKODU'], faturaBlkodu);
         setFirstColumn(kdvRow, kdvColumns, ['KDV_ORANI'], rate);
@@ -5384,14 +6797,9 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
 
     let cariHrWritten = false;
     if (hasCariHr && cariHrColumns.size) {
-      const cariHrIdentity = await akinsoftColumnIsIdentity(
-        pool,
-        'CARIHR',
-        'BLKODU',
-      );
       const cariRow = {};
       if (!cariHrIdentity) {
-        cariRow.BLKODU = await akinsoftNextBlkoduSafe(pool, 'CARIHR');
+        cariRow.BLKODU = reservedCariHrBlkodu;
       }
       setFirstColumn(cariRow, cariHrColumns, ['BLCRKODU'], customerSourceId);
       setFirstColumn(cariRow, cariHrColumns, ['EVRAK_NO'], invoiceNumber);
@@ -5455,6 +6863,10 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
     }
 
     await transaction.commit();
+    if (mon) {
+      createSelfWait = mon.selfWait;
+      await mon.done();
+    }
 
     await upsertAkinsoftSyncMap(query, {
       sourceType: 'invoice',
@@ -5488,15 +6900,36 @@ async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
       customerCreated: customerRef.created === true,
       customerMatchedBy: customerRef.matchedBy || null,
       cariHrWritten,
+      selfWait: createSelfWait,
     };
   } catch (error) {
+    if (mon) {
+      createSelfWait = mon.selfWait;
+      await mon.done();
+    }
     try {
       await transaction.rollback();
     } catch (_) {
       // ignore rollback errors
     }
-    return { ok: false, reason: error?.message || String(error) };
+    return {
+      ok: false,
+      reason: isAkinsoftLockError(error)
+        ? describeAkinsoftLockReasonFromEvidence({ selfWait: createSelfWait })
+        : describeAkinsoftSqlError(error),
+      selfWait: createSelfWait,
+      __lock: isAkinsoftLockError(error),
+      sqlError: extractAkinsoftSqlError(error),
+      phase: 'create',
+    };
   }
+}
+
+async function writeAkinsoftInvoiceCreate(pool, sql, query, invoice) {
+  return withAkinsoftLockRetry(
+    async () => attemptWriteAkinsoftInvoiceCreate(pool, sql, query, invoice),
+    { label: 'push-invoice-create' },
+  );
 }
 
 async function handleAkinsoftPushInvoices(req, res) {
@@ -5596,8 +7029,11 @@ async function handleAkinsoftPushInvoices(req, res) {
   const sql = require('mssql');
   const { config } = buildAkinsoftSqlConfig(body.settings || body);
   config.requestTimeout = Math.max(Number(config.requestTimeout || 0), 180000);
+  // Yazımda TX + opsiyonel monitor; fazla havuz bağlantısı self-lock riskini artırır.
+  config.pool = { max: 3, min: 0, idleTimeoutMillis: 10000 };
   const pool = await connectAkinsoftPool(config);
   const items = [];
+  let blockers = null;
   const byId = new Map(headerResult.rows.map((row) => [String(row.id), row]));
   try {
     for (const invoiceId of invoiceIds) {
@@ -5664,16 +7100,51 @@ async function handleAkinsoftPushInvoices(req, res) {
           customerMatchedBy: write.customerMatchedBy || null,
           cariHrWritten: write.cariHrWritten === true,
           reason: write.reason || null,
+          selfWait: write.selfWait || null,
+          phase: write.phase || null,
+          sqlError: write.sqlError || null,
+          lockRetries: write.lockRetries || null,
         });
       } catch (error) {
-        const reason = error?.message || String(error);
+        const reason = describeAkinsoftSqlError(error);
         await setInvoiceAkinsoftSyncStatus(query, row.id, 'error', reason);
         items.push({
           invoiceId: row.id,
           invoiceNumber: row.invoice_number,
           ok: false,
           reason,
+          sqlError: extractAkinsoftSqlError(error),
         });
+      }
+      // Sonraki faturaya geçmeden kısa ara — varsayılan 0 (TX-order fix sonrası gereksiz).
+      if (AKINSOFT_INTER_INVOICE_DELAY_MS > 0) {
+        await sleepMs(AKINSOFT_INTER_INVOICE_DELAY_MS);
+      }
+    }
+    // Kilit görülürse: anlamlı engelleyicileri tespit et; CRM DATABASE S gürültüsünü ele.
+    if (
+      items.some(
+        (it) =>
+          it &&
+          !it.ok &&
+          /kilitli|zaman aşımına uğrad/i.test(String(it.reason || '')),
+      )
+    ) {
+      blockers = await getAkinsoftLockHolders(pool);
+      refineAkinsoftLockItemReasons(items, blockers);
+      for (const it of items) {
+        if (!it || it.ok || !it.invoiceId) continue;
+        if (!/kilitli|zaman aşımına|CRM’in başka|engelleyici WOLVOX değil/i.test(
+          String(it.reason || ''),
+        )) {
+          continue;
+        }
+        await setInvoiceAkinsoftSyncStatus(
+          query,
+          it.invoiceId,
+          'error',
+          it.reason,
+        ).catch(() => {});
       }
     }
   } finally {
@@ -5691,6 +7162,8 @@ async function handleAkinsoftPushInvoices(req, res) {
       success,
       failed,
       items,
+      blockers,
+      serverBuild: AKINSOFT_SERVER_BUILD,
     }),
   );
 }
@@ -5751,8 +7224,10 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
   const { config } = buildAkinsoftSqlConfig(body.settings || body);
   // Toplu güncellemede satır başına birkaç sorgu olduğu için süreyi uzat.
   config.requestTimeout = Math.max(Number(config.requestTimeout || 0), 180000);
+  config.pool = { max: 3, min: 0, idleTimeoutMillis: 10000 };
   const pool = await connectAkinsoftPool(config);
   const items = [];
+  let blockers = null;
   const byId = new Map(result.rows.map((row) => [String(row.id), row]));
   try {
     for (const invoiceId of invoiceIds) {
@@ -5821,100 +7296,151 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
           sourceId: row.akinsoft_source_id,
         });
 
-        // Akınsoft’ta yoksa (ERP’den gelmemiş CRM faturası) yeni kayıt oluştur.
+        // Akınsoft’ta yoksa: önce resmi/ERP no ile var mı bak; yoksa oluştur.
+        // Eski davranış "bulunamadı → hemen create" idi; STŞ ile bir kez,
+        // Maliye no ile bir kez yazıp sonra rename ile aynı EVRAK_NO’ya
+        // çekince mükerrer borç/tahsilat üretiyordu.
         if (
           !write.ok &&
           !row.akinsoft_source_id &&
           /bulunamadı|eşlemesi/i.test(String(write.reason || ''))
         ) {
-          const full = await query(
-            `
-              select
-                i.id,
-                i.invoice_number,
-                i.invoice_type,
-                i.customer_id,
-                i.invoice_date,
-                i.due_date,
-                i.currency,
-                i.exchange_rate,
-                i.subtotal,
-                i.tax_total,
-                i.discount_total,
-                i.grand_total,
-                i.status,
-                i.notes,
-                i.is_active,
-                i.e_invoice_number,
-                i.e_invoice_status,
-                c.name as customer_name,
-                c.vkn as customer_vkn,
-                c.tax_office as customer_tax_office,
-                coalesce(c.phone_1, c.phone_2) as customer_phone,
-                c.email as customer_email,
-                c.address as customer_address,
-                c.city as customer_city,
-                c.country as customer_country
-              from public.invoices i
-              left join public.customers c on c.id = i.customer_id
-              where i.id = $1::uuid
-              limit 1
-            `,
-            [row.id],
-          );
-          const header = full.rows?.[0];
-          const lineRows = (
-            await query(
+          const existing = await findExistingAkinsoftFaturaByNumbers(pool, sql, [
+            eInvoiceNumber,
+            officialEInvoiceNumber,
+            erpNumber,
+            invoiceNumber,
+          ]);
+          if (existing?.sourceId) {
+            write = {
+              ok: true,
+              skipped: true,
+              reason: existing.orphanCariHr
+                ? 'Akınsoft’ta aynı numaralı cari hareket vardı; yeni fatura yazılmadı, eşleme güncellendi.'
+                : 'Akınsoft’ta aynı numaralı fatura vardı; yeni kayıt yerine eşleme güncellendi.',
+              oldNumber: erpNumber || invoiceNumber,
+              sourceId: String(existing.sourceId),
+            };
+            row.akinsoft_source_id = String(existing.sourceId);
+          } else if (existing?.orphanCariHr) {
+            write = {
+              ok: false,
+              reason:
+                `Akınsoft’ta ${eInvoiceNumber} evrak no’lu orphan cari hareket var; ` +
+                'mükerrer FATURA oluşturmadı. WOLVOX’ta hareketleri kontrol edin.',
+            };
+          } else {
+            const full = await query(
               `
                 select
-                  ii.product_id,
-                  ii.description,
-                  ii.notes,
-                  ii.quantity,
-                  ii.unit,
-                  ii.unit_price,
-                  ii.tax_rate,
-                  ii.tax_amount,
-                  ii.discount_amount,
-                  ii.line_total,
-                  p.code as product_code
-                from public.invoice_items ii
-                left join public.products p on p.id = ii.product_id
-                where ii.invoice_id = $1::uuid
-                order by ii.sort_order asc
+                  i.id,
+                  i.invoice_number,
+                  i.invoice_type,
+                  i.customer_id,
+                  i.invoice_date,
+                  i.due_date,
+                  i.currency,
+                  i.exchange_rate,
+                  i.subtotal,
+                  i.tax_total,
+                  i.discount_total,
+                  i.grand_total,
+                  i.status,
+                  i.notes,
+                  i.is_active,
+                  i.e_invoice_number,
+                  i.e_invoice_status,
+                  i.erp_invoice_number,
+                  c.name as customer_name,
+                  c.vkn as customer_vkn,
+                  c.tax_office as customer_tax_office,
+                  coalesce(c.phone_1, c.phone_2) as customer_phone,
+                  c.email as customer_email,
+                  c.address as customer_address,
+                  c.city as customer_city,
+                  c.country as customer_country
+                from public.invoices i
+                left join public.customers c on c.id = i.customer_id
+                where i.id = $1::uuid
+                limit 1
               `,
               [row.id],
-            )
-          ).rows;
-          if (header && lineRows.length) {
-            const created = await writeAkinsoftInvoiceCreate(pool, sql, query, {
-              ...header,
-              // Maliye numarasıyla yazılsın.
-              invoice_number: eInvoiceNumber,
-              e_invoice_number: officialEInvoiceNumber,
-              e_invoice_status: 'sent',
-              items: lineRows,
-            });
-            if (created.ok) {
-              write = {
-                ok: true,
-                skipped: created.skipped === true,
-                reason: created.skipped
-                  ? created.reason
-                  : 'Akınsoft’ta fatura yoktu; Maliye numarasıyla oluşturuldu.',
-                oldNumber: null,
-                sourceId: created.sourceId,
-              };
-              row.akinsoft_source_id = created.sourceId;
-            } else {
-              write = {
-                ok: false,
-                reason:
-                  created.reason ||
-                  'Akınsoft’ta fatura bulunamadı ve oluşturma başarısız.',
-              };
+            );
+            const header = full.rows?.[0];
+            const lineRows = (
+              await query(
+                `
+                  select
+                    ii.product_id,
+                    ii.description,
+                    ii.notes,
+                    ii.quantity,
+                    ii.unit,
+                    ii.unit_price,
+                    ii.tax_rate,
+                    ii.tax_amount,
+                    ii.discount_amount,
+                    ii.line_total,
+                    p.code as product_code
+                  from public.invoice_items ii
+                  left join public.products p on p.id = ii.product_id
+                  where ii.invoice_id = $1::uuid
+                  order by ii.sort_order asc
+                `,
+                [row.id],
+              )
+            ).rows;
+            if (header && lineRows.length) {
+              const created = await writeAkinsoftInvoiceCreate(pool, sql, query, {
+                ...header,
+                // Maliye numarasıyla yazılsın.
+                invoice_number: eInvoiceNumber,
+                e_invoice_number: officialEInvoiceNumber,
+                e_invoice_status: 'sent',
+                erp_invoice_number: erpNumber || header.erp_invoice_number,
+                items: lineRows,
+              });
+              if (created.ok) {
+                write = {
+                  ok: true,
+                  skipped: created.skipped === true,
+                  reason: created.skipped
+                    ? created.reason
+                    : 'Akınsoft’ta fatura yoktu; Maliye numarasıyla oluşturuldu.',
+                  oldNumber: null,
+                  sourceId: created.sourceId,
+                  lockRetries: created.lockRetries || null,
+                };
+                row.akinsoft_source_id = created.sourceId;
+              } else {
+                write = {
+                  ok: false,
+                  reason:
+                    created.reason ||
+                    'Akınsoft’ta fatura bulunamadı ve oluşturma başarısız.',
+                  selfWait: created.selfWait || null,
+                  phase: created.phase || 'create',
+                  sqlError: created.sqlError || null,
+                  lockRetries: created.lockRetries || null,
+                };
+              }
             }
           }
+        } else if (
+          !write.ok &&
+          write.conflictSourceId &&
+          /başka bir faturada kullanılıyor/i.test(String(write.reason || ''))
+        ) {
+          // Hedef Maliye no zaten başka BLKODU’da: oluşturma; o kayda eşle.
+          write = {
+            ok: true,
+            skipped: true,
+            reason:
+              'Maliye numarası Akınsoft’ta zaten vardı; mevcut faturaya eşlendi (yeni kayıt yok).',
+            oldNumber: erpNumber || invoiceNumber,
+            sourceId: String(write.conflictSourceId),
+          };
+          row.akinsoft_source_id = String(write.conflictSourceId);
         }
 
         if (write.ok) {
@@ -6001,16 +7527,54 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
           created: /oluşturuldu/i.test(String(write.reason || '')),
           reason: write.reason || null,
           sourceId: row.akinsoft_source_id || write.sourceId || null,
+          lockHolders: write.lockHolders || null,
+          killedSessions: write.killedSessions || null,
+          cariHrUpdated: write.cariHrUpdated ?? null,
+          selfWait: write.selfWait || null,
+          phase: write.phase || null,
+          sqlError: write.sqlError || null,
+          lockRetries: write.lockRetries || null,
+          akinsoftSourceIdInput: row.akinsoft_source_id || null,
         });
       } catch (error) {
         // Bir faturadaki hata tüm toplu işlemi düşürmesin.
-        const reason = error?.message || String(error);
+        const reason = describeAkinsoftSqlError(error);
         await setInvoiceAkinsoftSyncStatus(query, row.id, 'error', reason);
         items.push({
           ...base,
           ok: false,
           reason,
+          sqlError: extractAkinsoftSqlError(error),
         });
+      }
+      if (AKINSOFT_INTER_INVOICE_DELAY_MS > 0) {
+        await sleepMs(AKINSOFT_INTER_INVOICE_DELAY_MS);
+      }
+    }
+    // Kilit görülürse: anlamlı engelleyicileri tespit et; CRM DATABASE S gürültüsünü ele.
+    if (
+      items.some(
+        (it) =>
+          it &&
+          !it.ok &&
+          /kilitli|zaman aşımına uğrad/i.test(String(it.reason || '')),
+      )
+    ) {
+      blockers = await getAkinsoftLockHolders(pool);
+      refineAkinsoftLockItemReasons(items, blockers);
+      for (const it of items) {
+        if (!it || it.ok || !it.invoiceId) continue;
+        if (!/kilitli|zaman aşımına|CRM’in başka|engelleyici WOLVOX değil/i.test(
+          String(it.reason || ''),
+        )) {
+          continue;
+        }
+        await setInvoiceAkinsoftSyncStatus(
+          query,
+          it.invoiceId,
+          'error',
+          it.reason,
+        ).catch(() => {});
       }
     }
   } finally {
@@ -6028,6 +7592,8 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
       success,
       failed,
       items,
+      blockers,
+      serverBuild: AKINSOFT_SERVER_BUILD,
     }),
   );
 }
@@ -6063,6 +7629,7 @@ async function handleAkinsoftRequest(req, res) {
     '/api/akinsoft/save-local-settings': handleAkinsoftSaveLocalSettings,
     '/api/akinsoft/analyze': handleAkinsoftAnalyze,
     '/api/akinsoft/pull': handleAkinsoftPull,
+    '/api/akinsoft/pull-and-update': handleAkinsoftPullAndUpdate,
     '/api/akinsoft/import': handleAkinsoftImport,
     '/api/akinsoft/import-job': handleAkinsoftImportJob,
     '/api/akinsoft/local-customers': handleAkinsoftLocalCustomers,

@@ -20,12 +20,22 @@ class ProductsScreen extends ConsumerStatefulWidget {
 }
 
 class _ProductsScreenState extends ConsumerState<ProductsScreen> {
-  final _money = NumberFormat.currency(
-    locale: 'tr_TR',
-    symbol: '₺',
-    decimalDigits: 2,
-  );
   String? _categoryFilter;
+
+  NumberFormat _moneyFor(String currency) {
+    final code = currency.trim().toUpperCase();
+    final symbol = switch (code) {
+      'TRY' || 'TL' => '₺',
+      'EUR' => '€',
+      'GBP' => '£',
+      _ => '\$',
+    };
+    return NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: symbol,
+      decimalDigits: 2,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -128,7 +138,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     final product = filtered[index];
                     return _ProductCard(
                       product: product,
-                      money: _money,
+                      money: _moneyFor(product.currency),
                       onTap: () => _showProductDialog(context, product),
                     );
                   },
@@ -172,7 +182,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
 
     String productType = product?.productType ?? 'product';
     String unit = product?.unit ?? 'Adet';
-    double taxRate = product?.taxRate ?? 20;
+    double taxRate = product?.taxRate ?? 5;
     bool trackStock = product?.trackStock ?? false;
     bool saving = false;
 
@@ -263,11 +273,12 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                         initialValue: taxRate,
                         items: const [
                           DropdownMenuItem(value: 0.0, child: Text('%0')),
-                          DropdownMenuItem(value: 1.0, child: Text('%1')),
+                          DropdownMenuItem(value: 5.0, child: Text('%5')),
                           DropdownMenuItem(value: 10.0, child: Text('%10')),
+                          DropdownMenuItem(value: 16.0, child: Text('%16')),
                           DropdownMenuItem(value: 20.0, child: Text('%20')),
                         ],
-                        onChanged: (v) => setState(() => taxRate = v ?? 20),
+                        onChanged: (v) => setState(() => taxRate = v ?? 5),
                         decoration: const InputDecoration(labelText: 'KDV'),
                       ),
                     ),

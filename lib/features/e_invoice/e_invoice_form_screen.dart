@@ -10,6 +10,7 @@ import '../../core/auth/user_profile_provider.dart';
 import '../../core/format/app_date_time.dart';
 import '../../core/format/search_normalize.dart';
 import '../../core/ui/app_card.dart';
+import '../billing/application_form_invoice_link.dart';
 import '../customers/customer_form_dialog.dart';
 import '../customers/customer_model.dart';
 import '../customers/customers_providers.dart';
@@ -188,13 +189,48 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
   }
 
   Future<void> _loadRates() async {
-    final rates = await CurrencyService.getExchangeRates();
+    final apiClient = ref.read(apiClientProvider);
+    final rates = await CurrencyService.getExchangeRates(apiClient: apiClient);
     if (!mounted) return;
     setState(() {
       _rates = rates;
       if (!_isEditing && _currency != 'TRY') {
         _exchangeRate = rates[_currency] ?? _exchangeRate;
         _exchangeRateController.text = _exchangeRate.toStringAsFixed(4);
+      }
+    });
+  }
+
+  /// Kaydetmeden önce döviz kurunun güncel olduğundan emin ol.
+  Future<void> _ensureCurrentExchangeRate() async {
+    if (_currency == 'TRY') {
+      _exchangeRate = 1;
+      _exchangeRateController.text = '1';
+      return;
+    }
+    final typed = _parseDecimal(_exchangeRateController.text);
+    final autoRate = _rates[_currency];
+    final looksManual =
+        typed > 1 &&
+        autoRate != null &&
+        autoRate > 0 &&
+        (typed - autoRate).abs() / autoRate > 0.0005;
+    // Düzenleme veya elle değiştirilmiş kur: kullanıcı değerini koru.
+    if (_isEditing || looksManual) {
+      if (typed > 0) _exchangeRate = typed;
+      return;
+    }
+    final apiClient = ref.read(apiClientProvider);
+    final rates = await CurrencyService.getExchangeRates(apiClient: apiClient);
+    if (!mounted) return;
+    final fresh = rates[_currency];
+    setState(() {
+      _rates = rates;
+      if (fresh != null && fresh > 0) {
+        _exchangeRate = fresh;
+        _exchangeRateController.text = fresh.toStringAsFixed(4);
+      } else if (typed > 1) {
+        _exchangeRate = typed;
       }
     });
   }
@@ -207,6 +243,9 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
         value == 'TRY' ? 0 : 4,
       );
     });
+    if (value != 'TRY' && ((_rates[value] ?? 0) <= 1)) {
+      _loadRates();
+    }
   }
 
   void _setPricesIncludeVat(bool value) {
@@ -327,7 +366,9 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                     dueDate: _dueDate,
                     currency: _currency,
                     exchangeRateController: _exchangeRateController,
-                    onCustomerSearch: (customers) => _pickCustomer(customers),
+                    onCustomerSelected: (customer) =>
+                        setState(() => _customerId = customer?.id),
+                    onCreateCustomer: _createCustomer,
                     onInvoiceDateChanged: (value) =>
                         setState(() => _invoiceDate = normalizeAppDate(value)),
                     onDueDateChanged: (value) => setState(
@@ -416,7 +457,9 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                           customers: customers,
                           selectedCustomerId: _customerId,
                           label: _isSales ? 'Müşteri' : 'Tedarikçi',
-                          onSearch: () => _pickCustomer(customers),
+                          onSelected: (customer) =>
+                              setState(() => _customerId = customer?.id),
+                          onCreateNew: _createCustomer,
                         ),
                         loading: () => const LinearProgressIndicator(),
                         error: (_, _) =>
@@ -644,6 +687,9 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
 
     setState(() => _saving = true);
     try {
+      await _ensureCurrentExchangeRate();
+      if (!mounted) return;
+
       final invoiceNumber = _isEditing
           ? widget.initialInvoice!.invoiceNumber
           : (await apiClient.getJson(
@@ -743,6 +789,13 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
         },
       );
 
+      if (_isSales) {
+        await fillInvoiceDeviceNotesFromApplicationForms(
+          apiClient,
+          invoiceId: invoiceId,
+        );
+      }
+
       if (_sendAfterSave && _isSales && status != 'draft') {
         await apiClient.postJson(
           '/e-invoice',
@@ -775,28 +828,19 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _pickCustomer(List<Customer> customers) async {
-    final selected = await showDialog<Customer>(
-      context: context,
-      builder: (context) => _CustomerPickerDialog(
-        customers: customers,
-        selectedCustomerId: _customerId,
-        title: _isSales ? 'Müşteri Seç' : 'Tedarikçi / Cari Seç',
-        onCreateNew: () async {
-          final createdId = await showCreateCustomerDialog(context);
-          if (createdId == null || !mounted) return null;
-          ref.invalidate(customersLookupProvider);
-          ref.invalidate(customersProvider);
-          final refreshed = await ref.read(customersLookupProvider.future);
-          for (final customer in refreshed) {
-            if (customer.id == createdId) return customer;
-          }
-          return null;
-        },
-      ),
-    );
-    if (selected == null) return;
-    setState(() => _customerId = selected.id);
+  Future<Customer?> _createCustomer() async {
+    final createdId = await showCreateCustomerDialog(context);
+    if (createdId == null || !mounted) return null;
+    ref.invalidate(customersLookupProvider);
+    ref.invalidate(customersProvider);
+    final refreshed = await ref.read(customersLookupProvider.future);
+    for (final customer in refreshed) {
+      if (customer.id == createdId) {
+        setState(() => _customerId = customer.id);
+        return customer;
+      }
+    }
+    return null;
   }
 
   Future<void> _addProducts(List<Product> products) async {
@@ -834,7 +878,8 @@ class _DesktopInvoiceTop extends StatelessWidget {
     required this.dueDate,
     required this.currency,
     required this.exchangeRateController,
-    required this.onCustomerSearch,
+    required this.onCustomerSelected,
+    required this.onCreateCustomer,
     required this.onInvoiceDateChanged,
     required this.onDueDateChanged,
     required this.onCurrencyChanged,
@@ -848,7 +893,8 @@ class _DesktopInvoiceTop extends StatelessWidget {
   final DateTime? dueDate;
   final String currency;
   final TextEditingController exchangeRateController;
-  final ValueChanged<List<Customer>> onCustomerSearch;
+  final ValueChanged<Customer?> onCustomerSelected;
+  final Future<Customer?> Function() onCreateCustomer;
   final ValueChanged<DateTime> onInvoiceDateChanged;
   final ValueChanged<DateTime?> onDueDateChanged;
   final ValueChanged<String> onCurrencyChanged;
@@ -932,7 +978,8 @@ class _DesktopInvoiceTop extends StatelessWidget {
                                 customers: customers,
                                 selectedCustomerId: selectedCustomerId,
                                 label: isSales ? 'Müşteri' : 'Tedarikçi',
-                                onSearch: () => onCustomerSearch(customers),
+                                onSelected: onCustomerSelected,
+                                onCreateNew: onCreateCustomer,
                               ),
                               loading: () => const LinearProgressIndicator(),
                               error: (_, _) =>
@@ -997,7 +1044,7 @@ class _DesktopInvoiceTop extends StatelessWidget {
                                         ),
                                     ],
                                     onChanged: (value) =>
-                                        onCurrencyChanged(value ?? 'TRY'),
+                                        onCurrencyChanged(value ?? currency),
                                     decoration: const InputDecoration(
                                       labelText: 'Para Birimi',
                                     ),
@@ -1061,83 +1108,86 @@ class _DesktopTextBox extends StatelessWidget {
   }
 }
 
-class _CustomerSelectField extends StatelessWidget {
+class _CustomerSelectField extends StatefulWidget {
   const _CustomerSelectField({
     required this.customers,
     required this.selectedCustomerId,
     required this.label,
-    required this.onSearch,
-  });
-
-  final List<Customer> customers;
-  final String? selectedCustomerId;
-  final String label;
-  final VoidCallback onSearch;
-
-  @override
-  Widget build(BuildContext context) {
-    final selected = customers
-        .where((customer) => customer.id == selectedCustomerId)
-        .cast<Customer?>()
-        .firstOrNull;
-    return FormField<String>(
-      initialValue: selectedCustomerId,
-      validator: (value) =>
-          (selectedCustomerId ?? '').isEmpty ? 'Cari seçin' : null,
-      builder: (field) {
-        return InkWell(
-          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-          onTap: onSearch,
-          child: InputDecorator(
-            decoration: InputDecoration(
-              labelText: label,
-              errorText: field.errorText,
-              suffixIcon: IconButton(
-                tooltip: 'Cari ara',
-                onPressed: onSearch,
-                icon: const Icon(LucideIcons.search),
-              ),
-            ),
-            child: Text(
-              selected == null ? 'Cari ara ve seç' : selected.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: selected == null ? AppTheme.textMuted : AppTheme.text,
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _CustomerPickerDialog extends StatefulWidget {
-  const _CustomerPickerDialog({
-    required this.customers,
-    required this.selectedCustomerId,
-    required this.title,
+    required this.onSelected,
     required this.onCreateNew,
   });
 
   final List<Customer> customers;
   final String? selectedCustomerId;
-  final String title;
+  final String label;
+  final ValueChanged<Customer?> onSelected;
   final Future<Customer?> Function() onCreateNew;
 
   @override
-  State<_CustomerPickerDialog> createState() => _CustomerPickerDialogState();
+  State<_CustomerSelectField> createState() => _CustomerSelectFieldState();
 }
 
-class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
-  final _search = TextEditingController();
+class _CustomerSelectFieldState extends State<_CustomerSelectField> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
   bool _creating = false;
 
   @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _selectedName());
+    _focusNode = FocusNode();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CustomerSelectField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedCustomerId != widget.selectedCustomerId ||
+        oldWidget.customers != widget.customers) {
+      final next = _selectedName();
+      if (_controller.text != next && !_focusNode.hasFocus) {
+        _controller.value = TextEditingValue(
+          text: next,
+          selection: TextSelection.collapsed(offset: next.length),
+        );
+      }
+    }
+  }
+
+  @override
   void dispose() {
-    _search.dispose();
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    _controller.dispose();
     super.dispose();
+  }
+
+  void _onFocusChange() {
+    if (!_focusNode.hasFocus) {
+      final selected = _selectedName();
+      if (_controller.text != selected) {
+        _controller.value = TextEditingValue(
+          text: selected,
+          selection: TextSelection.collapsed(offset: selected.length),
+        );
+      }
+      return;
+    }
+    if (_controller.text.isEmpty) return;
+    _controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _controller.text.length,
+    );
+  }
+
+  String _selectedName() {
+    final id = widget.selectedCustomerId;
+    if (id == null || id.isEmpty) return '';
+    for (final customer in widget.customers) {
+      if (customer.id == id) return customer.name;
+    }
+    return '';
   }
 
   bool _matchesCustomer(Customer customer, String query) {
@@ -1155,13 +1205,27 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
     );
   }
 
+  Iterable<Customer> _optionsFor(String rawQuery) {
+    final query = rawQuery.trim();
+    if (query.isEmpty) {
+      return widget.customers.take(40);
+    }
+    return widget.customers
+        .where((customer) => _matchesCustomer(customer, query))
+        .take(120);
+  }
+
   Future<void> _createCustomer() async {
     if (_creating) return;
     setState(() => _creating = true);
     try {
       final created = await widget.onCreateNew();
       if (!mounted || created == null) return;
-      Navigator.of(context).pop(created);
+      _controller.value = TextEditingValue(
+        text: created.name,
+        selection: TextSelection.collapsed(offset: created.name.length),
+      );
+      _focusNode.unfocus();
     } finally {
       if (mounted) setState(() => _creating = false);
     }
@@ -1169,111 +1233,127 @@ class _CustomerPickerDialogState extends State<_CustomerPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final query = _search.text.trim();
-    final filtered = query.isEmpty
-        ? widget.customers.take(80).toList(growable: false)
-        : widget.customers
-              .where((customer) => _matchesCustomer(customer, query))
-              .take(120)
-              .toList(growable: false);
-
-    return AlertDialog(
-      title: Text(widget.title),
-      content: SizedBox(
-        width: 720,
-        height: 560,
-        child: Column(
-          children: [
-            TextField(
-              controller: _search,
-              autofocus: true,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                prefixIcon: Icon(LucideIcons.search),
-                hintText: 'Ad, VKN, telefon veya şehir ile ara',
+    return FormField<String>(
+      initialValue: widget.selectedCustomerId,
+      validator: (_) =>
+          (widget.selectedCustomerId ?? '').isEmpty ? 'Cari seçin' : null,
+      builder: (field) {
+        return RawAutocomplete<Customer>(
+          textEditingController: _controller,
+          focusNode: _focusNode,
+          displayStringForOption: (customer) => customer.name,
+          optionsBuilder: (value) => _optionsFor(value.text),
+          onSelected: (customer) {
+            widget.onSelected(customer);
+            field.didChange(customer.id);
+          },
+          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+            return TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              onFieldSubmitted: (_) => onFieldSubmitted(),
+              onChanged: (value) {
+                if (value.trim().isEmpty &&
+                    (widget.selectedCustomerId ?? '').isNotEmpty) {
+                  widget.onSelected(null);
+                  field.didChange(null);
+                }
+              },
+              decoration: InputDecoration(
+                labelText: widget.label,
+                hintText: 'Ad, VKN, telefon veya şehir ara',
+                errorText: field.errorText,
+                prefixIcon: const Icon(LucideIcons.search),
+                suffixIcon: IconButton(
+                  tooltip: _creating ? 'Oluşturuluyor…' : 'Yeni cari ekle',
+                  onPressed: _creating ? null : _createCustomer,
+                  icon: _creating
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(LucideIcons.userPlus),
+                ),
               ),
-            ),
-            const Gap(10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _creating ? null : _createCustomer,
-                icon: _creating
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(LucideIcons.userPlus, size: 18),
-                label: Text(_creating ? 'Oluşturuluyor…' : 'Yeni cari ekle'),
+            );
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            final items = options.toList(growable: false);
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                elevation: 8,
+                borderRadius: BorderRadius.circular(12),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 520,
+                    maxHeight: 360,
+                  ),
+                  child: items.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const Text('Cari bulunamadı.'),
+                              const Gap(8),
+                              OutlinedButton.icon(
+                                onPressed: _creating ? null : _createCustomer,
+                                icon: const Icon(LucideIcons.userPlus),
+                                label: const Text('Yeni cari oluştur'),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          shrinkWrap: true,
+                          itemCount: items.length,
+                          separatorBuilder: (context, index) =>
+                              const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final customer = items[index];
+                            final selected =
+                                customer.id == widget.selectedCustomerId;
+                            return ListTile(
+                              dense: true,
+                              selected: selected,
+                              leading: CircleAvatar(
+                                radius: 16,
+                                child: Text(_initials(customer.name)),
+                              ),
+                              title: Text(
+                                customer.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                [
+                                  if ((customer.vkn ?? '').isNotEmpty)
+                                    'VKN ${customer.vkn}',
+                                  if ((customer.city ?? '').isNotEmpty)
+                                    customer.city,
+                                  if ((customer.phone1 ?? '').isNotEmpty)
+                                    customer.phone1,
+                                ].join(' • '),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              trailing: selected
+                                  ? const Icon(LucideIcons.circleCheck)
+                                  : null,
+                              onTap: () => onSelected(customer),
+                            );
+                          },
+                        ),
+                ),
               ),
-            ),
-            const Gap(4),
-            Expanded(
-              child: filtered.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text('Cari bulunamadı.'),
-                          const Gap(8),
-                          OutlinedButton.icon(
-                            onPressed: _creating ? null : _createCustomer,
-                            icon: const Icon(LucideIcons.userPlus),
-                            label: const Text('Yeni cari oluştur'),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.separated(
-                      itemCount: filtered.length,
-                      separatorBuilder: (context, index) =>
-                          const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final customer = filtered[index];
-                        final selected =
-                            customer.id == widget.selectedCustomerId;
-                        return ListTile(
-                          dense: true,
-                          selected: selected,
-                          leading: CircleAvatar(
-                            radius: 17,
-                            child: Text(_initials(customer.name)),
-                          ),
-                          title: Text(
-                            customer.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(
-                            [
-                              if ((customer.vkn ?? '').isNotEmpty)
-                                'VKN ${customer.vkn}',
-                              if ((customer.city ?? '').isNotEmpty)
-                                customer.city,
-                              if ((customer.phone1 ?? '').isNotEmpty)
-                                customer.phone1,
-                            ].join(' • '),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: selected
-                              ? const Icon(LucideIcons.circleCheck)
-                              : null,
-                          onTap: () => Navigator.of(context).pop(customer),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Kapat'),
-        ),
-      ],
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -2146,7 +2226,7 @@ class _ItemEditor extends StatelessWidget {
           controller: item.notesController,
           decoration: inputDecoration.copyWith(
             labelText: 'Kalem açıklama',
-            hintText: 'PDF / Maliye / Akınsoft (isteğe bağlı)',
+            hintText: 'PDF / Maliye / SAP (isteğe bağlı)',
           ),
           onChanged: (_) => onChanged(),
         );

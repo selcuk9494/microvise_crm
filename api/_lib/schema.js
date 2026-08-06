@@ -551,13 +551,24 @@ async function ensureInvoiceItemsTable() {
         add column if not exists deactivated_by uuid,
         add column if not exists deactivated_at timestamptz,
         add column if not exists created_by uuid,
-        add column if not exists created_at timestamptz
+        add column if not exists created_at timestamptz,
+        add column if not exists invoice_id uuid,
+        add column if not exists product_id uuid,
+        add column if not exists quantity numeric,
+        add column if not exists unit text,
+        add column if not exists unit_price numeric,
+        add column if not exists tax_rate numeric,
+        add column if not exists tax_amount numeric,
+        add column if not exists discount_rate numeric,
+        add column if not exists discount_amount numeric,
+        add column if not exists line_total numeric,
+        add column if not exists sort_order integer
     `,
   );
 
   const colsResult = await query(
     `
-      select column_name
+      select column_name, is_nullable
       from information_schema.columns
       where table_schema = 'public'
         and table_name = 'invoice_items'
@@ -573,6 +584,28 @@ async function ensureInvoiceItemsTable() {
     await query(
       `alter table public.invoice_items drop constraint if exists invoice_items_source_table_check`,
     );
+  }
+  // Faturalama kuyruğu + fatura kalemi aynı tabloda: kaynak/sicil zorunluluğu
+  // satış kalemi insert'ini düşürmesin.
+  if (cols.includes('source_id')) {
+    await query(
+      `alter table public.invoice_items alter column source_id drop not null`,
+    ).catch(() => {});
+  }
+  if (cols.includes('item_type')) {
+    await query(
+      `alter table public.invoice_items alter column item_type drop not null`,
+    ).catch(() => {});
+  }
+  if (cols.includes('source_table')) {
+    await query(
+      `alter table public.invoice_items alter column source_table drop not null`,
+    ).catch(() => {});
+  }
+  if (cols.includes('invoice_id')) {
+    await query(
+      `alter table public.invoice_items alter column invoice_id drop not null`,
+    ).catch(() => {});
   }
 
   ensured.invoice_items = true;

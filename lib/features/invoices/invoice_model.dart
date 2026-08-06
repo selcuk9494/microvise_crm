@@ -77,7 +77,7 @@ class Invoice {
   final String? akinsoftSourceId;
   final String? akinsoftSourceCode;
 
-  /// Durable Akınsoft push state: synced | error | pending (null = derive).
+  /// Durable SAP push state: synced | error | pending (null = derive).
   final String? akinsoftSyncStatus;
   final DateTime? akinsoftSyncedAt;
   final String? akinsoftSyncError;
@@ -148,7 +148,7 @@ class Invoice {
       (eInvoiceUuid?.trim().isNotEmpty ?? false);
   bool get isLinkedToAkinsoft {
     if (akinsoftSourceId?.trim().isNotEmpty ?? false) return true;
-    // Yalnızca Akınsoft tarzı fatura no "bağlı" sayılır.
+    // Yalnızca SAP tarzı fatura no "bağlı" sayılır.
     // erp_invoice_number CRM taslak (STŞ-...) tutabilir; onu bağlı sanma.
     return Invoice._looksLikeAkinsoftInvoiceNumber(invoiceNumber);
   }
@@ -157,7 +157,7 @@ class Invoice {
   String get invoiceNumberDisplay =>
       formatInvoiceNumberForDisplay(invoiceNumber);
 
-  /// Effective Akınsoft push badge state (durable field, else linked → synced).
+  /// Effective SAP push badge state (durable field, else linked → synced).
   String get akinsoftSyncStatusEffective {
     final stored = (akinsoftSyncStatus ?? '').trim().toLowerCase();
     if (stored == 'synced' || stored == 'error' || stored == 'pending') {
@@ -167,7 +167,7 @@ class Invoice {
     return 'pending';
   }
 
-  /// Canlı e-fatura var; Akınsoft’ta Maliye no / kayıt senkronu eksik.
+  /// Canlı e-fatura var; SAP’ta Maliye no / kayıt senkronu eksik.
   bool get needsAkinsoftNumberSync {
     if (!isEInvoiceSent) return false;
     if (eInvoiceEnvironment != null && eInvoiceEnvironment != 'production') {

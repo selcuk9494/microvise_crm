@@ -1062,6 +1062,23 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     );
   }
 
+  Future<void> _showErrorDialog(String message) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Hata'),
+        content: Text(message),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Tamam'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     _padDigitsController(_vknController, length: 10);
     _normalizeTcknMsField();
@@ -1092,7 +1109,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       try {
         var q = client
             .from('customers')
-            .select('id,name')
+            .select('id,name,is_active')
             .eq('vkn', normalizedVkn);
         if (widget.isEdit) {
           q = q.neq('id', widget.initialData!.id!);
@@ -1101,11 +1118,15 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
         final existingId = row?['id']?.toString().trim();
         if ((existingId ?? '').isNotEmpty) {
           final existingName = (row?['name'] ?? '').toString().trim();
-          final message = existingName.isEmpty
+          final isActive = row?['is_active'] != false;
+          final base = existingName.isEmpty
               ? 'Bu VKN ile kayıtlı müşteri var.'
               : 'Bu VKN ile kayıtlı müşteri var: $existingName';
+          final message = isActive
+              ? base
+              : '$base (pasif kayıt — listede pasifleri gösterip düzenleyin)';
           if (!mounted) return;
-          messenger.showSnackBar(SnackBar(content: Text(message)));
+          await _showErrorDialog(message);
           return;
         }
       } catch (_) {}
@@ -1141,26 +1162,29 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
             final title = _nullIfEmpty(draft.titleController.text);
             final description = _nullIfEmpty(draft.descriptionController.text);
             final address = _nullIfEmpty(draft.addressController.text);
+            final locationLink = _nullIfEmpty(draft.locationLinkController.text);
+            final lat = double.tryParse(draft.latController.text.trim());
+            final lng = double.tryParse(draft.lngController.text.trim());
+            final hasContent =
+                title != null ||
+                description != null ||
+                address != null ||
+                locationLink != null ||
+                lat != null ||
+                lng != null;
+            if (!hasContent) return null;
             return {
               'id': draft.id,
               'title': title ?? address ?? description ?? 'Konum',
               'description': description,
               'address': address,
-              'location_link': _nullIfEmpty(draft.locationLinkController.text),
-              'location_lat': double.tryParse(draft.latController.text.trim()),
-              'location_lng': double.tryParse(draft.lngController.text.trim()),
+              'location_link': locationLink,
+              'location_lat': lat,
+              'location_lng': lng,
               'is_active': true,
             };
           })
-          .where(
-            (row) =>
-                (row['title'] as String?) != null ||
-                (row['description'] as String?) != null ||
-                (row['address'] as String?) != null ||
-                (row['location_link'] as String?) != null ||
-                row['location_lat'] != null ||
-                row['location_lng'] != null,
-          )
+          .whereType<Map<String, dynamic>>()
           .toList(growable: false);
 
       if (apiClient != null) {
@@ -1246,15 +1270,14 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       Navigator.of(context).pop(customerId);
     } catch (e) {
       if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.isEdit
-                ? 'Güncelleme başarısız. Lütfen tekrar deneyin.'
-                : 'Müşteri kaydedilemedi. Lütfen tekrar deneyin.',
-          ),
-        ),
-      );
+      final detail = e
+          .toString()
+          .replaceFirst(RegExp(r'^Exception:\s*'), '')
+          .trim();
+      final fallback = widget.isEdit
+          ? 'Güncelleme başarısız. Lütfen tekrar deneyin.'
+          : 'Müşteri kaydedilemedi. Lütfen tekrar deneyin.';
+      await _showErrorDialog(detail.isEmpty ? fallback : detail);
       setState(() => _saving = false);
     }
   }
@@ -1363,20 +1386,12 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     final messenger = ScaffoldMessenger.of(context);
     final q = _taxLookupController.text.trim();
     if (q.isEmpty) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Kimlik no, VKN veya MŞ mükellef numarası girin.'),
-        ),
-      );
+      await _showErrorDialog('Kimlik no, VKN veya MŞ mükellef numarası girin.');
       return;
     }
     if (apiClient == null) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Mükellef sorgusu için API bağlantısı gerekli (yerel sunucu / API_BASE_URL).',
-          ),
-        ),
+      await _showErrorDialog(
+        'Mükellef sorgusu için API bağlantısı gerekli (yerel sunucu / API_BASE_URL).',
       );
       return;
     }
@@ -1450,8 +1465,13 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       );
     } catch (error) {
       if (!mounted) return;
-      final message = error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
-      messenger.showSnackBar(SnackBar(content: Text(message)));
+      final message = error
+          .toString()
+          .replaceFirst(RegExp(r'^Exception:\s*'), '')
+          .trim();
+      await _showErrorDialog(
+        message.isEmpty ? 'Mükellef sorgusu başarısız.' : message,
+      );
     } finally {
       if (mounted) setState(() => _lookupLoading = false);
     }

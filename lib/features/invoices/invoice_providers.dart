@@ -93,17 +93,20 @@ final exchangeRatesProvider = FutureProvider.autoDispose
         (date ?? DateTime.now()).day,
       );
 
-      return _fallbackRates(targetDate);
+      return _fallbackRates(targetDate, apiClient: ref.read(apiClientProvider));
     });
 
-Future<Map<String, ExchangeRate>> _fallbackRates(DateTime date) async {
-  final fetched = await CurrencyService.getExchangeRates();
+Future<Map<String, ExchangeRate>> _fallbackRates(
+  DateTime date, {
+  ApiClient? apiClient,
+}) async {
+  final fetched = await CurrencyService.getExchangeRates(apiClient: apiClient);
   return {
     'TRY': ExchangeRate(
       currency: 'TRY',
       rateToTry: 1.0,
       effectiveDate: date,
-      source: 'fallback',
+      source: 'halkbank',
       isManual: false,
       createdAt: DateTime.now(),
     ),
@@ -112,7 +115,7 @@ Future<Map<String, ExchangeRate>> _fallbackRates(DateTime date) async {
         currency: entry.key,
         rateToTry: entry.value,
         effectiveDate: date,
-        source: 'fallback',
+        source: 'halkbank',
         isManual: false,
         createdAt: DateTime.now(),
       ),

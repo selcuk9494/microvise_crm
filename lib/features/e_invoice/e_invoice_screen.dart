@@ -67,6 +67,26 @@ Map<String, dynamic> _archivePdfRequestBody(String invoiceId) => {
   'refreshOfficial': false,
 };
 
+String _formatJobElapsed(Duration value) {
+  final minutes = value.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
+  final hours = value.inHours;
+  if (hours > 0) {
+    return '${hours.toString().padLeft(2, '0')}:$minutes:$seconds';
+  }
+  return '$minutes:$seconds';
+}
+
+String _formatJobElapsedShort(Duration value) {
+  if (value.inHours > 0) return _formatJobElapsed(value);
+  if (value.inMinutes > 0) {
+    final m = value.inMinutes;
+    final s = value.inSeconds.remainder(60);
+    return s > 0 ? '$m dk $s sn' : '$m dk';
+  }
+  return '${value.inSeconds} sn';
+}
+
 final eInvoiceSettingsProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
       final apiClient = ref.watch(apiClientProvider);
@@ -149,10 +169,10 @@ String _akinsoftBridgeError(Object error) {
     r'Connection refused|Failed host lookup|ClientException|SocketException|XMLHttpRequest',
     caseSensitive: false,
   ).hasMatch(text)) {
-    return 'Akınsoft API’ye ulaşılamadı ($error). '
+    return 'SAP API’ye ulaşılamadı ($error). '
         'Yerelde PORT=4000 local_server çalıştığından emin olun.';
   }
-  return 'Akınsoft’a gönderilemedi: $error';
+  return 'SAP’a gönderilemedi: $error';
 }
 
 const _defaultSettings = <String, dynamic>{
@@ -213,9 +233,9 @@ class EInvoiceScreen extends ConsumerWidget {
       _ => _InvoicesTab(moneyTry: _moneyTry),
     };
     final subtitle = switch (section) {
-      'stok' => 'Stok ve hizmet tanımları, Akınsoft grup/alt grup ayrımı.',
+      'stok' => 'Stok ve hizmet tanımları, SAP grup/alt grup ayrımı.',
       'cari' => 'Cari borç, tahsilat ve ödeme takibi.',
-      'ayarlar' => 'Maliye ve Akınsoft entegrasyon ayarları.',
+      'ayarlar' => 'Maliye ve SAP entegrasyon ayarları.',
       _ => 'Alış/satış faturaları, stok, cari ve KKTC e-fatura gönderimi.',
     };
 
@@ -456,6 +476,22 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               !invoice.isLinkedToAkinsoft,
         )
         .length;
+    // Seçimden bağımsız: listedeki SAP'a henüz gitmemiş tüm faturalar.
+    // Tek buton hem yeni kayıt yazar hem de SAP numarası güncellemesi gerekenleri işler.
+    final newErpCreateItems = items
+        .where(
+          (invoice) =>
+              invoice.isActive &&
+              invoice.status != 'cancelled' &&
+              !invoice.isLinkedToAkinsoft &&
+              !invoice.needsAkinsoftNumberSync,
+        )
+        .toList(growable: false);
+    final newErpRenumberItems = items
+        .where((invoice) => invoice.needsAkinsoftNumberSync)
+        .toList(growable: false);
+    final newErpSyncCount =
+        newErpCreateItems.length + newErpRenumberItems.length;
     final visibleItems = items.take(_visibleInvoiceLimit).toList();
     final hasHiddenItems = visibleItems.length < items.length;
     final sales = items.where((e) => e.invoiceType == 'sales').length;
@@ -532,6 +568,20 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
           pullingErp: _pullingAkinsoft,
         ),
         const Gap(8),
+        if (newErpSyncCount > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                onPressed: _bulkDeleting || _bulkProcessing || _pullingAkinsoft
+                    ? null
+                    : () => _pushNewInvoicesToErp(items),
+                icon: const Icon(AppPhosphorIcons.cloudArrowUp, size: 18),
+                label: Text('Yeni Faturaları SAP’a Gönder ($newErpSyncCount)'),
+              ),
+            ),
+          ),
         if (items.isEmpty)
           AppCard(
             child: Padding(
@@ -540,7 +590,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                 children: [
                   const Expanded(
                     child: Text(
-                      'Henüz fatura yok. Yeni Fatura veya ERP’den Faturaları Çek ile başlayın.',
+                      'Henüz fatura yok. Yeni Fatura veya Fatura Çek ve Güncelle ile başlayın.',
                     ),
                   ),
                   OutlinedButton.icon(
@@ -552,7 +602,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(AppPhosphorIcons.cloudArrowDown, size: 18),
-                    label: const Text('ERP’den Faturaları Çek'),
+                    label: const Text('Fatura Çek ve Güncelle'),
                   ),
                 ],
               ),
@@ -688,7 +738,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                       AppPhosphorIcons.barcode,
                                       size: 18,
                                     ),
-                                    label: const Text('ERP No'),
+                                    label: const Text('SAP No'),
                                   ),
                                   const Gap(8),
                                   OutlinedButton.icon(
@@ -705,7 +755,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                       AppPhosphorIcons.cloudArrowUp,
                                       size: 18,
                                     ),
-                                    label: const Text('ERP’ye Gönder'),
+                                    label: const Text('SAP’a Gönder'),
                                   ),
                                   const Gap(8),
                                   OutlinedButton.icon(
@@ -796,14 +846,11 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                           ),
                           const Gap(8),
                           Expanded(
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                reverse: true,
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
+                            child: Wrap(
+                              alignment: WrapAlignment.end,
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
                                     TextButton(
                                       onPressed: _bulkDeleting
                                           ? null
@@ -824,7 +871,6 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                             ),
                                       child: const Text('Temizle'),
                                     ),
-                                    const Gap(8),
                                     OutlinedButton.icon(
                                       onPressed:
                                           selectedSendableCount == 0 ||
@@ -838,7 +884,6 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                       ),
                                       label: const Text('Tahsilat Yap'),
                                     ),
-                                    const Gap(8),
                                     OutlinedButton.icon(
                                       onPressed:
                                           bulkManualCount == 0 ||
@@ -861,7 +906,6 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                             : 'Manuel Kesildi',
                                       ),
                                     ),
-                                    const Gap(8),
                                     OutlinedButton.icon(
                                       onPressed:
                                           selectedErpPushCount == 0 ||
@@ -876,9 +920,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                         AppPhosphorIcons.barcode,
                                         size: 18,
                                       ),
-                                      label: const Text('Akınsoft No Güncelle'),
+                                      label: const Text('SAP No Güncelle'),
                                     ),
-                                    const Gap(8),
                                     OutlinedButton.icon(
                                       onPressed:
                                           selectedAkinsoftCreateCount == 0 ||
@@ -895,10 +938,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                         size: 18,
                                       ),
                                       label: const Text(
-                                        'Akınsoft’a Fatura Gönder',
+                                        'SAP’a Fatura Gönder',
                                       ),
                                     ),
-                                    const Gap(8),
                                     OutlinedButton.icon(
                                       onPressed:
                                           selectedSentCount == 0 ||
@@ -921,7 +963,6 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                             ),
                                       label: const Text('Toplu PDF'),
                                     ),
-                                    const Gap(8),
                                     FilledButton.tonalIcon(
                                       onPressed:
                                           _selectedInvoiceIds.isEmpty ||
@@ -938,7 +979,6 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                         'Toplu Fatura Ekstresi',
                                       ),
                                     ),
-                                    const Gap(8),
                                     OutlinedButton.icon(
                                       onPressed:
                                           _selectedInvoiceIds.isEmpty ||
@@ -963,7 +1003,6 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                             ),
                                       label: const Text('Payload Hazırla'),
                                     ),
-                                    const Gap(8),
                                     FilledButton.icon(
                                       onPressed:
                                           _selectedInvoiceIds.isEmpty ||
@@ -986,7 +1025,6 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                             ),
                                       label: Text(apiSendLabel),
                                     ),
-                                    const Gap(8),
                                     FilledButton.icon(
                                       onPressed:
                                           _selectedInvoiceIds.isEmpty ||
@@ -1009,8 +1047,6 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                       label: const Text('Seçilenleri Sil'),
                                     ),
                                   ],
-                                ),
-                              ),
                             ),
                           ),
                         ],
@@ -1301,7 +1337,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Akınsoft’a gönderilecek CRM faturası seçilmedi '
+            'SAP’a gönderilecek CRM faturası seçilmedi '
             '(zaten eşleşmiş veya pasif/iptal olanlar atlanır).',
           ),
         ),
@@ -1312,10 +1348,10 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Akınsoft’a fatura gönder'),
+        title: const Text('SAP’a fatura gönder'),
         content: Text(
-          '${selected.length} fatura Akınsoft’a yeni kayıt olarak yazılsın mı?\n\n'
-          '• Cari yoksa Akınsoft’a otomatik eklenir\n'
+          '${selected.length} fatura SAP’a yeni kayıt olarak yazılsın mı?\n\n'
+          '• Cari yoksa SAP’a otomatik eklenir\n'
           '• Stok eşleşmezse kalem açıklama olarak yazılır\n\n'
           'Örnek: ${selected.first.invoiceNumber}',
         ),
@@ -1348,10 +1384,10 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
           .timeout(const Duration(minutes: 15));
       final decoded = jsonDecode(response.body);
       if (decoded is! Map) {
-        throw Exception('Beklenmeyen Akınsoft yanıtı.');
+        throw Exception('Beklenmeyen SAP yanıtı.');
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(decoded['error'] ?? 'Akınsoft gönderimi başarısız.');
+        throw Exception(decoded['error'] ?? 'SAP gönderimi başarısız.');
       }
       _selectedInvoiceIds.clear();
       ref.invalidate(invoicesProvider);
@@ -1361,7 +1397,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Akınsoft’a Gönderim'),
+          title: const Text('SAP’a Gönderim'),
           content: SizedBox(
             width: 640,
             height: MediaQuery.sizeOf(context).height * 0.5,
@@ -1427,7 +1463,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Akınsoft’a aktarılacak canlı gönderilmiş e-fatura seçilmedi.',
+            'SAP’a aktarılacak canlı gönderilmiş e-fatura seçilmedi.',
           ),
         ),
       );
@@ -1437,11 +1473,11 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Akınsoft fatura no güncelle'),
+        title: const Text('SAP fatura no güncelle'),
         content: Text(
-          '${selected.length} faturanın CRM ve Akınsoft fatura numarası '
+          '${selected.length} faturanın CRM ve SAP fatura numarası '
           'Maliye e-fatura numarasına güncellensin mi?\n\n'
-          'Akınsoft’ta kaydı olmayanlar Maliye numarasıyla yeni oluşturulur.\n\n'
+          'SAP’ta kaydı olmayanlar Maliye numarasıyla yeni oluşturulur.\n\n'
           'Örnek: SF03393 → ${_localEInvoiceNumber(selected.first.eInvoiceNumber!)}',
         ),
         actions: [
@@ -1473,10 +1509,10 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
           .timeout(const Duration(minutes: 15));
       final decoded = jsonDecode(response.body);
       if (decoded is! Map) {
-        throw Exception('Beklenmeyen Akınsoft yanıtı.');
+        throw Exception('Beklenmeyen SAP yanıtı.');
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(decoded['error'] ?? 'Akınsoft güncelleme başarısız.');
+        throw Exception(decoded['error'] ?? 'SAP güncelleme başarısız.');
       }
       _selectedInvoiceIds.clear();
       ref.invalidate(invoicesProvider);
@@ -1486,7 +1522,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Akınsoft No Güncelleme'),
+          title: const Text('SAP No Güncelleme'),
           content: SizedBox(
             width: 640,
             height: MediaQuery.sizeOf(context).height * 0.5,
@@ -1521,6 +1557,154 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             FilledButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Tamam'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_akinsoftBridgeError(error))));
+    } finally {
+      if (mounted) setState(() => _bulkProcessing = false);
+    }
+  }
+
+  /// Tek buton: listedeki (seçimden bağımsız) SAP'a gitmemiş tüm faturaları
+  /// işler. Yeni olanları SAP'a kayıt olarak yazar, SAP numarası güncellenmesi
+  /// gerekenleri günceller. İki iş de tek akışta yapılır.
+  Future<void> _pushNewInvoicesToErp(List<Invoice> items) async {
+    final createList = items
+        .where(
+          (invoice) =>
+              invoice.isActive &&
+              invoice.status != 'cancelled' &&
+              !invoice.isLinkedToAkinsoft &&
+              !invoice.needsAkinsoftNumberSync,
+        )
+        .toList(growable: false);
+    final renumberList = items
+        .where((invoice) => invoice.needsAkinsoftNumberSync)
+        .toList(growable: false);
+    if (createList.isEmpty && renumberList.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'SAP’a gönderilecek yeni fatura yok (hepsi zaten aktarılmış).',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Yeni faturaları SAP’a gönder'),
+        content: Text(
+          [
+            if (createList.isNotEmpty)
+              '• ${createList.length} yeni fatura SAP’a yeni kayıt olarak yazılacak',
+            if (renumberList.isNotEmpty)
+              '• ${renumberList.length} faturanın SAP numarası güncellenecek',
+            '',
+            'Seçim yapmanıza gerek yok; listedeki tüm uygun faturalar işlenir.',
+          ].join('\n'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Gönder'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _bulkProcessing = true);
+    try {
+      final settings = await ref.read(eInvoiceSettingsProvider.future);
+      var totalSuccess = 0;
+      var totalFailed = 0;
+      final results = <String, dynamic>{};
+
+      Future<void> runPush(
+        String path,
+        List<Invoice> list,
+        String key,
+      ) async {
+        if (list.isEmpty) return;
+        final response = await http
+            .post(
+              _akinsoftUri(path),
+              headers: {'Content-Type': 'application/json; charset=utf-8'},
+              body: jsonEncode({
+                ...settings,
+                'invoiceIds': list.map((invoice) => invoice.id).toList(),
+              }),
+            )
+            .timeout(const Duration(minutes: 15));
+        final decoded = jsonDecode(response.body);
+        if (decoded is! Map) {
+          throw Exception('Beklenmeyen SAP yanıtı.');
+        }
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw Exception(decoded['error'] ?? 'SAP gönderimi başarısız.');
+        }
+        totalSuccess += (decoded['success'] as num?)?.toInt() ?? 0;
+        totalFailed += (decoded['failed'] as num?)?.toInt() ?? 0;
+        results[key] = decoded;
+      }
+
+      await runPush('push-invoices', createList, 'yeni_kayit');
+      await runPush('push-invoice-numbers', renumberList, 'no_guncelleme');
+
+      _selectedInvoiceIds.clear();
+      ref.invalidate(invoicesProvider);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Yeni Faturaları SAP’a Gönder'),
+          content: SizedBox(
+            width: 640,
+            height: MediaQuery.sizeOf(context).height * 0.5,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Başarılı: $totalSuccess • Hatalı: $totalFailed'),
+                const Gap(12),
+                Expanded(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceMuted,
+                      border: Border.all(color: AppTheme.border),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                    ),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(12),
+                      child: SelectableText(
+                        const JsonEncoder.withIndent('  ').convert(results),
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Kapat'),
             ),
           ],
         ),
@@ -1945,40 +2129,205 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
 
   Future<void> _pullAkinsoftData() async {
     setState(() => _pullingAkinsoft = true);
+    final startedAt = DateTime.now();
+    var stageLabel = 'SAP faturaları çekiliyor';
+    var current = 0;
+    var total = 1;
+    var percent = 0;
+    var elapsedText = '00:00';
+    String? invoiceNumber;
+    StateSetter? setDialogState;
+    var dialogVisible = false;
+    Timer? tick;
+
+    void refreshElapsed() {
+      elapsedText = _formatJobElapsed(DateTime.now().difference(startedAt));
+      setDialogState?.call(() {});
+    }
+
     try {
+      if (mounted) {
+        dialogVisible = true;
+        // ignore: unawaited_futures
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) {
+            return StatefulBuilder(
+              builder: (context, setLocal) {
+                setDialogState = setLocal;
+                final progress = total <= 0
+                    ? null
+                    : (current / total).clamp(0.0, 1.0);
+                return AlertDialog(
+                  title: const Text('Fatura Çek ve Güncelle'),
+                  content: SizedBox(
+                    width: 420,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          total > 1
+                              ? '$stageLabel: $current / $total (%$percent)'
+                              : stageLabel,
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        const Gap(12),
+                        LinearProgressIndicator(value: progress),
+                        const Gap(12),
+                        Text(
+                          [
+                            'Geçen süre: $elapsedText',
+                            if ((invoiceNumber ?? '').isNotEmpty)
+                              'Aktif fatura: $invoiceNumber',
+                          ].join(' • '),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const Gap(8),
+                        Text(
+                          'Lütfen bu pencereyi kapatmayın.',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: AppTheme.textSoft),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        );
+        tick = Timer.periodic(const Duration(milliseconds: 250), (_) {
+          if (!mounted || !dialogVisible) return;
+          refreshElapsed();
+        });
+      }
+
       final settings = await ref.read(eInvoiceSettingsProvider.future);
       final payload = {...settings, 'limit': 2000};
-      final response = await http
+      final startResponse = await http
           .post(
-            _akinsoftUri('pull'),
+            _akinsoftUri('pull-and-update'),
             headers: {'Content-Type': 'application/json; charset=utf-8'},
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(minutes: 5));
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception('Beklenmeyen veri çekme yanıtı.');
+          .timeout(const Duration(seconds: 30));
+      final started = jsonDecode(startResponse.body);
+      if (started is! Map || started['ok'] != true) {
+        throw Exception(
+          started is Map ? started['error'] : 'Fatura çekme başlatılamadı.',
+        );
       }
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300 ||
-          decoded['ok'] != true) {
-        throw Exception(decoded['error'] ?? 'Veri çekme başarısız.');
+      final jobId = started['jobId']?.toString() ?? '';
+      if (jobId.isEmpty) {
+        throw Exception('Fatura çekme iş numarası alınamadı.');
       }
-      decoded['_settingsPayload'] = payload;
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (context) => _AkinsoftPullDialog(data: decoded),
-      );
+
+      Map<String, dynamic> summary = const {};
+      Map<String, dynamic>? result;
+      while (true) {
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        final statusResponse = await http
+            .get(_akinsoftUri('pull-and-update', {'id': jobId}))
+            .timeout(const Duration(seconds: 15));
+        final statusDecoded = jsonDecode(statusResponse.body);
+        if (statusDecoded is! Map || statusDecoded['ok'] != true) {
+          throw Exception(
+            statusDecoded is Map
+                ? statusDecoded['error']
+                : 'Fatura çekme durumu alınamadı.',
+          );
+        }
+        final job =
+            (statusDecoded['job'] as Map?)?.cast<String, dynamic>() ??
+            const <String, dynamic>{};
+        if (mounted && dialogVisible) {
+          setDialogState?.call(() {
+            current = (job['current'] as num?)?.toInt() ?? current;
+            total = (job['total'] as num?)?.toInt() ?? total;
+            percent = (job['percent'] as num?)?.toInt() ?? percent;
+            stageLabel =
+                job['stageLabel']?.toString() ?? stageLabel;
+            invoiceNumber = job['currentInvoiceNumber']?.toString();
+            elapsedText = _formatJobElapsed(
+              DateTime.now().difference(startedAt),
+            );
+          });
+        }
+        final status = job['status']?.toString();
+        if (status == 'done') {
+          summary =
+              (job['summary'] as Map?)?.cast<String, dynamic>() ??
+              const <String, dynamic>{};
+          result = (job['result'] as Map?)?.cast<String, dynamic>();
+          break;
+        }
+        if (status == 'error') {
+          throw Exception(job['error'] ?? 'Fatura çekme başarısız.');
+        }
+      }
+
+      final elapsed = DateTime.now().difference(startedAt);
       ref.invalidate(invoicesProvider);
       ref.invalidate(customersProvider);
+      ref.invalidate(productsProvider(null));
+      ref.invalidate(accountBalancesProvider);
       ref.invalidate(eInvoiceSettingsProvider);
-    } catch (error) {
       if (!mounted) return;
+
+      if (dialogVisible && Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+        dialogVisible = false;
+      }
+
+      final pulled = summary['pulled'] ?? 0;
+      final created = summary['created'] ?? 0;
+      final updated = summary['updated'] ?? 0;
+      final failed = summary['failed'] ?? 0;
+      final needReview = summary['needReview'] ?? 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Fatura çekildi ve güncellendi: çekilen $pulled, '
+            'yeni $created, güncellenen $updated, hata $failed'
+            '${needReview is num && needReview > 0 ? ', eşleşme bekleyen $needReview' : ''}'
+            ' · ${_formatJobElapsedShort(elapsed)}.',
+          ),
+        ),
+      );
+
+      final needReviewInvoices =
+          ((result?['needReviewInvoices'] as List?) ?? const [])
+              .whereType<Map>()
+              .toList();
+      if (needReviewInvoices.isNotEmpty && result != null) {
+        final dialogData = Map<String, dynamic>.from(result);
+        dialogData['invoices'] = needReviewInvoices;
+        dialogData['_settingsPayload'] = payload;
+        await showDialog<void>(
+          context: context,
+          builder: (context) => _AkinsoftPullDialog(data: dialogData),
+        );
+        ref.invalidate(invoicesProvider);
+        ref.invalidate(customersProvider);
+      }
+    } catch (error) {
+      if (mounted &&
+          dialogVisible &&
+          Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+        dialogVisible = false;
+      }
+      if (!mounted) return;
+      final message = error is TimeoutException
+          ? 'İşlem beklenenden uzun sürdü. Sunucuda devam etmiş olabilir; Yenile ile kontrol edin.'
+          : 'SAP fatura çek/güncelle başarısız: $error';
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('ERP verisi çekilemedi: $error')));
+      ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
+      tick?.cancel();
       if (mounted) setState(() => _pullingAkinsoft = false);
     }
   }
@@ -2363,7 +2712,8 @@ class _InvoiceFiltersCard extends StatelessWidget {
               label: const Text('Yenile'),
             ),
             TextButton.icon(
-              onPressed: () => onChanged(const InvoiceFilter(status: 'open')),
+              onPressed: () =>
+                  onChanged(const InvoiceFilter(status: 'open')),
               icon: const Icon(AppPhosphorIcons.broom, size: 18),
               label: const Text('Temizle'),
             ),
@@ -2387,7 +2737,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
                   )
                 : const Icon(AppPhosphorIcons.cloudArrowDown, size: 18),
             label: Text(
-              pullingErp ? 'Faturalar çekiliyor…' : 'ERP’den Faturaları Çek',
+              pullingErp ? 'Çekiliyor ve güncelleniyor…' : 'Fatura Çek ve Güncelle',
             ),
           );
           return Column(
@@ -2402,8 +2752,8 @@ class _InvoiceFiltersCard extends StatelessWidget {
                     const Gap(12),
                     Expanded(
                       child: Text(
-                        'Akınsoft’a eklenen yeni faturaları ve durum '
-                        'güncellemelerini getirir.',
+                        'SAP’tan yeni faturaları çeker; ödenmemiş ve durumu '
+                        'değişenleri CRM’de günceller.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: AppTheme.textSoft,
                         ),
@@ -2464,7 +2814,7 @@ class _LoadMoreInvoicesButton extends StatelessWidget {
   }
 }
 
-class _CustomerFilterButton extends StatelessWidget {
+class _CustomerFilterButton extends StatefulWidget {
   const _CustomerFilterButton({
     required this.customers,
     required this.selectedCustomerId,
@@ -2476,151 +2826,163 @@ class _CustomerFilterButton extends StatelessWidget {
   final ValueChanged<String?> onSelected;
 
   @override
-  Widget build(BuildContext context) {
-    Customer? selectedCustomer;
-    for (final customer in customers) {
-      if (customer.id == selectedCustomerId) {
-        selectedCustomer = customer;
-        break;
-      }
-    }
-    final label = selectedCustomer == null
-        ? 'Cari: Tümü'
-        : selectedCustomer.name;
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: () async {
-        final selected = await showDialog<Customer?>(
-          context: context,
-          builder: (context) => _CustomerFilterDialog(
-            customers: customers,
-            selectedCustomerId: selectedCustomerId,
-          ),
-        );
-        if (selected == null) return;
-        onSelected(selected.id.isEmpty ? null : selected.id);
-      },
-      child: InputDecorator(
-        decoration: const InputDecoration(
-          prefixIcon: Icon(AppPhosphorIcons.userFocus),
-          labelText: 'Cari',
-          suffixIcon: Icon(AppPhosphorIcons.magnifyingGlass),
-        ),
-        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-      ),
-    );
-  }
+  State<_CustomerFilterButton> createState() => _CustomerFilterButtonState();
 }
 
-class _CustomerFilterDialog extends StatefulWidget {
-  const _CustomerFilterDialog({
-    required this.customers,
-    required this.selectedCustomerId,
-  });
-
-  final List<Customer> customers;
-  final String? selectedCustomerId;
+class _CustomerFilterButtonState extends State<_CustomerFilterButton> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
 
   @override
-  State<_CustomerFilterDialog> createState() => _CustomerFilterDialogState();
-}
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _selectedName());
+    _focusNode = FocusNode();
+    _focusNode.addListener(_onFocusChange);
+  }
 
-class _CustomerFilterDialogState extends State<_CustomerFilterDialog> {
-  final _search = TextEditingController();
+  @override
+  void didUpdateWidget(covariant _CustomerFilterButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedCustomerId != widget.selectedCustomerId ||
+        oldWidget.customers != widget.customers) {
+      final next = _selectedName();
+      if (_controller.text != next && !_focusNode.hasFocus) {
+        _controller.value = TextEditingValue(
+          text: next,
+          selection: TextSelection.collapsed(offset: next.length),
+        );
+      }
+    }
+  }
 
   @override
   void dispose() {
-    _search.dispose();
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    _controller.dispose();
     super.dispose();
+  }
+
+  void _onFocusChange() {
+    if (!_focusNode.hasFocus) {
+      final selected = _selectedName();
+      if (_controller.text != selected) {
+        _controller.value = TextEditingValue(
+          text: selected,
+          selection: TextSelection.collapsed(offset: selected.length),
+        );
+      }
+      return;
+    }
+    if (_controller.text.isEmpty) return;
+    _controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _controller.text.length,
+    );
+  }
+
+  String _selectedName() {
+    final id = widget.selectedCustomerId;
+    if (id == null || id.isEmpty) return '';
+    for (final customer in widget.customers) {
+      if (customer.id == id) return customer.name;
+    }
+    return '';
+  }
+
+  Iterable<Customer> _optionsFor(String rawQuery) {
+    final query = rawQuery.trim();
+    if (query.isEmpty) {
+      return widget.customers.take(40);
+    }
+    return widget.customers
+        .where(
+          (customer) => matchesSearchQuery(
+            [
+              customer.name,
+              customer.vkn ?? '',
+              customer.tcknMs ?? '',
+              customer.city ?? '',
+              customer.phone1 ?? '',
+            ].join(' '),
+            query,
+          ),
+        )
+        .take(100);
   }
 
   @override
   Widget build(BuildContext context) {
-    final query = _search.text.trim();
-    final filtered = query.isEmpty
-        ? widget.customers.take(80).toList(growable: false)
-        : widget.customers
-              .where(
-                (customer) => matchesSearchQuery(
-                  [
-                    customer.name,
-                    customer.vkn ?? '',
-                    customer.tcknMs ?? '',
-                    customer.city ?? '',
-                    customer.phone1 ?? '',
-                  ].join(' '),
-                  query,
-                ),
-              )
-              .take(100)
-              .toList(growable: false);
+    final hasSelection =
+        widget.selectedCustomerId != null &&
+        widget.selectedCustomerId!.isNotEmpty;
 
-    return AlertDialog(
-      title: const Text('Cari Seç'),
-      content: SizedBox(
-        width: 640,
-        height: 560,
-        child: Column(
-          children: [
-            TextField(
-              controller: _search,
-              autofocus: true,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                prefixIcon: Icon(AppPhosphorIcons.magnifyingGlass),
-                hintText: 'Ad, VKN, telefon veya şehir ara',
-              ),
-            ),
-            const Gap(10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => Navigator.of(context).pop(
-                  const Customer(
-                    id: '',
-                    name: 'Cari: Tümü',
-                    city: null,
-                    taxOffice: null,
-                    address: null,
-                    countryCode: 'XCT',
-                    country: 'Kuzey Kıbrıs Türk Cumhuriyeti',
-                    directorName: null,
-                    email: null,
-                    phone1: null,
-                    phone1Title: null,
-                    phone2: null,
-                    phone2Title: null,
-                    phone3: null,
-                    phone3Title: null,
-                    vkn: null,
-                    tcknMs: null,
-                    notes: null,
-                    isActive: true,
-                    activeLineCount: 0,
-                    activeGmp3Count: 0,
-                  ),
-                ),
-                icon: const Icon(AppPhosphorIcons.x, size: 18),
-                label: const Text('Tüm cariler'),
-              ),
-            ),
-            const Gap(4),
-            Expanded(
-              child: filtered.isEmpty
-                  ? const Center(child: Text('Cari bulunamadı.'))
+    return RawAutocomplete<Customer>(
+      textEditingController: _controller,
+      focusNode: _focusNode,
+      displayStringForOption: (customer) => customer.name,
+      optionsBuilder: (value) => _optionsFor(value.text),
+      onSelected: (customer) => widget.onSelected(customer.id),
+      fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+        return TextField(
+          controller: controller,
+          focusNode: focusNode,
+          onSubmitted: (_) => onFieldSubmitted(),
+          onChanged: (value) {
+            if (value.trim().isEmpty && hasSelection) {
+              widget.onSelected(null);
+            }
+          },
+          decoration: InputDecoration(
+            prefixIcon: const Icon(AppPhosphorIcons.userFocus),
+            labelText: 'Cari',
+            hintText: hasSelection
+                ? null
+                : 'Ad, VKN, telefon veya şehir ara',
+            suffixIcon: hasSelection
+                ? IconButton(
+                    tooltip: 'Tüm cariler',
+                    onPressed: () {
+                      controller.clear();
+                      widget.onSelected(null);
+                      focusNode.requestFocus();
+                    },
+                    icon: const Icon(AppPhosphorIcons.x),
+                  )
+                : const Icon(AppPhosphorIcons.magnifyingGlass),
+          ),
+        );
+      },
+      optionsViewBuilder: (context, onSelected, options) {
+        final items = options.toList(growable: false);
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(12),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420, maxHeight: 360),
+              child: items.isEmpty
+                  ? const ListTile(
+                      dense: true,
+                      title: Text('Cari bulunamadı.'),
+                    )
                   : ListView.separated(
-                      itemCount: filtered.length,
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      shrinkWrap: true,
+                      itemCount: items.length,
                       separatorBuilder: (context, index) =>
                           const Divider(height: 1),
                       itemBuilder: (context, index) {
-                        final customer = filtered[index];
+                        final customer = items[index];
                         final selected =
                             customer.id == widget.selectedCustomerId;
                         return ListTile(
                           dense: true,
                           selected: selected,
                           leading: CircleAvatar(
-                            radius: 17,
+                            radius: 16,
                             child: Text(_customerInitials(customer.name)),
                           ),
                           title: Text(
@@ -2643,20 +3005,14 @@ class _CustomerFilterDialogState extends State<_CustomerFilterDialog> {
                           trailing: selected
                               ? const Icon(AppPhosphorIcons.checkCircle)
                               : null,
-                          onTap: () => Navigator.of(context).pop(customer),
+                          onTap: () => onSelected(customer),
                         );
                       },
                     ),
             ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Kapat'),
-        ),
-      ],
+          ),
+        );
+      },
     );
   }
 }
@@ -2764,8 +3120,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             invoice.status != 'cancelled')
           _InvoiceIconAction(
             tooltip: invoice.needsAkinsoftNumberSync
-                ? 'Akınsoft fatura numarasını Maliye no ile güncelle'
-                : 'Akınsoft’a fatura gönder',
+                ? 'SAP fatura numarasını Maliye no ile güncelle'
+                : 'SAP’a fatura gönder',
             icon: invoice.needsAkinsoftNumberSync
                 ? AppPhosphorIcons.arrowsClockwise
                 : AppPhosphorIcons.cloudArrowUp,
@@ -2887,8 +3243,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           invoice.status != 'cancelled')
         _InvoiceIconAction(
           tooltip: invoice.needsAkinsoftNumberSync
-              ? 'Akınsoft fatura numarasını Maliye no ile güncelle'
-              : 'Akınsoft’a fatura gönder',
+              ? 'SAP fatura numarasını Maliye no ile güncelle'
+              : 'SAP’a fatura gönder',
           icon: invoice.needsAkinsoftNumberSync
               ? AppPhosphorIcons.arrowsClockwise
               : AppPhosphorIcons.cloudArrowUp,
@@ -4051,7 +4407,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     final syncNumber = invoice.needsAkinsoftNumberSync;
     if (!syncNumber && invoice.isLinkedToAkinsoft) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bu fatura zaten Akınsoft ile eşleşmiş.')),
+        const SnackBar(content: Text('Bu fatura zaten SAP ile eşleşmiş.')),
       );
       return;
     }
@@ -4060,15 +4416,15 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       builder: (context) => AlertDialog(
         title: Text(
           syncNumber
-              ? 'Akınsoft fatura no güncelle'
-              : 'Akınsoft’a fatura gönder',
+              ? 'SAP fatura no güncelle'
+              : 'SAP’a fatura gönder',
         ),
         content: Text(
           syncNumber
-              ? '${invoice.invoiceNumber} için Akınsoft kaydı Maliye e-fatura '
+              ? '${invoice.invoiceNumber} için SAP kaydı Maliye e-fatura '
                     'numarasına güncellensin mi?\n\n'
-                    'Akınsoft’ta yoksa Maliye numarasıyla yeni oluşturulur.'
-              : '${invoice.invoiceNumber} numaralı fatura Akınsoft’a yeni kayıt '
+                    'SAP’ta yoksa Maliye numarasıyla yeni oluşturulur.'
+              : '${invoice.invoiceNumber} numaralı fatura SAP’a yeni kayıt '
                     'olarak yazılsın mı?\n\n'
                     'Cari yoksa eklenir; stok eşleşmezse kalem açıklama olarak yazılır.',
         ),
@@ -4101,10 +4457,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           .timeout(const Duration(minutes: 5));
       final decoded = jsonDecode(response.body);
       if (decoded is! Map) {
-        throw Exception('Beklenmeyen Akınsoft yanıtı.');
+        throw Exception('Beklenmeyen SAP yanıtı.');
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(decoded['error'] ?? 'Akınsoft gönderimi başarısız.');
+        throw Exception(decoded['error'] ?? 'SAP gönderimi başarısız.');
       }
       ref.invalidate(invoicesProvider);
       if (!mounted) return;
@@ -4119,8 +4475,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 ? (reason?.isNotEmpty == true
                       ? '${invoice.invoiceNumber}: $reason'
                       : syncNumber
-                      ? '${invoice.invoiceNumber} Akınsoft no güncellendi.'
-                      : '${invoice.invoiceNumber} Akınsoft’a yazıldı.')
+                      ? '${invoice.invoiceNumber} SAP no güncellendi.'
+                      : '${invoice.invoiceNumber} SAP’a yazıldı.')
                 : '${invoice.invoiceNumber} gönderilemedi: ${reason ?? 'bilinmeyen hata'}',
           ),
         ),
@@ -4181,9 +4537,9 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
 
   String _akinsoftSyncStatusLabel(Invoice invoice) {
     return switch (invoice.akinsoftSyncStatusEffective) {
-      'synced' => 'ERP gönderildi',
-      'error' => 'Akınsoft hata',
-      _ => 'Akınsoft yok',
+      'synced' => 'SAP gönderildi',
+      'error' => 'SAP hata',
+      _ => 'SAP yok',
     };
   }
 
@@ -4338,7 +4694,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('ERP stok/hizmet çekilemedi: $error')),
+        SnackBar(content: Text('SAP stok/hizmet çekilemedi: $error')),
       );
     } finally {
       if (mounted) setState(() => _pullingErp = false);
@@ -4465,7 +4821,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(AppPhosphorIcons.cloudArrowDown, size: 18),
-                  label: Text(_pullingErp ? 'Çekiliyor…' : 'ERP’den Çek'),
+                  label: Text(_pullingErp ? 'Çekiliyor…' : 'SAP’tan Çek'),
                 ),
                 const Gap(10),
                 FilledButton.icon(
@@ -4515,7 +4871,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                           ),
                           SizedBox(
                             width: 300,
-                            child: _InvoiceHeaderText('Fiyat (USD)'),
+                            child: _InvoiceHeaderText('Fiyat'),
                           ),
                           SizedBox(width: 64, child: _InvoiceHeaderText('KDV')),
                           SizedBox(width: 100),
@@ -4680,7 +5036,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
     String currency = product == null ? 'USD' : _stockSaleCurrency(product);
     String unit = product?.unit ?? 'Adet';
     String type = product?.productType ?? 'product';
-    double taxRate = product?.taxRate ?? 20;
+    double taxRate = product?.taxRate ?? 5;
     bool trackStock = product?.trackStock ?? true;
     bool pricesIncludeVat = false;
     bool saving = false;
@@ -4746,7 +5102,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                           controller: category,
                           decoration: const InputDecoration(
                             labelText: 'Grup',
-                            hintText: 'Akınsoft ara grubu',
+                            hintText: 'SAP ara grubu',
                           ),
                         ),
                       ),
@@ -4756,7 +5112,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                           controller: subGroup,
                           decoration: const InputDecoration(
                             labelText: 'Alt Grup',
-                            hintText: 'Akınsoft alt grubu',
+                            hintText: 'SAP alt grubu',
                           ),
                         ),
                       ),
@@ -4874,10 +5230,12 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                           initialValue: taxRate,
                           items: const [
                             DropdownMenuItem(value: 0, child: Text('%0')),
+                            DropdownMenuItem(value: 5, child: Text('%5')),
+                            DropdownMenuItem(value: 10, child: Text('%10')),
                             DropdownMenuItem(value: 16, child: Text('%16')),
                             DropdownMenuItem(value: 20, child: Text('%20')),
                           ],
-                          onChanged: (v) => setState(() => taxRate = v ?? 20),
+                          onChanged: (v) => setState(() => taxRate = v ?? 5),
                           decoration: const InputDecoration(labelText: 'KDV'),
                         ),
                       ),
@@ -6012,7 +6370,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Akınsoft MSSQL / VPN Bağlantısı',
+                              'SAP MSSQL / VPN Bağlantısı',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                             Text(
@@ -6163,7 +6521,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                                 AppPhosphorIcons.arrowsCounterClockwise,
                                 size: 18,
                               ),
-                        label: const Text('ERP’den Veri Çek'),
+                        label: const Text('SAP’tan Veri Çek'),
                       ),
                       const Gap(10),
                       OutlinedButton.icon(
@@ -6429,7 +6787,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Akınsoft MSSQL Bağlantısı Başarılı'),
+          title: const Text('SAP MSSQL Bağlantısı Başarılı'),
           content: SizedBox(
             width: 620,
             child: SingleChildScrollView(
@@ -6457,7 +6815,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Akınsoft bağlantı testi başarısız: $error')),
+        SnackBar(content: Text('SAP bağlantı testi başarısız: $error')),
       );
     } finally {
       if (mounted) setState(() => _testingAkinsoft = false);
@@ -6491,7 +6849,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Akınsoft tablo analizi başarısız: $error')),
+        SnackBar(content: Text('SAP tablo analizi başarısız: $error')),
       );
     } finally {
       if (mounted) setState(() => _analyzingAkinsoft = false);
@@ -6527,7 +6885,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('ERP verisi çekilemedi: $error')));
+      ).showSnackBar(SnackBar(content: Text('SAP verisi çekilemedi: $error')));
     } finally {
       if (mounted) setState(() => _pullingAkinsoft = false);
     }
@@ -6547,7 +6905,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
       final decoded = jsonDecode(response.body);
       if (decoded is! Map<String, dynamic> || decoded['ok'] != true) {
         throw Exception(
-          decoded is Map ? decoded['error'] : 'Akınsoft carileri alınamadı.',
+          decoded is Map ? decoded['error'] : 'SAP carileri alınamadı.',
         );
       }
       final akinsoftCustomers = ((decoded['customers'] as List?) ?? const [])
@@ -6585,8 +6943,8 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                             ? 'Eşleştirme tamamlandı. Bu ekranda tekrar görünmemesi için listeyi kapatıp yeniden açabilirsiniz.'
                             : savingMatches
                             ? '$savingDone / $savingTotal eşleşme yazıldı (%${savingTotal == 0 ? 0 : ((savingDone / savingTotal) * 100).floor()})'
-                            : '${akinsoftCustomers.length} Akınsoft cari tarandı. '
-                                  '${suggestions.length} öneri bulundu. Seçili olanlar Akınsoft’a yazılacak.',
+                            : '${akinsoftCustomers.length} SAP cari tarandı. '
+                                  '${suggestions.length} öneri bulundu. Seçili olanlar SAP’a yazılacak.',
                       ),
                       if (savingMatches) ...[
                         const Gap(10),
@@ -6633,7 +6991,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     subtitle: Text(
-                                      'Akınsoft: ${source['code'] ?? '-'} / VKN ${source['taxNumber'] ?? '-'}  |  CRM VKN ${customer.vkn ?? '-'}  |  Benzerlik %$score',
+                                      'SAP: ${source['code'] ?? '-'} / VKN ${source['taxNumber'] ?? '-'}  |  CRM VKN ${customer.vkn ?? '-'}  |  Benzerlik %$score',
                                     ),
                                   );
                                 },
@@ -6801,7 +7159,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                             SnackBar(
                               content: Text(
                                 'Toplu eşleşme kaydedildi: ${summary['saved'] ?? 0}. '
-                                'Akınsoft’a yazılan: ${summary['wroteBack'] ?? 0}. '
+                                'SAP’a yazılan: ${summary['wroteBack'] ?? 0}. '
                                 'Hata: ${((summary['errors'] as List?) ?? const []).length}.',
                               ),
                             ),
@@ -6834,7 +7192,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                       ? 'Yazılıyor...'
                       : saveSummary != null
                       ? 'Tamamlandı'
-                      : 'Seçili Eşleşmeleri Akınsoft’a Yaz (${selected.length})',
+                      : 'Seçili Eşleşmeleri SAP’a Yaz (${selected.length})',
                 ),
               ),
             ],
@@ -6952,7 +7310,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
         builder: (context) => AlertDialog(
           title: const Text('Çift carileri temizle'),
           content: Text(
-            '$groups grup içinde $removable çift cari ve $vknless VKN’siz Akınsoft carisi bulundu. Bağlantılar korunarak temizlensin mi?',
+            '$groups grup içinde $removable çift cari ve $vknless VKN’siz SAP carisi bulundu. Bağlantılar korunarak temizlensin mi?',
           ),
           actions: [
             TextButton(
@@ -7026,7 +7384,7 @@ class _BulkMatchResult extends StatelessWidget {
           const Gap(8),
           Text('CRM eşleşme kaydı: $saved'),
           Text('CRM doğrulanan kayıt: $verified'),
-          Text('Akınsoft’a yazılan: $wroteBack'),
+          Text('SAP’a yazılan: $wroteBack'),
           Text('Atlanan: ${skipped.length}'),
           Text('Hata: ${errors.length}'),
           if (errors.isNotEmpty) ...[
@@ -7147,7 +7505,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
               .toList()
         : customerFilteredInvoices;
     return AlertDialog(
-      title: const Text('ERP Verisi Hazır'),
+      title: const Text('SAP Verisi Hazır'),
       content: SizedBox(
         width: 1040,
         height: MediaQuery.sizeOf(context).height * 0.76,
@@ -7212,7 +7570,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'ERP uyarısı',
+                      'SAP uyarısı',
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
                     const Gap(6),
@@ -7463,7 +7821,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
         SnackBar(
           content: Text(
             'Eşleşmeler kaydedildi: ${summary['saved'] ?? 0}. '
-            'Akınsoft’a yazılan: ${summary['wroteBack'] ?? 0}. '
+            'SAP’a yazılan: ${summary['wroteBack'] ?? 0}. '
             'Eşleşmeyen seçili: $unmatched. Hata: $errors.',
           ),
         ),
@@ -7636,7 +7994,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
               'güncel ${summary['productsUpdated'] ?? 0}'
               '${(summary['productsSkipped'] ?? 0) > 0 ? ' / atlanan ${summary['productsSkipped']}' : ''}), '
               '${summary['invoices'] ?? 0} fatura. '
-              'CRM→Akınsoft stok: +${productsPush['created'] ?? 0}'
+              'CRM→SAP stok: +${productsPush['created'] ?? 0}'
               '${(productsPush['matched'] ?? 0) > 0 ? ' / eşleşen ${productsPush['matched']}' : ''}'
               '${(productsPush['failed'] ?? 0) > 0 ? ' / hata ${productsPush['failed']}' : ''}. '
               'Cari eşleşme: kaynak ${matches['source'] ?? 0}, '
@@ -7703,7 +8061,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
     final sourceId = invoice['customerSourceId']?.toString();
     if (sourceId == null || sourceId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bu faturada Akınsoft cari kodu yok.')),
+        const SnackBar(content: Text('Bu faturada SAP cari kodu yok.')),
       );
       return;
     }
@@ -7959,7 +8317,7 @@ class _AkinsoftPullDialogState extends ConsumerState<_AkinsoftPullDialog> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(AppPhosphorIcons.link, size: 18),
-                  label: const Text('Eşleştir ve Akınsoft’a Yaz'),
+                  label: const Text('Eşleştir ve SAP’a Yaz'),
                 ),
               ],
             );
@@ -8243,7 +8601,7 @@ class _InvoiceSelectionSection extends StatelessWidget {
         return 'Kod';
       case 'akinsoft_map':
       case 'manual_akinsoft':
-        return 'Akınsoft eşleme';
+        return 'SAP eşleme';
       case 'manual_local':
         return 'CRM eşleme';
       default:
@@ -8310,7 +8668,7 @@ class _AkinsoftAnalysisDialog extends StatelessWidget {
     final candidates = (data['candidateTables'] as List?) ?? const [];
     final columns = (data['candidateColumns'] as List?) ?? const [];
     return AlertDialog(
-      title: const Text('Akınsoft Tablo Analizi'),
+      title: const Text('SAP Tablo Analizi'),
       content: SizedBox(
         width: 920,
         height: MediaQuery.sizeOf(context).height * 0.72,
@@ -8722,14 +9080,17 @@ double _parseDecimal(String value) {
 
 double _roundMoney(double value) => (value * 100).roundToDouble() / 100;
 
-/// Stock/hizmet sale currency: empty or legacy unset TRY (0 price) → USD.
+/// Stock/hizmet sale currency from product.currency (WOLVOX HESAP / DOVIZ_BIRIMI).
 String _stockSaleCurrency(Product product) {
   final value = product.currency.trim().toUpperCase();
   if (value.isEmpty) return 'USD';
-  if (value == 'TRY' && product.salePrice == 0) return 'USD';
   if (value == 'USD' || value == 'TRY' || value == 'EUR' || value == 'GBP') {
     return value;
   }
+  if (value == '\$' || value.contains('DOLAR') || value.contains('DOVIZ')) {
+    return 'USD';
+  }
+  if (value == 'TL' || value.contains('TURK')) return 'TRY';
   return 'USD';
 }
 

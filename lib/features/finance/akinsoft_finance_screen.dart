@@ -89,12 +89,12 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         .timeout(const Duration(seconds: 120));
     final decoded = jsonDecode(response.body);
     if (decoded is! Map<String, dynamic>) {
-      throw Exception('Geçersiz Akınsoft yanıtı.');
+      throw Exception('Geçersiz SAP yanıtı.');
     }
     if (response.statusCode >= 400 || decoded['ok'] != true) {
       throw Exception(
         _text(decoded['error']).isEmpty
-            ? 'Akınsoft işlem hatası (${response.statusCode})'
+            ? 'SAP işlem hatası (${response.statusCode})'
             : _text(decoded['error']),
       );
     }
@@ -105,7 +105,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     setState(() {
       _loading = true;
       _error = null;
-      _status = 'Akınsoft finans verileri çekiliyor…';
+      _status = 'SAP finans verileri çekiliyor…';
     });
     try {
       final data = await _post('finance/pull');
@@ -154,7 +154,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     setState(() {
       _loading = true;
       _error = null;
-      _status = 'Akınsoft’a yazılıyor…';
+      _status = 'SAP’a yazılıyor…';
     });
     try {
       await _post(path, body);
@@ -176,14 +176,14 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
   String get _title {
     switch (widget.section) {
       case 'kasa':
-        return 'Akınsoft Kasa';
+        return 'SAP Kasa';
       case 'transferler':
-        return 'Akınsoft Transferler';
+        return 'SAP Transferler';
       case 'masraf':
-        return 'Akınsoft Masraf Faturaları';
+        return 'SAP Masraf Faturaları';
       case 'bankalar':
       default:
-        return 'Akınsoft Bankalar / Hesaplar';
+        return 'SAP Bankalar / Hesaplar';
     }
   }
 
@@ -213,7 +213,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         OutlinedButton.icon(
           onPressed: _loading ? null : _pull,
           icon: const Icon(LucideIcons.refreshCw, size: 18),
-          label: const Text('Akınsoft’tan Çek'),
+          label: const Text('SAP’tan Çek'),
         ),
         if (widget.section == 'bankalar')
           FilledButton.icon(
@@ -276,7 +276,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
           onDelete: (row) => _mutate(
             'finance/kasa',
             {'action': 'delete', 'sourceId': row['sourceId']},
-            successMessage: 'Kasa Akınsoft’ta silindi/pasife alındı.',
+            successMessage: 'Kasa SAP’ta silindi/pasife alındı.',
           ),
         );
       case 'transferler':
@@ -290,7 +290,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
               'sourceId': row['sourceId'],
               'pairSourceId': row['pairSourceId'],
             },
-            successMessage: 'Transfer Akınsoft’ta silindi (SILINDI=1).',
+            successMessage: 'Transfer SAP’ta silindi (SILINDI=1).',
           ),
         );
       case 'masraf':
@@ -299,7 +299,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
           onDelete: (row) => _mutate(
             'finance/masraf',
             {'action': 'delete', 'sourceId': row['sourceId']},
-            successMessage: 'Masraf faturası Akınsoft’ta silindi.',
+            successMessage: 'Masraf faturası SAP’ta silindi.',
           ),
         );
       case 'bankalar':
@@ -311,7 +311,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
           onDeleteBank: (row) => _mutate('finance/bank', {
             'action': 'delete',
             'sourceId': row['sourceId'],
-          }, successMessage: 'Banka Akınsoft’tan silindi.'),
+          }, successMessage: 'Banka SAP’tan silindi.'),
           onEditAccount: (row) => _showAccountDialog(existing: row),
           onDeleteAccount: (row) => _mutate(
             'finance/bank-account',
@@ -380,8 +380,8 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         'address': addressCtrl.text.trim(),
       },
       successMessage: existing == null
-          ? 'Banka Akınsoft’a eklendi.'
-          : 'Banka Akınsoft’ta güncellendi.',
+          ? 'Banka SAP’a eklendi.'
+          : 'Banka SAP’ta güncellendi.',
     );
   }
 
@@ -469,8 +469,8 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         'iban': ibanCtrl.text.trim(),
       },
       successMessage: existing == null
-          ? 'Hesap Akınsoft’a eklendi.'
-          : 'Hesap Akınsoft’ta güncellendi.',
+          ? 'Hesap SAP’a eklendi.'
+          : 'Hesap SAP’ta güncellendi.',
     );
   }
 
@@ -529,8 +529,8 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         'aciklama1': noteCtrl.text.trim(),
       },
       successMessage: existing == null
-          ? 'Kasa Akınsoft’a eklendi.'
-          : 'Kasa Akınsoft’ta güncellendi.',
+          ? 'Kasa SAP’a eklendi.'
+          : 'Kasa SAP’ta güncellendi.',
     );
   }
 
@@ -566,7 +566,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
               ? 'TRY'
               : _text(currencyAccount?['currency']);
           return AlertDialog(
-            title: const Text('Akınsoft Transfer'),
+            title: const Text('SAP Transfer'),
             content: SizedBox(
               width: 480,
               child: SingleChildScrollView(
@@ -695,7 +695,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Akınsoft’a Yaz'),
+                child: const Text('SAP’a Yaz'),
               ),
             ],
           );
@@ -727,7 +727,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     await _mutate(
       'finance/transfer',
       payload,
-      successMessage: 'Transfer Akınsoft’a yazıldı.',
+      successMessage: 'Transfer SAP’a yazıldı.',
     );
   }
 
@@ -749,7 +749,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
           }
           final genel = alt + kdv;
           return AlertDialog(
-            title: const Text('Akınsoft Masraf Faturası'),
+            title: const Text('SAP Masraf Faturası'),
             content: SizedBox(
               width: 560,
               child: SingleChildScrollView(
@@ -942,7 +942,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Akınsoft’a Yaz'),
+                child: const Text('SAP’a Yaz'),
               ),
             ],
           );
@@ -975,7 +975,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         'date': date.toIso8601String(),
         'items': items,
       },
-      successMessage: 'Masraf faturası Akınsoft’a yazıldı (MSF).',
+      successMessage: 'Masraf faturası SAP’a yazıldı (MSF).',
     );
   }
 }
@@ -1056,7 +1056,7 @@ class _BanksAccountsPane extends StatelessWidget {
           width: 320,
           child: _SimpleList(
             title: 'Bankalar (${banks.length})',
-            empty: 'Banka yok — Akınsoft’tan çekin.',
+            empty: 'Banka yok — SAP’tan çekin.',
             itemCount: banks.length,
             itemBuilder: (context, index) {
               final row = banks[index];
@@ -1068,7 +1068,7 @@ class _BanksAccountsPane extends StatelessWidget {
                   'BLKODU ${_text(row['sourceId'])}',
                 ].join(' · '),
                 trailing: AppBadge(
-                  label: 'ERP',
+                  label: 'SAP',
                   tone: AppBadgeTone.success,
                   dense: true,
                 ),

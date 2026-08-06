@@ -42,7 +42,7 @@ class AppInvoiceTableCols {
   static const double check = 32;
   static const double date = 82;
   static const double type = 44;
-  // Status holds invoice + e-invoice + Akınsoft badges side-by-side.
+  // Status holds invoice + e-invoice + SAP badges side-by-side.
   static const double status = 268;
   static const double amount = 100;
   // Dense rows use six consistent icon actions; meaning is exposed by tooltip.

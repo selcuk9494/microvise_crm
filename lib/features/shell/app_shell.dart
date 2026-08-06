@@ -133,7 +133,7 @@ class _DesktopShell extends ConsumerWidget {
                         )
                       else
                         _BrandHeader(
-                          subtitle: isBankUser ? 'WebCR' : 'CRM & Servis',
+                          subtitle: isBankUser ? 'WebCR' : 'SAP Business',
                           onTap: () => context.go(
                             isBankUser ? '/banka-panel' : '/panel',
                           ),
