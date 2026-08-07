@@ -4,9 +4,9 @@ import '../../core/api/api_client.dart';
 
 /// Başvuru formu için satış e-faturası oluşturur / bağlar.
 ///
-/// - Uygun mevcut satış faturası yoksa E-Fatura listesinde **taslak** oluşturur
+/// - Uygun mevcut satış faturası yoksa E-Fatura listesinde **Açık** oluşturur
 /// - Cihaz sicili varsa kalem `notes` (açıklama) alanına yazar
-/// - Formda `invoice_number` doluysa ikinci fatura açmaz
+/// - Formda `invoice_number` doluysa (kullanıcı yazdıysa) ikinci fatura açmaz
 ///
 /// Mevcut faturalama kuyruğu (`enqueueInvoiceItem`) ayrı kalır.
 /// Hata durumunda exception fırlatır (UI popup gösterebilir).
@@ -63,11 +63,11 @@ void assertApplicationFormInvoiceLink(Map<String, dynamic>? response) {
   final linked = map['linked'] == true || map['created'] == true;
   if (linked) return;
   final reason = (map['reason'] ?? '').toString();
-  // Müşteri yoksa form kaydı yine de geçerli olabilir; çağıran UI karar verir.
-  if (reason == 'missing_customer') {
-    throw Exception(_invoiceLinkFailureMessage(reason, map));
-  }
-  if (reason == 'error' || (map['error'] != null)) {
+  // Müşteri yoksa veya sunucu hatası: form kaydı durur ama kullanıcıya göster.
+  if (reason == 'missing_customer' ||
+      reason == 'error' ||
+      map['error'] != null ||
+      reason.isNotEmpty) {
     throw Exception(_invoiceLinkFailureMessage(reason, map));
   }
 }

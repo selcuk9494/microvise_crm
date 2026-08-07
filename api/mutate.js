@@ -472,11 +472,6 @@ async function setApplicationFormInvoiceNumber(formId, invoiceNumber) {
       update public.application_forms
       set invoice_number = $2
       where id = $1::uuid
-        and (
-          invoice_number is null
-          or btrim(invoice_number) = ''
-          or invoice_number = $2
-        )
     `,
     [formId, number],
   );
@@ -503,47 +498,78 @@ async function markApplicationFormBillingQueueInvoiced(formId) {
 }
 
 async function findExistingSalesInvoiceForForm(form, formId, customerId) {
-  const explicitInvoice = textOrEmpty(form.invoice_number);
-  if (explicitInvoice) {
-    const byNumber = await query(
-      `
-        select i.id, i.invoice_number
-        from public.invoices i
-        where coalesce(i.invoice_type, 'sales') = 'sales'
-          and coalesce(i.is_active, true) = true
-          and coalesce(i.status, '') <> 'cancelled'
-          and (
-            i.invoice_number = $1
-            or i.invoice_number ilike '%' || $1
-            or regexp_replace(i.invoice_number, '^\\d{9}-', '') = $1
-          )
-          and (
-            i.customer_id = $2::uuid
-            or $2::text = ''
-          )
-        order by i.invoice_date desc nulls last
-        limit 1
-      `,
-      [explicitInvoice, customerId],
-    );
-    if (byNumber.rows?.[0]) return byNumber.rows[0];
-  }
+  // Bu forma ait kalem (source_id) varsa onu kullan.
+  const bySource = await query(
+    `
+      select i.id, i.invoice_number
+      from public.invoice_items ii
+      join public.invoices i
+        on i.id = ii.invoice_id
+      where ii.source_table = 'application_forms'
+        and ii.source_id = $1::uuid
+        and coalesce(i.invoice_type, 'sales') = 'sales'
+        and coalesce(i.is_active, true) = true
+        and coalesce(i.status, '') <> 'cancelled'
+      order by i.created_at desc nulls last
+      limit 1
+    `,
+    [formId],
+  );
+  if (bySource.rows?.[0]) return bySource.rows[0];
 
+  // Eski taslaklarda header notuna yazılmış başvuru id'si.
   const byNotes = await query(
     `
       select i.id, i.invoice_number
       from public.invoices i
-      where i.customer_id = $1::uuid
-        and coalesce(i.invoice_type, 'sales') = 'sales'
+      where coalesce(i.invoice_type, 'sales') = 'sales'
         and coalesce(i.is_active, true) = true
         and coalesce(i.status, '') <> 'cancelled'
-        and coalesce(i.notes, '') ilike '%' || $2 || '%'
+        and coalesce(i.notes, '') ilike '%' || $1 || '%'
+        and (
+          i.customer_id = $2::uuid
+          or $2::text = ''
+        )
       order by i.created_at desc nulls last
       limit 1
     `,
-    [customerId, formId],
+    [formId, customerId],
   );
-  return byNotes.rows?.[0] || null;
+  if (byNotes.rows?.[0]) return byNotes.rows[0];
+
+  // Formdaki invoice_number yalnız bu forma ait kalemle doğrulanırsa "zaten bağlı".
+  // Başka başvurunun numarası kopyalandıysa yeni fatura açılsın diye burada eşleşmeyiz.
+  const explicitInvoice = textOrEmpty(form.invoice_number);
+  if (!explicitInvoice) return null;
+
+  const byNumberOwned = await query(
+    `
+      select i.id, i.invoice_number
+      from public.invoices i
+      join public.invoice_items ii
+        on ii.invoice_id = i.id
+      where coalesce(i.invoice_type, 'sales') = 'sales'
+        and coalesce(i.is_active, true) = true
+        and coalesce(i.status, '') <> 'cancelled'
+        and (
+          i.invoice_number = $1
+          or i.invoice_number ilike '%' || $1
+          or regexp_replace(i.invoice_number, '^\\d{9}-', '') = $1
+        )
+        and (
+          i.customer_id = $2::uuid
+          or $2::text = ''
+        )
+        and (
+          (ii.source_table = 'application_forms' and ii.source_id = $3::uuid)
+          or coalesce(i.notes, '') ilike '%' || $3 || '%'
+        )
+      order by i.invoice_date desc nulls last
+      limit 1
+    `,
+    [explicitInvoice, customerId, formId],
+  );
+  return byNumberOwned.rows?.[0] || null;
 }
 
 async function ensureInvoiceLineNotes(invoiceId, registry) {
@@ -644,16 +670,31 @@ async function createSalesInvoiceForApplicationForm(form, formId, customerId) {
         currency,
         exchange_rate,
         prices_include_vat,
+        subtotal,
+        tax_total,
+        discount_total,
+        grand_total,
+        paid_amount,
         status,
         notes,
         is_active
       )
       values (
-        $1, 'sales', $2::uuid, $3::date, $4, $5, false, 'draft', null, true
+        $1, 'sales', $2::uuid, $3::date, $4, $5, false,
+        $6, $7, 0, $8, 0, 'open', null, true
       )
       returning id, invoice_number
     `,
-    [invoiceNumber, customerId, invoiceDate, currency, exchangeRate],
+    [
+      invoiceNumber,
+      customerId,
+      invoiceDate,
+      currency,
+      exchangeRate,
+      unitPrice,
+      taxAmount,
+      lineTotal,
+    ],
   );
   const invoice = invoiceInsert.rows?.[0];
   if (!invoice?.id) {
@@ -737,7 +778,7 @@ async function createSalesInvoiceForApplicationForm(form, formId, customerId) {
     invoiceId: invoice.id,
     invoiceNumber: invoice.invoice_number,
     invoiceItemId: itemInsert.rows?.[0]?.id || null,
-    status: 'draft',
+    status: 'open',
     currency,
     exchangeRate,
     unitPrice,
@@ -750,9 +791,9 @@ async function createSalesInvoiceForApplicationForm(form, formId, customerId) {
 
 /**
  * Başvuru formu için satış e-faturası oluşturur / bağlar.
- * 1) Formda invoice_number veya form notu ile mevcut fatura varsa tekrar oluşturmaz
- * 2) Uygun açık kalem varsa sicili notes'a yazar
- * 3) Yoksa E-Fatura listesinde görünen taslak satış faturası + kalem oluşturur
+ * 1) Bu forma ait fatura zaten varsa (invoice_number / form notu) tekrar oluşturmaz
+ * 2) Kullanıcı formda fatura no yazdıysa mevcut kaleme sicil bağlar
+ * 3) Yoksa E-Fatura listesinde (Açık) görünen yeni satış faturası + kalem oluşturur
  */
 async function linkApplicationFormDeviceToInvoice(body) {
   await ensureInvoiceItemsTable();
@@ -832,105 +873,70 @@ async function linkApplicationFormDeviceToInvoice(body) {
     };
   }
 
-  const model = textOrEmpty(form.model_name);
   const explicitInvoice = textOrEmpty(form.invoice_number);
 
-  // 2) Müşteri + model / numara ile uygun mevcut kaleme bağlan.
-  if (registry || model || explicitInvoice) {
-    const match = await query(
+  // 2) Yalnızca kullanıcı formda fatura no yazdıysa VE bu numara başka
+  //    başvuruya ait değilse mevcut faturaya bağlan.
+  //    Müşteri+model ile otomatik eşleştirme kaldırıldı (eski ödenmiş faturaya
+  //    yapışıp yeni fatura açılmıyordu).
+  let canMatchExplicit = Boolean(explicitInvoice);
+  if (canMatchExplicit) {
+    const claimedByOther = await query(
       `
-        with candidates as (
-          select
-            ii.id as item_id,
-            i.id as invoice_id,
-            i.invoice_number,
-            i.invoice_date,
-            (
-              case
-                when $4::text <> ''
-                  and (
-                    i.invoice_number = $4
-                    or i.invoice_number ilike '%' || $4
-                    or regexp_replace(i.invoice_number, '^\\d{9}-', '') = $4
-                  )
-                then 100
-                else 0
-              end
-              + case
-                  when $3::text <> ''
-                    and (
-                      ii.description ilike '%' || $3 || '%'
-                      or coalesce(p.name, '') ilike '%' || $3 || '%'
-                    )
-                  then 50
-                  else 0
-                end
-              + case
-                  when $2::text = '' then 0
-                  when nullif(btrim(coalesce(ii.notes, '')), '') is null then 10
-                  when upper(btrim(ii.notes)) = $2 then 5
-                  else -100
-                end
-              - least(
-                  abs(
-                    extract(
-                      epoch from (
-                        i.invoice_date::timestamp
-                        - coalesce($5::date, current_date)::timestamp
-                      )
-                    ) / 86400.0
-                  ),
-                  45
-                )::int
-            )::int as score
-          from public.invoices i
-          join public.invoice_items ii
-            on ii.invoice_id = i.id
-          left join public.products p
-            on p.id = ii.product_id
-          where i.customer_id = $1::uuid
-            and coalesce(i.invoice_type, 'sales') = 'sales'
-            and coalesce(i.is_active, true) = true
-            and coalesce(i.status, '') <> 'cancelled'
-            and (
-              (
-                $4::text <> ''
-                and (
-                  i.invoice_number = $4
-                  or i.invoice_number ilike '%' || $4
-                  or regexp_replace(i.invoice_number, '^\\d{9}-', '') = $4
-                )
-              )
-              or (
-                $3::text <> ''
-                and (
-                  ii.description ilike '%' || $3 || '%'
-                  or coalesce(p.name, '') ilike '%' || $3 || '%'
-                )
-                and i.invoice_date between
-                  coalesce($5::date, current_date) - 45
-                  and coalesce($5::date, current_date) + 45
-              )
-            )
-            and (
-              $2::text = ''
-              or nullif(btrim(coalesce(ii.notes, '')), '') is null
-              or upper(btrim(ii.notes)) = $2
-            )
-        )
-        select item_id, invoice_id, invoice_number, score
-        from candidates
-        where score > 0
-        order by score desc, invoice_date desc nulls last
+        select id
+        from public.application_forms
+        where id <> $1::uuid
+          and invoice_number is not null
+          and btrim(invoice_number) <> ''
+          and (
+            invoice_number = $2
+            or invoice_number ilike '%' || $2
+            or $2 ilike '%' || invoice_number
+          )
         limit 1
       `,
-      [
-        customerId,
-        registry,
-        model,
-        explicitInvoice,
-        form.application_date || null,
-      ],
+      [formId, explicitInvoice],
+    );
+    if (claimedByOther.rows?.[0]) {
+      canMatchExplicit = false;
+    }
+  }
+
+  if (canMatchExplicit) {
+    const match = await query(
+      `
+        select
+          ii.id as item_id,
+          i.id as invoice_id,
+          i.invoice_number
+        from public.invoices i
+        join public.invoice_items ii
+          on ii.invoice_id = i.id
+        where i.customer_id = $1::uuid
+          and coalesce(i.invoice_type, 'sales') = 'sales'
+          and coalesce(i.is_active, true) = true
+          and coalesce(i.status, '') <> 'cancelled'
+          and (
+            i.invoice_number = $2
+            or i.invoice_number ilike '%' || $2
+            or regexp_replace(i.invoice_number, '^\\d{9}-', '') = $2
+          )
+          and (
+            $3::text = ''
+            or nullif(btrim(coalesce(ii.notes, '')), '') is null
+            or upper(btrim(ii.notes)) = $3
+          )
+        order by
+          case
+            when $3::text <> '' and upper(btrim(coalesce(ii.notes, ''))) = $3 then 0
+            when nullif(btrim(coalesce(ii.notes, '')), '') is null then 1
+            else 2
+          end,
+          i.invoice_date desc nulls last,
+          coalesce(ii.sort_order, 0)
+        limit 1
+      `,
+      [customerId, explicitInvoice, registry],
     );
 
     const row = match.rows?.[0];
@@ -959,13 +965,13 @@ async function linkApplicationFormDeviceToInvoice(body) {
     }
   }
 
-  // 3) Uygun fatura yoksa E-Fatura taslağı oluştur.
+  // 3) Uygun fatura yoksa E-Fatura (Açık) satış faturası oluştur.
   return createSalesInvoiceForApplicationForm(form, formId, customerId);
 }
 
 /**
- * Başvuru kaydı sonrası: müşteri varsa taslak satış e-faturası oluştur / bağla.
- * Form kaydını bozmamak için hata fırlatmaz; sonucu döner.
+ * Başvuru kaydı sonrası: müşteri varsa açık satış e-faturası oluştur / bağla.
+ * Form kaydını bozmamak için hata fırlatmaz; sonucu döner (UI popup gösterir).
  */
 async function maybeLinkApplicationFormInvoice(formId) {
   const id = textOrEmpty(formId);
@@ -2168,3 +2174,6 @@ module.exports = async (req, res) => {
     return serverError(req, res, error);
   }
 };
+
+module.exports.linkApplicationFormDeviceToInvoice =
+  linkApplicationFormDeviceToInvoice;
