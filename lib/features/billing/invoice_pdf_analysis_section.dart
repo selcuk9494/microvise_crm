@@ -1419,7 +1419,8 @@ void _reconcileRateMapsWithHeader({
   if (grandDiff > 0.02) {
     grandByRate.update(rate, (v) => v + grandDiff, ifAbsent: () => grandDiff);
   } else if (baseDiff > 0.02 || taxDiff > 0.009) {
-    final add = (baseDiff > 0 ? baseDiff : 0) + (taxDiff > 0 ? taxDiff : 0);
+    final add =
+        (baseDiff > 0 ? baseDiff : 0.0) + (taxDiff > 0 ? taxDiff : 0.0);
     grandByRate.update(rate, (v) => v + add, ifAbsent: () => add);
   }
 }
