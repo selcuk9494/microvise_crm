@@ -932,6 +932,9 @@ function buildPayload({ settings, invoice, number: numberOverride }) {
 }
 
 function canSendInvoiceToEnvironment(invoice, environment) {
+  // Alış / Maliye’den gelen faturalar outbound gönderime uygun değil.
+  if (invoice.invoice_type === 'purchase') return false;
+  if (invoice.e_invoice_status === 'received') return false;
   if (
     invoice.e_invoice_status === 'manual' ||
     invoice.e_invoice_status === 'manual_sent'
@@ -1045,6 +1048,21 @@ function validateRegisteredBranch(settings, branches) {
   }
 }
 
+function maliyeErrorMessage(json, text, fallback) {
+  const nested = json?.error && typeof json.error === 'object' ? json.error : null;
+  const message =
+    json?.mesaj ||
+    json?.message ||
+    json?.error_description ||
+    (typeof json?.error === 'string' ? json.error : null) ||
+    nested?.mesaj ||
+    nested?.message ||
+    (typeof text === 'string' && text.trim() && !text.trim().startsWith('{') ? text.trim() : null) ||
+    json?.raw;
+  const cleaned = cleanText(message);
+  return cleaned || fallback;
+}
+
 async function apiGet({ base, path, token }) {
   const response = await fetch(`${base}${path}`, {
     headers: {
@@ -1061,9 +1079,10 @@ async function apiGet({ base, path, token }) {
   }
   if (!response.ok) {
     const error = new Error(
-      json?.message || json?.error || text || `${path} doğrulaması başarısız.`,
+      maliyeErrorMessage(json, text, `${path} doğrulaması başarısız.`),
     );
     error.response = json;
+    error.status = response.status;
     throw error;
   }
   return json;
@@ -1085,22 +1104,95 @@ async function apiGetText({ base, path, token, accept }) {
   return text;
 }
 
+function unwrapMaliyeInvoiceBody(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
+    return data.data;
+  }
+  if (data.fatura && typeof data.fatura === 'object' && !Array.isArray(data.fatura)) {
+    return data.fatura;
+  }
+  return data;
+}
+
+function looksLikeOfficialInvoice(data) {
+  const body = unwrapMaliyeInvoiceBody(data);
+  return Boolean(
+    body &&
+      (body.faturaNo ||
+        body.dogrulamaKodu ||
+        body.malHizmetler ||
+        body.tedarikci ||
+        body.musteri),
+  );
+}
+
+function officialInvoiceLineItems(data) {
+  const body = unwrapMaliyeInvoiceBody(data) || {};
+  return Array.isArray(body.malHizmetler) ? body.malHizmetler : [];
+}
+
+/** Gelen alış: /open/faturalar; giden satış: satıcı kapsamı + UBL. */
 async function fetchOfficialInvoiceArchive({ settings, verificationCode, token }) {
   const base = urlsForEnvironment(settings.environment).apiBaseUrl;
-  const vkn = encodeURIComponent(requireApiVkn(settings.seller_vkn, 'Satıcı VKN'));
   const code = encodeURIComponent(cleanText(verificationCode));
   if (!code) throw new Error('Maliye doğrulama kodu bulunamadı.');
+
+  const vkn = encodeURIComponent(requireApiVkn(settings.seller_vkn, 'Satıcı VKN'));
   const detailPath = `/mukellefler/${vkn}/faturalar/${code}`;
-  const [data, ubl] = await Promise.all([
-    apiGet({ base, path: detailPath, token }),
-    apiGetText({
+  try {
+    const [data, ubl] = await Promise.all([
+      apiGet({ base, path: detailPath, token }),
+      apiGetText({
+        base,
+        path: `${detailPath}/ubl`,
+        token,
+        accept: 'application/xml',
+      }),
+    ]);
+    return { data: unwrapMaliyeInvoiceBody(data), ubl };
+  } catch (scopedError) {
+    // Gelen (alış) faturalar satıcı kapsamında 404; açık doğrulama kodu endpoint’i.
+    try {
+      const openData = await apiGet({
+        base,
+        path: `/open/faturalar/${code}`,
+        token,
+      });
+      if (!looksLikeOfficialInvoice(openData)) throw scopedError;
+      return { data: unwrapMaliyeInvoiceBody(openData), ubl: '' };
+    } catch (_) {
+      throw scopedError;
+    }
+  }
+}
+
+async function fetchIncomingOfficialDetail({ base, sellerVkn, uuid, token }) {
+  const code = encodeURIComponent(cleanText(uuid));
+  if (!code) throw new Error('Doğrulama kodu bulunamadı.');
+
+  try {
+    const openData = await apiGet({
       base,
-      path: `${detailPath}/ubl`,
+      path: `/open/faturalar/${code}`,
       token,
-      accept: 'application/xml',
-    }),
-  ]);
-  return { data, ubl };
+    });
+    if (looksLikeOfficialInvoice(openData)) {
+      return unwrapMaliyeInvoiceBody(openData);
+    }
+  } catch (_) {
+    // Fall through to seller-scoped detail.
+  }
+
+  const scoped = await apiGet({
+    base,
+    path: `/mukellefler/${encodeURIComponent(sellerVkn)}/faturalar/${code}`,
+    token,
+  });
+  if (!looksLikeOfficialInvoice(scoped)) {
+    throw new Error('Gelen fatura detayı alınamadı.');
+  }
+  return unwrapMaliyeInvoiceBody(scoped);
 }
 
 const eInvoicePdfBucket = 'service-images';
@@ -1320,6 +1412,17 @@ function invoiceHasOfficialArchive(invoice) {
   return Boolean(invoice?.e_invoice_official_data);
 }
 
+/** Gönderilmiş / gelen / manuel gönderilmiş + dogrulamaKodu → resmi biçimli PDF. */
+function canArchiveOfficialPdf(invoice) {
+  if (!cleanText(invoice?.e_invoice_uuid)) return false;
+  const status = invoice?.e_invoice_status;
+  return (
+    status === 'sent' ||
+    status === 'received' ||
+    status === 'manual_sent'
+  );
+}
+
 /** Resmi arşiv, gönderim payload'ı veya CRM kalemleri — Maliye olmadan PDF için yeterli. */
 function invoiceHasLocalPdfSource(invoice) {
   if (!invoice) return false;
@@ -1354,7 +1457,9 @@ function resolveLocalOfficialSource(invoice) {
 /**
  * force = PDF yeniden üret (Maliye değil).
  * refreshOfficial yalnızca açıkça true ise veya yerel kaynak yoksa (bulut) true.
- * Electron/local: asla Keycloak çağırmaz (refreshOfficial açıkça true değilse).
+ * Gelen alış: kalemsiz liste özeti varsa Maliye /open detayı çekilir.
+ * Electron/local: asla Keycloak çağırmaz (refreshOfficial açıkça true değilse /
+ * gelen kalemsiz kayıt hariç).
  */
 function shouldRefreshOfficialForArchive({
   refreshOfficial,
@@ -1362,6 +1467,12 @@ function shouldRefreshOfficialForArchive({
   localOnly,
 }) {
   if (refreshOfficial === true) return true;
+  if (invoice?.e_invoice_status === 'received') {
+    const local = resolveLocalOfficialSource(invoice);
+    if (officialInvoiceLineItems(local.officialData).length === 0) {
+      return true;
+    }
+  }
   if (localOnly) return false;
   return !invoiceHasLocalPdfSource(invoice);
 }
@@ -1769,6 +1880,414 @@ async function sendToMaliye({ settings, payload }) {
   return { response: assertSuccessfulMaliyeResponse(json), token };
 }
 
+
+function asIncomingArray(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (!raw || typeof raw !== 'object') return [];
+  return raw.data || raw.items || raw.content || [];
+}
+
+function dateOnlyIncoming(value) {
+  const text = String(value || '').trim();
+  if (!text) return new Date().toISOString().slice(0, 10);
+  return text.slice(0, 10);
+}
+
+function taxRateFromIncomingLine(line = {}) {
+  const taxes = Array.isArray(line.vergiler) ? line.vergiler : [];
+  for (const tax of taxes) {
+    const rate = Number(tax.oran ?? tax.vergiOrani ?? tax.rate);
+    if (Number.isFinite(rate)) return rate;
+  }
+  const totalTax = Number(line.toplamVergi);
+  const base = Number(line.vergiyeEsasTutar ?? line.malHizmetTutari);
+  if (Number.isFinite(totalTax) && Number.isFinite(base) && base > 0) {
+    return round2((totalTax / base) * 100);
+  }
+  return 0;
+}
+
+function mapIncomingLines(detail = {}) {
+  const lines = Array.isArray(detail.malHizmetler) ? detail.malHizmetler : [];
+  if (!lines.length) {
+    const grand = round2(detail.odenecekToplam ?? detail.vergiDahilToplam ?? detail.faturaToplami ?? 0);
+    const tax = round2(detail.kdvToplami ?? 0);
+    const subtotal = round2(Math.max(0, grand - tax));
+    return [
+      {
+        description: detail.aciklama || detail.faturaNo || 'Gelen e-fatura',
+        quantity: 1,
+        unit: 'Adet',
+        unit_price: subtotal,
+        tax_rate: subtotal > 0 ? round2((tax / subtotal) * 100) : 0,
+        tax_amount: tax,
+        discount_rate: 0,
+        discount_amount: 0,
+        line_total: grand,
+      },
+    ];
+  }
+  return lines.map((line, index) => {
+    const quantity = Number(line.birimMiktari || 1) || 1;
+    const unitPrice = round2(line.birimFiyat ?? line.fiyat ?? 0);
+    const subtotal = round2(line.malHizmetTutari ?? quantity * unitPrice);
+    const taxAmount = round2(line.toplamVergi ?? 0);
+    const taxRate = taxRateFromIncomingLine(line);
+    return {
+      description: String(line.adi || line.aciklama || 'Kalem').trim() || 'Kalem',
+      quantity,
+      unit: String(line.birimTur || 'Adet').trim() || 'Adet',
+      unit_price: unitPrice,
+      tax_rate: taxRate,
+      tax_amount: taxAmount,
+      discount_rate: 0,
+      discount_amount: 0,
+      line_total: round2(subtotal + taxAmount),
+      sort_order: index,
+    };
+  });
+}
+
+function humanizeIncomingSyncError(error) {
+  const status = Number(error?.status || 0);
+  const detail = cleanText(error?.message) || 'Gelen faturalar alınamadı.';
+  if (status === 401 || status === 403) {
+    return (
+      detail.includes('Maliye')
+        ? detail
+        : `${detail} Maliye kullanıcı/şifre, ortam (test/canlı) ve VKN yetkisini kontrol edin.`
+    );
+  }
+  if (/fatura bulunamadı/i.test(detail)) {
+    return 'Maliye gelen fatura detayı alınamadı. Liste kaydı ile devam edilemedi.';
+  }
+  return detail;
+}
+
+async function listMaliyeIncomingInvoices({ settings, token }) {
+  const base = urlsForEnvironment(settings.environment).apiBaseUrl;
+  const vkn = requireApiVkn(settings.seller_vkn, 'Satıcı VKN');
+  const rows = [];
+  let page = 0;
+  let totalPages = 1;
+  while (page < totalPages && page < 40) {
+    const path = `/mukellefler/${encodeURIComponent(vkn)}/gelen-faturalar?page=${page}&size=50&sort=faturaTarihi&direction=Descending`;
+    try {
+      const data = await apiGet({ base, path, token });
+      const batch = asIncomingArray(data);
+      rows.push(...batch);
+      totalPages = Number(data.toplamSayfa ?? data.totalPages ?? 1) || 1;
+      if (!batch.length) break;
+      page += 1;
+    } catch (error) {
+      const wrapped = new Error(humanizeIncomingSyncError(error));
+      wrapped.status = error.status;
+      wrapped.response = error.response;
+      throw wrapped;
+    }
+  }
+  return rows;
+}
+
+function supplierVknFromIncomingListRow(listRow = {}) {
+  const direct = normalizeDigits(listRow.tedarikciVkn || listRow.tedarikci?.vkn || '');
+  if (direct) return direct;
+  const prefix = String(listRow.faturaNo || '').split('-')[0] || '';
+  return normalizeDigits(prefix);
+}
+
+async function ensureIncomingSupplierCustomer(supplier, listRow = {}) {
+  const rawVkn = normalizeDigits(supplier?.vkn || supplierVknFromIncomingListRow(listRow) || '');
+  let storedVkn = null;
+  try {
+    if (rawVkn) storedVkn = requireStoredVkn(rawVkn, 'Tedarikçi VKN');
+  } catch (_) {
+    storedVkn = null;
+  }
+  const name = cleanText(supplier?.unvan || listRow.tedarikciUnvan) || 'Gelen e-fatura tedarikçisi';
+  if (storedVkn) {
+    const existing = await query(
+      `select id from public.customers where vkn = $1 limit 1`,
+      [storedVkn],
+    );
+    if (existing.rows[0]?.id) return existing.rows[0].id;
+  }
+  // VKN yoksa veya geçersizse benzersiz sentetik 10 hane üret.
+  if (!storedVkn) {
+    const seed = String(listRow.dogrulamaKodu || listRow.faturaNo || Date.now()).replace(/\D/g, '').slice(-9).padStart(9, '0');
+    storedVkn = `0${seed}`;
+  }
+  const byName = await query(
+    `
+      select id from public.customers
+      where lower(name) = lower($1)
+      limit 1
+    `,
+    [name],
+  );
+  if (byName.rows[0]?.id && !rawVkn) return byName.rows[0].id;
+
+  const inserted = await query(
+    `
+      insert into public.customers (
+        name, vkn, city, address, country_code, country, phone1, email, is_active
+      ) values (
+        $1, $2, $3, $4, $5, $6, $7, $8, true
+      )
+      returning id
+    `,
+    [
+      name,
+      storedVkn,
+      cleanText(supplier?.sehir) || 'LEFKOŞA',
+      cleanText(supplier?.adresSatir1 || supplier?.adres) || 'Maliye gelen e-fatura',
+      cleanText(supplier?.ulkeKodu)?.toUpperCase() || 'XCT',
+      'Kuzey Kıbrıs Türk Cumhuriyeti',
+      cleanText(supplier?.telefon),
+      cleanText(supplier?.email),
+    ],
+  );
+  return inserted.rows[0].id;
+}
+
+async function syncIncomingFromMaliye({ settings, token, user }) {
+  const listed = await listMaliyeIncomingInvoices({ settings, token });
+  const base = urlsForEnvironment(settings.environment).apiBaseUrl;
+  const sellerVkn = requireApiVkn(settings.seller_vkn, 'Satıcı VKN');
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+  const errors = [];
+
+  for (const row of listed) {
+    const uuid = cleanText(row.dogrulamaKodu);
+    const faturaNo = cleanText(row.faturaNo);
+    if (!uuid && !faturaNo) {
+      skipped += 1;
+      continue;
+    }
+    try {
+      let detail = row;
+      let detailFailed = false;
+      if (uuid) {
+        try {
+          detail = await fetchIncomingOfficialDetail({
+            base,
+            sellerVkn,
+            uuid,
+            token,
+          });
+        } catch (err) {
+          detailFailed = true;
+          detail = { ...row, _detailError: err.message };
+        }
+      }
+
+      const customerId = await ensureIncomingSupplierCustomer(detail.tedarikci || {}, row);
+      const items = mapIncomingLines(detail);
+      const invoiceDate = dateOnlyIncoming(detail.faturaTarihi || row.faturaTarihi);
+      const currency = cleanText(detail.paraBirimi || row.paraBirimi) || 'TRY';
+      const cancelled = Boolean(detail.iptalEdildigiTarih || row.iptalEdildigiTarih);
+      const subtotal = round2(detail.faturaToplami ?? row.faturaToplami ?? items.reduce((s, i) => s + Number(i.unit_price) * Number(i.quantity), 0));
+      const taxTotal = round2(detail.kdvToplami ?? row.kdvToplami ?? items.reduce((s, i) => s + Number(i.tax_amount || 0), 0));
+      const grandTotal = round2(detail.odenecekToplam ?? row.odenecekToplam ?? subtotal + taxTotal);
+      const status = cancelled ? 'cancelled' : 'open';
+      const eStatus = cancelled ? 'cancelled' : 'received';
+      const notes = cleanText(detail.aciklama || row.aciklama) || `Maliye gelen · ${faturaNo || uuid}`;
+      const officialJson = JSON.stringify(detail);
+      const payloadJson = JSON.stringify({ faturalar: [detail] });
+      const uuidForDb = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid || '')
+        ? uuid
+        : null;
+
+      const existing = await query(
+        `
+          select id from public.invoices
+          where
+            ($1::uuid is not null and e_invoice_uuid = $1::uuid)
+            or (
+              $2::text is not null
+              and e_invoice_number = $2
+              and invoice_type = 'purchase'
+            )
+          limit 1
+        `,
+        [uuidForDb, faturaNo],
+      );
+      const existingId = existing.rows[0]?.id;
+
+      if (existingId) {
+        // Detay alınamadıysa mevcut resmi JSON’u bozma (kalemsiz liste özeti yazma).
+        await query(
+          `
+            update public.invoices
+            set
+              customer_id = $2::uuid,
+              invoice_date = $3::date,
+              currency = $4,
+              subtotal = $5,
+              tax_total = $6,
+              discount_total = 0,
+              grand_total = $7,
+              status = $8,
+              notes = $9,
+              e_invoice_status = $10,
+              e_invoice_number = coalesce($11, e_invoice_number),
+              e_invoice_uuid = coalesce($12::uuid, e_invoice_uuid),
+              e_invoice_environment = $13,
+              e_invoice_official_data = case
+                when $14::boolean then e_invoice_official_data
+                else $15::jsonb
+              end,
+              e_invoice_payload = case
+                when $14::boolean then e_invoice_payload
+                else $16::jsonb
+              end,
+              is_active = $17,
+              updated_at = now()
+            where id = $1
+          `,
+          [
+            existingId,
+            customerId,
+            invoiceDate,
+            currency,
+            subtotal,
+            taxTotal,
+            grandTotal,
+            status,
+            notes,
+            eStatus,
+            faturaNo,
+            uuidForDb,
+            settings.environment === 'production' ? 'production' : 'test',
+            detailFailed,
+            officialJson,
+            payloadJson,
+            !cancelled,
+          ],
+        );
+        updated += 1;
+        continue;
+      }
+
+      const numberResult = await query(
+        `select public.generate_invoice_number('purchase') as value`,
+      );
+      const localNumber =
+        cleanText(numberResult.rows?.[0]?.value) || faturaNo || `ALŞ-${Date.now()}`;
+
+      const inserted = await query(
+        `
+          insert into public.invoices (
+            invoice_number,
+            invoice_type,
+            customer_id,
+            invoice_date,
+            currency,
+            exchange_rate,
+            prices_include_vat,
+            subtotal,
+            tax_total,
+            discount_total,
+            grand_total,
+            paid_amount,
+            status,
+            notes,
+            e_invoice_status,
+            e_invoice_number,
+            e_invoice_uuid,
+            e_invoice_environment,
+            e_invoice_official_data,
+            e_invoice_payload,
+            is_active,
+            created_by
+          ) values (
+            $1, 'purchase', $2::uuid, $3::date, $4, 1, false,
+            $5, $6, 0, $7, 0, $8, $9,
+            $10, $11, $12::uuid, $13, $14::jsonb, $15::jsonb, $16, $17::uuid
+          )
+          returning id
+        `,
+        [
+          localNumber,
+          customerId,
+          invoiceDate,
+          currency,
+          subtotal,
+          taxTotal,
+          grandTotal,
+          status,
+          notes,
+          eStatus,
+          faturaNo,
+          uuidForDb,
+          settings.environment === 'production' ? 'production' : 'test',
+          officialJson,
+          payloadJson,
+          !cancelled,
+          user?.auth_user_id || user?.id || null,
+        ],
+      );
+      const invoiceId = inserted.rows[0]?.id;
+      if (!invoiceId) throw new Error('Alış faturası kaydı oluşturulamadı.');
+
+      for (let i = 0; i < items.length; i += 1) {
+        const item = items[i];
+        await query(
+          `
+            insert into public.invoice_items (
+              invoice_id, customer_id, description, quantity, unit,
+              unit_price, tax_rate, tax_amount, discount_rate, discount_amount,
+              line_total, sort_order, status, is_active
+            ) values (
+              $1::uuid, $2::uuid, $3, $4, $5,
+              $6, $7, $8, $9, $10,
+              $11, $12, 'open', true
+            )
+          `,
+          [
+            invoiceId,
+            customerId,
+            item.description,
+            item.quantity,
+            item.unit,
+            item.unit_price,
+            item.tax_rate,
+            item.tax_amount,
+            item.discount_rate,
+            item.discount_amount,
+            item.line_total,
+            item.sort_order ?? i,
+          ],
+        );
+      }
+      created += 1;
+    } catch (error) {
+      errors.push(`${faturaNo || uuid}: ${error.message}`);
+      skipped += 1;
+    }
+  }
+
+  await query(
+    `update public.e_invoice_settings set last_sync_at = now(), updated_at = now() where id = $1`,
+    [settings.id],
+  );
+
+  return {
+    ok: true,
+    fetched: listed.length,
+    created,
+    updated,
+    skipped,
+    errors: errors.slice(0, 30),
+    acceptRejectSupported: false,
+    acceptRejectNote:
+      'KKTC Maliye API’sinde gelen faturalar için kabul/ret işlemi bulunmamaktadır.',
+  };
+}
+
+
 async function handler(req, res) {
   if (handleCors(req, res, 'GET,POST,OPTIONS')) return;
 
@@ -1790,6 +2309,25 @@ async function handler(req, res) {
 
     const body = await readJson(req);
     const action = String(body.action || '').trim();
+
+    if (action === 'sync_incoming') {
+      const settings = await getSettings();
+      if (!cleanText(settings.username) || !cleanText(settings.password)) {
+        return badRequest(req, res, 'Maliye kullanıcı adı/şifresi E-Fatura ayarlarında tanımlı olmalı.');
+      }
+      try {
+        requireApiVkn(settings.seller_vkn, 'Satıcı VKN');
+        const token = await tokenFor(settings);
+        const result = await syncIncomingFromMaliye({ settings, token, user });
+        return ok(req, res, result);
+      } catch (error) {
+        return badRequest(
+          req,
+          res,
+          humanizeIncomingSyncError(error) || 'Gelen faturalar alınamadı.',
+        );
+      }
+    }
 
     if (action === 'save_settings') {
       const values = body.settings && typeof body.settings === 'object' ? body.settings : {};
@@ -1865,8 +2403,19 @@ async function handler(req, res) {
       if (!invoiceId) return badRequest(req, res, 'invoiceId zorunludur.');
       const invoice = await fetchInvoice(invoiceId);
       if (!invoice) return badRequest(req, res, 'Fatura bulunamadı.');
-      if (invoice.e_invoice_status !== 'sent' || !invoice.e_invoice_uuid) {
-        return badRequest(req, res, 'Yalnızca gönderilmiş e-fatura arşivlenebilir.');
+      if (!canArchiveOfficialPdf(invoice)) {
+        if (!cleanText(invoice.e_invoice_uuid)) {
+          return badRequest(
+            req,
+            res,
+            'Maliye doğrulama kodu (dogrulamaKodu) yok. Gelen faturaları yeniden senkronize edin; taslak CRM önizlemesi resmi e-fatura değildir.',
+          );
+        }
+        return badRequest(
+          req,
+          res,
+          'Yalnızca Maliye kayıtlı (gönderilmiş satış veya gelen alış) e-faturalar arşivlenebilir.',
+        );
       }
 
       const includePdf = body.includePdf === true;
@@ -2012,6 +2561,16 @@ async function handler(req, res) {
         invoice.e_invoice_environment === 'test' &&
         settings.environment === 'production';
       if (!canSendInvoiceToEnvironment(invoice, settings.environment)) {
+        if (
+          invoice.invoice_type === 'purchase' ||
+          invoice.e_invoice_status === 'received'
+        ) {
+          return badRequest(
+            req,
+            res,
+            'Alış veya Maliye’den gelen faturalar API’ye gönderilemez.',
+          );
+        }
         if (
           invoice.e_invoice_status === 'manual' ||
           invoice.e_invoice_status === 'manual_sent'
@@ -2321,6 +2880,9 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports.testUtils = {
+  syncIncomingFromMaliye,
+  mapIncomingLines,
+  asIncomingArray,
   normalizeApiVkn,
   normalizeStoredVkn,
   requireStoredVkn,
@@ -2345,5 +2907,9 @@ module.exports.testUtils = {
   invoiceHasLocalPdfSource,
   resolveLocalOfficialSource,
   shouldRefreshOfficialForArchive,
+  canArchiveOfficialPdf,
+  unwrapMaliyeInvoiceBody,
+  looksLikeOfficialInvoice,
+  officialInvoiceLineItems,
   preferLocalPdfMode,
 };

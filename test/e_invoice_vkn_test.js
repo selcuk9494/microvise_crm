@@ -23,6 +23,9 @@ const {
   invoiceHasLocalPdfSource,
   resolveLocalOfficialSource,
   shouldRefreshOfficialForArchive,
+  canArchiveOfficialPdf,
+  isIncomingOfficialInvoice,
+  buildOfficialMaliyePortalUrl,
 } = require('../api/e-invoice').testUtils;
 const { buildEInvoiceArchivePdf } = require('../api/_lib/e_invoice_pdf');
 
@@ -266,6 +269,20 @@ test('testte gönderilen faturayı yalnızca canlıya göndermeye izin verir', (
   assert.equal(
     canSendInvoiceToEnvironment({ e_invoice_status: 'not_sent' }, 'test'),
     true,
+  );
+  assert.equal(
+    canSendInvoiceToEnvironment(
+      { invoice_type: 'purchase', e_invoice_status: 'not_sent' },
+      'production',
+    ),
+    false,
+  );
+  assert.equal(
+    canSendInvoiceToEnvironment(
+      { invoice_type: 'sales', e_invoice_status: 'received' },
+      'production',
+    ),
+    false,
   );
 });
 
@@ -848,6 +865,88 @@ test('PDF açma: force/local kaynak varken Maliye yenilemesi istemez', () => {
       localOnly: true,
     }),
     true,
+  );
+  // Gelen alış: kalemsiz resmi özet → Maliye /open detayı yenilenmeli.
+  assert.equal(
+    shouldRefreshOfficialForArchive({
+      refreshOfficial: false,
+      invoice: {
+        e_invoice_status: 'received',
+        e_invoice_uuid: '11111111-1111-1111-1111-111111111111',
+        e_invoice_official_data: { faturaNo: 'ALŞ-1', dogrulamaKodu: 'x' },
+      },
+      localOnly: true,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldRefreshOfficialForArchive({
+      refreshOfficial: false,
+      invoice: {
+        e_invoice_status: 'received',
+        e_invoice_uuid: '11111111-1111-1111-1111-111111111111',
+        e_invoice_official_data: {
+          faturaNo: 'ALŞ-1',
+          malHizmetler: [{ adi: 'Hizmet', birimMiktari: 1 }],
+        },
+      },
+      localOnly: true,
+    }),
+    false,
+  );
+  assert.equal(
+    canArchiveOfficialPdf({
+      e_invoice_status: 'received',
+      e_invoice_uuid: '11111111-1111-1111-1111-111111111111',
+    }),
+    false,
+  );
+  assert.equal(
+    canArchiveOfficialPdf({
+      e_invoice_status: 'sent',
+      e_invoice_uuid: '11111111-1111-1111-1111-111111111111',
+    }),
+    true,
+  );
+  assert.equal(
+    canArchiveOfficialPdf({ e_invoice_status: 'received', e_invoice_uuid: '' }),
+    false,
+  );
+  assert.equal(
+    canArchiveOfficialPdf({
+      e_invoice_status: 'not_sent',
+      e_invoice_uuid: '11111111-1111-1111-1111-111111111111',
+    }),
+    false,
+  );
+  assert.equal(
+    canArchiveOfficialPdf({
+      invoice_type: 'purchase',
+      e_invoice_status: 'prepared',
+      e_invoice_uuid: '11111111-1111-1111-1111-111111111111',
+    }),
+    false,
+  );
+  assert.equal(
+    isIncomingOfficialInvoice({
+      invoice_type: 'purchase',
+      e_invoice_status: 'received',
+    }),
+    true,
+  );
+  assert.equal(
+    isIncomingOfficialInvoice({
+      invoice_type: 'sales',
+      e_invoice_status: 'sent',
+    }),
+    false,
+  );
+  assert.match(
+    buildOfficialMaliyePortalUrl(
+      '11111111-1111-1111-1111-111111111111',
+      'test',
+    ),
+    /^https:\/\/test-efatura\.maliye\.gov\.ct\.tr\/dogrula\/\?code=/,
   );
   assert.equal(
     shouldRefreshOfficialForArchive({

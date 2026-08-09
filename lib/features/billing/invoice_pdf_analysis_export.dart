@@ -511,19 +511,21 @@ double _computeTlEquivalent(
   List<InvoicePdfFxRateRule> fxRules,
 ) {
   if (currency == 'TRY') return amount;
-  if (invoiceDate == null) return 0;
-  for (final rule in fxRules) {
-    final sameCurrency = rule.currency.toUpperCase() == currency.toUpperCase();
-    final startsOk = !_normalizeDate(
-      invoiceDate,
-    ).isBefore(_normalizeDate(rule.startDate));
-    final endsOk = !_normalizeDate(
-      invoiceDate,
-    ).isAfter(_normalizeDate(rule.endDate));
-    if (sameCurrency && startsOk && endsOk) {
-      return amount * rule.rateToTry;
+  final matches = fxRules
+      .where((rule) => rule.currency.toUpperCase() == currency.toUpperCase())
+      .toList(growable: false);
+  if (matches.isEmpty) return 0;
+
+  if (invoiceDate != null) {
+    final day = _normalizeDate(invoiceDate);
+    for (final rule in matches) {
+      final startsOk = !day.isBefore(_normalizeDate(rule.startDate));
+      final endsOk = !day.isAfter(_normalizeDate(rule.endDate));
+      if (startsOk && endsOk) return amount * rule.rateToTry;
     }
   }
+
+  if (matches.length == 1) return amount * matches.first.rateToTry;
   return 0;
 }
 

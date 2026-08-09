@@ -313,6 +313,25 @@ function createWindow(url) {
   mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
     try {
       const parsed = new URL(target);
+      // Flutter yazdırma önizlemesi HTML'i blob URL olarak üretir. Bunu
+      // shell.openExternal'a göndermek macOS'ta Finder "uygulama yok" hatası
+      // oluşturur; güvenli önizleme penceresini Electron içinde aç.
+      if (parsed.protocol === 'blob:') {
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            title: 'Fatura Yazdırma Önizlemesi',
+            width: 980,
+            height: 760,
+            autoHideMenuBar: true,
+            webPreferences: {
+              contextIsolation: true,
+              nodeIntegration: false,
+              sandbox: true,
+            },
+          },
+        };
+      }
       if (parsed.protocol === 'file:') {
         const filePath = fileURLToPath(parsed);
         if (isAllowedLocalExportPath(filePath, { allowZip: true })) {

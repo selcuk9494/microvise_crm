@@ -184,10 +184,14 @@ class _DesktopShell extends ConsumerWidget {
                                         .toggle();
                                     context.go(item.path);
                                   },
-                                  subItems: [
+                                  subItems: const [
                                     _FormsNavSubItem(
-                                      label: 'Faturalar',
-                                      path: '/e-fatura',
+                                      label: 'Alış Faturası',
+                                      path: '/e-fatura/alis',
+                                    ),
+                                    _FormsNavSubItem(
+                                      label: 'Satış Faturası',
+                                      path: '/e-fatura/satis',
                                     ),
                                     _FormsNavSubItem(
                                       label: 'Stok/Hizmet',
@@ -566,7 +570,8 @@ List<_FormsNavSubItem> _mobileNavSubItems(_NavItem item) {
   }
   if (item.pageKey == 'e_fatura') {
     return const [
-      _FormsNavSubItem(label: 'Faturalar', path: '/e-fatura'),
+      _FormsNavSubItem(label: 'Alış Faturası', path: '/e-fatura/alis'),
+      _FormsNavSubItem(label: 'Satış Faturası', path: '/e-fatura/satis'),
       _FormsNavSubItem(label: 'Stok/Hizmet', path: '/e-fatura/stok'),
       _FormsNavSubItem(label: 'Cari', path: '/e-fatura/cari'),
       _FormsNavSubItem(label: 'Ayarlar', path: '/e-fatura/ayarlar'),

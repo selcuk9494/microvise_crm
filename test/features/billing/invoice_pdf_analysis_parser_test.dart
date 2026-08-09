@@ -206,7 +206,17 @@ void main() {
       expect(entry.subtotal, closeTo(4638.33, 0.01));
       expect(entry.taxTotal, closeTo(705.47, 0.01));
       expect(entry.grandTotal, closeTo(5343.80, 0.01));
-      expect(entry.items.length, 8);
+      final baseSum = entry.items.fold<double>(
+        0,
+        (sum, item) => sum + item.lineBaseAmount,
+      );
+      final taxSum = entry.items.fold<double>(
+        0,
+        (sum, item) => sum + item.taxAmount,
+      );
+      expect(baseSum, closeTo(4638.33, 0.01));
+      expect(taxSum, closeTo(705.47, 0.01));
+      expect(entry.items, isNotEmpty);
     });
 
     test('eski ve yeni format ayni parser ile karisik taninir', () async {

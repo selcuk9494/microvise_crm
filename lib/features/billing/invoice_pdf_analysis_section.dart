@@ -729,7 +729,7 @@ class _InvoicePdfAnalysisSectionState
   }
 
   Future<void> _saveFxRule() async {
-    final rate = double.tryParse(_fxRateController.text.replaceAll(',', '.'));
+    final rate = _parseFxRateInput(_fxRateController.text);
     if (_fxStartDate == null ||
         _fxEndDate == null ||
         rate == null ||
@@ -739,11 +739,21 @@ class _InvoicePdfAnalysisSectionState
       );
       return;
     }
+    if (_fxEndDate!.isBefore(_fxStartDate!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bitis tarihi baslangictan once olamaz.')),
+      );
+      return;
+    }
     final rule = InvoicePdfFxRateRule(
       id: '${_fxCurrency}_${_fxStartDate!.millisecondsSinceEpoch}_${_fxEndDate!.millisecondsSinceEpoch}',
       currency: _fxCurrency,
-      startDate: _fxStartDate!,
-      endDate: _fxEndDate!,
+      startDate: DateTime(
+        _fxStartDate!.year,
+        _fxStartDate!.month,
+        _fxStartDate!.day,
+      ),
+      endDate: DateTime(_fxEndDate!.year, _fxEndDate!.month, _fxEndDate!.day),
       rateToTry: rate,
     );
     await ref.read(invoicePdfAnalysisProvider.notifier).addFxRule(rule);
@@ -765,6 +775,19 @@ class _InvoicePdfAnalysisSectionState
       context,
     ).showSnackBar(const SnackBar(content: Text('Kur bilgisi silindi.')));
   }
+}
+
+double? _parseFxRateInput(String raw) {
+  final text = raw.trim();
+  if (text.isEmpty) return null;
+  // 40,5 / 40.5 / 1.234,56
+  if (text.contains(',') && text.contains('.')) {
+    return double.tryParse(text.replaceAll('.', '').replaceAll(',', '.'));
+  }
+  if (text.contains(',')) {
+    return double.tryParse(text.replaceAll(',', '.'));
+  }
+  return double.tryParse(text);
 }
 
 class _InvoicePdfEmptyState extends StatelessWidget {
@@ -995,8 +1018,8 @@ class _FxRateCard extends StatelessWidget {
         children: [
           Text('Kur Tanimlari', style: Theme.of(context).textTheme.titleSmall),
           const Gap(6),
-          Text(
-            'Iki tarih arasina kur girin. Dip toplamda yabanci para faturalarin TL karsiligi ayrica hesaplanir.',
+            Text(
+            'Iki tarih arasina kur girin (fatura tarihini kapsamali). Ornek: 01.07.2026-31.07.2026, kur 40,5. Tek kur tanimi varsa tarih eslesmese de uygulanir.',
             style: Theme.of(
               context,
             ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
@@ -1272,7 +1295,21 @@ List<InvoicePdfAnalysisListRow> _buildListRows(
         ifAbsent: () => item.lineGrandTotal,
       );
     }
-    if (grouped.isEmpty) {
+
+    // Ara/Ödenecek toplam ile satır matrahlarını uzlaştır (UBL'de kalan kalemler).
+    _reconcileRateMapsWithHeader(
+      baseByRate: baseByRate,
+      taxByRate: grouped,
+      grandByRate: grandByRate,
+      subtotal: entry.subtotal,
+      taxTotal: entry.taxTotal,
+      grandTotal: entry.grandTotal,
+    );
+
+    if (grouped.isEmpty && baseByRate.isEmpty) {
+      final fallbackBase = entry.subtotal > 0
+          ? entry.subtotal
+          : (entry.grandTotal - entry.taxTotal).clamp(0, double.infinity);
       rows.add(
         InvoicePdfAnalysisListRow(
           customerName: entry.customerName,
@@ -1282,17 +1319,25 @@ List<InvoicePdfAnalysisListRow> _buildListRows(
           invoiceTotal: entry.grandTotal,
           vatBreakdowns: [
             InvoicePdfAnalysisVatBreakdown(
-              baseAmount: entry.subtotal,
-              taxRate: 0,
+              baseAmount: fallbackBase.toDouble(),
+              taxRate: entry.taxTotal <= 0.009
+                  ? 0
+                  : (fallbackBase > 0
+                        ? _nearestOverviewVatRate(
+                            (entry.taxTotal / fallbackBase) * 100,
+                          )
+                        : 0),
               taxAmount: entry.taxTotal,
-              grandTotal: entry.grandTotal,
+              grandTotal: entry.grandTotal > 0
+                  ? entry.grandTotal
+                  : fallbackBase + entry.taxTotal,
             ),
           ],
         ),
       );
       continue;
     }
-    final sortedRates = grouped.keys.toList()..sort();
+    final sortedRates = {...grouped.keys, ...baseByRate.keys}.toList()..sort();
     rows.add(
       InvoicePdfAnalysisListRow(
         customerName: entry.customerName,
@@ -1306,7 +1351,9 @@ List<InvoicePdfAnalysisListRow> _buildListRows(
                 baseAmount: baseByRate[rate] ?? 0,
                 taxRate: rate,
                 taxAmount: grouped[rate] ?? 0,
-                grandTotal: grandByRate[rate] ?? 0,
+                grandTotal:
+                    grandByRate[rate] ??
+                    ((baseByRate[rate] ?? 0) + (grouped[rate] ?? 0)),
               ),
             )
             .toList(growable: false),
@@ -1321,6 +1368,74 @@ List<InvoicePdfAnalysisListRow> _buildListRows(
     return a.invoiceNumber.compareTo(b.invoiceNumber);
   });
   return rows;
+}
+
+void _reconcileRateMapsWithHeader({
+  required Map<double, double> baseByRate,
+  required Map<double, double> taxByRate,
+  required Map<double, double> grandByRate,
+  required double subtotal,
+  required double taxTotal,
+  required double grandTotal,
+}) {
+  final targetBase = subtotal > 0
+      ? subtotal
+      : (grandTotal > 0
+            ? (grandTotal - taxTotal).clamp(0, double.infinity).toDouble()
+            : 0.0);
+  final targetTax = taxTotal;
+  if (targetBase <= 0 && targetTax <= 0) return;
+
+  final sumBase = baseByRate.values.fold<double>(0, (s, v) => s + v);
+  final sumTax = taxByRate.values.fold<double>(0, (s, v) => s + v);
+  final baseDiff = targetBase - sumBase;
+  final taxDiff = targetTax - sumTax;
+  if (baseDiff <= 0.02 && taxDiff.abs() <= 0.02) return;
+
+  double rate;
+  final rates = {...baseByRate.keys, ...taxByRate.keys};
+  final allVisibleZero = rates.length == 1 && rates.first == 0.0;
+  if (allVisibleZero && targetTax > 0.009 && targetBase > 0.009) {
+    rate = _nearestOverviewVatRate((targetTax / targetBase) * 100);
+  } else if (baseDiff > 0.02 && taxDiff > 0.009) {
+    rate = _nearestOverviewVatRate((taxDiff / baseDiff) * 100);
+  } else if (rates.length == 1) {
+    rate = rates.first;
+  } else if (targetTax <= 0.009 || taxDiff.abs() <= 0.009) {
+    rate = 0;
+  } else {
+    rate = 0;
+  }
+
+  if (baseDiff > 0.02) {
+    baseByRate.update(rate, (v) => v + baseDiff, ifAbsent: () => baseDiff);
+  }
+  if (taxDiff > 0.009) {
+    taxByRate.update(rate, (v) => v + taxDiff, ifAbsent: () => taxDiff);
+  }
+  final grandDiff =
+      (grandTotal > 0 ? grandTotal : targetBase + targetTax) -
+      grandByRate.values.fold<double>(0, (s, v) => s + v);
+  if (grandDiff > 0.02) {
+    grandByRate.update(rate, (v) => v + grandDiff, ifAbsent: () => grandDiff);
+  } else if (baseDiff > 0.02 || taxDiff > 0.009) {
+    final add = (baseDiff > 0 ? baseDiff : 0) + (taxDiff > 0 ? taxDiff : 0);
+    grandByRate.update(rate, (v) => v + add, ifAbsent: () => add);
+  }
+}
+
+double _nearestOverviewVatRate(double rawPercent) {
+  const supported = [0.0, 1.0, 5.0, 10.0, 16.0, 18.0, 20.0];
+  var best = supported.first;
+  var bestDist = (rawPercent - best).abs();
+  for (final rate in supported.skip(1)) {
+    final dist = (rawPercent - rate).abs();
+    if (dist < bestDist) {
+      best = rate;
+      bestDist = dist;
+    }
+  }
+  return bestDist <= 2.0 ? best : double.parse(rawPercent.toStringAsFixed(2));
 }
 
 List<InvoicePdfCurrencySummary> _buildSummariesForRows(
@@ -1444,22 +1559,52 @@ double _computeTlEquivalentForBreakdown(
   InvoicePdfAnalysisVatBreakdown breakdown,
   List<InvoicePdfFxRateRule> fxRules,
 ) {
-  if (row.currency == 'TRY') return breakdown.grandTotal;
-  if (row.invoiceDate == null) return 0;
-  for (final rule in fxRules) {
-    final sameCurrency =
-        rule.currency.toUpperCase() == row.currency.toUpperCase();
-    final startsOk = !_normalizeDate(
-      row.invoiceDate!,
-    ).isBefore(_normalizeDate(rule.startDate));
-    final endsOk = !_normalizeDate(
-      row.invoiceDate!,
-    ).isAfter(_normalizeDate(rule.endDate));
-    if (sameCurrency && startsOk && endsOk) {
-      return breakdown.grandTotal * rule.rateToTry;
+  return _lookupTlEquivalent(
+    currency: row.currency,
+    amount: breakdown.grandTotal,
+    invoiceDate: row.invoiceDate,
+    fxRules: fxRules,
+  );
+}
+
+double _lookupTlEquivalent({
+  required String currency,
+  required double amount,
+  required DateTime? invoiceDate,
+  required List<InvoicePdfFxRateRule> fxRules,
+}) {
+  if (currency == 'TRY') return amount;
+  final rate = _resolveFxRate(
+    currency: currency,
+    invoiceDate: invoiceDate,
+    fxRules: fxRules,
+  );
+  if (rate == null) return 0;
+  return amount * rate;
+}
+
+double? _resolveFxRate({
+  required String currency,
+  required DateTime? invoiceDate,
+  required List<InvoicePdfFxRateRule> fxRules,
+}) {
+  final matches = fxRules
+      .where((rule) => rule.currency.toUpperCase() == currency.toUpperCase())
+      .toList(growable: false);
+  if (matches.isEmpty) return null;
+
+  if (invoiceDate != null) {
+    final day = _normalizeDate(invoiceDate);
+    for (final rule in matches) {
+      final startsOk = !day.isBefore(_normalizeDate(rule.startDate));
+      final endsOk = !day.isAfter(_normalizeDate(rule.endDate));
+      if (startsOk && endsOk) return rule.rateToTry;
     }
   }
-  return 0;
+
+  // Tarih yoksa veya aralik disindaysa tek kur tanimi varsa onu kullan.
+  if (matches.length == 1) return matches.first.rateToTry;
+  return null;
 }
 
 class _TempCurrencySummary {

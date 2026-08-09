@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import 'invoice_pdf_analysis_model.dart';
+import 'invoice_pdf_text_fallback.dart';
 
 class InvoicePdfAnalysisParser {
   static final RegExp _itemPattern = RegExp(
@@ -45,8 +46,16 @@ class InvoicePdfAnalysisParser {
     required String fileName,
   }) async {
     final document = PdfDocument(inputBytes: bytes);
-    final text = PdfTextExtractor(document).extractText();
+    String syncfusionText = '';
+    try {
+      syncfusionText = PdfTextExtractor(document).extractText();
+    } catch (_) {
+      syncfusionText = '';
+    }
     document.dispose();
+
+    final fallbackText = InvoicePdfTextFallback.extract(bytes);
+    final text = _preferRicherText(syncfusionText, fallbackText);
 
     final leadingMarker = detectDocumentMarker(text, fileName: fileName);
     if (leadingMarker == 'ALACAK') return null;
@@ -66,15 +75,32 @@ class InvoicePdfAnalysisParser {
     );
   }
 
+  /// Syncfusion eksik kalırsa (özellikle bazı Identity-H PDF'ler) ToUnicode
+  /// fallback metnini tercih et. Syncfusion zaten okunabilirse ona öncelik ver;
+  /// fallback düz metin satır düzenini bozup KDV% yakalamayı düşürebilir.
+  static String _preferRicherText(String primary, String fallback) {
+    final primaryOk = InvoicePdfTextFallback.looksReadableInvoiceText(primary);
+    if (primaryOk) return primary;
+    final fallbackOk = InvoicePdfTextFallback.looksReadableInvoiceText(fallback);
+    if (fallbackOk) return fallback;
+    if (primary.trim().isNotEmpty) return primary;
+    return fallback;
+  }
+
   /// CRM/Maliye şablonu: "KKTC E-Fatura Sistemi", taraf kutuları, Ara/Ödenecek Toplam.
   static bool isMicroviseEInvoice(String rawText) {
     final normalized = _normalizeText(rawText);
     final hasSystem = RegExp(
-      r'KKTC\s*E-?Fatura\s*Sistemi|K\.?\s*K\.?\s*T\.?\s*C\.?\s*Maliye',
+      r'KKTC\s*E-?Fatura\s*Sistemi|K\.?\s*K\.?\s*T\.?\s*C\.?\s*Maliye|'
+      r'e-?FATURA',
       caseSensitive: false,
     ).hasMatch(normalized);
     final hasParty = RegExp(
       r'Müşteri\s*Bilgileri|Musteri\s*Bilgileri',
+      caseSensitive: false,
+    ).hasMatch(normalized);
+    final hasList = RegExp(
+      r'Mal\s*/\s*Hizmet\s*Listesi',
       caseSensitive: false,
     ).hasMatch(normalized);
     final hasTotals = RegExp(
@@ -88,6 +114,8 @@ class InvoicePdfAnalysisParser {
 
     if (hasSystem && hasTotals) return true;
     if (hasParty && hasTotals && !hasOldTotals) return true;
+    // Syncfusion kısmi metinde toplam etiketi düşse bile şablon yapıdan tanı.
+    if (hasSystem && hasParty && hasList && !hasOldTotals) return true;
     return false;
   }
 
@@ -97,7 +125,6 @@ class InvoicePdfAnalysisParser {
     required bool zeroAmounts,
   }) {
     final normalized = _normalizeText(text);
-    final items = _parseMicroviseItems(text, zeroAmounts: zeroAmounts);
     final subtotal = _extractMicroviseLabeledAmount(normalized, 'Ara Toplam');
     final taxTotal = _extractFirstMicroviseLabeledAmount(normalized, const [
       'KDV Toplamı',
@@ -107,37 +134,38 @@ class InvoicePdfAnalysisParser {
       'Ödenecek Toplam',
       'Odenecek Toplam',
     ]);
-
     final currency =
         _extractMicroviseCurrency(normalized) ??
         _currencyFromMoneySymbol(normalized) ??
-        items
-            .firstWhere(
-              (item) => item.currency.trim().isNotEmpty,
-              orElse: () => const InvoicePdfLineItem(
-                rowNo: 0,
-                description: '',
-                quantity: 0,
-                unit: '',
-                unitPrice: 0,
-                currency: 'TRY',
-                discountRate: 0,
-                discountAmount: 0,
-                taxRate: 0,
-                taxAmount: 0,
-                lineBaseAmount: 0,
-              ),
-            )
-            .currency;
+        'TRY';
+    final currencyNorm = _normalizeCurrency(currency);
+    final items = _reconcileItemsWithHeaderTotals(
+      items: _parseMicroviseItems(
+        text,
+        zeroAmounts: zeroAmounts,
+        currencyHint: currencyNorm,
+      ),
+      subtotal: zeroAmounts ? 0 : subtotal,
+      taxTotal: zeroAmounts ? 0 : taxTotal,
+      grandTotal: zeroAmounts ? 0 : grandTotal,
+      currency: currencyNorm,
+      zeroAmounts: zeroAmounts,
+    );
+
+    final customerName = _extractMicroviseCustomerName(text, normalized);
+    final invoiceNumber =
+        _invoiceNumberPattern.firstMatch(normalized)?.group(1)?.trim() ??
+        _invoiceNumberFromFileName(fileName) ??
+        fileName;
 
     return InvoicePdfAnalysisEntry(
       fileName: fileName,
-      customerName: _extractMicroviseCustomerName(text, normalized),
-      invoiceNumber:
-          _invoiceNumberPattern.firstMatch(normalized)?.group(1)?.trim() ??
-          fileName,
+      customerName: customerName == 'Bilinmeyen Müşteri'
+          ? (_customerNameFromFileName(fileName) ?? customerName)
+          : customerName,
+      invoiceNumber: invoiceNumber,
       invoiceDate: _extractMicroviseInvoiceDate(normalized),
-      currency: _normalizeCurrency(currency),
+      currency: currencyNorm,
       subtotal: zeroAmounts ? 0 : subtotal,
       taxTotal: zeroAmounts ? 0 : taxTotal,
       grandTotal: zeroAmounts ? 0 : grandTotal,
@@ -203,12 +231,14 @@ class InvoicePdfAnalysisParser {
   static List<InvoicePdfLineItem> _parseMicroviseItems(
     String rawText, {
     bool zeroAmounts = false,
+    String? currencyHint,
   }) {
     final itemBlock = _extractMicroviseItemBlock(rawText);
     if (itemBlock.isEmpty) return const [];
 
     final normalizedBlock = _normalizeText(itemBlock);
-    final currencyHint =
+    final currency =
+        currencyHint ??
         _extractMicroviseCurrency(_normalizeText(rawText)) ??
         _currencyFromMoneySymbol(normalizedBlock) ??
         'TRY';
@@ -250,7 +280,7 @@ class InvoicePdfAnalysisParser {
           quantity: quantity,
           unit: unit,
           unitPrice: zeroAmounts ? 0 : unitPrice,
-          currency: _normalizeCurrency(currencyHint),
+          currency: _normalizeCurrency(currency),
           discountRate: 0,
           discountAmount: zeroAmounts ? 0 : discountAmount,
           taxRate: taxRate,
@@ -260,6 +290,133 @@ class InvoicePdfAnalysisParser {
       );
     }
     return items;
+  }
+
+  /// PDF'de "+ N kalem UBL/XML" ile gizlenen kalemler yüzünden satır
+  /// matrahları Ara Toplam'dan küçük kalabiliyor. Farkı header toplamlarına
+  /// göre uygun KDV oranına ekle.
+  static List<InvoicePdfLineItem> _reconcileItemsWithHeaderTotals({
+    required List<InvoicePdfLineItem> items,
+    required double subtotal,
+    required double taxTotal,
+    required double grandTotal,
+    required String currency,
+    required bool zeroAmounts,
+  }) {
+    if (zeroAmounts) return items;
+
+    final targetBase = subtotal > 0
+        ? subtotal
+        : (grandTotal > 0
+              ? (grandTotal - taxTotal).clamp(0, double.infinity).toDouble()
+              : 0.0);
+    final targetTax = taxTotal > 0
+        ? taxTotal
+        : (grandTotal > targetBase ? grandTotal - targetBase : 0.0);
+    final targetGrand = grandTotal > 0 ? grandTotal : targetBase + targetTax;
+
+    final sumBase = items.fold<double>(0, (s, i) => s + i.lineBaseAmount);
+    final sumTax = items.fold<double>(0, (s, i) => s + i.taxAmount);
+
+    final baseDiff = targetBase - sumBase;
+    final taxDiff = targetTax - sumTax;
+
+    if (items.isEmpty) {
+      if (targetBase <= 0 && targetTax <= 0 && targetGrand <= 0) {
+        return items;
+      }
+      final rate = targetBase > 0.009
+          ? _nearestSupportedVatRate((targetTax / targetBase) * 100)
+          : 0.0;
+      final lineBase = targetBase > 0
+          ? targetBase
+          : (targetGrand - targetTax).clamp(0, double.infinity).toDouble();
+      return [
+        InvoicePdfLineItem(
+          rowNo: 1,
+          description: 'Fatura toplamı',
+          quantity: 1,
+          unit: 'Adet',
+          unitPrice: lineBase,
+          currency: currency,
+          discountRate: 0,
+          discountAmount: 0,
+          taxRate: rate,
+          taxAmount: targetTax,
+          lineBaseAmount: lineBase,
+        ),
+      ];
+    }
+
+    if (baseDiff.abs() <= 0.02 && taxDiff.abs() <= 0.02) {
+      return items;
+    }
+
+    // Sadece fazla-çıkarım varsa dokunma (nadir); eksik matrahı tamamla.
+    if (baseDiff <= 0.02 && taxDiff.abs() <= 0.02) {
+      return items;
+    }
+
+    final rates = items.map((i) => i.taxRate).toSet();
+    final allVisibleZero = rates.length == 1 && rates.first == 0.0;
+    double residualRate;
+    if (allVisibleZero && targetTax > 0.009 && targetBase > 0.009) {
+      // Satırlar %0 görünüyor ama fatura KDV > 0 (kırpık/hatalı PDF metni).
+      residualRate = _nearestSupportedVatRate((targetTax / targetBase) * 100);
+    } else if (baseDiff > 0.02 && taxDiff > 0.009) {
+      residualRate = _nearestSupportedVatRate((taxDiff / baseDiff) * 100);
+    } else if (rates.length == 1) {
+      residualRate = rates.first;
+    } else if (targetTax <= 0.009 || taxDiff.abs() <= 0.009) {
+      residualRate = 0;
+    } else {
+      residualRate = items
+          .reduce(
+            (a, b) => a.lineBaseAmount >= b.lineBaseAmount ? a : b,
+          )
+          .taxRate;
+    }
+
+    final residualBase = baseDiff > 0.02 ? baseDiff : 0.0;
+    final residualTax = taxDiff > 0.009 ? taxDiff : 0.0;
+    if (residualBase <= 0.02 && residualTax <= 0.009) {
+      return items;
+    }
+
+    return [
+      ...items,
+      InvoicePdfLineItem(
+        rowNo: items.length + 1,
+        description: 'PDF disinda kalan kalem (UBL/XML)',
+        quantity: 1,
+        unit: 'Adet',
+        unitPrice: residualBase,
+        currency: currency,
+        discountRate: 0,
+        discountAmount: 0,
+        taxRate: residualRate,
+        taxAmount: residualTax,
+        lineBaseAmount: residualBase,
+      ),
+    ];
+  }
+
+  static double _nearestSupportedVatRate(double rawPercent) {
+    const supported = [0.0, 1.0, 5.0, 10.0, 16.0, 18.0, 20.0];
+    var best = supported.first;
+    var bestDist = (rawPercent - best).abs();
+    for (final rate in supported.skip(1)) {
+      final dist = (rawPercent - rate).abs();
+      if (dist < bestDist) {
+        best = rate;
+        bestDist = dist;
+      }
+    }
+    // %2'den fazla sapmada yuvarlanmış değeri kullanma; 0 yaz.
+    if (bestDist > 2.0) {
+      return double.parse(rawPercent.toStringAsFixed(2));
+    }
+    return best;
   }
 
   static String _extractMicroviseItemBlock(String rawText) {
@@ -328,6 +485,38 @@ class InvoicePdfAnalysisParser {
       if (match != null) return _parseAmount(match.group(1));
     }
     return 0;
+  }
+
+  static String? _invoiceNumberFromFileName(String fileName) {
+    final base = fileName.split(RegExp(r'[\\/]')).last;
+    final match = RegExp(
+      r'(620009058[-.][0-9]{4}[-.][0-9]+[-.][A-Za-z0-9.]+)|'
+      r'(620009058-\d{4}-\d+-\d+)|'
+      r'(\d{4}-\d-\d{8,})',
+      caseSensitive: false,
+    ).firstMatch(base);
+    final value = match?.group(1) ?? match?.group(2) ?? match?.group(3);
+    if (value == null || value.isEmpty) return null;
+    if (value.startsWith('620009058')) return value;
+    return '620009058-$value';
+  }
+
+  static String? _customerNameFromFileName(String fileName) {
+    final base = fileName
+        .split(RegExp(r'[\\/]'))
+        .last
+        .replaceFirst(RegExp(r'\.pdf$', caseSensitive: false), '');
+    final match = RegExp(
+      r'^(?:620009058-)?\d{4}-\d-\d{8,}_(.+)$',
+      caseSensitive: false,
+    ).firstMatch(base);
+    final raw = match?.group(1)?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    return raw
+        .replaceAll('_', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(RegExp(r'\s*\.\s*$'), '')
+        .trim();
   }
 
   static double _extractMicroviseLabeledAmount(String text, String label) {
@@ -498,7 +687,11 @@ class InvoicePdfAnalysisParser {
         caseSensitive: false,
       ),
       RegExp(
-        r'ALICININADI\s*/\s*ÜNVANI\s*:?\s*(.+?)\s+ADRESİ',
+        r'ALICININADI\s*/\s*ÜNVANI\s*:?\s*(.+?)\s+ADRES[İI]',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'ALICININ\s*ADI\s*/\s*UNVANI\s*:?\s*(.+?)\s+ADRESI',
         caseSensitive: false,
       ),
       RegExp(r'^(.+?)\s+ADRESİ\s*:', caseSensitive: false),
@@ -506,7 +699,11 @@ class InvoicePdfAnalysisParser {
     for (final pattern in patterns) {
       final match = pattern.firstMatch(text);
       final value = match?.group(1)?.trim();
-      if (value != null && value.isNotEmpty) return value;
+      if (value != null && value.isNotEmpty) {
+        return value
+            .replaceFirst(RegExp(r'^ALICININ\s*ADI\s*/\s*ÜNVANI\s*:?\s*', caseSensitive: false), '')
+            .trim();
+      }
     }
     return 'Bilinmeyen Müşteri';
   }

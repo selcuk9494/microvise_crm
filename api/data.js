@@ -1786,8 +1786,10 @@ module.exports = async (req, res) => {
           )`;
         } else if (eInvoiceStatus === 'manual') {
           whereSql += ` and i.e_invoice_status = 'manual' and coalesce(i.e_invoice_environment, '') <> 'test'`;
+        } else if (eInvoiceStatus === 'received') {
+          whereSql += ` and i.e_invoice_status = 'received'`;
         } else if (eInvoiceStatus === 'not_sent') {
-          whereSql += ` and coalesce(i.e_invoice_status, 'not_sent') not in ('sent', 'manual', 'manual_sent')`;
+          whereSql += ` and coalesce(i.e_invoice_status, 'not_sent') not in ('sent', 'manual', 'manual_sent', 'received')`;
         }
         if (customerId) {
           values.push(customerId);

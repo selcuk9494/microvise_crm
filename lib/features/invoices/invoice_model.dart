@@ -134,6 +134,7 @@ class Invoice {
   bool get isOpen => status == 'open' || status == 'partial';
   bool get isEInvoiceSent => eInvoiceStatus == 'sent';
   bool get isEInvoiceManual => eInvoiceStatus == 'manual';
+  bool get isEInvoiceReceived => eInvoiceStatus == 'received';
 
   /// Test API gönderimi (veya test sonrası manuel kapatma).
   /// Listede "Manuel Gönderildi" olarak gösterilir.
@@ -142,10 +143,34 @@ class Invoice {
       (eInvoiceStatus == 'sent' && eInvoiceEnvironment == 'test') ||
       (eInvoiceStatus == 'manual' && eInvoiceEnvironment == 'test');
   bool get isEInvoiceClosed =>
-      isEInvoiceSent || isEInvoiceManual || eInvoiceStatus == 'manual_sent';
+      isEInvoiceSent || isEInvoiceManual || isEInvoiceReceived || eInvoiceStatus == 'manual_sent';
   bool get hasOfficialEInvoice =>
       (eInvoiceNumber?.trim().isNotEmpty ?? false) ||
       (eInvoiceUuid?.trim().isNotEmpty ?? false);
+
+  /// Maliye biçimli satış arşiv PDF’i (CRM üretimi) — yalnızca giden gönderilmiş.
+  bool get canOpenArchiveEInvoicePdf {
+    final uuid = eInvoiceUuid?.trim() ?? '';
+    if (uuid.isEmpty) return false;
+    if (invoiceType == 'purchase' || isEInvoiceReceived) return false;
+    return isEInvoiceSent || eInvoiceStatus == 'manual_sent';
+  }
+
+  /// Maliye portal orijinal nüshası (/dogrula) — alış/gelen veya giden.
+  bool get canOpenOfficialMaliyeNushasi {
+    final uuid = eInvoiceUuid?.trim() ?? '';
+    if (uuid.isEmpty) return false;
+    return isEInvoiceSent ||
+        isEInvoiceReceived ||
+        eInvoiceStatus == 'manual_sent' ||
+        invoiceType == 'purchase';
+  }
+
+  /// PDF satır aksiyonu: alışta portal, satışta arşiv PDF.
+  bool get canOpenOfficialEInvoicePdf =>
+      canOpenArchiveEInvoicePdf ||
+      ((invoiceType == 'purchase' || isEInvoiceReceived) &&
+          (eInvoiceUuid?.trim().isNotEmpty ?? false));
   bool get isLinkedToAkinsoft {
     if (akinsoftSourceId?.trim().isNotEmpty ?? false) return true;
     // Yalnızca SAP tarzı fatura no "bağlı" sayılır.
@@ -194,7 +219,10 @@ class Invoice {
         no.startsWith('MSF');
   }
 
+  /// Only outbound sales drafts (or test→live promotion) may be sent to Maliye.
+  /// Purchase / Maliye-received invoices must never offer live or test send.
   bool canSendEInvoiceTo(String environment) {
+    if (invoiceType == 'purchase' || isEInvoiceReceived) return false;
     if (eInvoiceStatus == 'manual' || eInvoiceStatus == 'manual_sent') {
       return false;
     }

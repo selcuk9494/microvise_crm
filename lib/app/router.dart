@@ -176,9 +176,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
         GoRoute(
           path: '/e-fatura',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: EInvoiceScreen()),
+          redirect: (context, state) {
+            if (state.uri.path == '/e-fatura') {
+              return '/e-fatura/satis';
+            }
+            return null;
+          },
           routes: [
+            GoRoute(
+              path: 'alis',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: EInvoiceScreen(invoiceType: 'purchase'),
+              ),
+            ),
+            GoRoute(
+              path: 'satis',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: EInvoiceScreen(invoiceType: 'sales'),
+              ),
+            ),
             GoRoute(
               path: 'stok',
               pageBuilder: (context, state) => const NoTransitionPage(
