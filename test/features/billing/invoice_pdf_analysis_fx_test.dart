@@ -188,12 +188,17 @@ void main() {
         texts.add(utf8.decode(file.content as List<int>, allowMalformed: true));
       }
       final blob = texts.join('\n');
-      expect(blob, contains('4050.00'));
-      expect(blob, contains('202.50')); // 5 USD * 40.5
-      expect(blob, contains('4252.50')); // 105 * 40.5
+      expect(blob, contains('Matrah (PB)'));
+      expect(blob, contains('Matrah (TL)'));
+      expect(blob, contains('100.00 USD'));
+      expect(blob, contains('5.00 USD'));
+      expect(blob, contains('105.00 USD'));
+      expect(blob, contains('4050.00 TL'));
+      expect(blob, contains('202.50 TL')); // 5 USD * 40.5
+      expect(blob, contains('4252.50 TL')); // 105 * 40.5
       // Totals: matrah TL = 100 TRY + 4050 = 4150; vergi TL = 16 + 202.5 = 218.5
-      expect(blob, contains('4150.00'));
-      expect(blob, contains('218.50'));
+      expect(blob, contains('4150.00 TL'));
+      expect(blob, contains('218.50 TL'));
     });
   });
 }

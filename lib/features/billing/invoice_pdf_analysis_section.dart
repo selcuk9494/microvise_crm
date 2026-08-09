@@ -459,7 +459,6 @@ class _InvoicePdfAnalysisSectionState
             invoiceCount: filteredInvoiceCount,
             rowCount: rows.length,
             summaries: summaries,
-            fxRules: state.fxRules,
           ),
           const Gap(12),
           _InvoicePdfRowsTable(rows: rows),
@@ -810,16 +809,25 @@ class _PdfOverviewCards extends StatelessWidget {
     required this.invoiceCount,
     required this.rowCount,
     required this.summaries,
-    required this.fxRules,
   });
 
   final int invoiceCount;
   final int rowCount;
   final List<InvoicePdfCurrencySummary> summaries;
-  final List<InvoicePdfFxRateRule> fxRules;
 
   @override
   Widget build(BuildContext context) {
+    final usdSummary = _findCurrency(summaries, 'USD');
+    final usdTaxTl =
+        usdSummary?.vatGroups.fold<double>(
+          0,
+          (sum, g) => sum + g.taxTlEquivalent,
+        ) ??
+        0;
+    final usdKdvSubtitle = usdSummary == null || usdSummary.taxTotal <= 0
+        ? 'USD faturalar'
+        : 'TL karsiligi ${_formatAmount(usdTaxTl, 'TRY')}';
+
     return Column(
       children: [
         Wrap(
@@ -838,16 +846,13 @@ class _PdfOverviewCards extends StatelessWidget {
                 _findCurrency(summaries, 'TRY')?.taxTotal ?? 0,
                 'TRY',
               ),
-              subtitle: 'Oran toplamlarindan',
+              subtitle: 'TRY faturalar',
               tone: AppTheme.warning,
             ),
             _TopStatCard(
               title: 'USD KDV',
-              value: _formatAmount(
-                _findCurrency(summaries, 'USD')?.taxTotal ?? 0,
-                'USD',
-              ),
-              subtitle: 'Oran toplamlarindan',
+              value: _formatAmount(usdSummary?.taxTotal ?? 0, 'USD'),
+              subtitle: usdKdvSubtitle,
               tone: AppTheme.success,
             ),
             _TopStatCard(
@@ -859,23 +864,22 @@ class _PdfOverviewCards extends StatelessWidget {
                 ),
                 'TRY',
               ),
-              subtitle: 'Kur tanimlarina gore',
+              subtitle: 'Tum PB vergili toplam',
               tone: AppTheme.primary,
             ),
           ],
         ),
         const Gap(12),
-        _VatRateOverviewWrap(summaries: summaries, fxRules: fxRules),
+        _VatRateOverviewWrap(summaries: summaries),
       ],
     );
   }
 }
 
 class _VatRateOverviewWrap extends StatelessWidget {
-  const _VatRateOverviewWrap({required this.summaries, required this.fxRules});
+  const _VatRateOverviewWrap({required this.summaries});
 
   final List<InvoicePdfCurrencySummary> summaries;
-  final List<InvoicePdfFxRateRule> fxRules;
 
   @override
   Widget build(BuildContext context) {
@@ -889,6 +893,8 @@ class _VatRateOverviewWrap extends StatelessWidget {
             baseAmount: vat.baseAmount,
             taxAmount: vat.taxAmount,
             grandTotal: vat.grandTotal,
+            baseTlEquivalent: vat.baseTlEquivalent,
+            taxTlEquivalent: vat.taxTlEquivalent,
             tlEquivalent: vat.tlEquivalent,
           ),
         );
@@ -928,9 +934,10 @@ class _VatRateCard extends StatelessWidget {
         : item.currency == 'TRY'
         ? AppTheme.warning
         : AppTheme.primary;
+    final showTlPair = !_isTryCurrency(item.currency);
 
     return SizedBox(
-      width: 260,
+      width: 280,
       child: AppCard(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -944,36 +951,83 @@ class _VatRateCard extends StatelessWidget {
               ),
             ),
             const Gap(10),
-            Text(
-              'KDV ${_formatAmount(item.taxAmount, item.currency)}',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            _DualAmountLine(
+              label: 'KDV',
+              amount: item.taxAmount,
+              currency: item.currency,
+              tlAmount: item.taxTlEquivalent,
+              showTl: showTlPair,
+              emphasize: true,
+            ),
+            const Gap(6),
+            _DualAmountLine(
+              label: 'Matrah',
+              amount: item.baseAmount,
+              currency: item.currency,
+              tlAmount: item.baseTlEquivalent,
+              showTl: showTlPair,
             ),
             const Gap(4),
-            Text(
-              'Matrah ${_formatAmount(item.baseAmount, item.currency)}',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
-            ),
-            const Gap(2),
-            Text(
-              'Vergili Toplam ${_formatAmount(item.grandTotal, item.currency)}',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
-            ),
-            const Gap(2),
-            Text(
-              'TL Karsiligi ${_formatAmount(item.tlEquivalent, 'TRY')}',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+            _DualAmountLine(
+              label: 'Vergili Toplam',
+              amount: item.grandTotal,
+              currency: item.currency,
+              tlAmount: item.tlEquivalent,
+              showTl: showTlPair,
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _DualAmountLine extends StatelessWidget {
+  const _DualAmountLine({
+    required this.label,
+    required this.amount,
+    required this.currency,
+    required this.tlAmount,
+    required this.showTl,
+    this.emphasize = false,
+  });
+
+  final String label;
+  final double amount;
+  final String currency;
+  final double tlAmount;
+  final bool showTl;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    final primaryStyle = emphasize
+        ? Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)
+        : Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted);
+    final tlStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+      color: AppTheme.text,
+      fontWeight: FontWeight.w700,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '$label ${_formatAmount(amount, currency)}',
+          style: primaryStyle,
+        ),
+        if (showTl) ...[
+          const Gap(1),
+          Text(
+            'TL karsiligi ${_formatAmount(tlAmount, 'TRY')}',
+            style: tlStyle,
+          ),
+        ],
+      ],
     );
   }
 }
@@ -1456,11 +1510,25 @@ List<InvoicePdfCurrencySummary> _buildSummariesForRows(
       summary.taxTotal += item.taxAmount;
       summary.subtotal += item.baseAmount;
       summary.grandTotal += item.grandTotal;
-      summary.tlEquivalent += _computeTlEquivalentForBreakdown(
-        row,
-        item,
-        fxRules,
+      final baseTl = computeInvoicePdfTlEquivalent(
+        currency: row.currency,
+        amount: item.baseAmount,
+        invoiceDate: row.invoiceDate,
+        fxRules: fxRules,
       );
+      final taxTl = computeInvoicePdfTlEquivalent(
+        currency: row.currency,
+        amount: item.taxAmount,
+        invoiceDate: row.invoiceDate,
+        fxRules: fxRules,
+      );
+      final grandTl = computeInvoicePdfTlEquivalent(
+        currency: row.currency,
+        amount: item.grandTotal,
+        invoiceDate: row.invoiceDate,
+        fxRules: fxRules,
+      );
+      summary.tlEquivalent += grandTl;
       final vat = summary.vatGroups.putIfAbsent(
         item.taxRate,
         _TempVatSummary.new,
@@ -1468,7 +1536,9 @@ List<InvoicePdfCurrencySummary> _buildSummariesForRows(
       vat.baseAmount += item.baseAmount;
       vat.taxAmount += item.taxAmount;
       vat.grandTotal += item.grandTotal;
-      vat.tlEquivalent += _computeTlEquivalentForBreakdown(row, item, fxRules);
+      vat.baseTlEquivalent += baseTl;
+      vat.taxTlEquivalent += taxTl;
+      vat.tlEquivalent += grandTl;
     }
   }
 
@@ -1481,6 +1551,8 @@ List<InvoicePdfCurrencySummary> _buildSummariesForRows(
                 baseAmount: vatEntry.value.baseAmount,
                 taxAmount: vatEntry.value.taxAmount,
                 grandTotal: vatEntry.value.grandTotal,
+                baseTlEquivalent: vatEntry.value.baseTlEquivalent,
+                taxTlEquivalent: vatEntry.value.taxTlEquivalent,
                 tlEquivalent: vatEntry.value.tlEquivalent,
               ),
             )
@@ -1555,17 +1627,9 @@ String _periodLabel(String key) {
 
 DateTime _normalizeDate(DateTime value) => invoicePdfNormalizeDate(value);
 
-double _computeTlEquivalentForBreakdown(
-  InvoicePdfAnalysisListRow row,
-  InvoicePdfAnalysisVatBreakdown breakdown,
-  List<InvoicePdfFxRateRule> fxRules,
-) {
-  return computeInvoicePdfTlEquivalent(
-    currency: row.currency,
-    amount: breakdown.grandTotal,
-    invoiceDate: row.invoiceDate,
-    fxRules: fxRules,
-  );
+bool _isTryCurrency(String currency) {
+  final c = currency.trim().toUpperCase();
+  return c == 'TRY' || c == 'TL' || c == 'TRYL';
 }
 
 class _TempCurrencySummary {
@@ -1581,6 +1645,8 @@ class _TempVatSummary {
   double baseAmount = 0;
   double taxAmount = 0;
   double grandTotal = 0;
+  double baseTlEquivalent = 0;
+  double taxTlEquivalent = 0;
   double tlEquivalent = 0;
 }
 
@@ -1591,6 +1657,8 @@ class _VatRateOverviewItem {
     required this.baseAmount,
     required this.taxAmount,
     required this.grandTotal,
+    required this.baseTlEquivalent,
+    required this.taxTlEquivalent,
     required this.tlEquivalent,
   });
 
@@ -1599,6 +1667,8 @@ class _VatRateOverviewItem {
   final double baseAmount;
   final double taxAmount;
   final double grandTotal;
+  final double baseTlEquivalent;
+  final double taxTlEquivalent;
   final double tlEquivalent;
 }
 

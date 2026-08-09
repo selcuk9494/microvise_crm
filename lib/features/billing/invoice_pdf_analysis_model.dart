@@ -149,6 +149,8 @@ class InvoicePdfVatGroup {
     required this.baseAmount,
     required this.taxAmount,
     required this.grandTotal,
+    required this.baseTlEquivalent,
+    required this.taxTlEquivalent,
     required this.tlEquivalent,
   });
 
@@ -156,6 +158,8 @@ class InvoicePdfVatGroup {
   final double baseAmount;
   final double taxAmount;
   final double grandTotal;
+  final double baseTlEquivalent;
+  final double taxTlEquivalent;
   final double tlEquivalent;
 }
 

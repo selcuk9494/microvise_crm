@@ -78,12 +78,12 @@ Future<Uint8List> buildInvoicePdfAnalysisExcelBytes(
     sheet.appendRow([
       excel.TextCellValue('Para Birimi'),
       excel.TextCellValue('KDV Orani'),
-      excel.TextCellValue('Matrah Toplami'),
-      excel.TextCellValue('Matrah TL Karsiligi'),
-      excel.TextCellValue('KDV Toplami'),
-      excel.TextCellValue('KDV TL Karsiligi'),
-      excel.TextCellValue('Vergili Toplam'),
-      excel.TextCellValue('TL Karsiligi'),
+      excel.TextCellValue('Matrah (PB)'),
+      excel.TextCellValue('Matrah (TL)'),
+      excel.TextCellValue('KDV (PB)'),
+      excel.TextCellValue('KDV (TL)'),
+      excel.TextCellValue('Vergili (PB)'),
+      excel.TextCellValue('Vergili (TL)'),
     ]);
     _applyRowStyle(sheet, rowIndex: rowIndex, columnCount: 8, style: boldStyle);
     rowIndex += 1;
@@ -405,12 +405,12 @@ pw.Widget _buildPdfRateSummaryTable(List<_RateSummary> summaries) {
         children: [
           _pdfHeaderCell('PB', headerStyle),
           _pdfHeaderCell('KDV Orani', headerStyle),
-          _pdfHeaderCell('Matrah Toplami', headerStyle),
-          _pdfHeaderCell('Matrah TL Karsiligi', headerStyle),
-          _pdfHeaderCell('KDV Toplami', headerStyle),
-          _pdfHeaderCell('KDV TL Karsiligi', headerStyle),
-          _pdfHeaderCell('Vergili Toplam', headerStyle),
-          _pdfHeaderCell('TL Karsiligi', headerStyle),
+          _pdfHeaderCell('Matrah (PB)', headerStyle),
+          _pdfHeaderCell('Matrah (TL)', headerStyle),
+          _pdfHeaderCell('KDV (PB)', headerStyle),
+          _pdfHeaderCell('KDV (TL)', headerStyle),
+          _pdfHeaderCell('Vergili (PB)', headerStyle),
+          _pdfHeaderCell('Vergili (TL)', headerStyle),
         ],
       ),
       ...summaries.map(

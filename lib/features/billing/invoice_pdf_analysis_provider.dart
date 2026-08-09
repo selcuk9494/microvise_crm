@@ -226,6 +226,8 @@ class InvoicePdfAnalysisState {
                       baseAmount: taxEntry.value.baseAmount,
                       taxAmount: taxEntry.value.taxAmount,
                       grandTotal: taxEntry.value.grandTotal,
+                      baseTlEquivalent: 0,
+                      taxTlEquivalent: 0,
                       tlEquivalent: 0,
                     ),
                   )
