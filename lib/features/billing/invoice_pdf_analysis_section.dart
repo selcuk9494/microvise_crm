@@ -9,6 +9,7 @@ import '../../core/ui/app_card.dart';
 import '../../core/ui/empty_state_card.dart';
 import 'invoice_pdf_analysis_export.dart';
 import 'invoice_pdf_analysis_file_save.dart';
+import 'invoice_pdf_analysis_fx.dart';
 import 'invoice_pdf_analysis_model.dart';
 import 'invoice_pdf_analysis_parser.dart';
 import 'invoice_pdf_analysis_pick_files.dart';
@@ -1019,7 +1020,7 @@ class _FxRateCard extends StatelessWidget {
           Text('Kur Tanimlari', style: Theme.of(context).textTheme.titleSmall),
           const Gap(6),
             Text(
-            'Iki tarih arasina kur girin (fatura tarihini kapsamali). Ornek: 01.07.2026-31.07.2026, kur 40,5. Tek kur tanimi varsa tarih eslesmese de uygulanir.',
+            'Iki tarih arasina kur girin (fatura tarihini kapsamali). Ornek: 01.07.2026-31.07.2026, kur 40,5. Tarih araligi tutmasa bile ayni para birimindeki en yakin/aktif kur uygulanir.',
             style: Theme.of(
               context,
             ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
@@ -1552,60 +1553,19 @@ String _periodLabel(String key) {
   return DateFormat('MMMM yyyy', 'tr_TR').format(DateTime(year, month));
 }
 
-DateTime _normalizeDate(DateTime value) =>
-    DateTime(value.year, value.month, value.day);
+DateTime _normalizeDate(DateTime value) => invoicePdfNormalizeDate(value);
 
 double _computeTlEquivalentForBreakdown(
   InvoicePdfAnalysisListRow row,
   InvoicePdfAnalysisVatBreakdown breakdown,
   List<InvoicePdfFxRateRule> fxRules,
 ) {
-  return _lookupTlEquivalent(
+  return computeInvoicePdfTlEquivalent(
     currency: row.currency,
     amount: breakdown.grandTotal,
     invoiceDate: row.invoiceDate,
     fxRules: fxRules,
   );
-}
-
-double _lookupTlEquivalent({
-  required String currency,
-  required double amount,
-  required DateTime? invoiceDate,
-  required List<InvoicePdfFxRateRule> fxRules,
-}) {
-  if (currency == 'TRY') return amount;
-  final rate = _resolveFxRate(
-    currency: currency,
-    invoiceDate: invoiceDate,
-    fxRules: fxRules,
-  );
-  if (rate == null) return 0;
-  return amount * rate;
-}
-
-double? _resolveFxRate({
-  required String currency,
-  required DateTime? invoiceDate,
-  required List<InvoicePdfFxRateRule> fxRules,
-}) {
-  final matches = fxRules
-      .where((rule) => rule.currency.toUpperCase() == currency.toUpperCase())
-      .toList(growable: false);
-  if (matches.isEmpty) return null;
-
-  if (invoiceDate != null) {
-    final day = _normalizeDate(invoiceDate);
-    for (final rule in matches) {
-      final startsOk = !day.isBefore(_normalizeDate(rule.startDate));
-      final endsOk = !day.isAfter(_normalizeDate(rule.endDate));
-      if (startsOk && endsOk) return rule.rateToTry;
-    }
-  }
-
-  // Tarih yoksa veya aralik disindaysa tek kur tanimi varsa onu kullan.
-  if (matches.length == 1) return matches.first.rateToTry;
-  return null;
 }
 
 class _TempCurrencySummary {

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'invoice_pdf_analysis_fx.dart';
 import 'invoice_pdf_analysis_model.dart';
 
 Future<Uint8List> buildInvoicePdfAnalysisExcelBytes(
@@ -510,27 +511,13 @@ double _computeTlEquivalent(
   DateTime? invoiceDate,
   List<InvoicePdfFxRateRule> fxRules,
 ) {
-  if (currency == 'TRY') return amount;
-  final matches = fxRules
-      .where((rule) => rule.currency.toUpperCase() == currency.toUpperCase())
-      .toList(growable: false);
-  if (matches.isEmpty) return 0;
-
-  if (invoiceDate != null) {
-    final day = _normalizeDate(invoiceDate);
-    for (final rule in matches) {
-      final startsOk = !day.isBefore(_normalizeDate(rule.startDate));
-      final endsOk = !day.isAfter(_normalizeDate(rule.endDate));
-      if (startsOk && endsOk) return amount * rule.rateToTry;
-    }
-  }
-
-  if (matches.length == 1) return amount * matches.first.rateToTry;
-  return 0;
+  return computeInvoicePdfTlEquivalent(
+    currency: currency,
+    amount: amount,
+    invoiceDate: invoiceDate,
+    fxRules: fxRules,
+  );
 }
-
-DateTime _normalizeDate(DateTime value) =>
-    DateTime(value.year, value.month, value.day);
 
 double _sumBaseAmounts(List<InvoicePdfAnalysisListRow> rows) {
   return rows.fold<double>(0, (sum, row) => sum + row.totalBaseAmount);

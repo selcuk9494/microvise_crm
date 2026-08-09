@@ -230,8 +230,9 @@ class InvoicePdfFxRateRule {
     return {
       'id': id,
       'currency': currency,
-      'startDate': startDate.toIso8601String(),
-      'endDate': endDate.toIso8601String(),
+      // Date-only to avoid timezone day-shift on web (UTC/local).
+      'startDate': _dateOnlyIso(startDate),
+      'endDate': _dateOnlyIso(endDate),
       'rateToTry': rateToTry,
     };
   }
@@ -240,13 +241,35 @@ class InvoicePdfFxRateRule {
     return InvoicePdfFxRateRule(
       id: (json['id'] as String?) ?? '',
       currency: (json['currency'] as String?) ?? 'USD',
-      startDate:
-          DateTime.tryParse((json['startDate'] as String?) ?? '') ??
-          DateTime.now(),
-      endDate:
-          DateTime.tryParse((json['endDate'] as String?) ?? '') ??
-          DateTime.now(),
+      startDate: _parseDateOnly(json['startDate']) ?? DateTime.now(),
+      endDate: _parseDateOnly(json['endDate']) ?? DateTime.now(),
       rateToTry: (json['rateToTry'] as num?)?.toDouble() ?? 0,
     );
   }
+}
+
+String _dateOnlyIso(DateTime value) {
+  final y = value.year.toString().padLeft(4, '0');
+  final m = value.month.toString().padLeft(2, '0');
+  final d = value.day.toString().padLeft(2, '0');
+  return '$y-$m-$d';
+}
+
+DateTime? _parseDateOnly(Object? raw) {
+  if (raw == null) return null;
+  final text = '$raw'.trim();
+  if (text.isEmpty) return null;
+  final datePart = text.contains('T') ? text.split('T').first : text;
+  final parts = datePart.split('-');
+  if (parts.length >= 3) {
+    final year = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final day = int.tryParse(parts[2]);
+    if (year != null && month != null && day != null) {
+      return DateTime(year, month, day);
+    }
+  }
+  final parsed = DateTime.tryParse(text);
+  if (parsed == null) return null;
+  return DateTime(parsed.year, parsed.month, parsed.day);
 }

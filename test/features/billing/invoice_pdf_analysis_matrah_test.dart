@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:microvise_crm/features/billing/invoice_pdf_analysis_fx.dart';
 import 'package:microvise_crm/features/billing/invoice_pdf_analysis_model.dart';
 import 'package:microvise_crm/features/billing/invoice_pdf_analysis_parser.dart';
 
@@ -99,11 +100,23 @@ void main() {
         rateToTry: 40.5,
       ),
     ];
-    // Export ile ayni kural: tek kur / tarih araligi eslesince carp.
-    final baseTl = 333.33 * fx.first.rateToTry;
-    final taxTl = 16.67 * fx.first.rateToTry;
-    expect(baseTl, closeTo(13499.865, 0.01));
-    expect(taxTl, closeTo(675.135, 0.01));
-    expect(baseTl + taxTl, closeTo(350 * 40.5, 0.01));
+    expect(
+      computeInvoicePdfTlEquivalent(
+        currency: 'USD',
+        amount: 333.33,
+        invoiceDate: DateTime(2026, 7, 10),
+        fxRules: fx,
+      ),
+      closeTo(13499.865, 0.01),
+    );
+    expect(
+      computeInvoicePdfTlEquivalent(
+        currency: 'USD',
+        amount: 16.67,
+        invoiceDate: DateTime(2026, 7, 10),
+        fxRules: fx,
+      ),
+      closeTo(675.135, 0.01),
+    );
   });
 }
