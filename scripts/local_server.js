@@ -1241,6 +1241,221 @@ function uniqueInvoiceNumbers(...values) {
   return out;
 }
 
+/** CRM eşleşmesi için normalize anahtar (trim + TR upper). */
+function normalizeInvoiceMatchKey(value) {
+  const text = textOrNull(value);
+  return text ? text.toLocaleUpperCase('tr-TR') : null;
+}
+
+/**
+ * Faturaları CRM’de bulmak için aday anahtarlar:
+ * resmi e-fatura, ERP/FATURA_NO, STŞ, VKN-önekli/önek-siz, CARIHR 20-char kırpık.
+ */
+function expandInvoiceMatchKeys(...values) {
+  const out = [];
+  const seen = new Set();
+  const push = (raw) => {
+    const key = normalizeInvoiceMatchKey(raw);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(key);
+  };
+  for (const value of uniqueInvoiceNumbers(...values)) {
+    push(value);
+    for (const variant of akinsoftCariHrEvrakVariants(value)) {
+      push(variant);
+    }
+  }
+  return out;
+}
+
+/**
+ * Mevcut CRM faturasını Akınsoft source_id ve/veya numara varyantlarıyla bul.
+ * Silinmiş sync_map hedefi stale kabul edilir (orphan map temizlenir).
+ */
+async function findExistingCrmInvoiceForAkinsoft(
+  query,
+  { sourceId = null, numbers = [] } = {},
+) {
+  const sid = textOrNull(sourceId);
+  if (sid) {
+    const mapped = await query(
+      `
+        select i.id, i.invoice_number, i.erp_invoice_number, i.e_invoice_number,
+               i.is_active, i.status, i.currency,
+               round(coalesce(i.grand_total, 0)::numeric, 2)::text as grand_total,
+               m.local_id as mapped_local_id
+        from public.akinsoft_sync_map m
+        left join public.invoices i on i.id = m.local_id
+        where m.source_system = 'akinsoft'
+          and m.source_type = 'invoice'
+          and m.source_id = $1
+        limit 1
+      `,
+      [sid],
+    );
+    const row = mapped.rows[0];
+    if (row?.mapped_local_id && !row?.id) {
+      // Kullanıcı faturayı sildi; stale map → FK’ye yol açmasın.
+      await query(
+        `
+          delete from public.akinsoft_sync_map
+          where source_system = 'akinsoft'
+            and source_type = 'invoice'
+            and source_id = $1
+        `,
+        [sid],
+      );
+    } else if (row?.id) {
+      return { ...row, matchMethod: 'source_id' };
+    }
+  }
+
+  const keys = expandInvoiceMatchKeys(
+    ...(Array.isArray(numbers) ? numbers : [numbers]),
+  );
+  if (!keys.length) return null;
+
+  const found = await query(
+    `
+      select
+        id, invoice_number, erp_invoice_number, e_invoice_number,
+        is_active, status, currency,
+        round(coalesce(grand_total, 0)::numeric, 2)::text as grand_total
+      from public.invoices
+      where
+        upper(trim(coalesce(invoice_number, ''))) = any($1::text[])
+        or upper(trim(coalesce(erp_invoice_number, ''))) = any($1::text[])
+        or upper(trim(coalesce(e_invoice_number, ''))) = any($1::text[])
+        or upper(trim(regexp_replace(
+          coalesce(e_invoice_number, ''),
+          '^\\d{9,11}-',
+          ''
+        ))) = any($1::text[])
+        or left(upper(trim(coalesce(invoice_number, ''))), 20) = any($1::text[])
+        or left(upper(trim(coalesce(erp_invoice_number, ''))), 20) = any($1::text[])
+        or left(upper(trim(coalesce(e_invoice_number, ''))), 20) = any($1::text[])
+      order by
+        case when is_active is distinct from false then 0 else 1 end,
+        updated_at desc nulls last,
+        created_at desc nulls last
+      limit 1
+    `,
+    [keys],
+  );
+  const row = found.rows[0];
+  return row?.id ? { ...row, matchMethod: 'number' } : null;
+}
+
+/**
+ * Pull önizlemesi için toplu CRM fatura eşlemesi (source_id + numara varyantları).
+ * Dönen Map: invoiceSourceId → crm row (veya numara anahtarı → row).
+ */
+async function loadCrmInvoicesForAkinsoftMatch(query, invoices) {
+  const list = Array.isArray(invoices) ? invoices : [];
+  const bySourceId = new Map();
+  const byNumberKey = new Map();
+
+  const sourceIds = [
+    ...new Set(list.map((inv) => textOrNull(inv.sourceId)).filter(Boolean)),
+  ];
+  if (sourceIds.length) {
+    const mapped = await query(
+      `
+        select
+          m.source_id,
+          i.id, i.invoice_number, i.erp_invoice_number, i.e_invoice_number,
+          i.is_active, i.status, i.currency,
+          round(coalesce(i.grand_total, 0)::numeric, 2)::text as grand_total
+        from public.akinsoft_sync_map m
+        join public.invoices i on i.id = m.local_id
+        where m.source_system = 'akinsoft'
+          and m.source_type = 'invoice'
+          and m.source_id = any($1::text[])
+      `,
+      [sourceIds],
+    );
+    for (const row of mapped.rows) {
+      const sid = textOrNull(row.source_id);
+      if (sid && row.id) bySourceId.set(sid, row);
+    }
+  }
+
+  const allKeys = [];
+  const keySeen = new Set();
+  for (const inv of list) {
+    for (const key of expandInvoiceMatchKeys(
+      inv.invoiceNumber,
+      inv.erpInvoiceNumber,
+      inv.eInvoiceNumber,
+      inv.officialEInvoiceNumber,
+    )) {
+      if (keySeen.has(key)) continue;
+      keySeen.add(key);
+      allKeys.push(key);
+    }
+  }
+  if (allKeys.length) {
+    const found = await query(
+      `
+        select
+          id, invoice_number, erp_invoice_number, e_invoice_number,
+          is_active, status, currency,
+          round(coalesce(grand_total, 0)::numeric, 2)::text as grand_total
+        from public.invoices
+        where
+          upper(trim(coalesce(invoice_number, ''))) = any($1::text[])
+          or upper(trim(coalesce(erp_invoice_number, ''))) = any($1::text[])
+          or upper(trim(coalesce(e_invoice_number, ''))) = any($1::text[])
+          or upper(trim(regexp_replace(
+            coalesce(e_invoice_number, ''),
+            '^\\d{9,11}-',
+            ''
+          ))) = any($1::text[])
+          or left(upper(trim(coalesce(invoice_number, ''))), 20) = any($1::text[])
+          or left(upper(trim(coalesce(erp_invoice_number, ''))), 20) = any($1::text[])
+          or left(upper(trim(coalesce(e_invoice_number, ''))), 20) = any($1::text[])
+      `,
+      [allKeys],
+    );
+    const indexRow = (row, raw) => {
+      const key = normalizeInvoiceMatchKey(raw);
+      if (key && !byNumberKey.has(key)) byNumberKey.set(key, row);
+    };
+    for (const row of found.rows) {
+      indexRow(row, row.invoice_number);
+      indexRow(row, row.erp_invoice_number);
+      indexRow(row, row.e_invoice_number);
+      indexRow(row, localEInvoiceNumber(row.e_invoice_number));
+      for (const variant of akinsoftCariHrEvrakVariants(row.invoice_number)) {
+        indexRow(row, variant);
+      }
+      for (const variant of akinsoftCariHrEvrakVariants(row.erp_invoice_number)) {
+        indexRow(row, variant);
+      }
+      for (const variant of akinsoftCariHrEvrakVariants(row.e_invoice_number)) {
+        indexRow(row, variant);
+      }
+    }
+  }
+
+  function resolveForInvoice(invoice) {
+    const sid = textOrNull(invoice.sourceId);
+    if (sid && bySourceId.has(sid)) return bySourceId.get(sid);
+    for (const key of expandInvoiceMatchKeys(
+      invoice.invoiceNumber,
+      invoice.erpInvoiceNumber,
+      invoice.eInvoiceNumber,
+      invoice.officialEInvoiceNumber,
+    )) {
+      if (byNumberKey.has(key)) return byNumberKey.get(key);
+    }
+    return null;
+  }
+
+  return { bySourceId, byNumberKey, resolveForInvoice };
+}
+
 /**
  * Aynı resmi / ERP numarasıyla mevcut FATURA veya orphan CARIHR (FTO_*) bul.
  * WOLVOX’ta FATURA_NO unique DEĞİL; mükerrer create’i engellemek için zorunlu.
@@ -3045,32 +3260,23 @@ async function pullAkinsoftDataset(body) {
 
     try {
       const { query } = require(path.join(rootDir, 'api', '_lib', 'db.js'));
-      const invoiceNumbers = invoices
-        .map((invoice) => textOrNull(invoice.invoiceNumber))
-        .filter(Boolean);
-      if (invoiceNumbers.length) {
-        const existing = await query(
-          `
-            select
-              invoice_number,
-              is_active,
-              status,
-              currency,
-              round(coalesce(grand_total, 0)::numeric, 2)::text as grand_total
-            from public.invoices
-            where invoice_number = any($1::text[])
-          `,
-          [invoiceNumbers],
-        );
-        const existingByNo = new Map(
-          existing.rows.map((row) => [String(row.invoice_number), row]),
+      if (invoices.length) {
+        const { resolveForInvoice } = await loadCrmInvoicesForAkinsoftMatch(
+          query,
+          invoices,
         );
         invoices = invoices
           .map((invoice) => {
-            const row = existingByNo.get(String(invoice.invoiceNumber));
+            const row = resolveForInvoice(invoice);
             if (!row) return { ...invoice, importAction: 'new' };
             const active = row.is_active !== false;
-            if (!active) return { ...invoice, importAction: 'restore' };
+            if (!active) {
+              return {
+                ...invoice,
+                importAction: 'restore',
+                existingInvoiceId: row.id,
+              };
+            }
             const statusComparable = invoice.paymentReliable !== false;
             const sameStatus =
               !statusComparable ||
@@ -3090,11 +3296,21 @@ async function pullAkinsoftDataset(body) {
               numberOrZero(invoice.grandTotal) <= PAYMENT_CLOSE_TOLERANCE;
             if (crmIsHealthyTry && pulledIsEmptyForeign) {
               if (sameStatus) return null;
-              return { ...invoice, importAction: 'update', updateKind: 'status' };
+              return {
+                ...invoice,
+                importAction: 'update',
+                updateKind: 'status',
+                existingInvoiceId: row.id,
+              };
             }
             // Yalnız ödeme/durum farkıysa tam yeniden yazım gereksiz.
             const updateKind = sameCurrency && sameTotal ? 'status' : 'full';
-            return { ...invoice, importAction: 'update', updateKind };
+            return {
+              ...invoice,
+              importAction: 'update',
+              updateKind,
+              existingInvoiceId: row.id,
+            };
           })
           .filter(Boolean);
       }
@@ -3221,73 +3437,20 @@ async function syncAkinsoftInvoiceStatuses(query, invoices, reportProgress) {
     actionable.push(invoice);
   }
 
-  const sourceIds = [
-    ...new Set(
-      actionable
-        .map((invoice) => textOrNull(invoice.sourceId))
-        .filter(Boolean),
-    ),
-  ];
-  const idBySource = new Map();
-  if (sourceIds.length) {
-    const mapped = await query(
-      `
-        select m.source_id, m.local_id as id
-        from public.akinsoft_sync_map m
-        where m.source_system = 'akinsoft'
-          and m.source_type = 'invoice'
-          and m.source_id = any($1::text[])
-      `,
-      [sourceIds],
-    );
-    for (const row of mapped.rows) {
-      const sourceId = textOrNull(row.source_id);
-      const id = textOrNull(row.id);
-      if (sourceId && id) idBySource.set(sourceId, id);
-    }
-  }
-
-  const unresolvedNumbers = [];
-  for (const invoice of actionable) {
-    const sourceId = textOrNull(invoice.sourceId);
-    if (sourceId && idBySource.has(sourceId)) continue;
-    const invoiceNumber = textOrNull(invoice.invoiceNumber);
-    if (invoiceNumber) unresolvedNumbers.push(invoiceNumber);
-  }
-  const idByNumber = new Map();
-  if (unresolvedNumbers.length) {
-    const found = await query(
-      `
-        select id, erp_invoice_number, invoice_number
-        from public.invoices
-        where erp_invoice_number = any($1::text[])
-           or invoice_number = any($1::text[])
-      `,
-      [unresolvedNumbers],
-    );
-    for (const row of found.rows) {
-      const erp = textOrNull(row.erp_invoice_number);
-      const inv = textOrNull(row.invoice_number);
-      const id = textOrNull(row.id);
-      if (!id) continue;
-      if (erp) idByNumber.set(erp, id);
-    }
-    for (const row of found.rows) {
-      const inv = textOrNull(row.invoice_number);
-      const id = textOrNull(row.id);
-      if (inv && id && !idByNumber.has(inv)) idByNumber.set(inv, id);
-    }
-  }
+  const { resolveForInvoice } = await loadCrmInvoicesForAkinsoftMatch(
+    query,
+    actionable,
+  );
 
   const updatesById = new Map();
   for (let index = 0; index < actionable.length; index += 1) {
     const invoice = actionable[index];
     const invoiceNumber = textOrNull(invoice.invoiceNumber);
-    const sourceId = textOrNull(invoice.sourceId);
-    let invoiceId =
-      (sourceId && idBySource.get(sourceId)) ||
-      (invoiceNumber && idByNumber.get(invoiceNumber)) ||
-      null;
+    const existing =
+      (invoice.existingInvoiceId
+        ? { id: invoice.existingInvoiceId }
+        : null) || resolveForInvoice(invoice);
+    const invoiceId = textOrNull(existing?.id);
     if (!invoiceId) {
       notFound += 1;
       if (missing.length < 50 && invoiceNumber) missing.push(invoiceNumber);
@@ -3372,7 +3535,7 @@ async function syncAkinsoftInvoiceStatuses(query, invoices, reportProgress) {
 }
 
 async function importAkinsoftDataset(data, onProgress) {
-  const { query } = require(path.join(rootDir, 'api', '_lib', 'db.js'));
+  const { query, withTransaction } = require(path.join(rootDir, 'api', '_lib', 'db.js'));
   await ensureAkinsoftSyncMap(query);
   const invoices = Array.isArray(data.invoices) ? data.invoices : [];
   const reportProgress = (current, extra = {}) => {
@@ -3431,13 +3594,17 @@ async function importAkinsoftDataset(data, onProgress) {
   let productsUpdated = 0;
   let productsSkipped = 0;
   let invoicesImported = 0;
+  let invoicesCreated = 0;
+  let invoicesUpdated = 0;
   let invoiceItemsImported = 0;
   let customersMatchedBySource = 0;
   let customersMatchedByTax = 0;
   let customersMatchedByCode = 0;
   let customersCreated = 0;
   let invoicesSkippedMissingCustomerMatch = 0;
+  let invoicesSkippedErrors = 0;
   const skippedInvoices = [];
+  const invoiceWriteLog = [];
 
   const productSnapshots = await loadCrmProductSnapshotsBySource(query);
   for (const [sourceId, snapshot] of productSnapshots.bySourceId) {
@@ -3875,226 +4042,305 @@ async function importAkinsoftDataset(data, onProgress) {
     const dueDate = dateOrIso(invoice.dueDate)?.slice(0, 10);
     const currency = normalizeCurrency(invoice.currency);
     const paymentReliable = invoice.paymentReliable !== false;
+
+    let writeAction = null;
     let invoiceId = null;
-    if (invoice.sourceId != null) {
-      const mappedInvoice = await findAkinsoftMappedLocalId(
-        query,
-        'invoice',
-        invoice.sourceId,
-      );
-      invoiceId = mappedInvoice.rows?.[0]?.id || null;
+    let itemsWritten = 0;
+    try {
+      const result = await withTransaction(async (tx) => {
+        const existing =
+          (textOrNull(invoice.existingInvoiceId)
+            ? await tx(
+                `
+                  select id, invoice_number, erp_invoice_number, e_invoice_number
+                  from public.invoices
+                  where id = $1::uuid
+                  limit 1
+                `,
+                [invoice.existingInvoiceId],
+              ).then((r) => (r.rows[0] ? { ...r.rows[0], matchMethod: 'preface' } : null))
+            : null) ||
+          (await findExistingCrmInvoiceForAkinsoft(tx, {
+            sourceId: invoice.sourceId,
+            numbers: [
+              invoiceNumber,
+              invoice.erpInvoiceNumber,
+              invoice.eInvoiceNumber,
+              invoice.officialEInvoiceNumber,
+            ],
+          }));
+
+        let id = textOrNull(existing?.id);
+        let action = id ? 'updated' : 'created';
+
+        if (id) {
+          const updated = await tx(
+            `
+              update public.invoices
+              set
+                customer_id = $2,
+                invoice_date = $3,
+                due_date = $4,
+                currency = $5,
+                subtotal = $6,
+                tax_total = $7,
+                discount_total = $8,
+                grand_total = $9,
+                paid_amount = case
+                  when $11::boolean then $10
+                  else public.invoices.paid_amount
+                end,
+                status = case
+                  when $11::boolean then $12
+                  else public.invoices.status
+                end,
+                notes = $13,
+                erp_invoice_number = coalesce(nullif(trim(erp_invoice_number), ''), $14),
+                e_invoice_status = case
+                  when e_invoice_status = 'sent' then e_invoice_status
+                  else 'manual'
+                end,
+                is_active = true,
+                updated_at = now()
+              where id = $1
+              returning id
+            `,
+            [
+              id,
+              customerId,
+              invoiceDate,
+              dueDate,
+              currency,
+              numberOrZero(invoice.subtotal),
+              numberOrZero(invoice.taxTotal),
+              numberOrZero(invoice.discountTotal),
+              numberOrZero(invoice.grandTotal),
+              numberOrZero(invoice.paidAmount),
+              paymentReliable,
+              textOrNull(invoice.status) || 'open',
+              textOrNull(invoice.notes),
+              invoiceNumber,
+            ],
+          );
+          id = textOrNull(updated.rows[0]?.id);
+          if (!id) {
+            throw new Error(
+              `CRM fatura satırı kayboldu (id eşleşmedi); kalem yazılmadı: ${invoiceNumber}`,
+            );
+          }
+        } else {
+          const inserted = await tx(
+            `
+              insert into public.invoices (
+                invoice_number, invoice_type, customer_id, invoice_date, due_date,
+                currency, exchange_rate, subtotal, tax_total, discount_total,
+                grand_total, paid_amount, status, notes, is_active, erp_invoice_number,
+                e_invoice_status
+              )
+              values (
+                $1, 'sales', $2, $3, $4, $5, 1, $6, $7, $8, $9, $10, $11, $12, true, $1,
+                'manual'
+              )
+              on conflict (invoice_number) do update set
+                customer_id = excluded.customer_id,
+                invoice_date = excluded.invoice_date,
+                due_date = excluded.due_date,
+                currency = excluded.currency,
+                subtotal = excluded.subtotal,
+                tax_total = excluded.tax_total,
+                discount_total = excluded.discount_total,
+                grand_total = excluded.grand_total,
+                paid_amount = case
+                  when $13::boolean then excluded.paid_amount
+                  else public.invoices.paid_amount
+                end,
+                status = case
+                  when $13::boolean then excluded.status
+                  else public.invoices.status
+                end,
+                notes = excluded.notes,
+                erp_invoice_number = coalesce(
+                  nullif(trim(public.invoices.erp_invoice_number), ''),
+                  excluded.erp_invoice_number
+                ),
+                e_invoice_status = case
+                  when public.invoices.e_invoice_status = 'sent' then public.invoices.e_invoice_status
+                  else 'manual'
+                end,
+                is_active = true,
+                updated_at = now()
+              returning id, (xmax = 0) as inserted_new
+            `,
+            [
+              invoiceNumber,
+              customerId,
+              invoiceDate,
+              dueDate,
+              currency,
+              numberOrZero(invoice.subtotal),
+              numberOrZero(invoice.taxTotal),
+              numberOrZero(invoice.discountTotal),
+              numberOrZero(invoice.grandTotal),
+              numberOrZero(invoice.paidAmount),
+              textOrNull(invoice.status) || 'open',
+              textOrNull(invoice.notes),
+              paymentReliable,
+            ],
+          );
+          id = textOrNull(inserted.rows[0]?.id);
+          if (!id) {
+            throw new Error(`Fatura oluşturulamadı: ${invoiceNumber}`);
+          }
+          // on conflict path → update say.
+          if (inserted.rows[0]?.inserted_new === false) action = 'updated';
+        }
+
+        await upsertAkinsoftSyncMap(tx, {
+          sourceType: 'invoice',
+          sourceId: invoice.sourceId,
+          sourceCode: invoiceNumber,
+          sourceName: invoice.customerName,
+          localTable: 'invoices',
+          localId: id,
+        });
+        await tx(
+          `
+            update public.invoices
+            set erp_invoice_number = coalesce(nullif(trim(erp_invoice_number), ''), $2),
+                updated_at = now()
+            where id = $1
+              and (
+                erp_invoice_number is null
+                or erp_invoice_number = ''
+              )
+          `,
+          [id, invoiceNumber],
+        );
+
+        // Parent doğrulandıktan sonra kalemleri değiştir (tek transaction).
+        await tx(`delete from public.invoice_items where invoice_id = $1`, [id]);
+        let index = 0;
+        let itemCount = 0;
+        const invoiceSubtotal = numberOrZero(invoice.subtotal);
+        const invoiceTaxTotal = numberOrZero(invoice.taxTotal);
+        for (const item of Array.isArray(invoice.items) ? invoice.items : []) {
+          const productId =
+            item.productSourceId == null
+              ? productIdByCode.get(textOrNull(item.code))
+              : productIdBySource.get(String(item.productSourceId)) ||
+                productIdByCode.get(textOrNull(item.code));
+          const quantity = numberOrZero(item.quantity) || 1;
+          const netTotal =
+            numberOrZero(item.netTotal) ||
+            numberOrZero(item.unitPrice) * quantity;
+          const unitPrice = numberOrZero(item.unitPrice) || netTotal / quantity;
+          const discountAmount = numberOrZero(item.discountAmount);
+          const tax = (invoice.taxes || [])[0] || {};
+          const rawTaxRate = numberOrZero(item.taxRate) || numberOrZero(tax.taxRate) || 0;
+          const explicitTaxAmount =
+            item.taxAmount == null ? null : numberOrZero(item.taxAmount);
+          const taxAmount = explicitTaxAmount != null
+            ? explicitTaxAmount
+            : invoiceSubtotal > 0 && invoiceTaxTotal > 0 && !numberOrZero(item.taxRate)
+              ? invoiceTaxTotal * (netTotal / invoiceSubtotal)
+              : 0;
+          const taxRate = invoiceTaxTotal <= 0 && taxAmount <= 0 ? 0 : rawTaxRate;
+          const lineTotal = Math.max(0, netTotal - discountAmount + taxAmount);
+          await tx(
+            `
+              insert into public.invoice_items (
+                invoice_id, product_id, description, quantity, unit, unit_price,
+                tax_rate, tax_amount, discount_rate, discount_amount, line_total,
+                sort_order
+              )
+              values ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9, $10, $11)
+            `,
+            [
+              id,
+              productId || null,
+              textOrNull(item.description) || 'Fatura kalemi',
+              quantity,
+              textOrNull(item.unit) || 'Adet',
+              unitPrice,
+              taxRate,
+              taxAmount,
+              discountAmount,
+              lineTotal,
+              index,
+            ],
+          );
+          index += 1;
+          itemCount += 1;
+        }
+        await tx(
+          `
+            update public.invoices i
+            set
+              subtotal = totals.subtotal,
+              tax_total = totals.tax_total,
+              discount_total = totals.discount_total,
+              grand_total = totals.grand_total,
+              status = case
+                when $2::boolean and coalesce(i.paid_amount, 0) + 0.02 >= totals.grand_total and totals.grand_total > 0 then 'paid'
+                when $2::boolean and coalesce(i.paid_amount, 0) > 0 then 'partial'
+                else i.status
+              end,
+              updated_at = now()
+            from (
+              select
+                coalesce(sum(unit_price * quantity), 0) as subtotal,
+                coalesce(sum(tax_amount), 0) as tax_total,
+                coalesce(sum(discount_amount), 0) as discount_total,
+                coalesce(sum(line_total), 0) as grand_total
+              from public.invoice_items
+              where invoice_id = $1
+            ) totals
+            where i.id = $1
+          `,
+          [id, paymentReliable],
+        );
+        return { id, action, itemCount, matchMethod: existing?.matchMethod || null };
+      });
+      invoiceId = result.id;
+      writeAction = result.action;
+      itemsWritten = result.itemCount;
+    } catch (error) {
+      invoicesSkippedErrors += 1;
+      skippedInvoices.push({
+        invoiceNumber,
+        customerSourceId: invoice.customerSourceId,
+        customerCode: invoice.customerCode,
+        customerName: invoice.customerName,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      reportProgress(invoiceIndex + 1, {
+        invoiceNumber,
+        skipped: true,
+        error: true,
+      });
+      continue;
     }
-    if (invoiceId) {
-      await query(
-        `
-          update public.invoices
-          set
-            customer_id = $2,
-            invoice_date = $3,
-            due_date = $4,
-            currency = $5,
-            subtotal = $6,
-            tax_total = $7,
-            discount_total = $8,
-            grand_total = $9,
-            paid_amount = case
-              when $11::boolean then $10
-              else public.invoices.paid_amount
-            end,
-            status = case
-              when $11::boolean then $12
-              else public.invoices.status
-            end,
-            notes = $13,
-            erp_invoice_number = coalesce(erp_invoice_number, $14),
-            e_invoice_status = case
-              when e_invoice_status = 'sent' then e_invoice_status
-              else 'manual'
-            end,
-            is_active = true,
-            updated_at = now()
-          where id = $1
-        `,
-        [
-          invoiceId,
-          customerId,
-          invoiceDate,
-          dueDate,
-          currency,
-          numberOrZero(invoice.subtotal),
-          numberOrZero(invoice.taxTotal),
-          numberOrZero(invoice.discountTotal),
-          numberOrZero(invoice.grandTotal),
-          numberOrZero(invoice.paidAmount),
-          paymentReliable,
-          textOrNull(invoice.status) || 'open',
-          textOrNull(invoice.notes),
-          invoiceNumber,
-        ],
-      );
-    } else {
-      const result = await query(
-        `
-          insert into public.invoices (
-            invoice_number, invoice_type, customer_id, invoice_date, due_date,
-            currency, exchange_rate, subtotal, tax_total, discount_total,
-            grand_total, paid_amount, status, notes, is_active, erp_invoice_number,
-            e_invoice_status
-          )
-          values (
-            $1, 'sales', $2, $3, $4, $5, 1, $6, $7, $8, $9, $10, $11, $12, true, $1,
-            'manual'
-          )
-          on conflict (invoice_number) do update set
-            customer_id = excluded.customer_id,
-            invoice_date = excluded.invoice_date,
-            due_date = excluded.due_date,
-            currency = excluded.currency,
-            subtotal = excluded.subtotal,
-            tax_total = excluded.tax_total,
-            discount_total = excluded.discount_total,
-            grand_total = excluded.grand_total,
-            paid_amount = case
-              when $13::boolean then excluded.paid_amount
-              else public.invoices.paid_amount
-            end,
-            status = case
-              when $13::boolean then excluded.status
-              else public.invoices.status
-            end,
-            notes = excluded.notes,
-            erp_invoice_number = coalesce(public.invoices.erp_invoice_number, excluded.erp_invoice_number),
-            e_invoice_status = case
-              when public.invoices.e_invoice_status = 'sent' then public.invoices.e_invoice_status
-              else 'manual'
-            end,
-            is_active = true,
-            updated_at = now()
-          returning id
-        `,
-        [
-          invoiceNumber,
-          customerId,
-          invoiceDate,
-          dueDate,
-          currency,
-          numberOrZero(invoice.subtotal),
-          numberOrZero(invoice.taxTotal),
-          numberOrZero(invoice.discountTotal),
-          numberOrZero(invoice.grandTotal),
-          numberOrZero(invoice.paidAmount),
-          textOrNull(invoice.status) || 'open',
-          textOrNull(invoice.notes),
-          paymentReliable,
-        ],
-      );
-      invoiceId = result.rows[0]?.id;
-    }
-    if (!invoiceId) continue;
-    await upsertAkinsoftSyncMap(query, {
-      sourceType: 'invoice',
-      sourceId: invoice.sourceId,
-      sourceCode: invoiceNumber,
-      sourceName: invoice.customerName,
-      localTable: 'invoices',
-      localId: invoiceId,
-    });
-    await query(
-      `
-        update public.invoices
-        set erp_invoice_number = coalesce(erp_invoice_number, $2),
-            updated_at = now()
-        where id = $1
-          and (
-            erp_invoice_number is null
-            or erp_invoice_number = ''
-          )
-      `,
-      [invoiceId, invoiceNumber],
-    );
-    await query(`delete from public.invoice_items where invoice_id = $1`, [invoiceId]);
-    let index = 0;
-    const invoiceSubtotal = numberOrZero(invoice.subtotal);
-    const invoiceTaxTotal = numberOrZero(invoice.taxTotal);
-    for (const item of Array.isArray(invoice.items) ? invoice.items : []) {
-      const productId =
-        item.productSourceId == null
-          ? productIdByCode.get(textOrNull(item.code))
-          : productIdBySource.get(String(item.productSourceId)) ||
-            productIdByCode.get(textOrNull(item.code));
-      const quantity = numberOrZero(item.quantity) || 1;
-      const netTotal =
-        numberOrZero(item.netTotal) ||
-        numberOrZero(item.unitPrice) * quantity;
-      const unitPrice = numberOrZero(item.unitPrice) || netTotal / quantity;
-      const discountAmount = numberOrZero(item.discountAmount);
-      const tax = (invoice.taxes || [])[0] || {};
-      const rawTaxRate = numberOrZero(item.taxRate) || numberOrZero(tax.taxRate) || 0;
-      const explicitTaxAmount =
-        item.taxAmount == null ? null : numberOrZero(item.taxAmount);
-      const taxAmount = explicitTaxAmount != null
-        ? explicitTaxAmount
-        : invoiceSubtotal > 0 && invoiceTaxTotal > 0 && !numberOrZero(item.taxRate)
-          ? invoiceTaxTotal * (netTotal / invoiceSubtotal)
-          : 0;
-      const taxRate = invoiceTaxTotal <= 0 && taxAmount <= 0 ? 0 : rawTaxRate;
-      const lineTotal = Math.max(0, netTotal - discountAmount + taxAmount);
-      await query(
-        `
-          insert into public.invoice_items (
-            invoice_id, product_id, description, quantity, unit, unit_price,
-            tax_rate, tax_amount, discount_rate, discount_amount, line_total,
-            sort_order
-          )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9, $10, $11)
-        `,
-        [
-          invoiceId,
-          productId || null,
-          textOrNull(item.description) || 'Fatura kalemi',
-          quantity,
-          textOrNull(item.unit) || 'Adet',
-          unitPrice,
-          taxRate,
-          taxAmount,
-          discountAmount,
-          lineTotal,
-          index,
-        ],
-      );
-      index += 1;
-      invoiceItemsImported += 1;
-    }
-    await query(
-      `
-        update public.invoices i
-        set
-          subtotal = totals.subtotal,
-          tax_total = totals.tax_total,
-          discount_total = totals.discount_total,
-          grand_total = totals.grand_total,
-          status = case
-            when $2::boolean and coalesce(i.paid_amount, 0) + 0.02 >= totals.grand_total and totals.grand_total > 0 then 'paid'
-            when $2::boolean and coalesce(i.paid_amount, 0) > 0 then 'partial'
-            else i.status
-          end,
-          updated_at = now()
-        from (
-          select
-            coalesce(sum(unit_price * quantity), 0) as subtotal,
-            coalesce(sum(tax_amount), 0) as tax_total,
-            coalesce(sum(discount_amount), 0) as discount_total,
-            coalesce(sum(line_total), 0) as grand_total
-          from public.invoice_items
-          where invoice_id = $1
-        ) totals
-        where i.id = $1
-      `,
-      [invoiceId, paymentReliable],
-    );
+
+    if (writeAction === 'created') invoicesCreated += 1;
+    else invoicesUpdated += 1;
     invoicesImported += 1;
-    reportProgress(invoiceIndex + 1, { invoiceNumber });
+    invoiceItemsImported += itemsWritten;
+    if (invoiceWriteLog.length < 100) {
+      invoiceWriteLog.push({
+        invoiceNumber,
+        invoiceId,
+        action: writeAction,
+      });
+    }
+    reportProgress(invoiceIndex + 1, {
+      invoiceNumber,
+      action: writeAction,
+    });
   }
+
+  console.log(
+    `[akinsoft-import] invoices created=${invoicesCreated} updated=${invoicesUpdated} skipped_customer=${invoicesSkippedMissingCustomerMatch} skipped_error=${invoicesSkippedErrors} items=${invoiceItemsImported}`,
+  );
 
   return {
     customers: customersImported,
@@ -4103,6 +4349,8 @@ async function importAkinsoftDataset(data, onProgress) {
     productsUpdated,
     productsSkipped,
     invoices: invoicesImported,
+    invoicesCreated,
+    invoicesUpdated,
     invoiceItems: invoiceItemsImported,
     customerMatches: {
       source: customersMatchedBySource,
@@ -4112,9 +4360,11 @@ async function importAkinsoftDataset(data, onProgress) {
     },
     skipped: {
       missingCustomerMatch: invoicesSkippedMissingCustomerMatch,
+      errors: invoicesSkippedErrors,
       invoices: skippedInvoices,
       productsUnchanged: productsSkipped,
     },
+    invoiceWriteLog,
   };
 }
 
@@ -4440,20 +4690,31 @@ async function runAkinsoftPullAndUpdate(body, reportProgress) {
     }
   }
 
-  const importUpdateTargets = toImport.filter(
-    (invoice) => invoice.importAction === 'update',
-  ).length;
-  const importCreateTargets = Math.max(0, toImport.length - importUpdateTargets);
   const importedTotal = Number(importSummary.invoices || 0);
-  // İçe aktarılanların bir kısmı güncelleme, kalanı yeni/restore kabul edilir.
-  const created = Math.min(importCreateTargets, importedTotal);
-  const importedUpdates = Math.max(0, importedTotal - created);
+  const created = Number(
+    importSummary.invoicesCreated != null
+      ? importSummary.invoicesCreated
+      : Math.min(
+          toImport.filter((invoice) => invoice.importAction !== 'update').length,
+          importedTotal,
+        ),
+  );
+  const importedUpdates = Number(
+    importSummary.invoicesUpdated != null
+      ? importSummary.invoicesUpdated
+      : Math.max(0, importedTotal - created),
+  );
   const updated = Number(statusSync.updated || 0) + importedUpdates;
   const failed =
     Number(statusSync.notFound || 0) +
     Number(statusSync.unreliable || 0) +
     Number(importSummary.skipped?.missingCustomerMatch || 0) +
+    Number(importSummary.skipped?.errors || 0) +
     Number(importSummary.productsPush?.failed || 0);
+
+  console.log(
+    `[akinsoft-pull-and-update] pulled=${invoices.length} created=${created} updated=${updated} failed=${failed} needReview=${needReview.length} statusUpdated=${statusSync.updated || 0} statusUnchanged=${statusSync.unchanged || 0}`,
+  );
 
   return {
     ok: true,
@@ -4475,6 +4736,9 @@ async function runAkinsoftPullAndUpdate(body, reportProgress) {
       statusSync,
       import: importSummary,
     },
+    // Güvenli inceleme: uygulamak silmez; yalnızca mükerrer aday sorgusu.
+    duplicateCheckHint:
+      "select erp_invoice_number, e_invoice_number, invoice_number, count(*) from public.invoices where is_active is distinct from false group by 1,2,3 having count(*) > 1 order by count(*) desc limit 50;",
   };
 }
 

@@ -163,4 +163,32 @@ async function query(text, params = []) {
   return result;
 }
 
-module.exports = { query };
+function activePool() {
+  return shouldUseNeonWs() ? getNeonPool() : getPool();
+}
+
+/**
+ * Run work inside a single DB transaction (BEGIN/COMMIT/ROLLBACK).
+ * `fn` receives a query(text, params) bound to that client.
+ */
+async function withTransaction(fn) {
+  const client = await activePool().connect();
+  try {
+    await client.query('BEGIN');
+    const txQuery = (text, params = []) => client.query(text, params);
+    const result = await fn(txQuery);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {
+      // ignore rollback errors
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { query, withTransaction };
