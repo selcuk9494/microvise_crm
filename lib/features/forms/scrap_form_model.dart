@@ -170,7 +170,7 @@ class ScrapFormPrintSettings {
     serviceCompanyValue: 'Ingenico',
     serviceIdentityValue: 'Microvise Innovation Ltd',
     serviceAddressValue: 'Atatürk Cad Emek 2 No:1 Yenişehir',
-    serviceTaxValue: '19660',
+    serviceTaxValue: 'Lefkoşa VKN 620009058',
     ownerSectionTitle: '2- CİHAZIN SAHİBİ MÜKELLEFİN',
     ownerNameLabel: '- Adı, Soyadı veya Ünvanı',
     ownerAddressLabel: '- Adresi',

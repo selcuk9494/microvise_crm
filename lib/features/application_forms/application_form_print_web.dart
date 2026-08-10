@@ -353,28 +353,28 @@ String _buildPrintableHtml(
         position: relative;
       }
       .sheet.kdv .top-code {
-        margin-bottom: 10px;
+        margin-bottom: 16px;
       }
       .sheet.kdv .title {
         font-size: 20px;
-        margin: 4px 0 12px;
+        margin: 6px 0 18px;
       }
       .sheet.kdv .office {
         font-size: 16px;
-        line-height: 1.25;
-        margin-bottom: 10px;
+        line-height: 1.34;
+        margin-bottom: 16px;
       }
       .sheet.kdv .intro {
         font-size: 14px;
-        line-height: 1.38;
-        margin-bottom: 12px;
+        line-height: 1.5;
+        margin-bottom: 22px;
         max-width: 95%;
       }
       .sheet.kdv .line {
         gap: 7px;
         font-size: 14px;
-        line-height: 1.24;
-        margin: 3px 0;
+        line-height: 1.4;
+        margin: 8px 0;
       }
       .sheet.kdv .indent-1 { padding-left: 18px; }
       .sheet.kdv .indent-2 { padding-left: 42px; }
@@ -387,7 +387,7 @@ String _buildPrintableHtml(
       .sheet.kdv .short { min-width: 170px; }
       .sheet.kdv .signature-block {
         width: 340px;
-        margin-top: 30px;
+        margin-top: 64px;
       }
       .sheet.kdv .signature-title {
         font-size: 15px;
@@ -395,7 +395,7 @@ String _buildPrintableHtml(
       }
       .sheet.kdv .signature-line {
         font-size: 14px;
-        margin: 7px 0;
+        margin: 13px 0;
       }
     </style>
   </head>

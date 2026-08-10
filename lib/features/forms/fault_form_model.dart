@@ -165,7 +165,7 @@ class FaultFormPrintSettings {
     serviceAddressLabel: 'Adresi',
     serviceAddressValue: '',
     serviceVknLabel: 'Vergi Sicil No.',
-    serviceVknValue: 'VKN:384003147',
+    serviceVknValue: 'VKN 620009058',
     authorizedServiceLabel: 'Yetkili Bakım - Onarım Servisi',
     authorizedServiceValue: 'Microvise Innovation Ltd.',
     sealOfficeLine: 'Gelir ve Vergi Dairesi',

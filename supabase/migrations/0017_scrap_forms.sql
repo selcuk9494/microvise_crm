@@ -65,7 +65,7 @@ create table if not exists public.scrap_form_settings (
   service_company_value text not null default 'Ingenico',
   service_identity_value text not null default 'Microvise Innovation Ltd',
   service_address_value text not null default 'Atatürk Cad Emek 2 No:1 Yenişehir',
-  service_tax_value text not null default '19660',
+  service_tax_value text not null default 'Lefkoşa VKN 620009058',
   owner_section_title text not null default '2- CİHAZIN SAHİBİ MÜKELLEFİN',
   owner_name_label text not null default '- Adı, Soyadı veya Ünvanı',
   owner_address_label text not null default '- Adresi',

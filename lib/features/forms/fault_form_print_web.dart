@@ -252,7 +252,7 @@ String _buildPrintableHtml(FaultFormRecord record) {
         <div class="section-title">Ödeme Kaydedici Cihaz<br/>Satış ve Bakım - Onarım Ruhsatnamesi Sahibinin :</div>
         ${line('Adı Soyadı / Ünvanı', 'Microvise Innovation Ltd.')}
         ${line('Adresi', '')}
-        ${line('Vergi Sicil No.', 'VKN:384003147')}
+        ${line('Vergi Sicil No.', 'VKN 620009058')}
         ${line('Ruhsatname No', '19')}
       </div>
 
