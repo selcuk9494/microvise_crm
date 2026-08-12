@@ -305,7 +305,7 @@ const AKINSOFT_LOCK_TIMEOUT_MS = Math.max(
 );
 
 // Yanıttaki build etiketi — istemci/log'da hangi sunucu kodunun yanıt verdiğini gösterir.
-const AKINSOFT_SERVER_BUILD = 'stok-fiyat-kdv-haric-v16';
+const AKINSOFT_SERVER_BUILD = 'cari-vkn-currency-kpb-v17';
 
 // Geçici 1222 için kısa üstel retry (yalnızca gerçek kilit hatasında ödenir).
 // Happy path: ilk deneme başarılıysa backoff / retry maliyeti yok.
@@ -1174,14 +1174,18 @@ function isAkinsoftForeignAccount(row) {
 }
 
 function resolveAkinsoftItemCurrency(row) {
-  // Wolvox TL faturalarında satır KPBDVZ=0 olsa bile DOVIZ_BIRIMI='TL' gelebilir.
-  // Açık sembol her zaman kazanır; TL/TRY asla USD'ye zorlanmaz.
+  // KPBDVZ=1 → KPB/TL hesabı. DOVIZ_BIRIMI='$'' olsa bile bu yalnızca zeytin/FX
+  // sütunudur; tutar KPB alanlarındadır (ör. DA0000001741: 4500 TL / 103.44 $).
+  // KPBDVZ=0 → döviz hesabı; sembol (DOVIZ_BIRIMI) geçerli para birimidir.
+  if (isAkinsoftLocalAccount(row)) return 'TRY';
+
   const symbolRaw = pick(row, ['SIMGE', 'DOVIZ_BIRIMI', 'DOVIZ_ADI', 'DVZ_BIRIMI']);
   if (textOrNull(symbolRaw)) {
-    return normalizeCurrency(symbolRaw);
+    const symbolCurrency = normalizeCurrency(symbolRaw);
+    // Açık TL/TRY sembolü asla USD'ye zorlanmaz.
+    if (symbolCurrency === 'TRY') return 'TRY';
+    return symbolCurrency;
   }
-
-  if (isAkinsoftLocalAccount(row)) return 'TRY';
 
   if (isAkinsoftForeignAccount(row)) {
     // Sembol yok + KPBDVZ=0: DVZ tutarı boşsa KPB/TRY kullan (boş DVZ→USD 0 yazmayı engelle).
@@ -1831,6 +1835,19 @@ function resolveAkinsoftItemAmounts(row, currency) {
             ],
       ),
     ) || quantity * unitPrice;
+  // KPB_FIYATI bazen KDV dahil (KPB_KDVLI ile aynı); birim fiyatı net satırdan düzelt.
+  let resolvedUnitPrice = unitPrice;
+  if (
+    quantity > 0 &&
+    netTotal > 0 &&
+    unitPrice > 0 &&
+    Math.abs(unitPrice * quantity - netTotal) > 0.05
+  ) {
+    const fromNet = netTotal / quantity;
+    if (fromNet > 0 && fromNet < unitPrice) {
+      resolvedUnitPrice = fromNet;
+    }
+  }
   const taxRate = numberOrZero(row.KDV_ORANI);
   const explicitTaxRaw = pick(
     row,
@@ -1855,7 +1872,7 @@ function resolveAkinsoftItemAmounts(row, currency) {
         ? taxIncludedTotal - netTotal
         : 0;
   return {
-    unitPrice,
+    unitPrice: resolvedUnitPrice,
     discountAmount: resolveAkinsoftDiscount(row, normalizedCurrency, netTotal),
     netTotal,
     taxRate,
@@ -1995,6 +2012,71 @@ function isTrustedCustomerMap(row, { allowAutomaticVkn = true } = {}) {
   return allowAutomaticVkn && Boolean(textOrNull(row.vkn));
 }
 
+/** Cari unvanını kabaca karşılaştır (aynı VKN / farklı şirket ayrımı). */
+function normalizeAkinsoftCustomerNameKey(value) {
+  return String(value || '')
+    .toLocaleUpperCase('tr-TR')
+    .replace(/&/g, ' AND ')
+    .replace(/[^0-9A-ZÇĞİÖŞÜ]+/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const AKINSOFT_CUSTOMER_NAME_NOISE = new Set([
+  'LTD',
+  'LIMITED',
+  'LLC',
+  'INC',
+  'CO',
+  'COMPANY',
+  'FOOD',
+  'BEVERAGE',
+  'BEVERAGES',
+  'TRADING',
+  'TRADE',
+  'ENTERPRISE',
+  'ENTERPRISES',
+  'SANAYI',
+  'TICARET',
+  'TURIZM',
+  'TOURISM',
+  'VE',
+  'AND',
+  'THE',
+  'STI',
+  'SIRKETI',
+  'SIRKET',
+  'A',
+  'S',
+  'AS',
+]);
+
+function akinsoftCustomerDistinctiveTokens(value) {
+  return normalizeAkinsoftCustomerNameKey(value)
+    .split(' ')
+    .filter((token) => token.length > 1 && !AKINSOFT_CUSTOMER_NAME_NOISE.has(token));
+}
+
+function akinsoftCustomerNamesCompatible(pulledName, localName) {
+  const a = normalizeAkinsoftCustomerNameKey(pulledName);
+  const b = normalizeAkinsoftCustomerNameKey(localName);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  // Tam içerme yalnızca gürültü kelimeleri çıkarıldıktan sonra anlamlıysa.
+  const tokensA = akinsoftCustomerDistinctiveTokens(pulledName);
+  const tokensB = akinsoftCustomerDistinctiveTokens(localName);
+  if (!tokensA.length || !tokensB.length) return false;
+  const setB = new Set(tokensB);
+  let overlap = 0;
+  for (const token of tokensA) {
+    if (setB.has(token)) overlap += 1;
+  }
+  // En az 1 ayırt edici ortak token ve %50+ örtüşme.
+  // "M & L FOOD" vs "AYDIN FOOD" → ayırt edici token yok ortak → reddet.
+  const ratio = overlap / Math.min(tokensA.length, tokensB.length);
+  return overlap >= 1 && ratio >= 0.5;
+}
+
 async function upsertAkinsoftSyncMap(
   query,
   {
@@ -2017,10 +2099,17 @@ async function upsertAkinsoftSyncMap(
       )
       values ('akinsoft', $1, $2, $3, $4, $5, $6, $7)
       on conflict (source_system, source_type, source_id) do update set
-        source_code = excluded.source_code,
-        source_name = excluded.source_name,
+        source_code = coalesce(excluded.source_code, public.akinsoft_sync_map.source_code),
+        source_name = coalesce(excluded.source_name, public.akinsoft_sync_map.source_name),
         local_table = excluded.local_table,
-        local_id = excluded.local_id,
+        -- Manuel eşleşmeyi otomatik (VKN/isim) yazımla bozma.
+        local_id = case
+          when public.akinsoft_sync_map.matched_manually = true
+            and excluded.matched_manually = false
+            and public.akinsoft_sync_map.local_id is distinct from excluded.local_id
+          then public.akinsoft_sync_map.local_id
+          else excluded.local_id
+        end,
         matched_manually = public.akinsoft_sync_map.matched_manually or excluded.matched_manually,
         updated_at = now()
     `,
@@ -2581,12 +2670,22 @@ async function resolveAkinsoftCustomerMatches(invoices, externalRows = []) {
     const taxNumber = taxNumberOrNull(invoice.taxNumber);
     let match = null;
 
-    if (taxNumber) match = taxMatches.get(taxNumber) || null;
-    if (!match && sourceId && externalBySource.has(sourceId)) {
+    // BLKODU / harici map önce: aynı VKN'li farklı cariler (Aydın vs M&L) birleşmesin.
+    if (sourceId && externalBySource.has(sourceId)) {
       match = externalBySource.get(sourceId);
     }
     if (!match && sourceId) match = sourceMatches.get(sourceId) || null;
     if (!match && sourceCode) match = codeMatches.get(sourceCode) || null;
+    if (!match && taxNumber) {
+      const taxMatch = taxMatches.get(taxNumber) || null;
+      // Aynı VKN birden fazla WOLVOX carisine ait olabilir; unvan uyuşmuyorsa VKN ile eşleme.
+      if (
+        taxMatch &&
+        akinsoftCustomerNamesCompatible(invoice.customerName, taxMatch.localName)
+      ) {
+        match = taxMatch;
+      }
+    }
 
     if (invoiceId) {
       result.set(invoiceId, match || { matched: false });
@@ -3020,10 +3119,16 @@ async function pullAkinsoftDataset(body) {
         const itemCurrencies = rawItems
           .map((item) => textOrNull(item.currency))
           .filter(Boolean);
+        const tryItemCount = itemCurrencies.filter((item) => item === 'TRY').length;
         const foreignItemCurrency = itemCurrencies.find((item) => item !== 'TRY');
         let currency = foreignItemCurrency || (
           itemCurrencies.length ? 'TRY' : normalizeCurrency(headerCurrencyValue)
         );
+        // Satırların tamamı KPB/TL (KPBDVZ=1) ise başlık DOVIZ_KULLAN=1 / DOVIZ_BIRIMI=$
+        // olsa bile TRY kal — zeytin sütunu ikincil FX'tir.
+        if (itemCurrencies.length && tryItemCount === itemCurrencies.length) {
+          currency = 'TRY';
+        }
         // Başlık TL ise (DOVIZ_KULLAN=0 veya DOVIZ_BIRIMI=TL) satır yanlış sınıflansa bile TRY kal.
         const headerIsTry =
           headerDovizKullan === false ||
@@ -3039,7 +3144,10 @@ async function pullAkinsoftDataset(body) {
               sum + numberOrZero(item.amountsByCurrency?.FOREIGN?.netTotal),
             0,
           );
-          if (tryAmountSum > 0 && foreignAmountSum <= 0) {
+          // İkincil FX tutarı dolu olsa bile başlık TL ise KPB tutarını kullan.
+          if (tryAmountSum > 0) {
+            currency = 'TRY';
+          } else if (foreignAmountSum <= 0) {
             currency = 'TRY';
           }
         }
@@ -3295,6 +3403,20 @@ async function pullAkinsoftDataset(body) {
               normalizeCurrency(invoice.currency) !== 'TRY' &&
               numberOrZero(invoice.grandTotal) <= PAYMENT_CLOSE_TOLERANCE;
             if (crmIsHealthyTry && pulledIsEmptyForeign) {
+              if (sameStatus) return null;
+              return {
+                ...invoice,
+                importAction: 'update',
+                updateKind: 'status',
+                existingInvoiceId: row.id,
+              };
+            }
+            // Sağlıklı TL'yi, zeytin FX tutarıyla USD gibi görünen pull ile ezme.
+            // (KPBDVZ=1 satır + DOVIZ_BIRIMI=$ → yanlış USD 103.44 vs doğru TRY 4500)
+            const pulledIsForeign =
+              normalizeCurrency(invoice.currency) !== 'TRY' &&
+              numberOrZero(invoice.grandTotal) > PAYMENT_CLOSE_TOLERANCE;
+            if (crmIsHealthyTry && pulledIsForeign && !sameCurrency) {
               if (sameStatus) return null;
               return {
                 ...invoice,
@@ -3981,14 +4103,7 @@ async function importAkinsoftDataset(data, onProgress) {
     if (customerId && invoice.customerSourceId != null) {
       customerIdBySource.set(String(invoice.customerSourceId), customerId);
     }
-    if (!customerId && invoiceTaxNumber) {
-      const found = await query(
-        `select id from public.customers where vkn = $1 limit 1`,
-        [invoiceTaxNumber],
-      );
-      customerId = found.rows[0]?.id || null;
-      if (customerId) customersMatchedByTax += 1;
-    }
+    // Kaynak BLKODU map / bellek önce — aynı VKN'li farklı carileri birleştirme.
     if (!customerId && invoice.customerSourceId != null) {
       customerId = customerIdBySource.get(String(invoice.customerSourceId)) || null;
     }
@@ -4013,6 +4128,17 @@ async function importAkinsoftDataset(data, onProgress) {
       );
       customerId = mapped.rows[0]?.id || null;
       if (customerId) customersMatchedByCode += 1;
+    }
+    if (!customerId && invoiceTaxNumber) {
+      const found = await query(
+        `select id, name from public.customers where vkn = $1 order by created_at desc nulls last limit 5`,
+        [invoiceTaxNumber],
+      );
+      const compatible = (found.rows || []).find((row) =>
+        akinsoftCustomerNamesCompatible(invoice.customerName, row.name),
+      );
+      customerId = compatible?.id || null;
+      if (customerId) customersMatchedByTax += 1;
     }
     if (!customerId) {
       invoicesSkippedMissingCustomerMatch += 1;
