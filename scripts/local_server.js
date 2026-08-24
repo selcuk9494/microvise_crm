@@ -8090,6 +8090,31 @@ function startLocalServer(options = {}) {
           req.query[key] = value;
         }
 
+        if (pathname.startsWith('/api/_local/uploads/')) {
+          const relative = decodeURIComponent(
+            pathname.slice('/api/_local/uploads/'.length),
+          ).replace(/^\/+/, '');
+          const uploadsRoot = path.resolve(rootDir, '.local', 'uploads');
+          const resolved = path.resolve(uploadsRoot, relative);
+          if (
+            !resolved.startsWith(`${uploadsRoot}${path.sep}`) ||
+            !fs.existsSync(resolved) ||
+            !fs.statSync(resolved).isFile()
+          ) {
+            return send(res, 404, { 'Content-Type': 'text/plain; charset=utf-8' }, 'Dosya bulunamadı');
+          }
+          const body = fs.readFileSync(resolved);
+          return send(
+            res,
+            200,
+            {
+              'Content-Type': contentTypeFor(resolved),
+              'Cache-Control': 'public, max-age=3600',
+            },
+            body,
+          );
+        }
+
         if (pathname === '/api/_local/stats') {
           try {
             const { query } = require(path.join(rootDir, 'api', '_lib', 'db.js'));

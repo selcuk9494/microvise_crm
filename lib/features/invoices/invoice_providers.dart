@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
+import '../../core/providers/provider_cache.dart';
 import '../work_orders/currency_service.dart';
 import 'invoice_model.dart';
 
@@ -122,23 +123,29 @@ Future<Map<String, ExchangeRate>> _fallbackRates(
   };
 }
 
-// Ürün/Hizmet listesi
-final productsProvider = FutureProvider.autoDispose
-    .family<List<Product>, String?>((ref, category) async {
-      final apiClient = ref.read(apiClientProvider);
-      if (apiClient == null) return [];
-      final response = await apiClient.getJson(
-        '/data',
-        queryParameters: {
-          'resource': 'products_list',
-          if ((category ?? '').trim().isNotEmpty) 'category': category!.trim(),
-        },
-      );
-      return ((response['items'] as List?) ?? const [])
-          .whereType<Map<String, dynamic>>()
-          .map(Product.fromJson)
-          .toList(growable: false);
-    });
+// Ürün/Hizmet listesi — oturum boyunca önbellekte tutulur (form sayfaları donmasın).
+final productsProvider = FutureProvider.family<List<Product>, String?>((
+  ref,
+  category,
+) async {
+  keepProviderAliveFor(ref, const Duration(minutes: 20));
+  final apiClient = ref.watch(apiClientProvider);
+  if (apiClient == null) {
+    // Boş liste cache'lenmesin; client gelince provider yeniden çalışır.
+    throw StateError('API istemcisi henüz hazır değil');
+  }
+  final response = await apiClient.getJson(
+    '/data',
+    queryParameters: {
+      'resource': 'products_list',
+      if ((category ?? '').trim().isNotEmpty) 'category': category!.trim(),
+    },
+  );
+  return ((response['items'] as List?) ?? const [])
+      .whereType<Map<String, dynamic>>()
+      .map(Product.fromJson)
+      .toList(growable: false);
+});
 
 // Stok seviyeleri
 final stockLevelsProvider = FutureProvider.autoDispose<List<Product>>((

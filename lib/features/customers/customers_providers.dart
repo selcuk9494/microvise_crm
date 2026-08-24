@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/providers/provider_cache.dart';
 import '../../core/format/search_normalize.dart';
 import '../../core/supabase/supabase_providers.dart';
 import 'customer_model.dart';
@@ -367,6 +368,7 @@ final customerCitiesProvider = FutureProvider<List<String>>((ref) async {
 });
 
 final customersLookupProvider = FutureProvider<List<Customer>>((ref) async {
+  keepProviderAliveFor(ref, const Duration(minutes: 20));
   final apiClient = ref.watch(apiClientProvider);
   if (apiClient == null) return const [];
   final response = await apiClient.getJson(

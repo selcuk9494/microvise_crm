@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 const {
   getAuthenticatedUser,
@@ -34,6 +36,7 @@ const {
   ensureInvoicePricesIncludeVatColumn,
   ensureMutakabatRecordsTable,
   ensureMutakabatPriceSettingsTable,
+  ensureQuotesTables,
 } = require('./_lib/schema');
 const {
   processMutakabat,
@@ -104,6 +107,64 @@ function storageFilenameStem(filename, fallback) {
   return safeStorageSegment(withoutExt, fallback);
 }
 
+function preferLocalStorage() {
+  if (String(process.env.DISABLE_SUPABASE || '').trim().toLowerCase() === 'true') {
+    return true;
+  }
+  const supabaseUrl = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+  const serviceRoleKey = String(
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '',
+  ).trim();
+  return !supabaseUrl || !serviceRoleKey;
+}
+
+function localUploadsRoot() {
+  return path.join(process.cwd(), '.local', 'uploads');
+}
+
+function buildLocalUploadPublicUrl(objectPath) {
+  const localOrigin = String(process.env.MICROVISE_LOCAL_ORIGIN || '').trim();
+  const port = Number(process.env.PORT || 4000);
+  const base = localOrigin || `http://127.0.0.1:${port}`;
+  const encoded = String(objectPath || '')
+    .split('/')
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join('/');
+  return `${base.replace(/\/+$/, '')}/api/_local/uploads/${encoded}`;
+}
+
+function decodeUploadBytes(data, maxBytes, emptyMessage, tooLargeMessage) {
+  const base64 = String(data || '').replace(/^data:[^;]+;base64,/i, '').trim();
+  if (!base64) {
+    const error = new Error(emptyMessage);
+    error.statusCode = 400;
+    throw error;
+  }
+  const bytes = Buffer.from(base64, 'base64');
+  if (!bytes.length) {
+    const error = new Error(emptyMessage);
+    error.statusCode = 400;
+    throw error;
+  }
+  if (bytes.length > maxBytes) {
+    const error = new Error(tooLargeMessage);
+    error.statusCode = 400;
+    throw error;
+  }
+  return bytes;
+}
+
+function buildStorageObjectPath(folder, filename, contentType) {
+  const ext = serviceImageExtension(contentType, filename);
+  const random =
+    typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : crypto.randomBytes(16).toString('hex');
+  const name = storageFilenameStem(filename, 'dosya');
+  return `${safeStorageSegment(folder, 'uploads')}/${name}-${Date.now()}-${random}.${ext}`;
+}
+
 function getSupabaseStorageConfig() {
   const supabaseUrl = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
   const serviceRoleKey = String(
@@ -125,6 +186,30 @@ function supabaseAdminHeaders(serviceRoleKey) {
   return headers;
 }
 
+async function uploadLocalStorageObject({
+  folder,
+  filename,
+  contentType,
+  data,
+  maxBytes,
+  emptyMessage,
+  tooLargeMessage,
+}) {
+  const bytes = decodeUploadBytes(data, maxBytes, emptyMessage, tooLargeMessage);
+  const objectPath = buildStorageObjectPath(folder, filename, contentType);
+  const uploadsRoot = localUploadsRoot();
+  const absolutePath = path.join(uploadsRoot, ...objectPath.split('/'));
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+  fs.writeFileSync(absolutePath, bytes);
+  return {
+    bucket: 'local',
+    path: objectPath,
+    url: buildLocalUploadPublicUrl(objectPath),
+    contentType,
+    size: bytes.length,
+  };
+}
+
 async function uploadStorageObject({
   folder,
   filename,
@@ -134,34 +219,21 @@ async function uploadStorageObject({
   emptyMessage,
   tooLargeMessage,
 }) {
+  if (preferLocalStorage()) {
+    return uploadLocalStorageObject({
+      folder,
+      filename,
+      contentType,
+      data,
+      maxBytes,
+      emptyMessage,
+      tooLargeMessage,
+    });
+  }
+
   const { supabaseUrl, serviceRoleKey } = getSupabaseStorageConfig();
-
-  const base64 = String(data || '').replace(/^data:[^;]+;base64,/i, '').trim();
-  if (!base64) {
-    const error = new Error(emptyMessage);
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const bytes = Buffer.from(base64, 'base64');
-  if (!bytes.length) {
-    const error = new Error(emptyMessage);
-    error.statusCode = 400;
-    throw error;
-  }
-  if (bytes.length > maxBytes) {
-    const error = new Error(tooLargeMessage);
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const ext = serviceImageExtension(contentType, filename);
-  const random =
-    typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : crypto.randomBytes(16).toString('hex');
-  const name = storageFilenameStem(filename, 'dosya');
-  const objectPath = `${safeStorageSegment(folder, 'uploads')}/${name}-${Date.now()}-${random}.${ext}`;
+  const bytes = decodeUploadBytes(data, maxBytes, emptyMessage, tooLargeMessage);
+  const objectPath = buildStorageObjectPath(folder, filename, contentType);
   const uploadUrl = `${supabaseUrl}/storage/v1/object/${serviceImageBucket}/${encodeURIComponent(
     objectPath,
   ).replace(/%2F/g, '/')}`;
@@ -207,7 +279,6 @@ async function uploadStorageObject({
 }
 
 async function deleteStorageObject(body) {
-  const { supabaseUrl, serviceRoleKey } = getSupabaseStorageConfig();
   const bucket = safeStorageSegment(body.bucket, serviceImageBucket);
   const objectPath = String(body.path || '').trim();
   if (!objectPath) {
@@ -215,6 +286,21 @@ async function deleteStorageObject(body) {
     error.statusCode = 400;
     throw error;
   }
+  if (bucket === 'local' || preferLocalStorage()) {
+    const absolutePath = path.join(localUploadsRoot(), ...objectPath.split('/'));
+    const uploadsRoot = path.resolve(localUploadsRoot());
+    const resolved = path.resolve(absolutePath);
+    if (
+      resolved.startsWith(`${uploadsRoot}${path.sep}`) &&
+      fs.existsSync(resolved) &&
+      fs.statSync(resolved).isFile()
+    ) {
+      fs.unlinkSync(resolved);
+    }
+    return { ok: true };
+  }
+
+  const { supabaseUrl, serviceRoleKey } = getSupabaseStorageConfig();
   const deleteUrl = `${supabaseUrl}/storage/v1/object/${bucket}/${encodeURIComponent(
     objectPath,
   ).replace(/%2F/g, '/')}`;
@@ -254,6 +340,46 @@ async function uploadServiceImage(body) {
     maxBytes: serviceImageMaxBytes,
     emptyMessage: 'Görsel verisi eksik.',
     tooLargeMessage: 'Görsel 5 MB sınırını aşıyor.',
+  });
+}
+
+async function uploadProductImage(body) {
+  const filename = safeStorageSegment(body.filename, 'image');
+  const contentType = String(body.contentType || '').trim().toLowerCase();
+  if (!allowedServiceImageContentTypes.has(contentType)) {
+    const error = new Error('Sadece JPG, PNG veya WEBP görsel yüklenebilir.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return uploadStorageObject({
+    folder: `products/${safeStorageSegment(body.productId, 'product')}`,
+    filename,
+    contentType,
+    data: body.data,
+    maxBytes: serviceImageMaxBytes,
+    emptyMessage: 'Görsel verisi eksik.',
+    tooLargeMessage: 'Görsel 5 MB sınırını aşıyor.',
+  });
+}
+
+async function uploadQuoteLogo(body) {
+  const filename = safeStorageSegment(body.filename, 'logo');
+  const contentType = String(body.contentType || '').trim().toLowerCase();
+  if (!allowedServiceImageContentTypes.has(contentType)) {
+    const error = new Error('Sadece JPG, PNG veya WEBP logo yüklenebilir.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return uploadStorageObject({
+    folder: 'quote-branding',
+    filename,
+    contentType,
+    data: body.data,
+    maxBytes: serviceImageMaxBytes,
+    emptyMessage: 'Logo verisi eksik.',
+    tooLargeMessage: 'Logo 5 MB sınırını aşıyor.',
   });
 }
 
@@ -1258,6 +1384,166 @@ async function fillInvoiceDeviceNotesFromApplicationForms(body) {
   return { updated, links, invoiceNumber: invoice.invoice_number };
 }
 
+async function convertQuoteToInvoice(body, user) {
+  const quoteId = String(body.quoteId || '').trim();
+  if (!quoteId) {
+    const error = new Error('quoteId zorunludur.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  await ensureQuotesTables();
+
+  const quoteResult = await query(
+    `
+      select q.*, c.name as customer_name
+      from public.quotes q
+      left join public.customers c on c.id = q.customer_id
+      where q.id = $1
+      limit 1
+    `,
+    [quoteId],
+  );
+  const quote = quoteResult.rows[0];
+  if (!quote) {
+    const error = new Error('Teklif bulunamadı.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!quote.is_active) {
+    const error = new Error('Pasif teklif faturaya dönüştürülemez.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (quote.status === 'converted' && quote.converted_invoice_id) {
+    return {
+      invoiceId: quote.converted_invoice_id,
+      alreadyConverted: true,
+    };
+  }
+
+  const itemsResult = await query(
+    `
+      select *
+      from public.quote_items
+      where quote_id = $1
+      order by sort_order asc, created_at asc
+    `,
+    [quoteId],
+  );
+  const items = itemsResult.rows;
+  if (!items.length) {
+    const error = new Error('Teklif kalemi bulunamadı.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const numberResult = await query(
+    `select public.generate_invoice_number('sales') as value`,
+  );
+  const invoiceNumber = numberResult.rows[0]?.value || '';
+  if (!invoiceNumber) {
+    const error = new Error('Satış fatura numarası üretilemedi.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const invoiceInsert = await query(
+    `
+      insert into public.invoices (
+        invoice_number,
+        invoice_type,
+        customer_id,
+        invoice_date,
+        due_date,
+        currency,
+        exchange_rate,
+        prices_include_vat,
+        subtotal,
+        tax_total,
+        discount_total,
+        grand_total,
+        status,
+        notes,
+        created_by
+      )
+      values (
+        $1, 'sales', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'open', $12, $13
+      )
+      returning id, invoice_number
+    `,
+    [
+      invoiceNumber,
+      quote.customer_id,
+      quote.quote_date,
+      quote.valid_until,
+      quote.currency,
+      quote.exchange_rate,
+      quote.prices_include_vat,
+      quote.subtotal,
+      quote.tax_total,
+      quote.discount_total,
+      quote.grand_total,
+      quote.notes,
+      user?.id || quote.created_by || null,
+    ],
+  );
+  const invoice = invoiceInsert.rows[0];
+
+  for (const item of items) {
+    await query(
+      `
+        insert into public.invoice_items (
+          invoice_id,
+          product_id,
+          description,
+          quantity,
+          unit,
+          unit_price,
+          tax_rate,
+          tax_amount,
+          discount_rate,
+          discount_amount,
+          line_total,
+          sort_order
+        )
+        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      `,
+      [
+        invoice.id,
+        item.product_id,
+        item.description,
+        item.quantity,
+        item.unit,
+        item.unit_price,
+        item.tax_rate,
+        item.tax_amount,
+        item.discount_rate,
+        item.discount_amount,
+        item.line_total,
+        item.sort_order,
+      ],
+    );
+  }
+
+  await query(
+    `
+      update public.quotes
+      set status = 'converted',
+          converted_invoice_id = $2,
+          updated_at = now()
+      where id = $1
+    `,
+    [quoteId, invoice.id],
+  );
+
+  return {
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoice_number,
+    quoteId,
+  };
+}
+
 const allowedTables = new Set([
   'application_forms',
   'branches',
@@ -1301,6 +1587,9 @@ const allowedTables = new Set([
   'work_order_close_notes',
   'mutakabat_records',
   'mutakabat_price_settings',
+  'quotes',
+  'quote_items',
+  'quote_document_settings',
 ]);
 
 const tablePermissions = {
@@ -1346,6 +1635,9 @@ const tablePermissions = {
   users: 'personel',
   mutakabat_records: 'mutakabat',
   mutakabat_price_settings: 'mutakabat',
+  quotes: 'teklif',
+  quote_items: 'teklif',
+  quote_document_settings: 'teklif',
 };
 
 const columnsCache = new Map();
@@ -2001,6 +2293,32 @@ module.exports = async (req, res) => {
         throw error;
       }
     }
+    if (op === 'uploadProductImage') {
+      if (
+        !hasPageAccess(user, 'e_fatura') &&
+        !hasPageAccess(user, 'urunler') &&
+        !hasPageAccess(user, 'teklif')
+      ) {
+        return forbidden(req, res);
+      }
+      try {
+        return ok(req, res, await uploadProductImage(body));
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'uploadQuoteLogo') {
+      if (!hasPageAccess(user, 'teklif') && !hasPageAccess(user, 'e_fatura')) {
+        return forbidden(req, res);
+      }
+      try {
+        return ok(req, res, await uploadQuoteLogo(body));
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
     if (op === 'uploadApplicationApprovalDocument') {
       if (!hasPageAccess(user, 'formlar')) return forbidden(req, res);
       try {
@@ -2074,6 +2392,15 @@ module.exports = async (req, res) => {
         throw error;
       }
     }
+    if (op === 'convertQuoteToInvoice') {
+      if (!hasPageAccess(user, 'teklif')) return forbidden(req, res);
+      try {
+        return ok(req, res, await convertQuoteToInvoice(body, user));
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
     if (op === 'uploadFormDocument') {
       const uploadTable = String(body.table || '').trim();
       if (!['scrap_forms', 'transfer_forms', 'fault_forms'].includes(uploadTable)) {
@@ -2107,6 +2434,9 @@ module.exports = async (req, res) => {
     }
     if (table === 'mutakabat_price_settings') {
       await ensureMutakabatPriceSettingsTable();
+    }
+    if (table === 'quotes' || table === 'quote_items') {
+      await ensureQuotesTables();
     }
     if (table === 'serial_tracking') {
       await ensureSerialTrackingTable();

@@ -14,6 +14,7 @@ const kPageBilling = 'faturalama';
 const kPageEInvoice = 'e_fatura';
 const kPageFinance = 'finans';
 const kPageMutakabat = 'mutakabat';
+const kPageQuotes = 'teklif';
 const kPageVatAnalysis = 'kdv_analizi';
 const kPageDefinitions = 'tanimlamalar';
 const kPagePersonnel = 'personel';
@@ -44,6 +45,7 @@ const allPagePermissions = <String>{
   kPageEInvoice,
   kPageFinance,
   kPageMutakabat,
+  kPageQuotes,
   kPageVatAnalysis,
   kPageDefinitions,
   kPagePersonnel,
@@ -61,6 +63,7 @@ const defaultPersonnelPagePermissions = <String>{
   kPageEInvoice,
   kPageFinance,
   kPageMutakabat,
+  kPageQuotes,
   kPageVatAnalysis,
 };
 
@@ -78,10 +81,34 @@ const pagePermissionLabels = <String, String>{
   kPageEInvoice: 'E-Fatura',
   kPageFinance: 'Finans',
   kPageMutakabat: 'Mutakabat',
+  kPageQuotes: 'Teklif',
   kPageVatAnalysis: 'KDV Analizi',
   kPageDefinitions: 'Tanımlamalar',
   kPagePersonnel: 'Personel',
 };
+
+/// Personel yetki diyalogunda menü sırası (E-Fatura → Teklif bitişik).
+const pagePermissionOrder = <String>[
+  kPagePanel,
+  kPageCustomers,
+  kPageForms,
+  kPageEInvoice,
+  kPageQuotes,
+  kPageWorkOrders,
+  kPageService,
+  kPageReports,
+  kPageProducts,
+  kPageBilling,
+  kPageFinance,
+  kPageMutakabat,
+  kPageVatAnalysis,
+  kPageDefinitions,
+  kPagePersonnel,
+];
+
+List<String> get orderedPagePermissionKeys => pagePermissionOrder
+    .where((key) => allPagePermissions.contains(key))
+    .toList(growable: false);
 
 const allActionPermissions = <String>{
   kActionEditRecords,
@@ -183,10 +210,24 @@ Set<String> resolveAllowedPages(UserProfile? profile) {
         ? defaultBankPagePermissions
         : profile.pagePermissions.toSet();
   }
+  final Set<String> pages;
   if (profile.pagePermissions.isEmpty) {
-    return defaultPersonnelPagePermissions;
+    pages = Set<String>.from(defaultPersonnelPagePermissions);
+  } else {
+    pages = profile.pagePermissions.toSet();
   }
-  return profile.pagePermissions.toSet();
+  return _expandImplicitPagePermissions(pages);
+}
+
+Set<String> expandImplicitPagePermissions(Set<String> pages) =>
+    _expandImplicitPagePermissions(pages);
+
+Set<String> _expandImplicitPagePermissions(Set<String> pages) {
+  final expanded = {...pages};
+  if (expanded.contains(kPageEInvoice)) {
+    expanded.add(kPageQuotes);
+  }
+  return expanded;
 }
 
 Set<String> resolveAllowedActions(UserProfile? profile) {

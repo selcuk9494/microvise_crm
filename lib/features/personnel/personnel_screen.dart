@@ -511,6 +511,7 @@ class _UserRowState extends ConsumerState<_UserRow> {
       else
         ...user.pagePermissions,
     };
+    selectedPages = expandImplicitPagePermissions(selectedPages);
     var selectedActions = <String>{
       if (user.role == 'admin')
         ...allActionPermissions
@@ -539,8 +540,14 @@ class _UserRowState extends ConsumerState<_UserRow> {
                   setDialogState(() {
                     if (value) {
                       selectedPages.add(key);
+                      if (key == kPageEInvoice) {
+                        selectedPages.add(kPageQuotes);
+                      }
                     } else {
                       selectedPages.remove(key);
+                      if (key == kPageEInvoice) {
+                        selectedPages.remove(kPageQuotes);
+                      }
                     }
                   });
                 }
@@ -562,7 +569,8 @@ class _UserRowState extends ConsumerState<_UserRow> {
 
                   setDialogState(() => saving = true);
                   try {
-                    final pageList = selectedPages.toList(growable: false)
+                    final pageList = expandImplicitPagePermissions(selectedPages)
+                        .toList(growable: false)
                       ..sort();
                     final actionList = selectedActions.toList(growable: false)
                       ..sort();
@@ -599,12 +607,7 @@ class _UserRowState extends ConsumerState<_UserRow> {
                   }
                 }
 
-                final pages = allPagePermissions.toList(growable: false)
-                  ..sort(
-                    (a, b) => (pagePermissionLabels[a] ?? a).compareTo(
-                      pagePermissionLabels[b] ?? b,
-                    ),
-                  );
+                final pages = orderedPagePermissionKeys;
                 final actions = allActionPermissions.toList(growable: false)
                   ..sort(
                     (a, b) => (actionPermissionLabels[a] ?? a).compareTo(
@@ -1245,18 +1248,8 @@ class _CreatePersonnelDialogState
           ? 'personel'
           : _role;
       final pagePermissions = _role == 'bank' || _role == 'bank_admin'
-          ? const ['formlar']
-          : const [
-              'panel',
-              'musteriler',
-              'formlar',
-              'is_emirleri',
-              'servis',
-              'raporlar',
-              'urunler',
-              'faturalama',
-              'kdv_analizi',
-            ];
+          ? defaultBankPagePermissions.toList(growable: false)
+          : defaultPersonnelPagePermissions.toList(growable: false);
       final actionPermissions = _role == 'bank'
           ? const <String>[]
           : _role == 'bank_admin'

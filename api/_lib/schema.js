@@ -66,6 +66,34 @@ async function tableExists(tableName) {
   return (result.rows[0]?.ok ?? null) === 1;
 }
 
+async function columnExists(tableName, columnName) {
+  const result = await query(
+    `
+      select 1 as ok
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = $1
+        and column_name = $2
+      limit 1
+    `,
+    [tableName, columnName],
+  );
+  return (result.rows[0]?.ok ?? null) === 1;
+}
+
+async function ensureProductImageUrlColumn() {
+  if (ensured.product_image_url) return true;
+  if (!(await tableExists('products'))) {
+    ensured.product_image_url = true;
+    return true;
+  }
+  if (!(await columnExists('products', 'image_url'))) {
+    await query(`alter table public.products add column if not exists image_url text`);
+  }
+  ensured.product_image_url = true;
+  return true;
+}
+
 async function ensureSerialTrackingTable() {
   if (ensured.serial_tracking) return;
 
@@ -1783,6 +1811,156 @@ async function ensureMutakabatPriceSettingsTable() {
   return true;
 }
 
+async function ensureQuotesTables() {
+  if (ensured.quotes && ensured.quote_items && ensured.quote_settings) return true;
+
+  await ensureProductImageUrlColumn();
+
+  const quotesExists = await tableExists('quotes');
+  if (!quotesExists) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
+    if (isProd && allow !== 'true') {
+      throw new Error(
+        'quotes tables are missing. Run migration 0053_quotes.sql or set ALLOW_SCHEMA_AUTO_CREATE=true.',
+      );
+    }
+    await query(`create extension if not exists pgcrypto`);
+    await query(`
+      create table if not exists public.quote_settings (
+        id uuid primary key default gen_random_uuid(),
+        prefix text not null default 'TKL',
+        next_number integer not null default 1,
+        year integer not null,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        unique (year)
+      )
+    `);
+    await query(`
+      create table if not exists public.quotes (
+        id uuid primary key default gen_random_uuid(),
+        quote_number text not null unique,
+        customer_id uuid not null references public.customers (id) on delete restrict,
+        quote_date date not null default current_date,
+        valid_until date,
+        currency text not null default 'TRY',
+        exchange_rate numeric(10,4) not null default 1.0,
+        prices_include_vat boolean not null default false,
+        subtotal numeric(14,2) not null default 0,
+        tax_total numeric(14,2) not null default 0,
+        discount_total numeric(14,2) not null default 0,
+        grand_total numeric(14,2) not null default 0,
+        status text not null default 'draft',
+        notes text,
+        converted_invoice_id uuid references public.invoices (id) on delete set null,
+        is_active boolean not null default true,
+        created_by uuid,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      )
+    `);
+    await query(`
+      create table if not exists public.quote_items (
+        id uuid primary key default gen_random_uuid(),
+        quote_id uuid not null references public.quotes (id) on delete cascade,
+        product_id uuid references public.products (id) on delete set null,
+        description text not null,
+        quantity numeric(12,4) not null default 1,
+        unit text default 'Adet',
+        unit_price numeric(14,4) not null default 0,
+        tax_rate numeric(5,2) not null default 20,
+        tax_amount numeric(14,2) not null default 0,
+        discount_rate numeric(5,2) not null default 0,
+        discount_amount numeric(14,2) not null default 0,
+        line_total numeric(14,2) not null default 0,
+        sort_order integer default 0,
+        created_at timestamptz not null default now()
+      )
+    `);
+    await query(`
+      create or replace function public.generate_quote_number()
+      returns text
+      language plpgsql
+      security definer
+      as $$
+      declare
+        v_prefix text;
+        v_next_number integer;
+        v_year integer;
+      begin
+        v_year := extract(year from current_date);
+        select prefix, next_number into v_prefix, v_next_number
+        from public.quote_settings
+        where year = v_year
+        for update;
+        if not found then
+          v_prefix := 'TKL';
+          v_next_number := 1;
+          insert into public.quote_settings (prefix, next_number, year)
+          values (v_prefix, v_next_number + 1, v_year);
+        else
+          update public.quote_settings
+          set next_number = next_number + 1
+          where year = v_year;
+        end if;
+        return v_prefix || '-' || v_year || '-' || lpad(v_next_number::text, 6, '0');
+      end;
+      $$;
+    `);
+  }
+
+  ensured.quotes = true;
+  ensured.quote_items = true;
+  ensured.quote_settings = true;
+  await ensureQuoteDocumentSettings();
+  return true;
+}
+
+async function ensureQuoteDocumentSettings() {
+  if (ensured.quote_document_settings) return true;
+
+  const exists = await tableExists('quote_document_settings');
+  if (!exists) {
+    await query(`
+      create table if not exists public.quote_document_settings (
+        id smallint primary key default 1 check (id = 1),
+        logo_url text,
+        company_title text not null default 'MICROVISE',
+        company_subtitle text not null default 'Innovation Ltd',
+        bank_details text,
+        terms_and_conditions text,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      )
+    `);
+    await query(`
+      insert into public.quote_document_settings (id)
+      values (1)
+      on conflict (id) do nothing
+    `);
+  } else {
+    await query(`
+      alter table public.quote_document_settings
+        add column if not exists logo_url text,
+        add column if not exists company_title text not null default 'MICROVISE',
+        add column if not exists company_subtitle text not null default 'Innovation Ltd',
+        add column if not exists bank_details text,
+        add column if not exists terms_and_conditions text,
+        add column if not exists created_at timestamptz not null default now(),
+        add column if not exists updated_at timestamptz not null default now()
+    `);
+    await query(`
+      insert into public.quote_document_settings (id)
+      values (1)
+      on conflict (id) do nothing
+    `);
+  }
+
+  ensured.quote_document_settings = true;
+  return true;
+}
+
 module.exports = {
   ensureCustomerCountryColumns,
   ensureSerialTrackingTable,
@@ -1815,4 +1993,6 @@ module.exports = {
   ensureAkinsoftInvoiceSyncColumns,
   ensureMutakabatRecordsTable,
   ensureMutakabatPriceSettingsTable,
+  ensureQuotesTables,
+  ensureProductImageUrlColumn,
 };

@@ -6,12 +6,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
+import '../../core/providers/provider_cache.dart';
 import '../../core/format/search_normalize.dart';
 import '../../core/platform/open_external_url.dart';
 import '../../core/ui/app_badge.dart';
@@ -32,6 +36,8 @@ import 'e_invoice_official_url.dart';
 import 'e_invoice_pdf_share.dart';
 import 'e_invoice_print.dart';
 import 'e_invoice_whatsapp_share.dart';
+import '../quotes/quote_providers.dart';
+import '../quotes/quotes_screen.dart';
 
 String _friendlyPdfError(Object error) {
   var raw = error.toString().trim();
@@ -88,7 +94,8 @@ String _formatJobElapsedShort(Duration value) {
 }
 
 final eInvoiceSettingsProvider =
-    FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+    FutureProvider<Map<String, dynamic>>((ref) async {
+      keepProviderAliveFor(ref, const Duration(minutes: 15));
       final apiClient = ref.watch(apiClientProvider);
       final local = await _loadLocalEInvoiceSettings();
       final base = {..._defaultSettings, ...local};
@@ -96,7 +103,7 @@ final eInvoiceSettingsProvider =
       try {
         final response = await apiClient
             .getJson('/e-invoice')
-            .timeout(const Duration(seconds: 8));
+            .timeout(const Duration(seconds: 4));
         final remote = (response['settings'] as Map?)?.cast<String, dynamic>();
         return _mergeEInvoiceSettings(base, remote);
       } catch (error) {
@@ -232,7 +239,12 @@ class EInvoiceScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (section == 'teklif') {
+      return const _EInvoiceQuotesShell();
+    }
+
     final settingsAsync = ref.watch(eInvoiceSettingsProvider);
+
     final child = switch (section) {
       'stok' => _ProductsTab(moneyTry: _moneyTry),
       'cari' => _AccountsTab(moneyTry: _moneyTry),
@@ -327,6 +339,60 @@ class EInvoiceScreen extends ConsumerWidget {
     );
     ref.invalidate(invoicesProvider);
     ref.invalidate(accountBalancesProvider);
+  }
+}
+
+class _EInvoiceQuotesShell extends ConsumerStatefulWidget {
+  const _EInvoiceQuotesShell();
+
+  @override
+  ConsumerState<_EInvoiceQuotesShell> createState() =>
+      _EInvoiceQuotesShellState();
+}
+
+class _EInvoiceQuotesShellState extends ConsumerState<_EInvoiceQuotesShell> {
+  final _quotesTabKey = GlobalKey<QuotesTabState>();
+
+  @override
+  Widget build(BuildContext context) {
+    return AppPageLayout(
+      title: 'E-Fatura',
+      subtitle: 'Müşteri teklifleri — satış faturaları ile aynı liste düzeni.',
+      actions: [
+        OutlinedButton.icon(
+          onPressed: () => context.go('/e-fatura/teklif/ayarlar'),
+          icon: const Icon(AppPhosphorIcons.gearSix, size: 18),
+          label: const Text('Teklif Ayarları'),
+        ),
+        const Gap(10),
+        OutlinedButton.icon(
+          onPressed: () {
+            final tab = _quotesTabKey.currentState;
+            if (tab != null) {
+              ref.invalidate(quotesProvider(tab.filter));
+            }
+          },
+          icon: const Icon(AppPhosphorIcons.arrowsCounterClockwise, size: 18),
+          label: const Text('Yenile'),
+        ),
+        const Gap(10),
+        FilledButton.icon(
+          onPressed: () => _quotesTabKey.currentState?.startNewQuote(),
+          icon: const Icon(AppPhosphorIcons.plus, size: 18),
+          label: const Text('Yeni Teklif'),
+        ),
+      ],
+      body: Column(
+        children: [
+          const Gap(8),
+          Expanded(
+            child: ClipRect(
+              child: QuotesTab(key: _quotesTabKey),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -5186,6 +5252,10 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                       child: Row(
                         children: const [
                           SizedBox(
+                            width: 40,
+                            child: _InvoiceHeaderText('Görsel'),
+                          ),
+                          SizedBox(
                             width: 100,
                             child: _InvoiceHeaderText('Kod'),
                           ),
@@ -5221,6 +5291,10 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                         ),
                         child: Row(
                           children: [
+                            SizedBox(
+                              width: 40,
+                              child: _ProductThumb(url: product.imageUrl),
+                            ),
                             SizedBox(
                               width: 100,
                               child: Text(
@@ -5363,13 +5437,45 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
     final minStock = TextEditingController(
       text: (product?.minStock ?? 0).toStringAsFixed(0),
     );
-    String currency = product == null ? 'USD' : _stockSaleCurrency(product);
-    String unit = product?.unit ?? 'Adet';
+    String currency = product == null
+        ? 'USD'
+        : _coerceStockDialogCurrency(_stockSaleCurrency(product));
+    String unit = _coerceStockUnit(product?.unit);
     String type = product?.productType ?? 'product';
-    double taxRate = product?.taxRate ?? 5;
+    double taxRate = _coerceStockTaxRate(product?.taxRate);
     bool trackStock = product?.trackStock ?? true;
     bool pricesIncludeVat = false;
     bool saving = false;
+    String? imageUrl = product?.imageUrl;
+    Uint8List? pendingImageBytes;
+    String? pendingImageMime;
+    String? pendingImageName;
+    var imageRemoved = false;
+
+    Future<void> pickProductImage(StateSetter setState) async {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 75,
+        maxWidth: 900,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      if (bytes.isEmpty) return;
+      final name = picked.name.toLowerCase();
+      final mime = name.endsWith('.png')
+          ? 'image/png'
+          : name.endsWith('.webp')
+          ? 'image/webp'
+          : 'image/jpeg';
+      setState(() {
+        pendingImageBytes = bytes;
+        pendingImageMime = mime;
+        pendingImageName = picked.name;
+        imageUrl = null;
+        imageRemoved = false;
+      });
+    }
 
     await showDialog<void>(
       context: context,
@@ -5384,6 +5490,72 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: AppTheme.surfaceMuted,
+                            border: Border.all(color: AppTheme.border),
+                            borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+                          ),
+                          child: pendingImageBytes != null
+                              ? Image.memory(
+                                  pendingImageBytes!,
+                                  fit: BoxFit.cover,
+                                )
+                              : (imageUrl ?? '').trim().isNotEmpty
+                              ? Image.network(
+                                  imageUrl!.trim(),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => Icon(
+                                    LucideIcons.image,
+                                    color: AppTheme.textMuted,
+                                  ),
+                                )
+                              : Icon(
+                                  LucideIcons.image,
+                                  color: AppTheme.textMuted,
+                                ),
+                        ),
+                      ),
+                      const Gap(12),
+                      Expanded(
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: saving
+                                  ? null
+                                  : () => pickProductImage(setState),
+                              icon: const Icon(LucideIcons.upload, size: 16),
+                              label: const Text('Görsel seç'),
+                            ),
+                            if (pendingImageBytes != null ||
+                                (imageUrl ?? '').trim().isNotEmpty)
+                              TextButton(
+                                onPressed: saving
+                                    ? null
+                                    : () => setState(() {
+                                        pendingImageBytes = null;
+                                        pendingImageMime = null;
+                                        pendingImageName = null;
+                                        imageUrl = null;
+                                        imageRemoved = true;
+                                      }),
+                                child: const Text('Kaldır'),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Gap(12),
                   TextField(
                     controller: name,
                     decoration: const InputDecoration(
@@ -5537,18 +5709,12 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                       Expanded(
                         child: DropdownButtonFormField<String>(
                           initialValue: unit,
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'Adet',
-                              child: Text('Adet'),
-                            ),
-                            DropdownMenuItem(value: 'Kg', child: Text('Kg')),
-                            DropdownMenuItem(value: 'Lt', child: Text('Lt')),
-                            DropdownMenuItem(value: 'Mt', child: Text('Mt')),
-                            DropdownMenuItem(
-                              value: 'Saat',
-                              child: Text('Saat'),
-                            ),
+                          items: [
+                            for (final option in _stockUnitOptions)
+                              DropdownMenuItem(
+                                value: option,
+                                child: Text(option),
+                              ),
                           ],
                           onChanged: (v) => setState(() => unit = v ?? 'Adet'),
                           decoration: const InputDecoration(labelText: 'Birim'),
@@ -5558,12 +5724,12 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                       Expanded(
                         child: DropdownButtonFormField<double>(
                           initialValue: taxRate,
-                          items: const [
-                            DropdownMenuItem(value: 0, child: Text('%0')),
-                            DropdownMenuItem(value: 5, child: Text('%5')),
-                            DropdownMenuItem(value: 10, child: Text('%10')),
-                            DropdownMenuItem(value: 16, child: Text('%16')),
-                            DropdownMenuItem(value: 20, child: Text('%20')),
+                          items: [
+                            for (final rate in _stockTaxRateOptions)
+                              DropdownMenuItem(
+                                value: rate,
+                                child: Text('%${rate.toStringAsFixed(0)}'),
+                              ),
                           ],
                           onChanged: (v) => setState(() => taxRate = v ?? 5),
                           decoration: const InputDecoration(labelText: 'KDV'),
@@ -5621,7 +5787,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                         final exclusiveSale = pricesIncludeVat && taxRate > 0
                             ? enteredSale / (1 + taxRate / 100)
                             : enteredSale;
-                        await apiClient.postJson(
+                        final saved = await apiClient.postJson(
                           '/mutate',
                           body: {
                             'op': 'upsert',
@@ -5654,9 +5820,49 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                               'track_stock': trackStock,
                               'min_stock': _parseDecimal(minStock.text),
                               'is_active': true,
+                              if (imageRemoved) 'image_url': null,
+                              if (!imageRemoved &&
+                                  (imageUrl ?? '').trim().isNotEmpty &&
+                                  pendingImageBytes == null)
+                                'image_url': imageUrl!.trim(),
                             },
                           },
                         );
+                        var productId = (saved['id'] ?? product?.id ?? '')
+                            .toString();
+                        if (pendingImageBytes != null &&
+                            pendingImageMime != null &&
+                            productId.isNotEmpty) {
+                          final uploaded = await apiClient.postJson(
+                            '/mutate',
+                            body: {
+                              'op': 'uploadProductImage',
+                              'productId': productId,
+                              'filename':
+                                  pendingImageName ??
+                                  'product-${DateTime.now().millisecondsSinceEpoch}.jpg',
+                              'contentType': pendingImageMime,
+                              'data': base64Encode(pendingImageBytes!),
+                            },
+                          );
+                          final uploadedUrl = uploaded['url']?.toString();
+                          if ((uploadedUrl ?? '').trim().isNotEmpty) {
+                            await apiClient.postJson(
+                              '/mutate',
+                              body: {
+                                'op': 'upsert',
+                                'table': 'products',
+                                'returning': 'row',
+                                'values': {
+                                  'id': productId,
+                                  'name': productName,
+                                  'image_url': uploadedUrl!.trim(),
+                                  'is_active': true,
+                                },
+                              },
+                            );
+                          }
+                        }
                         ref.invalidate(productsProvider(null));
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -9410,6 +9616,59 @@ double _parseDecimal(String value) {
 
 double _roundMoney(double value) => (value * 100).roundToDouble() / 100;
 
+const _stockUnitOptions = ['Adet', 'Kg', 'Lt', 'Mt', 'Saat'];
+const _stockTaxRateOptions = <double>[0, 5, 10, 16, 20];
+
+/// Maps SAP/WOLVOX unit labels (e.g. ADET) onto dropdown values (Adet).
+String _coerceStockUnit(String? value) {
+  final raw = (value ?? '').trim();
+  if (raw.isEmpty) return 'Adet';
+  for (final option in _stockUnitOptions) {
+    if (option.toLowerCase() == raw.toLowerCase()) return option;
+  }
+  switch (raw.toUpperCase()) {
+    case 'AD':
+    case 'ADS':
+    case 'PCS':
+    case 'PIECE':
+    case 'PIECES':
+    case 'C62':
+      return 'Adet';
+    case 'KG':
+    case 'KILO':
+    case 'KILOGRAM':
+    case 'KGM':
+      return 'Kg';
+    case 'LT':
+    case 'L':
+    case 'LITRE':
+    case 'LITER':
+    case 'LTR':
+      return 'Lt';
+    case 'MT':
+    case 'M':
+    case 'METRE':
+    case 'METER':
+    case 'MTR':
+      return 'Mt';
+    case 'SAAT':
+    case 'HOUR':
+    case 'HOURS':
+    case 'HUR':
+      return 'Saat';
+    default:
+      return 'Adet';
+  }
+}
+
+double _coerceStockTaxRate(double? value) {
+  final rate = value ?? 5;
+  for (final option in _stockTaxRateOptions) {
+    if ((option - rate).abs() < 0.001) return option;
+  }
+  return 20;
+}
+
 /// Stock/hizmet sale currency from product.currency (WOLVOX HESAP / DOVIZ_BIRIMI).
 String _stockSaleCurrency(Product product) {
   final value = product.currency.trim().toUpperCase();
@@ -9421,6 +9680,13 @@ String _stockSaleCurrency(Product product) {
     return 'USD';
   }
   if (value == 'TL' || value.contains('TURK')) return 'TRY';
+  return 'USD';
+}
+
+/// Dialog only offers USD/TRY; map other codes to a safe dropdown value.
+String _coerceStockDialogCurrency(String? value) {
+  final code = (value ?? 'USD').trim().toUpperCase();
+  if (code == 'TRY' || code == 'TL') return 'TRY';
   return 'USD';
 }
 
@@ -9673,6 +9939,40 @@ class _InlineStockPriceCellState extends State<_InlineStockPriceCell> {
                 },
         ),
       ],
+    );
+  }
+}
+
+class _ProductThumb extends StatelessWidget {
+  const _ProductThumb({this.url});
+
+  final String? url;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmed = (url ?? '').trim();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceMuted,
+          border: Border.all(color: AppTheme.border.withValues(alpha: 0.7)),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: trimmed.isEmpty
+            ? Icon(LucideIcons.image, size: 14, color: AppTheme.textMuted)
+            : Image.network(
+                trimmed,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => Icon(
+                  LucideIcons.image,
+                  size: 14,
+                  color: AppTheme.textMuted,
+                ),
+              ),
+      ),
     );
   }
 }

@@ -155,6 +155,7 @@ const defaultPersonnelPagePermissions = new Set([
   'urunler',
   'faturalama',
   'e_fatura',
+  'teklif',
   'finans',
 ]);
 
@@ -200,6 +201,7 @@ function hasPageAccess(user, pageKey) {
   if (permissions.length === 0) {
     return defaultPersonnelPagePermissions.has(pageKey);
   }
+  if (pageKey === 'teklif' && permissions.includes('e_fatura')) return true;
   return permissions.includes(pageKey);
 }
 

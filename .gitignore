@@ -33,8 +33,9 @@ migrate_working_dir/
 /build/
 /coverage/
 
-# Node
-node_modules/
+# Local dev uploads (product images, quote logos)
+.local/
+
 /dist-electron/
 .electron-builder/
 

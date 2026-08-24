@@ -13,6 +13,7 @@ import '../../core/ui/app_card.dart';
 import '../billing/application_form_invoice_link.dart';
 import '../customers/customer_form_dialog.dart';
 import '../customers/customer_model.dart';
+import '../customers/customer_select_field.dart';
 import '../customers/customers_providers.dart';
 import '../definitions/definitions_screen.dart';
 import '../invoices/invoice_model.dart';
@@ -389,7 +390,12 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                     pricesIncludeVat: _pricesIncludeVat,
                     isSales: _isSales,
                     onChanged: () => setState(() {}),
-                    onProductSearch: (products) => _addProducts(products),
+                    onProductSearch: () async {
+                      final products =
+                          await ref.read(productsProvider(null).future);
+                      if (!mounted) return;
+                      await _addProducts(products);
+                    },
                     onAdd: () =>
                         setState(() => _items.add(_EInvoiceItemDraft())),
                     onRemove: (index) {
@@ -453,7 +459,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                       ),
                       const Gap(10),
                       customersAsync.when(
-                        data: (customers) => _CustomerSelectField(
+                        data: (customers) => CustomerSelectField(
                           customers: customers,
                           selectedCustomerId: _customerId,
                           label: _isSales ? 'Müşteri' : 'Tedarikçi',
@@ -550,7 +556,12 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                   onChanged: () => setState(() {}),
                   onAddBlank: () =>
                       setState(() => _items.add(_EInvoiceItemDraft())),
-                  onAddFromStock: (products) => _addProducts(products),
+                  onAddFromStock: () async {
+                    final products =
+                        await ref.read(productsProvider(null).future);
+                    if (!mounted) return;
+                    await _addProducts(products);
+                  },
                   onRemove: (index) {
                     setState(() {
                       _items[index].dispose();
@@ -974,7 +985,7 @@ class _DesktopInvoiceTop extends StatelessWidget {
                             ),
                             const Gap(10),
                             customersAsync.when(
-                              data: (customers) => _CustomerSelectField(
+                              data: (customers) => CustomerSelectField(
                                 customers: customers,
                                 selectedCustomerId: selectedCustomerId,
                                 label: isSales ? 'Müşteri' : 'Tedarikçi',
@@ -1108,256 +1119,6 @@ class _DesktopTextBox extends StatelessWidget {
   }
 }
 
-class _CustomerSelectField extends StatefulWidget {
-  const _CustomerSelectField({
-    required this.customers,
-    required this.selectedCustomerId,
-    required this.label,
-    required this.onSelected,
-    required this.onCreateNew,
-  });
-
-  final List<Customer> customers;
-  final String? selectedCustomerId;
-  final String label;
-  final ValueChanged<Customer?> onSelected;
-  final Future<Customer?> Function() onCreateNew;
-
-  @override
-  State<_CustomerSelectField> createState() => _CustomerSelectFieldState();
-}
-
-class _CustomerSelectFieldState extends State<_CustomerSelectField> {
-  late final TextEditingController _controller;
-  late final FocusNode _focusNode;
-  bool _creating = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: _selectedName());
-    _focusNode = FocusNode();
-    _focusNode.addListener(_onFocusChange);
-  }
-
-  @override
-  void didUpdateWidget(covariant _CustomerSelectField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedCustomerId != widget.selectedCustomerId ||
-        oldWidget.customers != widget.customers) {
-      final next = _selectedName();
-      if (_controller.text != next && !_focusNode.hasFocus) {
-        _controller.value = TextEditingValue(
-          text: next,
-          selection: TextSelection.collapsed(offset: next.length),
-        );
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _focusNode.removeListener(_onFocusChange);
-    _focusNode.dispose();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _onFocusChange() {
-    if (!_focusNode.hasFocus) {
-      final selected = _selectedName();
-      if (_controller.text != selected) {
-        _controller.value = TextEditingValue(
-          text: selected,
-          selection: TextSelection.collapsed(offset: selected.length),
-        );
-      }
-      return;
-    }
-    if (_controller.text.isEmpty) return;
-    _controller.selection = TextSelection(
-      baseOffset: 0,
-      extentOffset: _controller.text.length,
-    );
-  }
-
-  String _selectedName() {
-    final id = widget.selectedCustomerId;
-    if (id == null || id.isEmpty) return '';
-    for (final customer in widget.customers) {
-      if (customer.id == id) return customer.name;
-    }
-    return '';
-  }
-
-  bool _matchesCustomer(Customer customer, String query) {
-    return matchesSearchQuery(
-      [
-        customer.name,
-        customer.vkn ?? '',
-        customer.tcknMs ?? '',
-        customer.city ?? '',
-        customer.phone1 ?? '',
-        customer.email ?? '',
-        customer.id,
-      ].join(' '),
-      query,
-    );
-  }
-
-  Iterable<Customer> _optionsFor(String rawQuery) {
-    final query = rawQuery.trim();
-    if (query.isEmpty) {
-      return widget.customers.take(40);
-    }
-    return widget.customers
-        .where((customer) => _matchesCustomer(customer, query))
-        .take(120);
-  }
-
-  Future<void> _createCustomer() async {
-    if (_creating) return;
-    setState(() => _creating = true);
-    try {
-      final created = await widget.onCreateNew();
-      if (!mounted || created == null) return;
-      _controller.value = TextEditingValue(
-        text: created.name,
-        selection: TextSelection.collapsed(offset: created.name.length),
-      );
-      _focusNode.unfocus();
-    } finally {
-      if (mounted) setState(() => _creating = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FormField<String>(
-      initialValue: widget.selectedCustomerId,
-      validator: (_) =>
-          (widget.selectedCustomerId ?? '').isEmpty ? 'Cari seçin' : null,
-      builder: (field) {
-        return RawAutocomplete<Customer>(
-          textEditingController: _controller,
-          focusNode: _focusNode,
-          displayStringForOption: (customer) => customer.name,
-          optionsBuilder: (value) => _optionsFor(value.text),
-          onSelected: (customer) {
-            widget.onSelected(customer);
-            field.didChange(customer.id);
-          },
-          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-            return TextFormField(
-              controller: controller,
-              focusNode: focusNode,
-              onFieldSubmitted: (_) => onFieldSubmitted(),
-              onChanged: (value) {
-                if (value.trim().isEmpty &&
-                    (widget.selectedCustomerId ?? '').isNotEmpty) {
-                  widget.onSelected(null);
-                  field.didChange(null);
-                }
-              },
-              decoration: InputDecoration(
-                labelText: widget.label,
-                hintText: 'Ad, VKN, telefon veya şehir ara',
-                errorText: field.errorText,
-                prefixIcon: const Icon(LucideIcons.search),
-                suffixIcon: IconButton(
-                  tooltip: _creating ? 'Oluşturuluyor…' : 'Yeni cari ekle',
-                  onPressed: _creating ? null : _createCustomer,
-                  icon: _creating
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(LucideIcons.userPlus),
-                ),
-              ),
-            );
-          },
-          optionsViewBuilder: (context, onSelected, options) {
-            final items = options.toList(growable: false);
-            return Align(
-              alignment: Alignment.topLeft,
-              child: Material(
-                elevation: 8,
-                borderRadius: BorderRadius.circular(12),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: 520,
-                    maxHeight: 360,
-                  ),
-                  child: items.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              const Text('Cari bulunamadı.'),
-                              const Gap(8),
-                              OutlinedButton.icon(
-                                onPressed: _creating ? null : _createCustomer,
-                                icon: const Icon(LucideIcons.userPlus),
-                                label: const Text('Yeni cari oluştur'),
-                              ),
-                            ],
-                          ),
-                        )
-                      : ListView.separated(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          shrinkWrap: true,
-                          itemCount: items.length,
-                          separatorBuilder: (context, index) =>
-                              const Divider(height: 1),
-                          itemBuilder: (context, index) {
-                            final customer = items[index];
-                            final selected =
-                                customer.id == widget.selectedCustomerId;
-                            return ListTile(
-                              dense: true,
-                              selected: selected,
-                              leading: CircleAvatar(
-                                radius: 16,
-                                child: Text(_initials(customer.name)),
-                              ),
-                              title: Text(
-                                customer.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              subtitle: Text(
-                                [
-                                  if ((customer.vkn ?? '').isNotEmpty)
-                                    'VKN ${customer.vkn}',
-                                  if ((customer.city ?? '').isNotEmpty)
-                                    customer.city,
-                                  if ((customer.phone1 ?? '').isNotEmpty)
-                                    customer.phone1,
-                                ].join(' • '),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              trailing: selected
-                                  ? const Icon(LucideIcons.circleCheck)
-                                  : null,
-                              onTap: () => onSelected(customer),
-                            );
-                          },
-                        ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
 class _AddressInfoPanel extends StatelessWidget {
   const _AddressInfoPanel({required this.customer});
 
@@ -1460,7 +1221,7 @@ class _DesktopItemsTable extends StatelessWidget {
   final bool pricesIncludeVat;
   final bool isSales;
   final VoidCallback onChanged;
-  final ValueChanged<List<Product>> onProductSearch;
+  final VoidCallback onProductSearch;
   final VoidCallback onAdd;
   final ValueChanged<int> onRemove;
 
@@ -1480,13 +1241,10 @@ class _DesktopItemsTable extends StatelessWidget {
                   selected: true,
                 ),
                 const Spacer(),
-                productsAsync.maybeWhen(
-                  data: (products) => OutlinedButton.icon(
-                    onPressed: () => onProductSearch(products),
-                    icon: const Icon(LucideIcons.search, size: 18),
-                    label: const Text('Ürün Ara / Çoklu Ekle'),
-                  ),
-                  orElse: () => const SizedBox.shrink(),
+                OutlinedButton.icon(
+                  onPressed: onProductSearch,
+                  icon: const Icon(LucideIcons.search, size: 18),
+                  label: const Text('Ürün Ara / Çoklu Ekle'),
                 ),
                 const Gap(8),
                 IconButton.filled(
@@ -1498,41 +1256,43 @@ class _DesktopItemsTable extends StatelessWidget {
             ),
           ),
           const Divider(height: 1),
-          productsAsync.when(
-            data: (products) {
+          Builder(
+            builder: (context) {
+              final products = productsAsync.value ?? const <Product>[];
               final taxRates = _availableTaxRates(taxRatesAsync, items);
-              return SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minWidth: 1160),
-                  child: Column(
-                    children: [
-                      _InvoiceTableHeader(pricesIncludeVat: pricesIncludeVat),
-                      for (var i = 0; i < items.length; i++)
-                        _InvoiceTableRow(
-                          key: ObjectKey(items[i]),
-                          item: items[i],
-                          products: products,
-                          taxRates: taxRates,
-                          currency: currency,
-                          pricesIncludeVat: pricesIncludeVat,
-                          isSales: isSales,
-                          onChanged: onChanged,
-                          onRemove: () => onRemove(i),
-                        ),
-                    ],
+              return Column(
+                children: [
+                  if (productsAsync.isLoading && products.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(18),
+                      child: LinearProgressIndicator(),
+                    ),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: 1160),
+                      child: Column(
+                        children: [
+                          _InvoiceTableHeader(pricesIncludeVat: pricesIncludeVat),
+                          for (var i = 0; i < items.length; i++)
+                            _InvoiceTableRow(
+                              key: ObjectKey(items[i]),
+                              item: items[i],
+                              products: products,
+                              taxRates: taxRates,
+                              currency: currency,
+                              pricesIncludeVat: pricesIncludeVat,
+                              isSales: isSales,
+                              onChanged: onChanged,
+                              onRemove: () => onRemove(i),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                ],
               );
             },
-            loading: () => const Padding(
-              padding: EdgeInsets.all(18),
-              child: LinearProgressIndicator(),
-            ),
-            error: (_, _) => const Padding(
-              padding: EdgeInsets.all(18),
-              child: Text('Stok/hizmet listesi yüklenemedi.'),
-            ),
           ),
         ],
       ),
@@ -1728,11 +1488,20 @@ class _InvoiceTableRow extends StatelessWidget {
               SizedBox(
                 width: 104,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: DropdownButtonFormField<String>(
                     key: ValueKey('unit-${identityHashCode(item)}-$unit'),
                     initialValue: unit,
+                    isExpanded: true,
+                    isDense: true,
                     items: _unitDropdownItems(),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                    ),
                     onChanged: (value) {
                       item.unit = _coerceUnit(value);
                       onChanged();
@@ -1748,13 +1517,20 @@ class _InvoiceTableRow extends StatelessWidget {
               SizedBox(
                 width: 104,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: TextFormField(
                     initialValue: item.discountRate.toStringAsFixed(0),
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: const InputDecoration(suffixText: '%'),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      suffixText: '%',
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                    ),
                     onChanged: (value) {
                       item.discountRate = _parseDecimal(value);
                       onChanged();
@@ -1765,10 +1541,19 @@ class _InvoiceTableRow extends StatelessWidget {
               SizedBox(
                 width: 104,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: DropdownButtonFormField<double>(
                     key: ValueKey('tax-${identityHashCode(item)}-$taxRate'),
                     initialValue: taxRate,
+                    isExpanded: true,
+                    isDense: true,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                    ),
                     items: [
                       for (final rate in taxRates)
                         DropdownMenuItem(
@@ -2472,7 +2257,7 @@ class _MobileItemsCard extends StatelessWidget {
   final bool isSales;
   final VoidCallback onChanged;
   final VoidCallback onAddBlank;
-  final ValueChanged<List<Product>> onAddFromStock;
+  final VoidCallback onAddFromStock;
   final ValueChanged<int> onRemove;
 
   @override
@@ -2499,11 +2284,14 @@ class _MobileItemsCard extends StatelessWidget {
             ],
           ),
           const Gap(8),
-          productsAsync.when(
-            data: (products) {
+          Builder(
+            builder: (context) {
+              final products = productsAsync.value ?? const <Product>[];
               final taxRates = _availableTaxRates(taxRatesAsync, items);
               return Column(
                 children: [
+                  if (productsAsync.isLoading && products.isEmpty)
+                    const LinearProgressIndicator(),
                   for (var i = 0; i < items.length; i++) ...[
                     _ItemEditor(
                       key: ObjectKey(items[i]),
@@ -2521,17 +2309,13 @@ class _MobileItemsCard extends StatelessWidget {
                 ],
               );
             },
-            loading: () => const LinearProgressIndicator(),
-            error: (_, _) => const Text('Stok/hizmet listesi yüklenemedi.'),
           ),
           const Gap(10),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: productsAsync.asData == null
-                      ? null
-                      : () => onAddFromStock(productsAsync.asData!.value),
+                  onPressed: onAddFromStock,
                   icon: const Icon(LucideIcons.package, size: 18),
                   label: const Text('Stoktan'),
                 ),
@@ -3019,14 +2803,4 @@ String _dateIso(DateTime date) => formatAppDateIso(date);
 double _parseDecimal(String value) {
   final normalized = value.trim().replaceAll(' ', '').replaceAll(',', '.');
   return double.tryParse(normalized) ?? 0;
-}
-
-String _initials(String value) {
-  final parts = value
-      .trim()
-      .split(RegExp(r'\s+'))
-      .where((part) => part.isNotEmpty)
-      .take(2);
-  final text = parts.map((part) => part.characters.first.toUpperCase()).join();
-  return text.isEmpty ? '?' : text;
 }

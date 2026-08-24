@@ -81,10 +81,7 @@ class AppShell extends ConsumerWidget {
     final isDesktop = width >= 640;
 
     if (isDesktop) {
-      return _DesktopShell(
-        compact: width < AppBreakpoints.desktopMin,
-        child: child,
-      );
+      return _DesktopShell(child: child);
     }
 
     return _MobileShell(child: child);
@@ -92,10 +89,71 @@ class AppShell extends ConsumerWidget {
 }
 
 class _DesktopShell extends ConsumerWidget {
-  const _DesktopShell({required this.child, required this.compact});
+  const _DesktopShell({required this.child});
 
   final Widget child;
-  final bool compact;
+
+  static const _sidebarWidth = 260.0;
+
+  List<_ExecutiveFavorite> _favorites({
+    required Set<String> allowedPages,
+    required bool isBankUser,
+  }) {
+    if (isBankUser) return const [];
+    final favorites = <_ExecutiveFavorite>[];
+    if (allowedPages.contains('panel')) {
+      favorites.add(
+        const _ExecutiveFavorite(
+          label: 'Panel',
+          path: '/panel',
+          icon: AppPhosphorIcons.gauge,
+          pageKey: 'panel',
+        ),
+      );
+    }
+    if (allowedPages.contains('musteriler')) {
+      favorites.add(
+        const _ExecutiveFavorite(
+          label: 'Müşteriler',
+          path: '/musteriler',
+          icon: AppPhosphorIcons.addressBook,
+          pageKey: 'musteriler',
+        ),
+      );
+    }
+    if (allowedPages.contains('formlar')) {
+      favorites.add(
+        const _ExecutiveFavorite(
+          label: 'Başvuru',
+          path: '/formlar/basvuru',
+          icon: AppPhosphorIcons.clipboardText,
+          pageKey: 'formlar_basvuru',
+        ),
+      );
+    }
+    if (allowedPages.contains(kPageEInvoice)) {
+      favorites.add(
+        const _ExecutiveFavorite(
+          label: 'Satış Faturası',
+          path: '/e-fatura/satis',
+          icon: AppPhosphorIcons.receipt,
+          pageKey: 'e_fatura_satis',
+        ),
+      );
+    }
+    if (allowedPages.contains(kPageEInvoice) ||
+        allowedPages.contains(kPageQuotes)) {
+      favorites.add(
+        const _ExecutiveFavorite(
+          label: 'Teklif',
+          path: '/e-fatura/teklif',
+          icon: AppPhosphorIcons.fileText,
+          pageKey: 'teklif',
+        ),
+      );
+    }
+    return favorites;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -107,6 +165,15 @@ class _DesktopShell extends ConsumerWidget {
       allowedPages: allowedPages,
       isBankUser: isBankUser,
     );
+    final favorites = _favorites(
+      allowedPages: allowedPages,
+      isBankUser: isBankUser,
+    );
+    final favoriteKeys = favorites.map((f) => f.pageKey).toSet();
+    final mainItems = items
+        .where((item) => !favoriteKeys.contains(item.pageKey))
+        .toList(growable: false);
+
     final isFormsExpanded = ref.watch(formsNavExpandedProvider);
     final isEInvoiceExpanded = ref.watch(eInvoiceNavExpandedProvider);
     final isFinanceExpanded = ref.watch(financeNavExpandedProvider);
@@ -119,52 +186,51 @@ class _DesktopShell extends ConsumerWidget {
         child: Row(
           children: [
             Container(
-              width: compact ? 78 : 248,
+              width: _sidebarWidth,
               decoration: BoxDecoration(
                 color: AppTheme.sidebar,
                 border: Border(
                   right: BorderSide(
-                    color: AppTheme.border.withValues(alpha: 0.8),
+                    color: AppTheme.border.withValues(alpha: 0.85),
                   ),
                 ),
               ),
               child: SafeArea(
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    compact ? 8 : 12,
-                    compact ? 10 : 14,
-                    compact ? 8 : 12,
-                    compact ? 10 : 12,
-                  ),
+                  padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (compact)
-                        _CompactBrandButton(
-                          onTap: () => context.go(
-                            isBankUser ? '/banka-panel' : '/panel',
-                          ),
-                        )
-                      else
-                        _BrandHeader(
-                          subtitle: isBankUser ? 'WebCR' : 'SAP Business',
-                          onTap: () => context.go(
-                            isBankUser ? '/banka-panel' : '/panel',
-                          ),
+                      _BrandHeader(
+                        subtitle: isBankUser ? 'WebCR' : 'CRM',
+                        onTap: () => context.go(
+                          isBankUser ? '/banka-panel' : '/panel',
                         ),
+                      ),
                       const Gap(10),
+                      const _ExecutiveSearchField(),
+                      if (favorites.isNotEmpty) ...[
+                        const Gap(14),
+                        const _ExecutiveSectionLabel(title: 'Favoriler'),
+                        const Gap(6),
+                        for (final favorite in favorites)
+                          _ExecutiveFavoriteItem(
+                            favorite: favorite,
+                            active: _isActive(location, favorite.path),
+                            onTap: () => context.go(favorite.path),
+                          ),
+                        const Gap(10),
+                        Divider(
+                          height: 1,
+                          color: AppTheme.border.withValues(alpha: 0.7),
+                        ),
+                        const Gap(8),
+                      ],
                       Expanded(
                         child: ListView(
                           children: [
-                            for (final item in items) ...[
-                              if (compact)
-                                _SidebarIconItem(
-                                  label: item.label,
-                                  icon: item.icon,
-                                  active: _isActive(location, item.path),
-                                  accentColor: _navAccentColor(item.pageKey),
-                                  onTap: () => context.go(item.path),
-                                )
-                              else if (item.path == '/formlar' && !isBankUser)
+                            for (final item in mainItems) ...[
+                              if (item.path == '/formlar' && !isBankUser)
                                 _FormsNavGroup(
                                   label: item.label,
                                   icon: item.icon,
@@ -184,9 +250,11 @@ class _DesktopShell extends ConsumerWidget {
                                 )
                               else if (item.pageKey == 'e_fatura')
                                 _FormsNavGroup(
-                                  label: item.label,
+                                  label: 'Faturalar',
                                   icon: item.icon,
-                                  active: _isActive(location, item.path),
+                                  active:
+                                      _isActive(location, item.path) ||
+                                      _isActive(location, '/e-fatura/teklif'),
                                   accentColor: _navAccentColor(item.pageKey),
                                   expanded: isEInvoiceExpanded,
                                   onHeaderTap: () {
@@ -195,30 +263,9 @@ class _DesktopShell extends ConsumerWidget {
                                           eInvoiceNavExpandedProvider.notifier,
                                         )
                                         .toggle();
-                                    context.go(item.path);
+                                    context.go('/e-fatura/satis');
                                   },
-                                  subItems: const [
-                                    _FormsNavSubItem(
-                                      label: 'Alış Faturası',
-                                      path: '/e-fatura/alis',
-                                    ),
-                                    _FormsNavSubItem(
-                                      label: 'Satış Faturası',
-                                      path: '/e-fatura/satis',
-                                    ),
-                                    _FormsNavSubItem(
-                                      label: 'Stok/Hizmet',
-                                      path: '/e-fatura/stok',
-                                    ),
-                                    _FormsNavSubItem(
-                                      label: 'Cari',
-                                      path: '/e-fatura/cari',
-                                    ),
-                                    _FormsNavSubItem(
-                                      label: 'Ayarlar',
-                                      path: '/e-fatura/ayarlar',
-                                    ),
-                                  ],
+                                  subItems: _eInvoiceNavSubItems(allowedPages),
                                   matchedLocation: location,
                                 )
                               else if (item.pageKey == 'finans')
@@ -301,23 +348,17 @@ class _DesktopShell extends ConsumerWidget {
                         ),
                       ),
                       const Gap(10),
-                      compact
-                          ? _CompactAccountButton(
-                              onTap: () =>
-                                  _showMobileAccountSheet(context, ref),
-                            )
-                          : _AccountCard(
-                              profile: ref
-                                  .watch(currentUserProfileProvider)
-                                  .value,
-                              onSignOut: () async {
-                                ref
-                                    .read(apiAccessTokenProvider.notifier)
-                                    .clear();
-                                final client = ref.read(supabaseClientProvider);
-                                await client?.auth.signOut();
-                              },
-                            ),
+                      _AccountCard(
+                        profile: ref.watch(currentUserProfileProvider).value,
+                        onSignOut: () async {
+                          ref
+                              .read(apiAccessTokenProvider.notifier)
+                              .clear(persist: true);
+                          final client = ref.read(supabaseClientProvider);
+                          await client?.auth.signOut();
+                          if (context.mounted) context.go('/giris');
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -332,6 +373,135 @@ class _DesktopShell extends ConsumerWidget {
                   ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExecutiveFavorite {
+  const _ExecutiveFavorite({
+    required this.label,
+    required this.path,
+    required this.icon,
+    required this.pageKey,
+  });
+
+  final String label;
+  final String path;
+  final IconData icon;
+  final String pageKey;
+}
+
+class _ExecutiveSectionLabel extends StatelessWidget {
+  const _ExecutiveSectionLabel({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
+      child: Text(
+        title.toUpperCase(),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: AppTheme.sidebarTextMuted,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+}
+
+class _ExecutiveSearchField extends StatelessWidget {
+  const _ExecutiveSearchField();
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: 'Ara…',
+        prefixIcon: const Icon(AppPhosphorIcons.magnifyingGlass, size: 18),
+        suffixIcon: Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceMuted,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: AppTheme.border),
+            ),
+            child: Text(
+              '⌘K',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: AppTheme.textMuted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+        suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+      ),
+    );
+  }
+}
+
+class _ExecutiveFavoriteItem extends StatelessWidget {
+  const _ExecutiveFavoriteItem({
+    required this.favorite,
+    required this.active,
+    required this.onTap,
+  });
+
+  final _ExecutiveFavorite favorite;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _navAccentColor(favorite.pageKey);
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        height: 42,
+        decoration: BoxDecoration(
+          color: active ? AppTheme.sidebarActiveFill : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+          border: active
+              ? Border(
+                  left: BorderSide(color: AppTheme.primary, width: 3),
+                )
+              : null,
+        ),
+        padding: const EdgeInsets.fromLTRB(10, 0, 8, 0),
+        child: Row(
+          children: [
+            AppPhosphorIcon(
+              favorite.icon,
+              size: 18,
+              color: active ? AppTheme.primary : AppTheme.sidebarTextMuted,
+            ),
+            const Gap(10),
+            Expanded(
+              child: Text(
+                favorite.label,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  color: active ? AppTheme.primary : AppTheme.sidebarText,
+                  fontSize: 13.5,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.push_pin_outlined,
+              size: 15,
+              color: active ? accent : AppTheme.sidebarTextMuted,
             ),
           ],
         ),
@@ -462,6 +632,7 @@ Future<void> _showMobileModulesSheet(
       child: _MobileModulesSheet(
         items: items,
         matchedLocation: location,
+        allowedPages: ref.read(currentUserPagePermissionsProvider),
         onAccountTap: () {
           Navigator.of(context).pop();
           _showMobileAccountSheet(context, ref);
@@ -475,11 +646,13 @@ class _MobileModulesSheet extends StatefulWidget {
   const _MobileModulesSheet({
     required this.items,
     required this.matchedLocation,
+    required this.allowedPages,
     required this.onAccountTap,
   });
 
   final List<_NavItem> items;
   final String matchedLocation;
+  final Set<String> allowedPages;
   final VoidCallback onAccountTap;
 
   @override
@@ -503,7 +676,7 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
         ? widget.items
         : widget.items
               .where((item) {
-                final subItems = _mobileNavSubItems(item);
+                final subItems = _mobileNavSubItems(item, widget.allowedPages);
                 return item.label.toLowerCase().contains(normalizedQuery) ||
                     item.pageKey.toLowerCase().contains(normalizedQuery) ||
                     subItems.any(
@@ -582,7 +755,7 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
             separatorBuilder: (_, _) => const Gap(8),
             itemBuilder: (context, index) {
               final item = visibleItems[index];
-              final subItems = _mobileNavSubItems(item);
+              final subItems = _mobileNavSubItems(item, widget.allowedPages);
               final active = _isActive(widget.matchedLocation, item.path);
               return _MobileModuleTile(
                 item: item,
@@ -602,20 +775,43 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
   }
 }
 
-List<_FormsNavSubItem> _mobileNavSubItems(_NavItem item) {
+List<_FormsNavSubItem> _eInvoiceNavSubItems(Set<String> allowedPages) {
+  final items = <_FormsNavSubItem>[];
+  if (allowedPages.contains(kPageEInvoice)) {
+    items.add(const _FormsNavSubItem(label: 'Alış Faturası', path: '/e-fatura/alis'));
+    items.add(const _FormsNavSubItem(label: 'Satış Faturası', path: '/e-fatura/satis'));
+    items.add(const _FormsNavSubItem(label: 'Teklif', path: '/e-fatura/teklif'));
+    items.addAll(const [
+      _FormsNavSubItem(label: 'Stok/Hizmet', path: '/e-fatura/stok'),
+      _FormsNavSubItem(label: 'Cari', path: '/e-fatura/cari'),
+      _FormsNavSubItem(label: 'E-Fatura Ayarları', path: '/e-fatura/ayarlar'),
+    ]);
+  } else if (allowedPages.contains(kPageQuotes)) {
+    items.add(const _FormsNavSubItem(label: 'Teklif', path: '/e-fatura/teklif'));
+  }
+  if (allowedPages.contains(kPageEInvoice) ||
+      allowedPages.contains(kPageQuotes)) {
+    items.add(
+      const _FormsNavSubItem(
+        label: 'Teklif Ayarları',
+        path: '/e-fatura/teklif/ayarlar',
+      ),
+    );
+  }
+  return items;
+}
+
+List<_FormsNavSubItem> _mobileNavSubItems(
+  _NavItem item,
+  Set<String> allowedPages,
+) {
   if (item.path == '/banka-panel') return const [];
   if (item.path == '/formlar/banka-rapor') return const [];
   if (item.path == '/formlar') {
     return _formsNavSubItems(item.label == 'Başvuru');
   }
   if (item.pageKey == 'e_fatura') {
-    return const [
-      _FormsNavSubItem(label: 'Alış Faturası', path: '/e-fatura/alis'),
-      _FormsNavSubItem(label: 'Satış Faturası', path: '/e-fatura/satis'),
-      _FormsNavSubItem(label: 'Stok/Hizmet', path: '/e-fatura/stok'),
-      _FormsNavSubItem(label: 'Cari', path: '/e-fatura/cari'),
-      _FormsNavSubItem(label: 'Ayarlar', path: '/e-fatura/ayarlar'),
-    ];
+    return _eInvoiceNavSubItems(allowedPages);
   }
   if (item.pageKey == 'finans') {
     return const [
@@ -663,7 +859,13 @@ List<_NavItem> _visibleNavItems({
 }) {
   if (isBankUser) return _bankNavItems;
   return _navItems
-      .where((item) => allowedPages.contains(item.pageKey))
+      .where((item) {
+        if (item.pageKey == kPageEInvoice) {
+          return allowedPages.contains(kPageEInvoice) ||
+              allowedPages.contains(kPageQuotes);
+        }
+        return allowedPages.contains(item.pageKey);
+      })
       .toList(growable: false);
 }
 
@@ -970,6 +1172,152 @@ class _CompactBrandButton extends StatelessWidget {
   }
 }
 
+List<_FormsNavSubItem> _navSubItemsForItem(
+  _NavItem item, {
+  required Set<String> allowedPages,
+  required bool isBankUser,
+}) {
+  if (item.path == '/formlar' && !isBankUser) {
+    return _formsNavSubItems(isBankUser);
+  }
+  if (item.pageKey == 'e_fatura') {
+    return _eInvoiceNavSubItems(allowedPages);
+  }
+  if (item.pageKey == 'finans') {
+    return const [
+      _FormsNavSubItem(label: 'CRM Finans', path: '/finans'),
+      _FormsNavSubItem(
+        label: 'Bankalar / Hesaplar',
+        path: '/finans/akinsoft/bankalar',
+      ),
+      _FormsNavSubItem(label: 'Kasa', path: '/finans/akinsoft/kasa'),
+      _FormsNavSubItem(
+        label: 'Transferler',
+        path: '/finans/akinsoft/transferler',
+      ),
+      _FormsNavSubItem(
+        label: 'Masraf Faturaları',
+        path: '/finans/akinsoft/masraf',
+      ),
+    ];
+  }
+  if (item.pageKey == 'mutakabat') {
+    return const [
+      _FormsNavSubItem(label: 'Aylık Kayıtlar', path: '/mutakabat'),
+      _FormsNavSubItem(label: 'Birim Fiyatlar', path: '/mutakabat/fiyatlar'),
+    ];
+  }
+  return const [];
+}
+
+bool _compactNavActive(
+  _NavItem item,
+  String location,
+  List<_FormsNavSubItem> subItems,
+) {
+  if (subItems.isNotEmpty) {
+    return subItems.any((s) => _isActive(location, s.path)) ||
+        _isActive(location, item.path);
+  }
+  return _isActive(location, item.path);
+}
+
+class _CompactSidebarNavItem extends StatelessWidget {
+  const _CompactSidebarNavItem({
+    required this.item,
+    required this.location,
+    required this.allowedPages,
+    required this.isBankUser,
+  });
+
+  final _NavItem item;
+  final String location;
+  final Set<String> allowedPages;
+  final bool isBankUser;
+
+  @override
+  Widget build(BuildContext context) {
+    final subItems = _navSubItemsForItem(
+      item,
+      allowedPages: allowedPages,
+      isBankUser: isBankUser,
+    );
+    final active = _compactNavActive(item, location, subItems);
+
+    Widget iconBox({required VoidCallback? onTap}) {
+      return Tooltip(
+        message: item.label,
+        preferBelow: false,
+        waitDuration: const Duration(milliseconds: 350),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: active ? AppTheme.primary : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Center(
+              child: AppPhosphorIcon(
+                item.icon,
+                size: 20,
+                color: active ? Colors.white : AppTheme.sidebarTextMuted,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (subItems.isEmpty) {
+      return iconBox(onTap: () => context.go(item.path));
+    }
+
+    return MenuAnchor(
+      alignmentOffset: const Offset(10, 0),
+      style: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(AppTheme.surface),
+        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+            side: BorderSide(color: AppTheme.border.withValues(alpha: 0.7)),
+          ),
+        ),
+      ),
+      menuChildren: [
+        for (final sub in subItems)
+          MenuItemButton(
+            onPressed: () => context.go(sub.path),
+            child: Text(
+              sub.label,
+              style: TextStyle(
+                fontWeight: _isActive(location, sub.path)
+                    ? FontWeight.w700
+                    : FontWeight.w500,
+                color: _isActive(location, sub.path)
+                    ? AppTheme.primary
+                    : AppTheme.text,
+              ),
+            ),
+          ),
+      ],
+      builder: (context, controller, child) => iconBox(
+        onTap: () {
+          if (controller.isOpen) {
+            controller.close();
+          } else {
+            controller.open();
+          }
+        },
+      ),
+    );
+  }
+}
+
 class _SidebarIconItem extends StatelessWidget {
   const _SidebarIconItem({
     required this.label,
@@ -1018,30 +1366,50 @@ class _SidebarIconItem extends StatelessWidget {
   }
 }
 
-class _CompactAccountButton extends StatelessWidget {
+class _CompactAccountButton extends ConsumerWidget {
   const _CompactAccountButton({required this.onTap});
 
   final VoidCallback onTap;
 
+  static String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
+    final list = parts.toList(growable: false);
+    if (list.isEmpty) return '?';
+    if (list.length == 1) {
+      return list.first.characters.take(2).toString().toUpperCase();
+    }
+    return '${list.first.characters.first}${list.last.characters.first}'
+        .toUpperCase();
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final name = (ref.watch(currentUserProfileProvider).value?.fullName ?? '')
+        .trim();
+    final initials = _initials(name);
+
     return Tooltip(
-      message: 'Hesap',
+      message: name.isEmpty ? 'Hesap' : name,
       child: InkWell(
-        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        borderRadius: BorderRadius.circular(999),
         onTap: onTap,
         child: Container(
-          width: 46,
-          height: 46,
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
-            color: AppTheme.primary.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.18)),
+            color: AppTheme.primary.withValues(alpha: 0.18),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: AppTheme.primary.withValues(alpha: 0.35),
+            ),
           ),
-          child: Icon(
-            AppPhosphorIcons.userCircle,
-            color: AppTheme.primary,
-            size: 21,
+          alignment: Alignment.center,
+          child: Text(
+            initials,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
       ),
@@ -1489,7 +1857,7 @@ class _FormsNavGroup extends StatelessWidget {
                   for (final item in subItems) ...[
                     _SidebarSubItem(
                       label: item.label,
-                      active: matchedLocation == item.path,
+                      active: _isActive(matchedLocation, item.path),
                       accentColor: accentColor,
                       onTap: () => context.go(item.path),
                     ),
@@ -1723,6 +2091,10 @@ Color _navAccentColor(String pageKey) {
       return AppTheme.blue;
     case 'formlar':
       return AppTheme.orange;
+    case 'e_fatura':
+      return AppTheme.blue;
+    case 'teklif':
+      return AppTheme.blue;
     case 'is_emirleri':
       return AppTheme.green;
     case 'servis':

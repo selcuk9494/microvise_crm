@@ -181,8 +181,22 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     );
 
     String productType = product?.productType ?? 'product';
-    String unit = product?.unit ?? 'Adet';
-    double taxRate = product?.taxRate ?? 5;
+    String unit = () {
+      final raw = (product?.unit ?? 'Adet').trim();
+      const options = ['Adet', 'Kg', 'Lt', 'Mt', 'Saat'];
+      for (final option in options) {
+        if (option.toLowerCase() == raw.toLowerCase()) return option;
+      }
+      return 'Adet';
+    }();
+    double taxRate = () {
+      final rate = product?.taxRate ?? 5;
+      const options = <double>[0, 5, 10, 16, 20];
+      for (final option in options) {
+        if ((option - rate).abs() < 0.001) return option;
+      }
+      return 20;
+    }();
     bool trackStock = product?.trackStock ?? false;
     bool saving = false;
 

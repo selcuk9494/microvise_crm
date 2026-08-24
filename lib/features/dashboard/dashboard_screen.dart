@@ -101,7 +101,7 @@ class DashboardScreen extends ConsumerWidget {
 
     return AppPageLayout(
       title: 'Panel',
-      subtitle: 'Bugün ve genel görünüm.',
+      subtitle: 'İşletmenizin genel görünümü.',
       compactHeader: true,
       body: Stack(
         children: [
@@ -136,13 +136,18 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                 ),
                 const Gap(DsSpace.xl2),
-                _InsightsSection(
+                _DashboardMainRow(
                   seriesAsync: seriesAsync,
                   metricsAsync: metricsAsync,
+                  money: money,
                   canSeeReports: canSeeReports,
                   canSeeWorkOrders: canSeeWorkOrders,
                   canSeeService: canSeeService,
                 ),
+                if (canSeeWorkOrders) ...[
+                  const Gap(DsSpace.xl2),
+                  _WorkOrderStatusPanel(metricsAsync: metricsAsync),
+                ],
                 const Gap(DsSpace.xl3),
                 const _DashboardSectionHeader(title: 'Yardımcı Bilgiler'),
                 const _BankPasswordsCard(),
@@ -394,6 +399,257 @@ class _InsightCardHeader extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Alt-1 düzeni: gelir grafiği (sol) + son aktiviteler (sağ).
+class _DashboardMainRow extends StatelessWidget {
+  const _DashboardMainRow({
+    required this.seriesAsync,
+    required this.metricsAsync,
+    required this.money,
+    required this.canSeeReports,
+    required this.canSeeWorkOrders,
+    required this.canSeeService,
+  });
+
+  final AsyncValue<List<DashboardDailyPoint>> seriesAsync;
+  final AsyncValue<DashboardMetrics> metricsAsync;
+  final NumberFormat money;
+  final bool canSeeReports;
+  final bool canSeeWorkOrders;
+  final bool canSeeService;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final twoCols = constraints.maxWidth >= DsBreakpoints.filterBarWide;
+
+        final revenueCard = AppCard(
+          padding: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: metricsAsync.when(
+                        data: (m) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Gelir (Bu Ay)',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const Gap(4),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  money.format(m.revenue),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineSmall
+                                      ?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                                const Gap(8),
+                                if (m.revenueChangePercent != 0)
+                                  Text(
+                                    '${m.revenueChangePercent >= 0 ? '↑' : '↓'} %${m.revenueChangePercent.abs().toStringAsFixed(1).replaceAll('.', ',')}',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: m.revenueChangePercent >= 0
+                                              ? AppTheme.success
+                                              : AppTheme.error,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        loading: () => const _ChartSkeleton(),
+                        error: (_, _) => const _ChartError(),
+                      ),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                Text(
+                  'Son 14 gün — ödemeler üzerinden günlük toplam.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.textMuted,
+                  ),
+                ),
+                const Gap(12),
+                SizedBox(
+                  height: 220,
+                  child: seriesAsync.when(
+                    data: (points) => _RevenueChart(points: points),
+                    loading: () => const _ChartSkeleton(),
+                    error: (_, _) => const _ChartError(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+
+        final activityCard = AppCard(
+          padding: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _InsightCardHeader(
+                  icon: LucideIcons.zap,
+                  title: 'Son Aktiviteler',
+                  subtitle: 'İş emirleri ve servis kayıtları.',
+                ),
+                const Gap(14),
+                const _ActivityTimeline(),
+              ],
+            ),
+          ),
+        );
+
+        if (!twoCols) {
+          return Column(
+            children: [
+              if (canSeeReports) revenueCard,
+              if (canSeeReports && (canSeeWorkOrders || canSeeService))
+                const Gap(16),
+              if (canSeeWorkOrders || canSeeService) activityCard,
+            ],
+          );
+        }
+
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (canSeeReports) Expanded(flex: 3, child: revenueCard),
+              if (canSeeReports && (canSeeWorkOrders || canSeeService))
+                const Gap(16),
+              if (canSeeWorkOrders || canSeeService)
+                Expanded(flex: 2, child: activityCard),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _WorkOrderStatusPanel extends StatelessWidget {
+  const _WorkOrderStatusPanel({required this.metricsAsync});
+
+  final AsyncValue<DashboardMetrics> metricsAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _InsightCardHeader(
+            icon: LucideIcons.clipboardList,
+            title: 'İş Emri Durumu',
+            subtitle: 'Açık, devam eden ve tamamlanan işler.',
+          ),
+          const Gap(16),
+          metricsAsync.when(
+            data: (m) => _WorkOrderStatusCards(metrics: m),
+            loading: () => const SizedBox(height: 72, child: _ChartSkeleton()),
+            error: (_, _) => const SizedBox(height: 72, child: _ChartError()),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkOrderStatusCards extends StatelessWidget {
+  const _WorkOrderStatusCards({required this.metrics});
+
+  final DashboardMetrics metrics;
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = [
+      (label: 'Açık', value: metrics.openWorkOrders, tone: DsStatusTone.warning),
+      (
+        label: 'Devam Eden',
+        value: metrics.inProgressWorkOrders,
+        tone: DsStatusTone.info,
+      ),
+      (
+        label: 'Tamamlanan',
+        value: metrics.completedWorkOrders,
+        tone: DsStatusTone.success,
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cols = constraints.maxWidth >= 640 ? 3 : 1;
+        final spacing = 10.0;
+        final itemWidth = cols == 1
+            ? constraints.maxWidth
+            : (constraints.maxWidth - spacing * (cols - 1)) / cols;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (final card in cards)
+              SizedBox(
+                width: itemWidth,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceMuted,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                    border: Border.all(
+                      color: AppTheme.border.withValues(alpha: 0.65),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      DsStatusDot(tone: card.tone),
+                      const Gap(8),
+                      Expanded(
+                        child: Text(
+                          card.label,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      Text(
+                        '${card.value}',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

@@ -36,6 +36,8 @@ const {
   ensureAkinsoftInvoiceSyncColumns,
   ensureMutakabatPriceSettingsTable,
   ensureMutakabatRecordsTable,
+  ensureQuotesTables,
+  ensureProductImageUrlColumn,
 } = require('./_lib/schema');
 const {
   handleCors,
@@ -2245,6 +2247,133 @@ module.exports = async (req, res) => {
           [invoiceType],
         );
         return ok(req, res, { value: result.rows[0]?.value || '' });
+      }
+
+      case 'quotes_list': {
+        if (!requireAnyPage(req, user, ['teklif', 'e_fatura'], res)) return;
+        await ensureQuotesTables();
+        const status = String(req.query.status || '').trim();
+        const customerId = String(req.query.customerId || '').trim();
+        const activeFilterRaw = String(req.query.activeFilter || 'active')
+          .trim()
+          .toLowerCase();
+        const activeFilter = ['active', 'passive', 'all'].includes(activeFilterRaw)
+          ? activeFilterRaw
+          : 'active';
+
+        const values = [];
+        let whereSql = 'where true';
+        if (activeFilter === 'active') {
+          values.push(true);
+          whereSql += ` and q.is_active = $${values.length}`;
+        } else if (activeFilter === 'passive') {
+          values.push(false);
+          whereSql += ` and q.is_active = $${values.length}`;
+        }
+        if (status) {
+          values.push(status);
+          whereSql += ` and q.status = $${values.length}`;
+        }
+        if (customerId) {
+          values.push(customerId);
+          whereSql += ` and q.customer_id = $${values.length}`;
+        }
+
+        const result = await query(
+          `
+            select
+              q.id,
+              q.quote_number,
+              q.customer_id,
+              q.quote_date,
+              q.valid_until,
+              q.currency,
+              q.exchange_rate,
+              q.subtotal,
+              q.tax_total,
+              q.discount_total,
+              q.grand_total,
+              q.status,
+              q.is_active,
+              q.created_at,
+              c.name as customer_name
+            from public.quotes q
+            left join public.customers c on c.id = q.customer_id
+            ${whereSql}
+            order by q.quote_date desc, q.created_at desc
+            limit 500
+          `,
+          values,
+        );
+        return ok(req, res, { items: result.rows });
+      }
+
+      case 'quote_detail': {
+        if (!requireAnyPage(req, user, ['teklif', 'e_fatura'], res)) return;
+        await ensureQuotesTables();
+        await ensureProductImageUrlColumn();
+        const id = String(req.query.quoteId || '').trim();
+        if (!id) return badRequest(req, res, 'quoteId zorunludur.');
+        const result = await query(
+          `
+            select
+              q.*,
+              json_build_object('name', c.name) as customers,
+              coalesce(
+                (
+                  select json_agg(
+                    to_jsonb(qi) || jsonb_build_object(
+                      'products',
+                      case
+                        when p.id is null then null
+                        else jsonb_build_object(
+                          'name', p.name,
+                          'image_url', p.image_url
+                        )
+                      end
+                    )
+                    order by qi.sort_order asc
+                  )
+                  from public.quote_items qi
+                  left join public.products p on p.id = qi.product_id
+                  where qi.quote_id = q.id
+                ),
+                '[]'::json
+              ) as quote_items
+            from public.quotes q
+            left join public.customers c on c.id = q.customer_id
+            where q.id = $1
+            limit 1
+          `,
+          [id],
+        );
+        return ok(req, res, result.rows[0] ?? {});
+      }
+
+      case 'quote_number': {
+        if (!requireAnyPage(req, user, ['teklif', 'e_fatura'], res)) return;
+        await ensureQuotesTables();
+        const result = await query(`select public.generate_quote_number() as value`);
+        return ok(req, res, { value: result.rows[0]?.value || '' });
+      }
+
+      case 'quote_document_settings': {
+        if (!requireAnyPage(req, user, ['teklif', 'e_fatura'], res)) return;
+        await ensureQuotesTables();
+        const result = await query(
+          `
+            select
+              logo_url,
+              company_title,
+              company_subtitle,
+              bank_details,
+              terms_and_conditions
+            from public.quote_document_settings
+            where id = 1
+            limit 1
+          `,
+        );
+        return ok(req, res, result.rows[0] || {});
       }
 
       case 'products_list': {

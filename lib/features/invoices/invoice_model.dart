@@ -546,6 +546,7 @@ class Product {
   final double minStock;
   final double? currentStock;
   final bool isActive;
+  final String? imageUrl;
 
   const Product({
     required this.id,
@@ -565,6 +566,7 @@ class Product {
     this.minStock = 0,
     this.currentStock,
     this.isActive = true,
+    this.imageUrl,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -586,6 +588,7 @@ class Product {
       minStock: _jsonDouble(json['min_stock']),
       currentStock: _jsonNullableDouble(json['current_stock']),
       isActive: json['is_active'] as bool? ?? true,
+      imageUrl: json['image_url']?.toString(),
     );
   }
 }

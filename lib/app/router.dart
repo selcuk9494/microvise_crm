@@ -13,6 +13,8 @@ import '../features/documents/document_library_screen.dart';
 import '../features/billing/billing_screen.dart';
 import '../features/billing/invoice_pdf_analysis_screen.dart';
 import '../features/e_invoice/e_invoice_screen.dart';
+import '../features/quotes/quote_form_screen.dart';
+import '../features/quotes/quote_settings_screen.dart';
 import '../features/finance/finance_screen.dart';
 import '../features/finance/akinsoft_finance_screen.dart';
 import '../features/products/products_screen.dart';
@@ -209,6 +211,32 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               ),
             ),
             GoRoute(
+              path: 'teklif',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: EInvoiceScreen(section: 'teklif'),
+              ),
+            ),
+            GoRoute(
+              path: 'teklif/yeni',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: QuoteFormScreen(),
+              ),
+            ),
+            GoRoute(
+              path: 'teklif/duzenle/:id',
+              pageBuilder: (context, state) => NoTransitionPage(
+                child: QuoteFormScreen(
+                  quoteId: state.pathParameters['id'],
+                ),
+              ),
+            ),
+            GoRoute(
+              path: 'teklif/ayarlar',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: QuoteSettingsScreen(),
+              ),
+            ),
+            GoRoute(
               path: 'ayarlar',
               pageBuilder: (context, state) => const NoTransitionPage(
                 child: EInvoiceScreen(section: 'ayarlar'),
@@ -257,6 +285,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           pageBuilder: (context, state) => const NoTransitionPage(
             child: MutakabatScreen(openPrices: true),
           ),
+        ),
+        GoRoute(
+          path: '/teklif',
+          redirect: (context, state) => '/e-fatura/teklif',
         ),
         GoRoute(
           path: '/kdv-analizi',
@@ -335,7 +367,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (location.startsWith('/raporlar')) requiredPage = 'raporlar';
       if (location.startsWith('/urunler')) requiredPage = 'urunler';
       if (location.startsWith('/faturalama')) requiredPage = 'faturalama';
-      if (location.startsWith('/e-fatura')) requiredPage = 'e_fatura';
+      if (location.startsWith('/teklif') ||
+          location.startsWith('/e-fatura/teklif')) {
+        if (!pages.contains('teklif') && !pages.contains('e_fatura')) {
+          return '/panel';
+        }
+      } else if (location.startsWith('/e-fatura')) {
+        requiredPage = 'e_fatura';
+      }
       if (location.startsWith('/finans')) requiredPage = 'finans';
       if (location.startsWith('/mutakabat')) requiredPage = 'mutakabat';
       if (location.startsWith('/kdv-analizi')) requiredPage = 'kdv_analizi';
