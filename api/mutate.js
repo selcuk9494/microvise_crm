@@ -32,7 +32,15 @@ const {
   ensureApplicationFormsApprovalColumns,
   ensureApplicationFormActivityLogsTable,
   ensureInvoicePricesIncludeVatColumn,
+  ensureMutakabatRecordsTable,
+  ensureMutakabatPriceSettingsTable,
 } = require('./_lib/schema');
+const {
+  processMutakabat,
+  recalculateSummary,
+  exportMutakabatExcel,
+  decodeBase64File,
+} = require('./_lib/mutakabat_processor');
 const {
   handleCors,
   ok,
@@ -62,6 +70,7 @@ async function readJson(req) {
 const serviceImageBucket = 'service-images';
 const serviceImageMaxBytes = 5 * 1024 * 1024;
 const approvalDocumentMaxBytes = 10 * 1024 * 1024;
+const mutakabatFileMaxBytes = 12 * 1024 * 1024;
 const allowedServiceImageContentTypes = new Set([
   'image/jpeg',
   'image/png',
@@ -303,6 +312,118 @@ async function uploadFormDocument(body) {
     emptyMessage: 'Belge verisi eksik.',
     tooLargeMessage: 'Belge 10 MB sınırını aşıyor.',
   });
+}
+
+function decodeMutakabatFileField(body, key) {
+  const buffer = decodeBase64File(body[key]);
+  if (!buffer) return null;
+  if (buffer.length > mutakabatFileMaxBytes) {
+    const error = new Error(`${key} dosyası 12 MB sınırını aşıyor.`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return buffer;
+}
+
+async function runProcessMutakabat(body) {
+  const unitPrices = body.unitPrices || {};
+  if (!body.bankFileBase64 && body.summary) {
+    const recalculated = recalculateSummary(body.summary, unitPrices);
+    return {
+      summary: recalculated.summary,
+      detailSheets: body.detailSheets || {},
+      unitPrices: recalculated.unitPrices,
+      sourceFiles: body.sourceFiles || {},
+    };
+  }
+
+  const bankBuffer = decodeMutakabatFileField(body, 'bankFileBase64');
+  if (!bankBuffer) {
+    const error = new Error('Banka Excel dosyası zorunludur.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const gmp3Buffer = decodeMutakabatFileField(body, 'gmp3FileBase64');
+  const tsmBuffer = decodeMutakabatFileField(body, 'tsmFileBase64');
+  const result = processMutakabat({
+    bankBuffer,
+    gmp3Buffer,
+    tsmBuffer,
+    unitPrices: body.unitPrices || {},
+  });
+  return {
+    summary: result.summary,
+    detailSheets: result.detailSheets,
+    unitPrices: result.unitPrices,
+    sourceFiles: body.sourceFiles || {},
+  };
+}
+
+async function runExportMutakabatExcel(body) {
+  const id = String(body.id || '').trim();
+  if (id) {
+    await ensureMutakabatRecordsTable();
+    const result = await query(
+      `
+        select period_year, period_month, unit_prices, summary, detail_sheets
+        from public.mutakabat_records
+        where id = $1 and is_active = true
+        limit 1
+      `,
+      [id],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      const error = new Error('Mutakabat kaydı bulunamadı.');
+      error.statusCode = 400;
+      throw error;
+    }
+    const monthNames = [
+      'Ocak',
+      'Şubat',
+      'Mart',
+      'Nisan',
+      'Mayıs',
+      'Haziran',
+      'Temmuz',
+      'Ağustos',
+      'Eylül',
+      'Ekim',
+      'Kasım',
+      'Aralık',
+    ];
+    const periodLabel = `${monthNames[row.period_month - 1] || row.period_month} ${row.period_year}`;
+    const buffer = exportMutakabatExcel({
+      summary: row.summary,
+      detailSheets: row.detail_sheets,
+      unitPrices: row.unit_prices,
+      periodLabel,
+    });
+    return {
+      filename: `mutakabat_${row.period_year}_${String(row.period_month).padStart(2, '0')}.xlsx`,
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      dataBase64: buffer.toString('base64'),
+    };
+  }
+
+  if (!body.summary || !body.detailSheets) {
+    const error = new Error('Excel dışa aktarımı için kayıt id veya özet verisi gerekli.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const buffer = exportMutakabatExcel({
+    summary: body.summary,
+    detailSheets: body.detailSheets,
+    unitPrices: body.unitPrices || {},
+    periodLabel: body.periodLabel || '',
+  });
+  return {
+    filename: body.filename || `mutakabat_${Date.now()}.xlsx`,
+    mimeType:
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    dataBase64: buffer.toString('base64'),
+  };
 }
 
 async function materializeTaxpayerRegistrationDocument(values, formIdHint) {
@@ -1178,6 +1299,8 @@ const allowedTables = new Set([
   'work_orders',
   'work_order_types',
   'work_order_close_notes',
+  'mutakabat_records',
+  'mutakabat_price_settings',
 ]);
 
 const tablePermissions = {
@@ -1221,6 +1344,8 @@ const tablePermissions = {
   finance_accounts: 'finans',
   finance_transactions: 'finans',
   users: 'personel',
+  mutakabat_records: 'mutakabat',
+  mutakabat_price_settings: 'mutakabat',
 };
 
 const columnsCache = new Map();
@@ -1931,6 +2056,24 @@ module.exports = async (req, res) => {
         throw error;
       }
     }
+    if (op === 'processMutakabat') {
+      if (!hasPageAccess(user, 'mutakabat')) return forbidden(req, res);
+      try {
+        return ok(req, res, await runProcessMutakabat(body));
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'exportMutakabatExcel') {
+      if (!hasPageAccess(user, 'mutakabat')) return forbidden(req, res);
+      try {
+        return ok(req, res, await runExportMutakabatExcel(body));
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
     if (op === 'uploadFormDocument') {
       const uploadTable = String(body.table || '').trim();
       if (!['scrap_forms', 'transfer_forms', 'fault_forms'].includes(uploadTable)) {
@@ -1959,6 +2102,12 @@ module.exports = async (req, res) => {
     if (!table) return badRequest(req, res, 'table zorunludur.');
     if (!allowedTables.has(table)) return badRequest(req, res, 'table desteklenmiyor.');
 
+    if (table === 'mutakabat_records') {
+      await ensureMutakabatRecordsTable();
+    }
+    if (table === 'mutakabat_price_settings') {
+      await ensureMutakabatPriceSettingsTable();
+    }
     if (table === 'serial_tracking') {
       await ensureSerialTrackingTable();
     }

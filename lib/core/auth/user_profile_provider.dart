@@ -13,6 +13,7 @@ const kPageProducts = 'urunler';
 const kPageBilling = 'faturalama';
 const kPageEInvoice = 'e_fatura';
 const kPageFinance = 'finans';
+const kPageMutakabat = 'mutakabat';
 const kPageVatAnalysis = 'kdv_analizi';
 const kPageDefinitions = 'tanimlamalar';
 const kPagePersonnel = 'personel';
@@ -42,6 +43,7 @@ const allPagePermissions = <String>{
   kPageBilling,
   kPageEInvoice,
   kPageFinance,
+  kPageMutakabat,
   kPageVatAnalysis,
   kPageDefinitions,
   kPagePersonnel,
@@ -58,6 +60,7 @@ const defaultPersonnelPagePermissions = <String>{
   kPageBilling,
   kPageEInvoice,
   kPageFinance,
+  kPageMutakabat,
   kPageVatAnalysis,
 };
 
@@ -74,6 +77,7 @@ const pagePermissionLabels = <String, String>{
   kPageBilling: 'Faturalama',
   kPageEInvoice: 'E-Fatura',
   kPageFinance: 'Finans',
+  kPageMutakabat: 'Mutakabat',
   kPageVatAnalysis: 'KDV Analizi',
   kPageDefinitions: 'Tanımlamalar',
   kPagePersonnel: 'Personel',

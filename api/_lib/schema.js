@@ -30,6 +30,8 @@ const ensured = {
   customer_country_columns: false,
   invoice_prices_include_vat: false,
   akinsoft_invoice_sync: false,
+  mutakabat_records: false,
+  mutakabat_price_settings: false,
 };
 
 async function ensureCustomerCountryColumns() {
@@ -1703,6 +1705,84 @@ async function ensureAkinsoftInvoiceSyncColumns() {
   return true;
 }
 
+async function ensureMutakabatRecordsTable() {
+  if (ensured.mutakabat_records) return true;
+
+  const exists = await tableExists('mutakabat_records');
+  if (!exists) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
+    if (isProd && allow !== 'true') {
+      throw new Error(
+        'mutakabat_records table is missing. Run migration 0051_mutakabat_records.sql or set ALLOW_SCHEMA_AUTO_CREATE=true.',
+      );
+    }
+    await query(`create extension if not exists pgcrypto`);
+    await query(`
+      create table if not exists public.mutakabat_records (
+        id uuid primary key default gen_random_uuid(),
+        period_year int not null,
+        period_month int not null check (period_month between 1 and 12),
+        title text not null default '',
+        notes text not null default '',
+        status text not null default 'draft',
+        unit_prices jsonb not null default '{}'::jsonb,
+        summary jsonb not null default '{}'::jsonb,
+        detail_sheets jsonb not null default '{}'::jsonb,
+        source_files jsonb not null default '{}'::jsonb,
+        created_by uuid,
+        is_active boolean not null default true,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      )
+    `);
+    await query(`
+      create unique index if not exists idx_mutakabat_records_active_period
+      on public.mutakabat_records (period_year, period_month)
+      where is_active = true
+    `);
+    await query(`
+      create index if not exists idx_mutakabat_records_created_at
+      on public.mutakabat_records (created_at desc)
+    `);
+  }
+  ensured.mutakabat_records = true;
+  return true;
+}
+
+async function ensureMutakabatPriceSettingsTable() {
+  if (ensured.mutakabat_price_settings) return true;
+
+  const exists = await tableExists('mutakabat_price_settings');
+  if (!exists) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
+    if (isProd && allow !== 'true') {
+      throw new Error(
+        'mutakabat_price_settings table is missing. Run migration or set ALLOW_SCHEMA_AUTO_CREATE=true.',
+      );
+    }
+    await query(`create extension if not exists pgcrypto`);
+    await query(`
+      create table if not exists public.mutakabat_price_settings (
+        id uuid primary key default gen_random_uuid(),
+        name text not null default 'Aktif Fiyatlar',
+        unit_prices jsonb not null default '{}'::jsonb,
+        is_active boolean not null default true,
+        created_by uuid,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      )
+    `);
+    await query(`
+      create index if not exists idx_mutakabat_price_settings_created_at
+      on public.mutakabat_price_settings (created_at desc)
+    `);
+  }
+  ensured.mutakabat_price_settings = true;
+  return true;
+}
+
 module.exports = {
   ensureCustomerCountryColumns,
   ensureSerialTrackingTable,
@@ -1733,4 +1813,6 @@ module.exports = {
   ensureApplicationFormActivityLogsTable,
   ensureInvoicePricesIncludeVatColumn,
   ensureAkinsoftInvoiceSyncColumns,
+  ensureMutakabatRecordsTable,
+  ensureMutakabatPriceSettingsTable,
 };

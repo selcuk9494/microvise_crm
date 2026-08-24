@@ -25,6 +25,7 @@ import '../features/forms/fault_form_screen.dart';
 import '../features/forms/scrap_form_screen.dart';
 import '../features/forms/serial_tracking_screen.dart';
 import '../features/forms/transfer_form_screen.dart';
+import '../features/mutakabat/mutakabat_screen.dart';
 import '../features/personnel/personnel_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/service/service_screen.dart';
@@ -247,6 +248,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ],
         ),
         GoRoute(
+          path: '/mutakabat',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: MutakabatScreen()),
+        ),
+        GoRoute(
+          path: '/mutakabat/fiyatlar',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: MutakabatScreen(openPrices: true),
+          ),
+        ),
+        GoRoute(
           path: '/kdv-analizi',
           pageBuilder: (context, state) =>
               const NoTransitionPage(child: InvoicePdfAnalysisScreen()),
@@ -325,6 +337,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (location.startsWith('/faturalama')) requiredPage = 'faturalama';
       if (location.startsWith('/e-fatura')) requiredPage = 'e_fatura';
       if (location.startsWith('/finans')) requiredPage = 'finans';
+      if (location.startsWith('/mutakabat')) requiredPage = 'mutakabat';
       if (location.startsWith('/kdv-analizi')) requiredPage = 'kdv_analizi';
       if (location.startsWith('/tanimlamalar')) requiredPage = 'tanimlamalar';
       if (location.startsWith('/personel')) requiredPage = 'personel';

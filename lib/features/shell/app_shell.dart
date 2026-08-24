@@ -50,6 +50,18 @@ final financeNavExpandedProvider =
       _FinanceNavExpandedNotifier.new,
     );
 
+class _MutakabatNavExpandedNotifier extends Notifier<bool> {
+  @override
+  bool build() => true;
+
+  void toggle() => state = !state;
+}
+
+final mutakabatNavExpandedProvider =
+    NotifierProvider<_MutakabatNavExpandedNotifier, bool>(
+      _MutakabatNavExpandedNotifier.new,
+    );
+
 class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.child});
 
@@ -98,6 +110,7 @@ class _DesktopShell extends ConsumerWidget {
     final isFormsExpanded = ref.watch(formsNavExpandedProvider);
     final isEInvoiceExpanded = ref.watch(eInvoiceNavExpandedProvider);
     final isFinanceExpanded = ref.watch(financeNavExpandedProvider);
+    final isMutakabatExpanded = ref.watch(mutakabatNavExpandedProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -243,6 +256,33 @@ class _DesktopShell extends ConsumerWidget {
                                     _FormsNavSubItem(
                                       label: 'Masraf Faturaları',
                                       path: '/finans/akinsoft/masraf',
+                                    ),
+                                  ],
+                                  matchedLocation: location,
+                                )
+                              else if (item.pageKey == 'mutakabat')
+                                _FormsNavGroup(
+                                  label: item.label,
+                                  icon: item.icon,
+                                  active: _isActive(location, item.path),
+                                  accentColor: _navAccentColor(item.pageKey),
+                                  expanded: isMutakabatExpanded,
+                                  onHeaderTap: () {
+                                    ref
+                                        .read(
+                                          mutakabatNavExpandedProvider.notifier,
+                                        )
+                                        .toggle();
+                                    context.go(item.path);
+                                  },
+                                  subItems: const [
+                                    _FormsNavSubItem(
+                                      label: 'Aylık Kayıtlar',
+                                      path: '/mutakabat',
+                                    ),
+                                    _FormsNavSubItem(
+                                      label: 'Birim Fiyatlar',
+                                      path: '/mutakabat/fiyatlar',
                                     ),
                                   ],
                                   matchedLocation: location,
@@ -593,6 +633,12 @@ List<_FormsNavSubItem> _mobileNavSubItems(_NavItem item) {
         label: 'Masraf Faturaları',
         path: '/finans/akinsoft/masraf',
       ),
+    ];
+  }
+  if (item.pageKey == 'mutakabat') {
+    return const [
+      _FormsNavSubItem(label: 'Aylık Kayıtlar', path: '/mutakabat'),
+      _FormsNavSubItem(label: 'Birim Fiyatlar', path: '/mutakabat/fiyatlar'),
     ];
   }
   return const [];
@@ -1691,6 +1737,8 @@ Color _navAccentColor(String pageKey) {
       return AppTheme.red;
     case 'finans':
       return AppTheme.green;
+    case 'mutakabat':
+      return AppTheme.orange;
     case 'tanimlamalar':
       return AppTheme.sidebarTextMuted;
     case 'personel':
@@ -1880,6 +1928,12 @@ final _navItems = <_NavItem>[
     label: 'Finans',
     icon: AppPhosphorIcons.bank,
     pageKey: 'finans',
+  ),
+  _NavItem(
+    path: '/mutakabat',
+    label: 'Mutakabat',
+    icon: AppPhosphorIcons.arrowsLeftRight,
+    pageKey: 'mutakabat',
   ),
   _NavItem(
     path: '/kdv-analizi',

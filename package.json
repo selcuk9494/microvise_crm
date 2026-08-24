@@ -12,7 +12,8 @@
     "pg": "^8.16.3",
     "qrcode": "^1.5.4",
     "ws": "^8.21.2",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {
     "electron": "^37.2.6",

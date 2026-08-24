@@ -34,6 +34,8 @@ const {
   ensureApplicationFormActivityLogsTable,
   ensureCustomerCountryColumns,
   ensureAkinsoftInvoiceSyncColumns,
+  ensureMutakabatPriceSettingsTable,
+  ensureMutakabatRecordsTable,
 } = require('./_lib/schema');
 const {
   handleCors,
@@ -2757,6 +2759,97 @@ module.exports = async (req, res) => {
         };
         halkbankRatesCache = { fetchedAtMs: nowMs, payload };
         return ok(req, res, payload);
+      }
+
+      case 'mutakabat_list': {
+        if (!requirePage(req, user, 'mutakabat', res)) return;
+        await ensureMutakabatRecordsTable();
+        const showPassive = parseBoolean(req.query.showPassive, false);
+        const values = [];
+        let whereSql = 'where true';
+        if (!showPassive) {
+          values.push(true);
+          whereSql += ` and is_active = $${values.length}`;
+        }
+        const result = await query(
+          `
+            select
+              id,
+              period_year,
+              period_month,
+              title,
+              notes,
+              status,
+              unit_prices,
+              summary,
+              source_files,
+              created_by,
+              is_active,
+              created_at,
+              updated_at
+            from public.mutakabat_records
+            ${whereSql}
+            order by period_year desc, period_month desc, created_at desc
+            limit 240
+          `,
+          values,
+        );
+        return ok(req, res, { items: result.rows });
+      }
+
+      case 'mutakabat_price_settings_list': {
+        if (!requirePage(req, user, 'mutakabat', res)) return;
+        await ensureMutakabatPriceSettingsTable();
+        const result = await query(
+          `
+            select
+              id,
+              name,
+              unit_prices,
+              is_active,
+              created_by,
+              created_at,
+              updated_at
+            from public.mutakabat_price_settings
+            where is_active = true
+            order by updated_at desc, created_at desc
+            limit 50
+          `,
+        );
+        return ok(req, res, { items: result.rows });
+      }
+
+      case 'mutakabat_detail': {
+        if (!requirePage(req, user, 'mutakabat', res)) return;
+        await ensureMutakabatRecordsTable();
+        const id = String(req.query.id || '').trim();
+        if (!id) return badRequest(req, res, 'id zorunludur.');
+        const result = await query(
+          `
+            select
+              id,
+              period_year,
+              period_month,
+              title,
+              notes,
+              status,
+              unit_prices,
+              summary,
+              detail_sheets,
+              source_files,
+              created_by,
+              is_active,
+              created_at,
+              updated_at
+            from public.mutakabat_records
+            where id = $1
+            limit 1
+          `,
+          [id],
+        );
+        const row = result.rows[0];
+        if (!row) return badRequest(req, res, 'Mutakabat kaydı bulunamadı.');
+        return ok(req, res, { item: row });
       }
 
       default:
