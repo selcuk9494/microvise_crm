@@ -5,6 +5,8 @@
 android
 build
 ios
+electron
+dist-electron
 node_modules
 test
 *.log

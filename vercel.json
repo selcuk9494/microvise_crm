@@ -27,6 +27,8 @@
     }
   },
   "rewrites": [
+    { "source": "/api/health", "destination": "/api/me?health=1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
+
