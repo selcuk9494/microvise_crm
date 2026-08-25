@@ -2094,6 +2094,117 @@ module.exports = async (req, res) => {
         return ok(req, res, { items: result.rows });
       }
 
+      case 'pos_collections_list': {
+        if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) return;
+        await query(`
+          create table if not exists public.invoice_payment_links (
+            id uuid primary key default gen_random_uuid(),
+            token text not null unique,
+            customer_id uuid not null references public.customers(id) on delete cascade,
+            invoice_ids uuid[] not null,
+            amount numeric(14,2) not null,
+            currency text not null default 'TRY',
+            description text,
+            status text not null default 'pending',
+            provider text not null default 'halkbank',
+            provider_order_id text,
+            provider_payload jsonb not null default '{}'::jsonb,
+            paid_at timestamptz,
+            created_by uuid,
+            created_at timestamptz not null default now(),
+            updated_at timestamptz not null default now(),
+            expires_at timestamptz
+          )
+        `);
+        const startDate = String(req.query.startDate || '').trim();
+        const endDate = String(req.query.endDate || '').trim();
+        const includeRefunded = parseBoolean(req.query.includeRefunded, false);
+
+        const values = [];
+        let whereSql = `
+          where t.transaction_type = 'collection'
+            and (
+              lower(coalesce(t.payment_method, '')) = 'pos'
+              or lower(coalesce(t.description, '')) like '%sanal pos%'
+              or lower(coalesce(t.description, '')) like '%odeme linki%'
+              or lower(coalesce(t.description, '')) like '%ödeme linki%'
+            )
+        `;
+        if (!includeRefunded) {
+          values.push(true);
+          whereSql += ` and t.is_active = $${values.length}`;
+        }
+        if (startDate) {
+          values.push(startDate);
+          whereSql += ` and coalesce(t.created_at::date, t.transaction_date) >= $${values.length}::date`;
+        }
+        if (endDate) {
+          values.push(endDate);
+          whereSql += ` and coalesce(t.created_at::date, t.transaction_date) <= $${values.length}::date`;
+        }
+
+        const result = await query(
+          `
+            select
+              t.id,
+              t.customer_id,
+              t.invoice_id,
+              t.amount,
+              t.currency,
+              t.exchange_rate,
+              t.payment_method,
+              t.transaction_date,
+              t.description,
+              t.is_active,
+              t.created_at,
+              coalesce(t.created_at::date, t.transaction_date) as paid_on,
+              json_build_object('name', c.name) as customers,
+              json_build_object(
+                'invoice_number', i.invoice_number,
+                'status', i.status,
+                'grand_total', i.grand_total,
+                'paid_amount', i.paid_amount,
+                'currency', i.currency
+              ) as invoices,
+              pl.token as payment_link_token,
+              pl.provider_order_id,
+              pl.status as payment_link_status,
+              pl.paid_at as payment_link_paid_at
+            from public.transactions t
+            left join public.customers c on c.id = t.customer_id
+            left join public.invoices i on i.id = t.invoice_id
+            left join lateral (
+              select l.token, l.provider_order_id, l.status, l.paid_at
+              from public.invoice_payment_links l
+              where t.invoice_id is not null
+                and t.invoice_id = any(l.invoice_ids)
+              order by
+                case when l.status = 'paid' then 0 when l.status = 'refunded' then 1 else 2 end,
+                l.paid_at desc nulls last,
+                l.created_at desc
+              limit 1
+            ) pl on true
+            ${whereSql}
+            order by coalesce(t.created_at, t.transaction_date::timestamptz) desc
+            limit 1000
+          `,
+          values,
+        );
+
+        const items = result.rows;
+        const totalAmount = items
+          .filter((row) => row.is_active !== false)
+          .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+        return ok(req, res, {
+          items,
+          summary: {
+            count: items.length,
+            activeCount: items.filter((row) => row.is_active !== false).length,
+            totalAmount,
+          },
+        });
+      }
+
       case 'finance_accounts': {
         await ensureFinanceTables();
         const includePassive = parseBoolean(req.query.includePassive, false);

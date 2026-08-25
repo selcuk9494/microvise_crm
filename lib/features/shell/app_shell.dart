@@ -784,6 +784,10 @@ List<_FormsNavSubItem> _eInvoiceNavSubItems(Set<String> allowedPages) {
     items.addAll(const [
       _FormsNavSubItem(label: 'Stok/Hizmet', path: '/e-fatura/stok'),
       _FormsNavSubItem(label: 'Cari', path: '/e-fatura/cari'),
+      _FormsNavSubItem(
+        label: 'Sanal POS ile ödenenler',
+        path: '/e-fatura/sanal-pos',
+      ),
       _FormsNavSubItem(label: 'E-Fatura Ayarları', path: '/e-fatura/ayarlar'),
     ]);
   } else if (allowedPages.contains(kPageQuotes)) {

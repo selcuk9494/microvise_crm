@@ -37,6 +37,7 @@ import 'e_invoice_official_url.dart';
 import 'e_invoice_pdf_share.dart';
 import 'e_invoice_print.dart';
 import 'e_invoice_whatsapp_share.dart';
+import 'pos_collections_tab.dart';
 import '../quotes/quote_providers.dart';
 import '../quotes/quotes_screen.dart';
 
@@ -411,6 +412,7 @@ class EInvoiceScreen extends ConsumerWidget {
     final child = switch (section) {
       'stok' => _ProductsTab(moneyTry: _moneyTry),
       'cari' => _AccountsTab(moneyTry: _moneyTry),
+      'sanal_pos' => PosCollectionsTab(moneyTry: _moneyTry),
       'ayarlar' => const _SettingsTab(),
       _ => _InvoicesTab(
         key: ValueKey('invoices-${invoiceType ?? 'all'}'),
@@ -421,6 +423,8 @@ class EInvoiceScreen extends ConsumerWidget {
     final subtitle = switch (section) {
       'stok' => 'Stok ve hizmet tanımları, SAP grup/alt grup ayrımı.',
       'cari' => 'Cari borç, tahsilat ve ödeme takibi.',
+      'sanal_pos' =>
+        'Ödeme linki ile sanal POS’tan tahsil edilen faturalar (tarih filtreli).',
       'ayarlar' => 'Maliye ve SAP entegrasyon ayarları.',
       _ => switch (invoiceType) {
         'purchase' => 'Alış faturaları ve KKTC e-fatura takibi.',

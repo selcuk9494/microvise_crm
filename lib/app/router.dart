@@ -211,6 +211,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               ),
             ),
             GoRoute(
+              path: 'sanal-pos',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: EInvoiceScreen(section: 'sanal_pos'),
+              ),
+            ),
+            GoRoute(
               path: 'teklif',
               pageBuilder: (context, state) => const NoTransitionPage(
                 child: EInvoiceScreen(section: 'teklif'),
