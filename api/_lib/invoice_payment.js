@@ -876,9 +876,7 @@ function buildHalkbankRedirectHtml({
     params.cv2 = cvc;
     params.Ecom_Payment_Card_ExpDate_Year = expireYear;
     params.Ecom_Payment_Card_ExpDate_Month = expireMonth;
-    if (card?.cardHolderName) {
-      params.cardholdername = String(card.cardHolderName).trim();
-    }
+    // cardholdername Halkbank 3d hash'ine eklenmez (lisans-odeme ile aynı).
   }
   const hash = buildHalkbankHashVer3(params, String(config.storeKey || '').trim());
   params.HASH = hash;
@@ -977,9 +975,13 @@ function buildCrmHostedPaymentPageHtml({
     });
   }
   if (status === 'fail') {
+    const raw = String(errorMessage || 'Banka işlemi başarısız döndü.');
+    const isSecurityCode = /g[uü]venlik\s*kodu/i.test(raw);
     return buildStatusHtml({
       title: 'Ödeme tamamlanamadı',
-      message: errorMessage || 'Banka işlemi başarısız döndü.',
+      message: isSecurityCode
+        ? `${raw} Kartın arkasındaki CVC (3 hane) veya bankanın 3D SMS kodunu kontrol edip yeni ödeme linkiyle tekrar deneyin.`
+        : raw,
       ok: false,
     });
   }
@@ -1054,8 +1056,8 @@ function buildCrmHostedPaymentPageHtml({
               <input id="card-expiry" type="text" inputmode="numeric" autocomplete="cc-exp" maxlength="5" placeholder="03/29" required>
             </div>
             <div>
-              <label for="card-cvc">CVC</label>
-              <input id="card-cvc" type="password" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="CVC" required>
+              <label for="card-cvc">CVC (kart arkası 3 hane)</label>
+              <input id="card-cvc" type="text" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="000" required>
             </div>
           </div>
           <div class="actions">
