@@ -969,7 +969,6 @@ function buildCrmHostedPaymentPageHtml({
       : invoiceCount > 0
         ? `${invoiceCount} adet`
         : '-';
-  const payApi = 'https://crm.microvise.net/api/invoice-pay?action=pay';
   const nestpayApi =
     'https://www.microvise.net/wp-admin/admin-post.php?action=microvise_invoice_nestpay';
 
@@ -1084,7 +1083,6 @@ function buildCrmHostedPaymentPageHtml({
     var token=${JSON.stringify(token || '')};
     var amount=${JSON.stringify(amountText)};
     var currency=${JSON.stringify(currencyLabel === '₺' ? 'TRY' : currencyLabel)};
-    var apiUrl=${JSON.stringify(payApi)};
     var nestpayUrl=${JSON.stringify(nestpayApi)};
     var form=document.getElementById('pay-form');
     var err=document.getElementById('err');
@@ -1096,55 +1094,34 @@ function buildCrmHostedPaymentPageHtml({
     var cardCvc=document.getElementById('card-cvc');
     function digits(v){return (v||'').replace(/\\D/g,'');}
     function showError(message){err.textContent=message;err.style.display='block';}
-    function writeHtml(html){document.open();document.write(html);document.close();}
-    function payViaCrm(holder,number,expMonth,expYear,cvc){
-      return fetch(apiUrl,{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          sessionToken:sessionToken,
-          token:token,
-          cardHolderName:holder,
-          cardNumber:number,
-          expireMonth:expMonth,
-          expireYear:expYear,
-          sc:cvc
-        })
-      }).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
-      .then(function(res){
-        if(res.d&&res.d.success&&res.d.html){writeHtml(res.d.html);return;}
-        throw new Error((res.d&&res.d.message)||'Odeme baslatilamadi.');
-      });
-    }
+    // Cross-origin fetch CRM→microvise.net CORS yüzünden "Failed to fetch" verir.
+    // Klasik form POST CORS gerektirmez; eklenti NestPay HTML'ini döner / bankaya yönlendirir.
     function payViaMicrovisePos(holder,number,expMonth,expYear,cvc){
-      var body=new URLSearchParams();
-      body.set('session',sessionToken);
-      body.set('token',token);
-      body.set('amount',amount);
-      body.set('currency',currency);
-      body.set('pan',number);
-      body.set('cv2',cvc);
-      body.set('sc',cvc);
-      body.set('mm',expMonth);
-      body.set('yy',expYearShortFrom(expYear));
-      return fetch(nestpayUrl,{
-        method:'POST',
-        headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
-        body:body.toString(),
-        credentials:'omit'
-      }).then(function(r){
-        return r.text().then(function(t){return {ok:r.ok,status:r.status,t:t};});
-      }).then(function(res){
-        var text=res.t||'';
-        if(res.ok && /est3Dgate|Bankaya|sanalpos/i.test(text)){writeHtml(text);return;}
-        try{
-          var j=JSON.parse(text);
-          throw new Error((j&&j.message)||'Microvise POS baslatilamadi.');
-        }catch(e){
-          if(e&&e.message&&e.message!=='Unexpected end of JSON input') throw e;
-          throw new Error('Microvise POS eklentisi yanit vermedi.');
-        }
+      var f=document.createElement('form');
+      f.method='POST';
+      f.action=nestpayUrl;
+      f.acceptCharset='UTF-8';
+      f.style.display='none';
+      var fields={
+        session:sessionToken,
+        token:token,
+        amount:amount,
+        currency:currency,
+        pan:number,
+        cv2:cvc,
+        sc:cvc,
+        mm:expMonth,
+        yy:expYearShortFrom(expYear)
+      };
+      Object.keys(fields).forEach(function(k){
+        var i=document.createElement('input');
+        i.type='hidden';
+        i.name=k;
+        i.value=fields[k];
+        f.appendChild(i);
       });
+      document.body.appendChild(f);
+      f.submit();
     }
     function expYearShortFrom(y){
       var d=digits(y);
@@ -1177,12 +1154,7 @@ function buildCrmHostedPaymentPageHtml({
       }
       loader.style.display='block';
       btn.disabled=true;
-      // Sadece microvise.net WooCommerce POS (CRM NestPay yoluna sessiz dusme)
-      payViaMicrovisePos(holder,number,expMonth,expYear,cvc).catch(function(e){
-        loader.style.display='none';
-        btn.disabled=false;
-        showError((e&&e.message?e.message:'Odeme baslatilamadi.')+' Eklenti/POS ayarini kontrol edin.');
-      });
+      payViaMicrovisePos(holder,number,expMonth,expYear,cvc);
     });
   })();
   </script>

@@ -1,24 +1,16 @@
-# WordPress fatura ödeme — v1.2 (zorunlu güncelleme)
+# WordPress fatura ödeme — v1.2.1
 
-Aynı kart mağazada çalışıp CRM’de “Güvenlik Kodu hatalı” veriyorsa:
-Microvise POS **TRY** ile çalışıyor; mağaza USD’yi kura çeviriyor.
-Ayrıca NestPay formu + 3D sonrası CC5 onayı WooCommerce kodundan gitmeli.
+## Kurulum
 
-## Kurulum / güncelleme
-
-1. `microvise-invoice-bridge.php` dosyasını **üzerine yaz**:
+1. `microvise-invoice-bridge-1.2.zip` veya `microvise-invoice-bridge.php` dosyasını yükle:
    `wp-content/plugins/microvise-invoice-bridge/microvise-invoice-bridge.php`
-2. Eklentiler’de etkin olduğundan emin ol (gerekirse kapat-aç)
+2. Eklentiler’de sürüm **1.2.1** olsun (gerekirse kapat-aç)
 3. CRM’den **yeni ödeme linki** üret
 
-## Bu sürüm ne yapar?
+## Ne yapar?
 
-- NestPay formunu mağaza `receipt` ile **aynı alanlarla** üretir
-- USD/EUR → Halkbank kuru ile **TRY (949)** çeker
-- Banka dönüşünde WooCommerce’teki gibi **CC5 Auth** yapar
-- Sonucu CRM’e bildirir (fatura kapanır)
+- CRM ödeme formu kartı **doğrudan** microvise.net WooCommerce POS’a POST eder (CORS/`Failed to fetch` yok)
+- NestPay formu mağaza `receipt` ile aynı alanlar + USD→TRY
+- Banka dönüşünde CC5 Auth, sonucu CRM’e bildirir
 
-## Kontrol
-
-Ödeme sırasında “Bankaya yönlendiriliyorsunuz” ve (dövizde) “Karttan çekilecek: … TRY” görülmeli.
-Hâlâ eski CRM hatası ise eklenti dosyası güncellenmemiştir.
+Ödeme sırasında “Bankaya yönlendiriliyorsunuz…” görünmeli.

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Microvise Invoice Payment Bridge
  * Description: Fatura ödemesini WooCommerce Halkbank POS ile başlatır (aynı NestPay 3d + CC5). Banka dönüşünü CRM'e iletir.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: Microvise
  */
 
@@ -121,6 +121,13 @@ function microvise_invoice_to_try_amount( $amount, $currency ) {
 	);
 }
 
+function microvise_invoice_nestpay_fail( $message, $token = '' ) {
+	$crm = microvise_invoice_crm_base();
+	$url = $crm . '/api/invoice-pay?invoice=fail&token=' . rawurlencode( (string) $token ) . '&errmsg=' . rawurlencode( (string) $message );
+	wp_safe_redirect( $url, 302 );
+	exit;
+}
+
 function microvise_invoice_nestpay_start() {
 	$session  = isset( $_POST['session'] ) ? sanitize_text_field( wp_unslash( $_POST['session'] ) ) : '';
 	$token    = isset( $_POST['token'] ) ? sanitize_text_field( wp_unslash( $_POST['token'] ) ) : '';
@@ -137,12 +144,9 @@ function microvise_invoice_nestpay_start() {
 	$mm = str_pad( substr( $mm, -2 ), 2, '0', STR_PAD_LEFT );
 	$yy = str_pad( substr( $yy, -2 ), 2, '0', STR_PAD_LEFT );
 
-	header( 'Content-Type: application/json; charset=utf-8' );
-
+	// CRM sayfasından klasik form POST (CORS yok). Hataları CRM fail ekranına yönlendir.
 	if ( $session === '' || $token === '' || $pan === '' || $cv2 === '' || $mm === '00' || $yy === '00' ) {
-		status_header( 400 );
-		echo wp_json_encode( array( 'success' => false, 'message' => 'Eksik odeme veya kart bilgisi.' ) );
-		exit;
+		microvise_invoice_nestpay_fail( 'Eksik odeme veya kart bilgisi.', $token );
 	}
 
 	$crm  = microvise_invoice_crm_base();
@@ -151,45 +155,33 @@ function microvise_invoice_nestpay_start() {
 		array( 'timeout' => 20 )
 	);
 	if ( is_wp_error( $info ) ) {
-		status_header( 502 );
-		echo wp_json_encode( array( 'success' => false, 'message' => 'CRM oturum dogrulanamadi.' ) );
-		exit;
+		microvise_invoice_nestpay_fail( 'CRM oturum dogrulanamadi.', $token );
 	}
 	$body = json_decode( (string) wp_remote_retrieve_body( $info ), true );
 	if ( empty( $body['ok'] ) ) {
-		status_header( 400 );
-		echo wp_json_encode( array( 'success' => false, 'message' => $body['message'] ?? 'Odeme oturumu gecersiz.' ) );
-		exit;
+		microvise_invoice_nestpay_fail( $body['message'] ?? 'Odeme oturumu gecersiz.', $token );
 	}
 	if ( ! empty( $body['paid'] ) || ( isset( $body['status'] ) && $body['status'] === 'paid' ) ) {
-		status_header( 400 );
-		echo wp_json_encode( array( 'success' => false, 'message' => 'Bu odeme zaten tamamlanmis.' ) );
-		exit;
+		microvise_invoice_nestpay_fail( 'Bu odeme zaten tamamlanmis.', $token );
 	}
 
 	$amount   = (string) ( $body['amount'] ?? $amount );
 	$currency = (string) ( $body['currency'] ?? $currency );
 	$try      = microvise_invoice_to_try_amount( $amount, $currency );
 	if ( is_wp_error( $try ) ) {
-		status_header( 400 );
-		echo wp_json_encode( array( 'success' => false, 'message' => $try->get_error_message() ) );
-		exit;
+		microvise_invoice_nestpay_fail( $try->get_error_message(), $token );
 	}
 
 	$gw = microvise_invoice_halkbank_gateway();
 	if ( ! $gw ) {
-		status_header( 500 );
-		echo wp_json_encode( array( 'success' => false, 'message' => 'WooCommerce microvise_halkbank gecidi bulunamadi.' ) );
-		exit;
+		microvise_invoice_nestpay_fail( 'WooCommerce microvise_halkbank gecidi bulunamadi.', $token );
 	}
 	$gateway_url = (string) $gw->get_option( 'gateway_url' );
 	$merchant_id = (string) $gw->get_option( 'merchant_id' );
 	$store_key   = (string) $gw->get_option( 'store_key' );
 	$storetype   = (string) ( $gw->get_option( 'store_type' ) ?: '3d' );
 	if ( $gateway_url === '' || $merchant_id === '' || $store_key === '' ) {
-		status_header( 500 );
-		echo wp_json_encode( array( 'success' => false, 'message' => 'Halkbank POS ayarlari eksik.' ) );
-		exit;
+		microvise_invoice_nestpay_fail( 'Halkbank POS ayarlari eksik.', $token );
 	}
 
 	$oid      = substr( preg_replace( '/[^a-zA-Z0-9]/', '', $token . wp_generate_password( 8, false, false ) ), 0, 20 );
