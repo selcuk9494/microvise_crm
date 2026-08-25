@@ -8,6 +8,8 @@ $currency = isset($_GET['currency']) ? sanitize_text_field(wp_unslash($_GET['cur
 $customer_name = isset($_GET['customer']) ? sanitize_text_field(wp_unslash($_GET['customer'])) : 'Musteri';
 $invoice_count = isset($_GET['invoices']) ? absint($_GET['invoices']) : 0;
 $error_message = isset($_GET['errmsg']) ? sanitize_text_field(wp_unslash($_GET['errmsg'])) : '';
+$invoice_numbers = isset($_GET['numbers']) ? sanitize_text_field(wp_unslash($_GET['numbers'])) : '';
+$fatura_label = $invoice_numbers !== '' ? $invoice_numbers : ($invoice_count > 0 ? ((string) $invoice_count . ' adet') : '-');
 $api_url = apply_filters(
   'microvise_invoice_payment_pay_url',
   'https://crm.microvise.net/api/invoice-pay?action=pay'
@@ -111,7 +113,7 @@ body{margin:0;background:linear-gradient(180deg,#eff6ff 0%,#f8fafc 100%);font-fa
 <?php else : ?>
       <div class="summary">
         <div class="box"><span class="label">Musteri</span><div class="value"><?php echo esc_html($customer_name); ?></div></div>
-        <div class="box"><span class="label">Fatura</span><div class="value"><?php echo esc_html($invoice_count > 0 ? ((string) $invoice_count . ' adet') : '-'); ?></div></div>
+        <div class="box"><span class="label">Fatura No</span><div class="value"><?php echo esc_html($fatura_label); ?></div></div>
         <div class="box"><span class="label">Tutar</span><div class="value"><?php echo esc_html($amount . ' ' . $currency); ?></div></div>
       </div>
       <p class="helper">Guvenli odeme icin banka sayfasina yonlendirileceksiniz. Kart bilgileriniz banka ekraninda girilir.</p>

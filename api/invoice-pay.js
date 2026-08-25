@@ -11,6 +11,8 @@ const {
   getHostedSessionInfo,
   startHostedPayment,
   buildCrmHostedPaymentPageHtml,
+  getInvoiceNumbersForLink,
+  verifyInvoiceHostedSession,
 } = require('./_lib/invoice_payment');
 
 function sendHtml(res, statusCode, html) {
@@ -83,16 +85,49 @@ module.exports = async (req, res) => {
       !action &&
       (session || invoiceStatus === 'success' || invoiceStatus === 'fail')
     ) {
+      let invoiceNumbers = String(query.numbers || '')
+        .split(',')
+        .map((n) => n.trim())
+        .filter(Boolean);
+      let amount = query.amount;
+      let currency = query.currency;
+      let customerName = query.customer;
+      let invoiceCount = Number(query.invoices || 0) || 0;
+
+      const lookupToken =
+        token ||
+        (session ? verifyInvoiceHostedSession(session)?.token : '') ||
+        '';
+      if (lookupToken) {
+        try {
+          const link = await getPaymentLinkByToken(lookupToken);
+          if (link) {
+            if (!amount) amount = Number(link.amount).toFixed(2);
+            if (!currency) currency = link.currency || 'TRY';
+            if (!customerName) customerName = link.customer_name || '';
+            if (!invoiceCount && Array.isArray(link.invoice_ids)) {
+              invoiceCount = link.invoice_ids.length;
+            }
+            if (!invoiceNumbers.length) {
+              invoiceNumbers = await getInvoiceNumbersForLink(link);
+            }
+          }
+        } catch {
+          // query params ile devam
+        }
+      }
+
       return sendHtml(
         res,
         200,
         buildCrmHostedPaymentPageHtml({
           sessionToken: session,
-          token,
-          amount: query.amount,
-          currency: query.currency,
-          customerName: query.customer,
-          invoiceCount: Number(query.invoices || 0) || 0,
+          token: lookupToken || token,
+          amount,
+          currency,
+          customerName,
+          invoiceCount,
+          invoiceNumbers,
           status: invoiceStatus,
           errorMessage: query.errmsg || '',
         }),

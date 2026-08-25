@@ -641,6 +641,7 @@ function buildHostedPaymentUrl({
   currency,
   customerName,
   invoiceCount,
+  invoiceNumbers,
 }) {
   const hostedUrl = getHostedPageUrl();
   hostedUrl.searchParams.set('session', sessionToken);
@@ -649,6 +650,12 @@ function buildHostedPaymentUrl({
   hostedUrl.searchParams.set('currency', currency || 'TRY');
   if (customerName) hostedUrl.searchParams.set('customer', String(customerName));
   if (invoiceCount) hostedUrl.searchParams.set('invoices', String(invoiceCount));
+  const numbers = (invoiceNumbers || [])
+    .map((n) => String(n || '').trim())
+    .filter(Boolean);
+  if (numbers.length) {
+    hostedUrl.searchParams.set('numbers', numbers.join(', '));
+  }
   return hostedUrl.toString();
 }
 
@@ -681,6 +688,9 @@ async function createInvoicePaymentLink({
     [customerId],
   );
   const customerName = customerResult.rows[0]?.name || '';
+  const invoiceNumbers = invoices
+    .map((i) => i.invoiceNumber)
+    .filter(Boolean);
 
   const inserted = await query(
     `
@@ -725,6 +735,7 @@ async function createInvoicePaymentLink({
     customerId,
     customerName,
     invoiceCount: invoices.length,
+    invoiceNumbers,
   });
 
   const hosted = useHostedPaymentPage(config);
@@ -736,6 +747,7 @@ async function createInvoicePaymentLink({
         currency,
         customerName,
         invoiceCount: invoices.length,
+        invoiceNumbers,
       })
     : directUrl;
 
@@ -773,6 +785,23 @@ async function getPaymentLinkByToken(token) {
     [String(token || '').trim()],
   );
   return result.rows[0] || null;
+}
+
+async function getInvoiceNumbersForLink(link) {
+  const ids = Array.isArray(link?.invoice_ids) ? link.invoice_ids : [];
+  if (!ids.length) return [];
+  const result = await query(
+    `
+      select invoice_number
+      from public.invoices
+      where id = any($1::uuid[])
+      order by invoice_number asc
+    `,
+    [ids],
+  );
+  return result.rows
+    .map((row) => String(row.invoice_number || '').trim())
+    .filter(Boolean);
 }
 
 function nestpayCurrencyCode(currency) {
@@ -919,19 +948,31 @@ function buildCrmHostedPaymentPageHtml({
   currency,
   customerName,
   invoiceCount,
+  invoiceNumbers,
   status,
   errorMessage,
 }) {
   const amountText = Number(amount || 0).toFixed(2);
   const currencyLabel = String(currency || 'TRY');
   const customer = String(customerName || 'Müşteri');
-  const countLabel = invoiceCount > 0 ? `${invoiceCount} adet` : '-';
+  const numbers = (invoiceNumbers || [])
+    .map((n) => String(n || '').trim())
+    .filter(Boolean);
+  const countLabel =
+    numbers.length > 0
+      ? numbers.join(', ')
+      : invoiceCount > 0
+        ? `${invoiceCount} adet`
+        : '-';
   const payApi = 'https://crm.microvise.net/api/invoice-pay?action=pay';
 
   if (status === 'success') {
     return buildStatusHtml({
       title: 'Ödeme onaylandı',
-      message: 'Teşekkürler. Ödemeniz alındı, ilgili faturalar güncellendi.',
+      message:
+        numbers.length > 0
+          ? `Teşekkürler. Ödemeniz alındı. Faturalar: ${numbers.join(', ')}`
+          : 'Teşekkürler. Ödemeniz alındı, ilgili faturalar güncellendi.',
       ok: true,
     });
   }
@@ -967,7 +1008,7 @@ function buildCrmHostedPaymentPageHtml({
     .summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
     .box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px}
     .label{display:block;font-size:11px;color:#64748b;margin-bottom:4px}
-    .value{font-size:16px;font-weight:800}
+    .value{font-size:16px;font-weight:800;word-break:break-word}
     .helper{margin:0 0 14px;color:#64748b;font-size:13px;line-height:1.45}
     .notice{display:none;padding:12px 14px;border-radius:12px;margin-bottom:12px;border:1px solid #fecaca;background:#fff1f2;color:#b91c1c}
     .grid{display:grid;gap:10px}
@@ -993,7 +1034,7 @@ function buildCrmHostedPaymentPageHtml({
       <div class="body">
         <div class="summary">
           <div class="box"><span class="label">Müşteri</span><div class="value">${escapeHtml(customer)}</div></div>
-          <div class="box"><span class="label">Fatura</span><div class="value">${escapeHtml(countLabel)}</div></div>
+          <div class="box"><span class="label">Fatura No</span><div class="value">${escapeHtml(countLabel)}</div></div>
           <div class="box"><span class="label">Tutar</span><div class="value">${escapeHtml(amountText + ' ' + currencyLabel)}</div></div>
         </div>
         <p class="helper">Kart bilgilerinizi girin. 3D Secure onayı sonrası sonuç bu ekranda gösterilir.</p>
@@ -1439,6 +1480,10 @@ async function handlePaymentCallback(token, body) {
     if (invoiceCount) {
       resultUrl.searchParams.set('invoices', String(invoiceCount));
     }
+    const invoiceNumbers = await getInvoiceNumbersForLink(link);
+    if (invoiceNumbers.length) {
+      resultUrl.searchParams.set('numbers', invoiceNumbers.join(', '));
+    }
     if (!success) {
       resultUrl.searchParams.set('errmsg', failMessage.slice(0, 240));
     }
@@ -1487,6 +1532,10 @@ async function getHostedSessionInfo({ sessionToken, token }) {
     error.statusCode = 400;
     throw error;
   }
+  const invoiceNumbers =
+    Array.isArray(session?.invoiceNumbers) && session.invoiceNumbers.length
+      ? session.invoiceNumbers
+      : await getInvoiceNumbersForLink(link);
   return {
     ok: true,
     token: link.token,
@@ -1495,6 +1544,7 @@ async function getHostedSessionInfo({ sessionToken, token }) {
     currency: link.currency || 'TRY',
     customerName: link.customer_name || session?.customerName || '',
     invoiceCount: Array.isArray(link.invoice_ids) ? link.invoice_ids.length : null,
+    invoiceNumbers,
     description: link.description || '',
     expiresAt: link.expires_at,
     paid: link.status === 'paid',
@@ -1559,4 +1609,6 @@ module.exports = {
   getHostedPageUrl,
   useHostedPaymentPage,
   buildCrmHostedPaymentPageHtml,
+  getInvoiceNumbersForLink,
+  verifyInvoiceHostedSession,
 };
