@@ -366,7 +366,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
             data: (result) {
               if (result.items.isEmpty) {
                 return const EmptyStateCard(
-                  icon: AppPhosphorIcons.creditCard,
+                  icon: AppPhosphorIcons.money,
                   title: 'Sanal POS tahsilatı yok',
                   message:
                       'Seçilen tarihte kayıt yok. Bugün / dün veya farklı tarih deneyin.',
