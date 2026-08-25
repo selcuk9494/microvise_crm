@@ -13,6 +13,7 @@ const {
   buildCrmHostedPaymentPageHtml,
   getInvoiceNumbersForLink,
   verifyInvoiceHostedSession,
+  verifyPosRefundTicket,
 } = require('./_lib/invoice_payment');
 
 function sendHtml(res, statusCode, html) {
@@ -167,6 +168,18 @@ module.exports = async (req, res) => {
           message: error.message || 'Oturum okunamadı',
         });
       }
+    }
+
+    if (
+      (req.method === 'GET' || req.method === 'POST') &&
+      (action === 'verify-refund' || action === 'verify_refund')
+    ) {
+      const body = req.method === 'POST' ? await readBody(req) : {};
+      const ticket = String(
+        body.ticket || body.refund_ticket || query.ticket || '',
+      ).trim();
+      const verified = await verifyPosRefundTicket(ticket);
+      return sendJson(res, verified.ok ? 200 : 400, verified);
     }
 
     if (req.method === 'POST' && (action === 'pay' || action === 'hosted-pay')) {

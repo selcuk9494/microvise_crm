@@ -372,7 +372,97 @@ async function sendHalkbankOrderAction(type, { orderId, amount, currency }, conf
   return { approved: false, message: lastMessage, type };
 }
 
-async function refundViaWordPressBridge({ orderId, amount, currency }) {
+async function createPosRefundTicket({
+  linkId,
+  orderId,
+  amount,
+  currency,
+  invoiceId,
+  transactionIds,
+}) {
+  const ticket = crypto.randomBytes(24).toString('hex');
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  const pending = {
+    ticket,
+    orderId: String(orderId || ''),
+    amount: Number(amount || 0).toFixed(2),
+    currency: String(currency || '949'),
+    invoiceId: String(invoiceId || ''),
+    transactionIds: Array.isArray(transactionIds) ? transactionIds : [],
+    expiresAt,
+  };
+  await query(
+    `
+      update public.invoice_payment_links
+      set
+        provider_payload = coalesce(provider_payload, '{}'::jsonb) || $2::jsonb,
+        updated_at = now()
+      where id = $1
+    `,
+    [linkId, JSON.stringify({ pending_refund: pending })],
+  );
+  return pending;
+}
+
+async function verifyPosRefundTicket(ticket) {
+  const token = String(ticket || '').trim();
+  if (!token) {
+    return { ok: false, message: 'Eksik iade bileti.' };
+  }
+  const result = await query(
+    `
+      select id, provider_payload, status
+      from public.invoice_payment_links
+      where provider_payload -> 'pending_refund' ->> 'ticket' = $1
+      order by updated_at desc
+      limit 1
+    `,
+    [token],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    return { ok: false, message: 'Iade bileti bulunamadi veya kullanildi.' };
+  }
+  const pending = row.provider_payload?.pending_refund || {};
+  if (String(pending.ticket || '') !== token) {
+    return { ok: false, message: 'Iade bileti gecersiz.' };
+  }
+  const expiresAt = Date.parse(String(pending.expiresAt || ''));
+  if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) {
+    return { ok: false, message: 'Iade bileti suresi dolmus.' };
+  }
+  if (String(row.status || '') === 'refunded') {
+    return { ok: false, message: 'Bu odeme zaten iade edilmis.' };
+  }
+  return {
+    ok: true,
+    linkId: row.id,
+    orderId: String(pending.orderId || ''),
+    amount: String(pending.amount || ''),
+    currency: String(pending.currency || '949'),
+    invoiceId: String(pending.invoiceId || ''),
+  };
+}
+
+async function clearPosRefundTicket(linkId) {
+  await query(
+    `
+      update public.invoice_payment_links
+      set
+        provider_payload = coalesce(provider_payload, '{}'::jsonb) - 'pending_refund',
+        updated_at = now()
+      where id = $1
+    `,
+    [linkId],
+  );
+}
+
+async function refundViaWordPressBridge({
+  orderId,
+  amount,
+  currency,
+  refundTicket = '',
+}) {
   const bridgeUrl =
     process.env.INVOICE_PAYMENT_REFUND_URL ||
     'https://www.microvise.net/wp-admin/admin-post.php?action=microvise_invoice_nestpay_refund';
@@ -383,24 +473,32 @@ async function refundViaWordPressBridge({ orderId, amount, currency }) {
     process.env.HALKBANK_STORE_KEY,
     process.env.INVOICE_PAYMENT_API_PASSWORD,
     process.env.LICENSE_PAYMENT_API_PASSWORD,
+    // Ticket-only auth: WP 1.3.2+ CRM dogrulama kullanir; key opsiyonel
+    refundTicket ? 'ticket' : '',
   ]
     .map((v) => String(v || '').trim())
     .filter(Boolean);
-  // unique preserve order
   const keys = [...new Set(bridgeKeys)];
-  if (!keys.length) {
+  if (!keys.length && !refundTicket) {
     return { approved: false, message: 'WP bridge anahtari yok', skipped: true };
   }
 
   let lastMessage = 'WP iade basarisiz';
-  for (const bridgeKey of keys) {
+  const attempts = refundTicket
+    ? [{ bridge_key: 'ticket', refund_ticket: refundTicket }, ...keys.map((k) => ({ bridge_key: k, refund_ticket: refundTicket }))]
+    : keys.map((k) => ({ bridge_key: k, refund_ticket: '' }));
+
+  for (const attempt of attempts) {
     try {
       const body = new URLSearchParams({
-        bridge_key: bridgeKey,
+        bridge_key: attempt.bridge_key,
         order_id: String(orderId || ''),
         amount: Number(amount || 0).toFixed(2),
         currency: String(currency || '949'),
       });
+      if (attempt.refund_ticket) {
+        body.set('refund_ticket', attempt.refund_ticket);
+      }
       const response = await fetch(bridgeUrl, {
         method: 'POST',
         headers: {
@@ -427,22 +525,19 @@ async function refundViaWordPressBridge({ orderId, amount, currency }) {
       }
       if (json?.message) {
         lastMessage = json.message;
-        // Yanlis anahtar ise diger key'i dene
-        if (/yetkisiz|unauthor|forbidden|invalid/i.test(json.message)) {
+        if (/yetkisiz|unauthor|forbidden|invalid key/i.test(json.message)) {
           continue;
         }
-        // Eklenti yok / action yok
-        if (/bulunamad|not found|unknown action/i.test(json.message)) {
+        if (/bulunamad|not found|unknown action|eklentisi eksik/i.test(json.message)) {
           lastMessage =
-            'WordPress iade eklentisi eksik (microvise-invoice-bridge 1.3+ gerekli).';
+            'WordPress iade eklentisi eksik (microvise-invoice-bridge 1.3.2+ gerekli).';
           break;
         }
-        // Banka hatasi — diger key denemek ise yaramaz
         break;
       }
       if (!json && /admin-post|wordpress|html/i.test(text)) {
         lastMessage =
-          'WordPress iade endpoint yanit vermedi. Eklenti surumu 1.3+ oldugundan emin olun.';
+          'WordPress iade endpoint yanit vermedi. Eklenti surumu 1.3.2+ oldugundan emin olun.';
         break;
       }
       lastMessage = `WP iade HTTP ${response.status}`;
@@ -603,10 +698,21 @@ async function refundInvoicePosPayment({
     throw error;
   }
 
+  const collectionIds = collections.rows.map((row) => row.id);
+  const pending = await createPosRefundTicket({
+    linkId: link.id,
+    orderId,
+    amount: refundAmount,
+    currency: refundCurrency,
+    invoiceId: invId,
+    transactionIds: collectionIds,
+  });
+
   let bankResult = await refundViaWordPressBridge({
     orderId,
     amount: refundAmount,
     currency: refundCurrency,
+    refundTicket: pending.ticket,
   });
   const wpMessage = bankResult.message;
 
@@ -614,7 +720,6 @@ async function refundInvoicePosPayment({
     const config = getPosConfigFromEnv();
     const { apiName, apiPassword } = resolveHalkbankApiCredentials(config);
     if (apiName && apiPassword && config.merchantId) {
-      // Credit once, then Void (ayni gun iptal)
       bankResult = await sendHalkbankOrderAction(
         'Credit',
         { orderId, amount: refundAmount, currency: refundCurrency },
@@ -632,13 +737,14 @@ async function refundInvoicePosPayment({
       bankResult = {
         approved: false,
         message:
-          `${wpMessage} | CRM API kullanicisi eksik; iade icin WordPress eklentisi (1.3+) zorunlu.`,
+          `${wpMessage} | CRM API kullanicisi eksik; iade icin WordPress eklentisi (1.3.2+) zorunlu.`,
         via: 'wordpress',
       };
     }
   }
 
   if (!bankResult.approved) {
+    await clearPosRefundTicket(link.id);
     const error = new Error(
       humanizePosRefundError(
         [wpMessage, bankResult.message].filter(Boolean).join(' | '),
@@ -648,7 +754,6 @@ async function refundInvoicePosPayment({
     throw error;
   }
 
-  const collectionIds = collections.rows.map((row) => row.id);
   await withTransaction(async (txQuery) => {
     await txQuery(
       `
@@ -686,7 +791,7 @@ async function refundInvoicePosPayment({
         update public.invoice_payment_links
         set
           status = case when $2::boolean then status else 'refunded' end,
-          provider_payload = coalesce(provider_payload, '{}'::jsonb) || $3::jsonb,
+          provider_payload = (coalesce(provider_payload, '{}'::jsonb) - 'pending_refund') || $3::jsonb,
           updated_at = now()
         where id = $1
       `,
@@ -2091,6 +2196,7 @@ module.exports = {
   startPaymentRedirect,
   handlePaymentCallback,
   refundInvoicePosPayment,
+  verifyPosRefundTicket,
   getPosConfigFromEnv,
   validatePosConfig,
   getHostedPageUrl,

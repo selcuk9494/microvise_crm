@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Microvise Invoice Payment Bridge
  * Description: Fatura ödemesini WooCommerce Halkbank POS ile başlatır (aynı NestPay 3d + CC5). Banka dönüşünü CRM'e iletir.
- * Version: 1.3.1
+ * Version: 1.3.2
  * Author: Microvise
  */
 
@@ -429,16 +429,16 @@ function microvise_invoice_halkbank_bridge() {
 }
 
 /**
- * CRM'den Sanal POS iade (Void sonra Credit). WooCommerce Halkbank API bilgilerini kullanır.
- * Auth: bridge_key = Halkbank store_key (CRM env ile aynı).
+ * CRM'den Sanal POS iade. Auth: refund_ticket (CRM dogrular) veya store_key/api_password.
  */
 function microvise_invoice_nestpay_refund() {
 	header( 'Content-Type: application/json; charset=utf-8' );
 
-	$bridge_key = isset( $_POST['bridge_key'] ) ? (string) wp_unslash( $_POST['bridge_key'] ) : '';
-	$order_id   = isset( $_POST['order_id'] ) ? sanitize_text_field( wp_unslash( $_POST['order_id'] ) ) : '';
-	$amount     = isset( $_POST['amount'] ) ? sanitize_text_field( wp_unslash( $_POST['amount'] ) ) : '';
-	$currency   = isset( $_POST['currency'] ) ? sanitize_text_field( wp_unslash( $_POST['currency'] ) ) : '949';
+	$bridge_key    = isset( $_POST['bridge_key'] ) ? (string) wp_unslash( $_POST['bridge_key'] ) : '';
+	$refund_ticket = isset( $_POST['refund_ticket'] ) ? sanitize_text_field( wp_unslash( $_POST['refund_ticket'] ) ) : '';
+	$order_id      = isset( $_POST['order_id'] ) ? sanitize_text_field( wp_unslash( $_POST['order_id'] ) ) : '';
+	$amount        = isset( $_POST['amount'] ) ? sanitize_text_field( wp_unslash( $_POST['amount'] ) ) : '';
+	$currency      = isset( $_POST['currency'] ) ? sanitize_text_field( wp_unslash( $_POST['currency'] ) ) : '949';
 
 	$gw = microvise_invoice_halkbank_gateway();
 	if ( ! $gw ) {
@@ -446,17 +446,47 @@ function microvise_invoice_nestpay_refund() {
 		echo wp_json_encode( array( 'success' => false, 'message' => 'WooCommerce Halkbank gecidi yok.' ) );
 		exit;
 	}
-	$store_key    = (string) $gw->get_option( 'store_key' );
-	$api_password = (string) $gw->get_option( 'api_password' );
-	$option_secret = (string) get_option( 'microvise_invoice_bridge_secret', '' );
-	$auth_ok       = false;
-	foreach ( array( $store_key, $api_password, $option_secret ) as $candidate ) {
-		if ( $candidate !== '' && hash_equals( $candidate, $bridge_key ) ) {
-			$auth_ok = true;
-			break;
+
+	$auth_ok = false;
+	if ( $refund_ticket !== '' ) {
+		$crm  = microvise_invoice_crm_base();
+		$info = wp_remote_get(
+			$crm . '/api/invoice-pay?action=verify-refund&ticket=' . rawurlencode( $refund_ticket ),
+			array( 'timeout' => 20 )
+		);
+		if ( ! is_wp_error( $info ) ) {
+			$verified = json_decode( (string) wp_remote_retrieve_body( $info ), true );
+			if ( ! empty( $verified['ok'] ) ) {
+				$auth_ok  = true;
+				$order_id = (string) ( $verified['orderId'] ?? $order_id );
+				$amount   = (string) ( $verified['amount'] ?? $amount );
+				$currency = (string) ( $verified['currency'] ?? $currency );
+			} else {
+				status_header( 403 );
+				echo wp_json_encode(
+					array(
+						'success' => false,
+						'message' => $verified['message'] ?? 'CRM iade bileti gecersiz.',
+					)
+				);
+				exit;
+			}
 		}
 	}
-	if ( $bridge_key === '' || ! $auth_ok ) {
+
+	if ( ! $auth_ok ) {
+		$store_key     = (string) $gw->get_option( 'store_key' );
+		$api_password  = (string) $gw->get_option( 'api_password' );
+		$option_secret = (string) get_option( 'microvise_invoice_bridge_secret', '' );
+		foreach ( array( $store_key, $api_password, $option_secret ) as $candidate ) {
+			if ( $candidate !== '' && $bridge_key !== '' && hash_equals( $candidate, $bridge_key ) ) {
+				$auth_ok = true;
+				break;
+			}
+		}
+	}
+
+	if ( ! $auth_ok ) {
 		status_header( 403 );
 		echo wp_json_encode( array( 'success' => false, 'message' => 'Yetkisiz iade istegi.' ) );
 		exit;
@@ -485,7 +515,6 @@ function microvise_invoice_nestpay_refund() {
 		$urls[] = preg_replace( '#/fim/api/?$#i', '/fim/cc5xml', $api_url );
 	}
 
-	// Once Credit (iade), sonra Void (ayni gun iptal)
 	$try_types = array( 'Credit', 'Void' );
 	$last_err  = 'Iade basarisiz';
 	foreach ( $try_types as $type ) {

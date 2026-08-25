@@ -1,17 +1,14 @@
-# WordPress fatura ödeme — v1.3.0
+# WordPress fatura ödeme — v1.3.2
 
-## Kurulum
+## Kurulum (iade için zorunlu)
 
-1. `microvise-invoice-bridge.php` →  
-   `wp-content/plugins/microvise-invoice-bridge/microvise-invoice-bridge.php`
-2. Sürüm **1.3.0** olsun (kapat-aç)
-3. CRM Vercel deploy’unun tamamlanmasını bekleyin
+1. `microvise-invoice-bridge-1.2.zip` yükle → sürüm **1.3.2**
+2. CRM deploy bitsin
+3. Sanal POS listesinden **İade** deneyin
 
-## Özellikler
+## İade nasıl çalışır?
 
-- NestPay ödeme (TRY dönüşümü + CC5)
-- **Sanal POS iade**: CRM ··· menü → “Sanal POS iade”  
-  Bankaya Void/Credit + CRM tahsilatını geri alır
+CRM kısa ömürlü bir **iade bileti** üretir → WordPress bileti CRM’den doğrular →
+mağaza WooCommerce Halkbank API ile **Credit/Void** yapar → CRM tahsilatı kapatır.
 
-İade için WooCommerce Halkbank `store_key` CRM env ile aynı olmalı  
-(`INVOICE_PAYMENT_STORE_KEY` / `LICENSE_PAYMENT_STORE_KEY`).
+`store_key` eşleşmesi artık zorunlu değil (1.3.2+).
