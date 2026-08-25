@@ -243,7 +243,8 @@ function getHostedPageUrl() {
   const exactUrl =
     process.env.INVOICE_PAYMENT_HOSTED_PAGE_URL ||
     process.env.PAYMENT_INVOICE_HOSTED_PAGE_URL ||
-    'https://www.microvise.net/fatura-odeme';
+    // WP /fatura-odeme hazır olunca env ile microvise.net'e alınır.
+    'https://crm.microvise.net/api/invoice-pay';
   try {
     const normalized = new URL(String(exactUrl).trim());
     if (normalized.protocol !== 'https:' && normalized.protocol !== 'http:') {
@@ -252,7 +253,7 @@ function getHostedPageUrl() {
     normalized.hash = '';
     return normalized;
   } catch {
-    return new URL('https://www.microvise.net/fatura-odeme');
+    return new URL('https://crm.microvise.net/api/invoice-pay');
   }
 }
 
@@ -609,6 +610,130 @@ function buildStatusHtml({ title, message, ok }) {
 </html>`;
 }
 
+function buildCrmHostedPaymentPageHtml({
+  sessionToken,
+  token,
+  amount,
+  currency,
+  customerName,
+  invoiceCount,
+  status,
+  errorMessage,
+}) {
+  const amountText = Number(amount || 0).toFixed(2);
+  const currencyLabel = String(currency || 'TRY');
+  const customer = String(customerName || 'Müşteri');
+  const countLabel = invoiceCount > 0 ? `${invoiceCount} adet` : '-';
+  const payApi = 'https://crm.microvise.net/api/invoice-pay?action=pay';
+
+  if (status === 'success') {
+    return buildStatusHtml({
+      title: 'Ödeme onaylandı',
+      message: 'Teşekkürler. Ödemeniz alındı, ilgili faturalar güncellendi.',
+      ok: true,
+    });
+  }
+  if (status === 'fail') {
+    return buildStatusHtml({
+      title: 'Ödeme tamamlanamadı',
+      message: errorMessage || 'Banka işlemi başarısız döndü.',
+      ok: false,
+    });
+  }
+  if (!sessionToken) {
+    return buildStatusHtml({
+      title: 'Ödeme bağlantısı geçersiz',
+      message: 'Bu ekran CRM üzerinden oluşturulan geçerli ödeme oturumu ile açılmalıdır.',
+      ok: false,
+    });
+  }
+
+  return `<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fatura Ödeme · Microvise</title>
+  <style>
+    body{margin:0;background:linear-gradient(180deg,#eff6ff 0%,#f8fafc 100%);font-family:system-ui,-apple-system,sans-serif;color:#0f172a}
+    .wrap{max-width:720px;margin:16px auto;padding:0 12px}
+    .card{background:#fff;border:1px solid #dbe4f0;border-radius:20px;overflow:hidden;box-shadow:0 16px 40px rgba(15,23,42,.10)}
+    .hero{padding:18px 20px;background:linear-gradient(135deg,#0d6efd 0%,#1d4ed8 55%,#0f3d91 100%);color:#fff}
+    .hero h1{margin:0 0 4px;font-size:24px}
+    .hero p{margin:0;opacity:.92;font-size:14px}
+    .body{padding:18px}
+    .summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
+    .box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px}
+    .label{display:block;font-size:11px;color:#64748b;margin-bottom:4px}
+    .value{font-size:16px;font-weight:800}
+    .helper{margin:0 0 14px;color:#64748b;font-size:13px;line-height:1.45}
+    .notice{display:none;padding:12px 14px;border-radius:12px;margin-bottom:12px;border:1px solid #fecaca;background:#fff1f2;color:#b91c1c}
+    .actions{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+    button{border:0;border-radius:999px;padding:12px 18px;font-size:14px;font-weight:700;cursor:pointer;background:#dc2626;color:#fff}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .muted{font-size:12px;color:#64748b}
+    .loader{display:none;margin-top:10px;color:#1d4ed8;font-weight:700;font-size:13px}
+    @media(max-width:640px){.summary{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="hero">
+        <h1>Fatura Ödeme</h1>
+        <p>Ödeme Microvise sanal POS üzerinden alınır.</p>
+      </div>
+      <div class="body">
+        <div class="summary">
+          <div class="box"><span class="label">Müşteri</span><div class="value">${escapeHtml(customer)}</div></div>
+          <div class="box"><span class="label">Fatura</span><div class="value">${escapeHtml(countLabel)}</div></div>
+          <div class="box"><span class="label">Tutar</span><div class="value">${escapeHtml(amountText + ' ' + currencyLabel)}</div></div>
+        </div>
+        <p class="helper">Güvenli ödeme için banka sayfasına yönlendirileceksiniz. Kart bilgileriniz banka ekranında girilir.</p>
+        <div id="err" class="notice"></div>
+        <div class="actions">
+          <div class="muted">3D Secure · Microvise Sanal POS</div>
+          <button id="pay" type="button">Ödemeye Git</button>
+        </div>
+        <div id="loader" class="loader">Banka ekranı hazırlanıyor…</div>
+      </div>
+    </div>
+  </div>
+  <script>
+  (function(){
+    var sessionToken=${JSON.stringify(sessionToken)};
+    var token=${JSON.stringify(token || '')};
+    var apiUrl=${JSON.stringify(payApi)};
+    var err=document.getElementById('err');
+    var loader=document.getElementById('loader');
+    var btn=document.getElementById('pay');
+    btn.addEventListener('click',function(){
+      err.style.display='none';
+      loader.style.display='block';
+      btn.disabled=true;
+      fetch(apiUrl,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({sessionToken:sessionToken,token:token})
+      }).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+      .then(function(res){
+        if(res.d&&res.d.success&&res.d.html){
+          document.open();document.write(res.d.html);document.close();return;
+        }
+        throw new Error((res.d&&res.d.message)||'Ödeme başlatılamadı.');
+      }).catch(function(e){
+        loader.style.display='none';
+        btn.disabled=false;
+        err.textContent=e&&e.message?e.message:'Ödeme başlatılamadı.';
+        err.style.display='block';
+      });
+    });
+  })();
+  </script>
+</body>
+</html>`;
+}
+
 async function startPaymentRedirect(token, req) {
   const link = await getPaymentLinkByToken(token);
   if (!link) {
@@ -851,6 +976,42 @@ async function handlePaymentCallback(token, body) {
     providerOrderId:
       body?.oid || body?.OrderId || body?.orderid || link.provider_order_id,
   });
+
+  const config = getPosConfigFromEnv();
+  if (useHostedPaymentPage(config)) {
+    const resultUrl = getHostedPageUrl();
+    resultUrl.searchParams.set('invoice', success ? 'success' : 'fail');
+    resultUrl.searchParams.set('token', String(token || ''));
+    resultUrl.searchParams.set('amount', Number(link.amount).toFixed(2));
+    resultUrl.searchParams.set('currency', link.currency || 'TRY');
+    if (link.customer_name) {
+      resultUrl.searchParams.set('customer', String(link.customer_name));
+    }
+    const invoiceCount = Array.isArray(link.invoice_ids)
+      ? link.invoice_ids.length
+      : 0;
+    if (invoiceCount) {
+      resultUrl.searchParams.set('invoices', String(invoiceCount));
+    }
+    if (!success) {
+      const errmsg = String(
+        body?.errmsg || body?.ErrMsg || body?.mdErrorMsg || 'İşlem tamamlanamadı.',
+      );
+      resultUrl.searchParams.set('errmsg', errmsg.slice(0, 240));
+    }
+    return {
+      statusCode: 302,
+      redirect: resultUrl.toString(),
+      html: buildStatusHtml({
+        title: success ? 'Ödeme başarılı' : 'Ödeme başarısız',
+        message: success
+          ? 'Teşekkürler. Ödemeniz alındı, faturalar güncellendi.'
+          : String(body?.errmsg || body?.ErrMsg || 'İşlem tamamlanamadı.'),
+        ok: success,
+      }),
+    };
+  }
+
   return {
     statusCode: 200,
     html: buildStatusHtml({
@@ -944,4 +1105,5 @@ module.exports = {
   validatePosConfig,
   getHostedPageUrl,
   useHostedPaymentPage,
+  buildCrmHostedPaymentPageHtml,
 };

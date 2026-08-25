@@ -10,6 +10,7 @@ const {
   getPaymentLinkByToken,
   getHostedSessionInfo,
   startHostedPayment,
+  buildCrmHostedPaymentPageHtml,
 } = require('./_lib/invoice_payment');
 
 function sendHtml(res, statusCode, html) {
@@ -73,10 +74,41 @@ module.exports = async (req, res) => {
     const query = getQuery(req);
     const action = String(query.action || '').trim().toLowerCase();
     const token = String(query.token || '').trim();
+    const session = String(query.session || '').trim();
+    const invoiceStatus = String(query.invoice || '').trim().toLowerCase();
+
+    // Hosted ödeme ekranı (CRM fallback; WP /fatura-odeme hazır olunca env ile oraya alınır)
+    if (
+      req.method === 'GET' &&
+      !action &&
+      (session || invoiceStatus === 'success' || invoiceStatus === 'fail')
+    ) {
+      return sendHtml(
+        res,
+        200,
+        buildCrmHostedPaymentPageHtml({
+          sessionToken: session,
+          token,
+          amount: query.amount,
+          currency: query.currency,
+          customerName: query.customer,
+          invoiceCount: Number(query.invoices || 0) || 0,
+          status: invoiceStatus,
+          errorMessage: query.errmsg || '',
+        }),
+      );
+    }
 
     if (req.method === 'POST' && action === 'callback') {
       const payload = await readBody(req);
       const result = await handlePaymentCallback(token, payload);
+      if (result.redirect) {
+        res.statusCode = result.statusCode || 302;
+        res.setHeader('Location', result.redirect);
+        res.setHeader('Cache-Control', 'no-store');
+        res.end();
+        return;
+      }
       return sendHtml(res, result.statusCode, result.html);
     }
 
@@ -138,6 +170,13 @@ module.exports = async (req, res) => {
       }
       if (action === 'callback') {
         const result = await handlePaymentCallback(token, query);
+        if (result.redirect) {
+          res.statusCode = result.statusCode || 302;
+          res.setHeader('Location', result.redirect);
+          res.setHeader('Cache-Control', 'no-store');
+          res.end();
+          return;
+        }
         return sendHtml(res, result.statusCode, result.html);
       }
       const result = await startPaymentRedirect(token, req);
