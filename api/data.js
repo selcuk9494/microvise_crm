@@ -1908,7 +1908,10 @@ module.exports = async (req, res) => {
               json_build_object('name', c.name) as customers,
               fi.erp_invoice_number,
               asm.source_id as akinsoft_source_id,
-              asm.source_code as akinsoft_source_code
+              asm.source_code as akinsoft_source_code,
+              last_pay.payment_method as last_payment_method,
+              last_pay.description as last_payment_description,
+              last_pay.paid_at as last_payment_at
             from filtered_invoices fi
             left join public.customers c on c.id = fi.customer_id
             left join item_totals on item_totals.invoice_id = fi.id
@@ -1916,6 +1919,18 @@ module.exports = async (req, res) => {
               on asm.source_system = 'akinsoft'
              and asm.source_type = 'invoice'
              and asm.local_id = fi.id
+            left join lateral (
+              select
+                t.payment_method,
+                t.description,
+                coalesce(t.created_at, t.transaction_date::timestamptz) as paid_at
+              from public.transactions t
+              where t.invoice_id = fi.id
+                and t.is_active = true
+                and t.transaction_type in ('collection', 'payment')
+              order by coalesce(t.created_at, t.transaction_date::timestamptz) desc nulls last
+              limit 1
+            ) last_pay on true
             order by
               fi.invoice_date desc,
               nullif(

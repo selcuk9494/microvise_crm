@@ -962,7 +962,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                       AppPhosphorIcons.link,
                                       size: 18,
                                     ),
-                                    label: const Text('Ödeme Linki'),
+                                    label: const Text('Toplu Ödeme Linki'),
                                   ),
                                   const Gap(8),
                                   OutlinedButton.icon(
@@ -1168,7 +1168,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                     AppPhosphorIcons.link,
                                     size: 18,
                                   ),
-                                  label: const Text('Ödeme Linki'),
+                                  label: const Text('Toplu Ödeme Linki'),
                                 ),
                                 OutlinedButton.icon(
                                   onPressed:
@@ -3078,7 +3078,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
                   ),
                   DropdownMenuItem(
                     value: 'paid',
-                    child: Text('Kapalı', overflow: TextOverflow.ellipsis),
+                    child: Text('Ödendi', overflow: TextOverflow.ellipsis),
                   ),
                   DropdownMenuItem(
                     value: 'draft',
@@ -3596,7 +3596,18 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
 
     // Compact rows scroll horizontally, so actions can keep clear labels.
     if (mobile) {
+      final canPaymentLink = invoice.invoiceType == 'sales' &&
+          invoice.isActive &&
+          invoice.isOpen &&
+          invoice.remainingAmount > 0;
       final actions = <Widget>[
+        if (canPaymentLink)
+          _InvoiceIconAction(
+            tooltip: 'Ödeme linki gönder',
+            icon: AppPhosphorIcons.link,
+            tone: _InvoiceActionTone.primary,
+            onPressed: _busy ? null : _sendPaymentLink,
+          ),
         if (showSendAction)
           _InvoiceIconAction(
             tooltip: sendTooltip,
@@ -3680,7 +3691,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 invoice.remainingAmount > 0)
               const PopupMenuItem(
                 value: 'payment_link',
-                child: Text('Ödeme linki gönder'),
+                child: Text('Tekil ödeme linki'),
               ),
             if (!alreadySent)
               PopupMenuItem(
@@ -3822,7 +3833,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               invoice.remainingAmount > 0)
             const PopupMenuItem(
               value: 'payment_link',
-              child: Text('Ödeme linki gönder'),
+              child: Text('Tekil ödeme linki'),
             ),
           if (!alreadySent)
             PopupMenuItem(
@@ -4037,6 +4048,12 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                           ? _statusTone(invoice.status)
                           : AppBadgeTone.neutral,
                     ),
+                    if (invoice.isPaidViaPos)
+                      AppBadge(
+                        dense: true,
+                        label: 'Sanal POS',
+                        tone: AppBadgeTone.success,
+                      ),
                     AppBadge(
                       dense: true,
                       label: _eInvoiceStatusLabel(invoice),
@@ -4196,29 +4213,79 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    money.format(invoice.grandTotal),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.text,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        money.format(invoice.grandTotal),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.text,
+                        ),
+                      ),
+                      if (invoice.paidAmount > 0) ...[
+                        const Gap(2),
+                        Text(
+                          invoice.isPaid
+                              ? 'Tahsil: ${money.format(invoice.paidAmount)}'
+                              : 'Tahsil: ${money.format(invoice.paidAmount)} · Kalan ${money.format(invoice.remainingAmount)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: invoice.isPaid
+                                ? const Color(0xFF15803D)
+                                : AppTheme.textMuted,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                AppBadge(dense: true, label: statusLabel, tone: statusTone),
-                if (syncError) ...[
-                  const Gap(6),
-                  Tooltip(
-                    message: invoice.akinsoftSyncError!.trim(),
-                    child: AppBadge(
-                      dense: true,
-                      label: 'Uyarı',
-                      tone: AppBadgeTone.warning,
-                    ),
+                Flexible(
+                  child: Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      AppBadge(
+                        dense: true,
+                        label: invoice.isActive
+                            ? _statusLabel(invoice.status)
+                            : 'Pasif',
+                        tone: invoice.isActive
+                            ? _statusTone(invoice.status)
+                            : AppBadgeTone.neutral,
+                      ),
+                      if (invoice.isPaidViaPos)
+                        AppBadge(
+                          dense: true,
+                          label: invoice.lastPaymentAt != null
+                              ? 'Sanal POS · ${DateFormat('d MMM', 'tr_TR').format(invoice.lastPaymentAt!)}'
+                              : 'Sanal POS',
+                          tone: AppBadgeTone.success,
+                        ),
+                      AppBadge(
+                        dense: true,
+                        label: statusLabel,
+                        tone: statusTone,
+                      ),
+                      if (syncError)
+                        Tooltip(
+                          message: invoice.akinsoftSyncError!.trim(),
+                          child: AppBadge(
+                            dense: true,
+                            label: 'Uyarı',
+                            tone: AppBadgeTone.warning,
+                          ),
+                        ),
+                    ],
                   ),
-                ],
+                ),
               ],
             ),
             const Gap(12),
@@ -5125,8 +5192,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     return switch (status) {
       'draft' => 'Taslak',
       'open' => 'Açık',
-      'partial' => 'Kısmi',
-      'paid' => 'Kapalı',
+      'partial' => 'Kısmi ödendi',
+      'paid' => 'Ödendi',
       'cancelled' => 'İptal',
       _ => status,
     };

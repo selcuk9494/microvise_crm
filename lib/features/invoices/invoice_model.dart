@@ -88,6 +88,11 @@ class Invoice {
   final DateTime createdAt;
   final List<InvoiceItem> items;
 
+  /// Son tahsilat/ödeme (liste API’sinden; sanal POS göstergesi için).
+  final String? lastPaymentMethod;
+  final String? lastPaymentDescription;
+  final DateTime? lastPaymentAt;
+
   const Invoice({
     required this.id,
     required this.invoiceNumber,
@@ -127,11 +132,20 @@ class Invoice {
     this.createdBy,
     required this.createdAt,
     this.items = const [],
+    this.lastPaymentMethod,
+    this.lastPaymentDescription,
+    this.lastPaymentAt,
   });
 
   double get remainingAmount => grandTotal - paidAmount;
   bool get isPaid => status == 'paid';
   bool get isOpen => status == 'open' || status == 'partial';
+  bool get isPaidViaPos {
+    final method = (lastPaymentMethod ?? '').trim().toLowerCase();
+    if (method == 'pos') return true;
+    final desc = (lastPaymentDescription ?? '').toLowerCase();
+    return desc.contains('sanal pos') || desc.contains('ödeme linki');
+  }
   bool get isEInvoiceSent => eInvoiceStatus == 'sent';
   bool get isEInvoiceManual => eInvoiceStatus == 'manual';
   bool get isEInvoiceReceived => eInvoiceStatus == 'received';
@@ -306,6 +320,11 @@ class Invoice {
               ?.map((e) => InvoiceItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
+      lastPaymentMethod: json['last_payment_method']?.toString(),
+      lastPaymentDescription: json['last_payment_description']?.toString(),
+      lastPaymentAt: json['last_payment_at'] != null
+          ? parseAppDateTime(json['last_payment_at'].toString())
+          : null,
     );
   }
 
