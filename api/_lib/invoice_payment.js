@@ -240,11 +240,15 @@ async function loadOpenInvoices(invoiceIds) {
 }
 
 function getHostedPageUrl() {
-  const exactUrl =
+  const configured = String(
     process.env.INVOICE_PAYMENT_HOSTED_PAGE_URL ||
-    process.env.PAYMENT_INVOICE_HOSTED_PAGE_URL ||
-    // WP /fatura-odeme hazır olunca env ile microvise.net'e alınır.
-    'https://crm.microvise.net/api/invoice-pay';
+      process.env.PAYMENT_INVOICE_HOSTED_PAGE_URL ||
+      '',
+  ).trim();
+  // WP /fatura-odeme henüz yokken env yanlışlıkla 404 sayfasına götürmesin.
+  const crmFallback = 'https://crm.microvise.net/api/invoice-pay';
+  const exactUrl =
+    configured && !/fatura-odeme/i.test(configured) ? configured : crmFallback;
   try {
     const normalized = new URL(String(exactUrl).trim());
     if (normalized.protocol !== 'https:' && normalized.protocol !== 'http:') {
@@ -253,7 +257,7 @@ function getHostedPageUrl() {
     normalized.hash = '';
     return normalized;
   } catch {
-    return new URL('https://crm.microvise.net/api/invoice-pay');
+    return new URL(crmFallback);
   }
 }
 
