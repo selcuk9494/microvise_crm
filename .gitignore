@@ -62,3 +62,4 @@ app.*.map.json
 *.env
 *.env.*
 .vercel
+public/

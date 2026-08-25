@@ -3,6 +3,7 @@
 .idea
 .vercel
 android
+build
 ios
 node_modules
 test

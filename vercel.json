@@ -1,22 +1,29 @@
 {
   "version": 2,
+  "framework": null,
+  "installCommand": "npm install --omit=dev --ignore-scripts",
   "buildCommand": "npm run vercel-build",
-  "outputDirectory": "build/web",
+  "outputDirectory": "public",
   "functions": {
     "api/*.js": {
-      "includeFiles": "{assets/**,api/_lib/**}"
+      "includeFiles": "{assets/**,api/_lib/**}",
+      "maxDuration": 60
     },
     "api/auth/*.js": {
-      "includeFiles": "{assets/**,api/_lib/**}"
+      "includeFiles": "{assets/**,api/_lib/**}",
+      "maxDuration": 60
     },
     "api/dashboard/*.js": {
-      "includeFiles": "{assets/**,api/_lib/**}"
+      "includeFiles": "{assets/**,api/_lib/**}",
+      "maxDuration": 60
     },
     "api/personnel/*.js": {
-      "includeFiles": "{assets/**,api/_lib/**}"
+      "includeFiles": "{assets/**,api/_lib/**}",
+      "maxDuration": 60
     },
     "api/akinsoft/*.js": {
-      "includeFiles": "{assets/**,api/_lib/**}"
+      "includeFiles": "{assets/**,api/_lib/**}",
+      "maxDuration": 60
     }
   },
   "rewrites": [

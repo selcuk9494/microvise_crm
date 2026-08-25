@@ -5,9 +5,10 @@ CACHE_DIR="${VERCEL_CACHE_DIR:-$PWD/.vercel/cache}"
 FLUTTER_DIR="$CACHE_DIR/flutter/$FLUTTER_VERSION"
 COMMIT_SHA="${VERCEL_GIT_COMMIT_SHA:-local}"
 BUILD_MARKER="$CACHE_DIR/flutter_web_built_${COMMIT_SHA}"
+PUBLIC_DIR="$PWD/public"
 
 # Vercel may invoke vercel-build once per serverless function. Build Flutter web only once.
-if [ -f "$BUILD_MARKER" ] && [ -f "build/web/index.html" ] && [ -f "build/web/main.dart.js" ]; then
+if [ -f "$BUILD_MARKER" ] && [ -f "$PUBLIC_DIR/index.html" ] && [ -f "$PUBLIC_DIR/main.dart.js" ]; then
   echo "Flutter web already built for ${COMMIT_SHA}; skipping duplicate build."
   exit 0
 fi
@@ -19,6 +20,12 @@ if [ ! -x "$FLUTTER_DIR/bin/flutter" ]; then
   tar -xJf flutter.tar.xz -C "$CACHE_DIR/flutter"
   rm flutter.tar.xz
   mv "$CACHE_DIR/flutter/flutter" "$FLUTTER_DIR"
+  # Keep cache smaller so Vercel does not discard it next run
+  rm -rf "$FLUTTER_DIR/bin/cache/artifacts" \
+    "$FLUTTER_DIR/bin/cache/downloads" \
+    "$FLUTTER_DIR/examples" \
+    "$FLUTTER_DIR/dev" \
+    "$FLUTTER_DIR/packages/flutter_tools/test" 2>/dev/null || true
 fi
 
 export PATH="$FLUTTER_DIR/bin:$PATH"
@@ -39,11 +46,6 @@ else
   flutter pub get
 fi
 
-# Pre-cache web engine/tooling into the Vercel cache so subsequent builds are fast
-if [ ! -f "$FLUTTER_DIR/bin/cache/flutter_tools.stamp" ]; then
-  flutter precache --web
-fi
-
 BUILD_DEFINES=()
 
 if [ "${SUPABASE_URL:-}" != "" ]; then
@@ -60,9 +62,23 @@ fi
 
 BUILD_DEFINES+=("--dart-define=API_BASE_URL=${API_BASE_URL:-https://crm.microvise.net/api}")
 
-# Build faster: skip source maps and icon tree shaking for CI web builds
-flutter build web --release --no-source-maps --no-tree-shake-icons "${BUILD_DEFINES[@]}"
+# Faster CI web build. Engine JS stays on CDN so Vercel does not treat canvaskit/skwasm as Node functions.
+flutter build web --release --no-source-maps --no-tree-shake-icons --pwa-strategy=none \
+  --no-wasm-dry-run \
+  "${BUILD_DEFINES[@]}"
+
+rm -rf "$PUBLIC_DIR"
+mkdir -p "$PUBLIC_DIR"
+cp -a build/web/. "$PUBLIC_DIR/"
+
+# Local engine bundles are huge and Vercel mis-compiles their ESM entrypoints as serverless
+# functions, which blows up deploy time/size. Flutter loader will fetch CanvasKit from CDN.
+rm -rf "$PUBLIC_DIR/canvaskit"
+rm -f "$PUBLIC_DIR"/wimp.js "$PUBLIC_DIR"/skwasm*.js 2>/dev/null || true
+
+# Avoid a second scan of build/web as function candidates
+rm -rf build/web
 
 mkdir -p "$CACHE_DIR"
 touch "$BUILD_MARKER"
-echo "Flutter web build complete for ${COMMIT_SHA}"
+echo "Flutter web build complete for ${COMMIT_SHA} -> public/"
