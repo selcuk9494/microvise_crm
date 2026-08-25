@@ -35,6 +35,250 @@ function buildHalkbankHashVer3(params, storeKey) {
   return Buffer.from(hex, 'hex').toString('base64');
 }
 
+function normalizeHalkbankStoreType(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+  if (!normalized) return '3d';
+  if (
+    normalized === '3dsecure' ||
+    normalized === 'secure3d' ||
+    normalized === '3ds'
+  ) {
+    return '3d';
+  }
+  if (normalized === '3dpay') return '3d_pay';
+  if (
+    normalized === '3dhost' ||
+    normalized === '3d_host' ||
+    normalized === '3dhosting'
+  ) {
+    return '3d_pay_hosting';
+  }
+  return normalized;
+}
+
+function isHalkbank3DSecureFlow(storeType) {
+  return normalizeHalkbankStoreType(storeType) === '3d';
+}
+
+function normalizeHalkbankExpiryMonth(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits ? digits.slice(-2).padStart(2, '0') : '';
+}
+
+function normalizeHalkbankExpiryYear(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.length <= 2 ? digits.padStart(2, '0') : digits.slice(-2);
+}
+
+function hasHalkbankCardDetails(cardNumber, expireMonth, expireYear, cvc) {
+  return Boolean(
+    String(cardNumber || '').replace(/\s/g, '') &&
+      normalizeHalkbankExpiryMonth(expireMonth) &&
+      normalizeHalkbankExpiryYear(expireYear) &&
+      String(cvc || '').trim(),
+  );
+}
+
+/** Microvise Halkbank profili kartlı classic 3d; hosting tipi desteklenmiyor. */
+function resolveHalkbankStoreTypeForRequest(configStoreType, hasCardDetails) {
+  const normalized = normalizeHalkbankStoreType(configStoreType);
+  if (!hasCardDetails) {
+    return normalized === '3d' ? '3d_pay_hosting' : normalized;
+  }
+  if (
+    normalized === '3d' ||
+    normalized === '3d_pay_hosting' ||
+    normalized === '3d_host' ||
+    normalized === '3d_pay'
+  ) {
+    return '3d';
+  }
+  return normalized || '3d';
+}
+
+function xmlEscape(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function extractHalkbankXmlValue(xml, tagName) {
+  const match = String(xml || '').match(
+    new RegExp(`<${tagName}>([\\s\\S]*?)</${tagName}>`, 'i'),
+  );
+  return match ? match[1].trim() : '';
+}
+
+function parseHalkbankApiResponse(xml) {
+  return {
+    response: extractHalkbankXmlValue(xml, 'Response'),
+    procReturnCode: extractHalkbankXmlValue(xml, 'ProcReturnCode'),
+    errMsg: extractHalkbankXmlValue(xml, 'ErrMsg'),
+    authCode: extractHalkbankXmlValue(xml, 'AuthCode'),
+    hostRefNum: extractHalkbankXmlValue(xml, 'HostRefNum'),
+    transId: extractHalkbankXmlValue(xml, 'TransId'),
+    orderId: extractHalkbankXmlValue(xml, 'OrderId'),
+  };
+}
+
+function getHalkbankCallbackField(payload, ...keys) {
+  for (const key of keys) {
+    const value = payload?.[key];
+    if (typeof value === 'string' && value.trim() !== '') return value.trim();
+    if (value != null && String(value).trim() !== '') return String(value).trim();
+  }
+  return '';
+}
+
+function isSuccessfulMdStatus(value) {
+  return ['1', '2', '3', '4'].includes(String(value || '').trim());
+}
+
+function getHalkbankModeValue(mode) {
+  return String(mode || '').trim().toUpperCase() === 'TEST' ? 'T' : 'P';
+}
+
+function getHalkbankApiUrls(config) {
+  let baseUrl =
+    typeof config?.apiUrl === 'string' && config.apiUrl.trim() !== ''
+      ? config.apiUrl.trim()
+      : typeof config?.gatewayUrl === 'string' &&
+          config.gatewayUrl.includes('/fim/est3Dgate')
+        ? config.gatewayUrl.replace('/fim/est3Dgate', '/fim/api')
+        : config?.mode === 'TEST'
+          ? 'https://entegrasyon.asseco-see.com.tr/fim/api'
+          : 'https://sanalpos.halkbank.com.tr/fim/api';
+  baseUrl = baseUrl.replace(/\/fim\/cc5xml\/?$/i, '/fim/api').replace(/\/+$/, '');
+  return [baseUrl];
+}
+
+function resolveHalkbankApiCredentials(config) {
+  return {
+    apiName: String(config?.apiName || config?.provisionUser || '').trim(),
+    apiPassword: String(
+      config?.apiPassword || config?.provisionPassword || '',
+    ).trim(),
+  };
+}
+
+function buildHalkbank3DSecureApiRequestXml(payload, config, variant = 'nestpay') {
+  const amount = Number(payload?.amount || 0).toFixed(2);
+  const currency = getHalkbankCallbackField(payload, 'currency') || '949';
+  const installment = getHalkbankCallbackField(
+    payload,
+    'Instalment',
+    'instalment',
+    'taksit',
+  );
+  const orderId = getHalkbankCallbackField(
+    payload,
+    'oid',
+    'orderid',
+    'Oid',
+    'OrderId',
+  );
+  const md = getHalkbankCallbackField(payload, 'md', 'MD');
+  const xid = getHalkbankCallbackField(payload, 'xid', 'XID');
+  const eci = getHalkbankCallbackField(payload, 'eci', 'ECI');
+  const cavv = getHalkbankCallbackField(payload, 'cavv', 'CAVV');
+  const clientIp = getHalkbankCallbackField(
+    payload,
+    'clientIp',
+    'ClientIp',
+    'ip',
+  );
+  const { apiName, apiPassword } = resolveHalkbankApiCredentials(config);
+  const mode = getHalkbankModeValue(config.mode);
+
+  if (variant === 'legacy-md') {
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<CC5Request>
+  <Name>${xmlEscape(apiName)}</Name>
+  <Password>${xmlEscape(apiPassword)}</Password>
+  <ClientId>${xmlEscape(config.merchantId)}</ClientId>
+  <Mode>${xmlEscape(mode)}</Mode>
+  <Type>Auth</Type>
+  ${clientIp ? `<IPAddress>${xmlEscape(clientIp)}</IPAddress>` : ''}
+  <OrderId>${xmlEscape(orderId)}</OrderId>
+  <Total>${xmlEscape(amount)}</Total>
+  <Currency>${xmlEscape(currency)}</Currency>
+  <Instalment>${xmlEscape(installment)}</Instalment>
+  <PayerTxnId>${xmlEscape(xid)}</PayerTxnId>
+  <PayerSecurityLevel>${xmlEscape(eci)}</PayerSecurityLevel>
+  <PayerAuthenticationCode>${xmlEscape(cavv)}</PayerAuthenticationCode>
+  <CardholderPresentCode>13</CardholderPresentCode>
+  <Md>${xmlEscape(md)}</Md>
+</CC5Request>`;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<CC5Request>
+  <Name>${xmlEscape(apiName)}</Name>
+  <Password>${xmlEscape(apiPassword)}</Password>
+  <ClientId>${xmlEscape(config.merchantId)}</ClientId>
+  <Type>Auth</Type>
+  <OrderId>${xmlEscape(orderId)}</OrderId>
+  <Total>${xmlEscape(amount)}</Total>
+  <Currency>${xmlEscape(currency)}</Currency>
+  <Number>${xmlEscape(md)}</Number>
+  <PayerTxnId>${xmlEscape(xid)}</PayerTxnId>
+  <PayerSecurityLevel>${xmlEscape(eci)}</PayerSecurityLevel>
+  <PayerAuthenticationCode>${xmlEscape(cavv)}</PayerAuthenticationCode>
+</CC5Request>`;
+}
+
+async function finalizeHalkbank3DSecurePayment(payload, config) {
+  const { apiName, apiPassword } = resolveHalkbankApiCredentials(config);
+  if (!apiName || !apiPassword) {
+    return {
+      approved: false,
+      message: 'Halkbank API kullanıcı bilgisi eksik (API_NAME / API_PASSWORD).',
+    };
+  }
+
+  const variants = ['nestpay', 'legacy-md'];
+  let lastMessage = 'Halkbank API isteği başarısız';
+
+  for (const apiUrl of getHalkbankApiUrls(config)) {
+    for (const variant of variants) {
+      const xml = buildHalkbank3DSecureApiRequestXml(payload, config, variant);
+      const body = new URLSearchParams({ DATA: xml }).toString();
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+            Accept: 'application/xml, text/xml, */*',
+          },
+          body,
+        });
+        const rawXml = await response.text();
+        const parsed = parseHalkbankApiResponse(rawXml);
+        const approved =
+          parsed.procReturnCode === '00' ||
+          parsed.procReturnCode === '0000' ||
+          String(parsed.response || '').toUpperCase() === 'APPROVED';
+        if (approved) {
+          return { approved: true, parsed, message: parsed.errMsg || 'OK' };
+        }
+        lastMessage =
+          parsed.errMsg || `Halkbank API HTTP ${response.status}`;
+      } catch (error) {
+        lastMessage = error?.message || lastMessage;
+      }
+    }
+  }
+
+  return { approved: false, message: lastMessage };
+}
+
 function normalizeProvider(value) {
   const normalized =
     typeof value === 'string' && value.trim() !== ''
@@ -83,7 +327,23 @@ function getPosConfigFromEnv() {
     storeType:
       process.env.INVOICE_PAYMENT_STORE_TYPE ||
       process.env.LICENSE_PAYMENT_STORE_TYPE ||
-      '3d_pay_hosting',
+      '3d',
+    apiUrl:
+      process.env.INVOICE_PAYMENT_API_URL ||
+      process.env.LICENSE_PAYMENT_API_URL ||
+      '',
+    apiName:
+      process.env.INVOICE_PAYMENT_API_NAME ||
+      process.env.LICENSE_PAYMENT_API_NAME ||
+      process.env.INVOICE_PAYMENT_PROVISION_USER ||
+      process.env.LICENSE_PAYMENT_PROVISION_USER ||
+      '',
+    apiPassword:
+      process.env.INVOICE_PAYMENT_API_PASSWORD ||
+      process.env.LICENSE_PAYMENT_API_PASSWORD ||
+      process.env.INVOICE_PAYMENT_PROVISION_PASSWORD ||
+      process.env.LICENSE_PAYMENT_PROVISION_PASSWORD ||
+      '',
     mode: (
       process.env.INVOICE_PAYMENT_MODE ||
       process.env.LICENSE_PAYMENT_MODE ||
@@ -546,12 +806,24 @@ function currencyDisplayLabel(currency) {
   }
 }
 
-function buildHalkbankRedirectHtml({ orderId, amount, currency, callbackUrl, config }) {
+function buildHalkbankRedirectHtml({
+  orderId,
+  amount,
+  currency,
+  callbackUrl,
+  config,
+  card,
+}) {
   const gatewayUrl =
     config.gatewayUrl ||
     (config.mode === 'TEST' ? HALKBANK_TEST_GATEWAY_URL : HALKBANK_PROD_GATEWAY_URL);
   const amountText = Number(amount).toFixed(2);
-  const storeType = String(config.storeType || '3d_pay_hosting').trim() || '3d_pay_hosting';
+  const cardNumber = String(card?.cardNumber || '').replace(/\s/g, '');
+  const expireMonth = normalizeHalkbankExpiryMonth(card?.expireMonth);
+  const expireYear = normalizeHalkbankExpiryYear(card?.expireYear);
+  const cvc = String(card?.cvc || '').trim();
+  const hasCard = hasHalkbankCardDetails(cardNumber, expireMonth, expireYear, cvc);
+  const storeType = resolveHalkbankStoreTypeForRequest(config.storeType, hasCard);
   const rnd = (Date.now() / 1000).toFixed(4);
   const currencyCode = nestpayCurrencyCode(currency);
   const currencyLabel = currencyDisplayLabel(currency);
@@ -570,6 +842,15 @@ function buildHalkbankRedirectHtml({ orderId, amount, currency, callbackUrl, con
     lang: 'tr',
     rnd,
   };
+  if (hasCard) {
+    params.pan = cardNumber;
+    params.cv2 = cvc;
+    params.Ecom_Payment_Card_ExpDate_Year = expireYear;
+    params.Ecom_Payment_Card_ExpDate_Month = expireMonth;
+    if (card?.cardHolderName) {
+      params.cardholdername = String(card.cardHolderName).trim();
+    }
+  }
   const hash = buildHalkbankHashVer3(params, String(config.storeKey || '').trim());
   params.HASH = hash;
   params.hash = hash;
@@ -689,12 +970,17 @@ function buildCrmHostedPaymentPageHtml({
     .value{font-size:16px;font-weight:800}
     .helper{margin:0 0 14px;color:#64748b;font-size:13px;line-height:1.45}
     .notice{display:none;padding:12px 14px;border-radius:12px;margin-bottom:12px;border:1px solid #fecaca;background:#fff1f2;color:#b91c1c}
-    .actions{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+    .grid{display:grid;gap:10px}
+    .two{grid-template-columns:repeat(2,minmax(0,1fr))}
+    label{display:block;font-size:12px;font-weight:700;margin:0 0 4px}
+    input{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid #cbd5e1;border-radius:11px;font-size:14px;background:#fff}
+    input:focus{outline:none;border-color:#0d6efd;box-shadow:0 0 0 4px rgba(13,110,253,.12)}
+    .actions{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #e2e8f0}
     button{border:0;border-radius:999px;padding:12px 18px;font-size:14px;font-weight:700;cursor:pointer;background:#dc2626;color:#fff}
     button:disabled{opacity:.6;cursor:not-allowed}
     .muted{font-size:12px;color:#64748b}
     .loader{display:none;margin-top:10px;color:#1d4ed8;font-weight:700;font-size:13px}
-    @media(max-width:640px){.summary{grid-template-columns:1fr}}
+    @media(max-width:640px){.summary,.two{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -710,12 +996,32 @@ function buildCrmHostedPaymentPageHtml({
           <div class="box"><span class="label">Fatura</span><div class="value">${escapeHtml(countLabel)}</div></div>
           <div class="box"><span class="label">Tutar</span><div class="value">${escapeHtml(amountText + ' ' + currencyLabel)}</div></div>
         </div>
-        <p class="helper">Güvenli ödeme için banka sayfasına yönlendirileceksiniz. Kart bilgileriniz banka ekranında girilir.</p>
+        <p class="helper">Kart bilgilerinizi girin. 3D Secure onayı sonrası sonuç bu ekranda gösterilir.</p>
         <div id="err" class="notice"></div>
-        <div class="actions">
-          <div class="muted">3D Secure · Microvise Sanal POS</div>
-          <button id="pay" type="button">Ödemeye Git</button>
-        </div>
+        <form id="pay-form" class="grid" novalidate>
+          <div>
+            <label for="card-holder">Kart üzerindeki isim</label>
+            <input id="card-holder" type="text" autocomplete="cc-name" placeholder="Ad Soyad" required>
+          </div>
+          <div>
+            <label for="card-number">Kart numarası</label>
+            <input id="card-number" type="text" inputmode="numeric" autocomplete="cc-number" maxlength="23" placeholder="1234 5678 9012 3456" required>
+          </div>
+          <div class="grid two">
+            <div>
+              <label for="card-expiry">Son kullanma</label>
+              <input id="card-expiry" type="text" inputmode="numeric" autocomplete="cc-exp" maxlength="5" placeholder="03/29" required>
+            </div>
+            <div>
+              <label for="card-cvc">CVC</label>
+              <input id="card-cvc" type="password" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="CVC" required>
+            </div>
+          </div>
+          <div class="actions">
+            <div class="muted">3D Secure · Microvise Sanal POS</div>
+            <button id="pay" type="submit">Ödeme Yap</button>
+          </div>
+        </form>
         <div id="loader" class="loader">Banka ekranı hazırlanıyor…</div>
       </div>
     </div>
@@ -725,17 +1031,55 @@ function buildCrmHostedPaymentPageHtml({
     var sessionToken=${JSON.stringify(sessionToken)};
     var token=${JSON.stringify(token || '')};
     var apiUrl=${JSON.stringify(payApi)};
+    var form=document.getElementById('pay-form');
     var err=document.getElementById('err');
     var loader=document.getElementById('loader');
     var btn=document.getElementById('pay');
-    btn.addEventListener('click',function(){
+    var cardHolder=document.getElementById('card-holder');
+    var cardNumber=document.getElementById('card-number');
+    var cardExpiry=document.getElementById('card-expiry');
+    var cardCvc=document.getElementById('card-cvc');
+    function digits(v){return (v||'').replace(/\\D/g,'');}
+    function showError(message){err.textContent=message;err.style.display='block';}
+    cardNumber.addEventListener('input',function(){
+      var d=digits(cardNumber.value).slice(0,19);
+      var p=[];for(var i=0;i<d.length;i+=4){p.push(d.slice(i,i+4));}
+      cardNumber.value=p.join(' ');
+    });
+    cardExpiry.addEventListener('input',function(){
+      var d=digits(cardExpiry.value).slice(0,4);
+      if(d.length>=3){d=d.slice(0,2)+'/'+d.slice(2);}
+      cardExpiry.value=d;
+    });
+    cardCvc.addEventListener('input',function(){cardCvc.value=digits(cardCvc.value).slice(0,4);});
+    form.addEventListener('submit',function(event){
+      event.preventDefault();
       err.style.display='none';
+      var holder=cardHolder.value.trim();
+      var number=digits(cardNumber.value);
+      var expiry=cardExpiry.value.trim().split('/');
+      var expMonth=expiry[0]||'';
+      var expYearShort=expiry[1]||'';
+      var expYear=expYearShort?'20'+expYearShort:'';
+      var cvc=digits(cardCvc.value);
+      if(!holder||number.length<12||expMonth.length!==2||expYearShort.length!==2||cvc.length<3){
+        showError('Lütfen kart bilgilerini eksiksiz ve doğru girin.');
+        return;
+      }
       loader.style.display='block';
       btn.disabled=true;
       fetch(apiUrl,{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({sessionToken:sessionToken,token:token})
+        body:JSON.stringify({
+          sessionToken:sessionToken,
+          token:token,
+          cardHolderName:holder,
+          cardNumber:number,
+          expireMonth:expMonth,
+          expireYear:expYear,
+          cvc:cvc
+        })
       }).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
       .then(function(res){
         if(res.d&&res.d.success&&res.d.html){
@@ -745,8 +1089,7 @@ function buildCrmHostedPaymentPageHtml({
       }).catch(function(e){
         loader.style.display='none';
         btn.disabled=false;
-        err.textContent=e&&e.message?e.message:'Ödeme başlatılamadı.';
-        err.style.display='block';
+        showError(e&&e.message?e.message:'Ödeme başlatılamadı.');
       });
     });
   })();
@@ -755,7 +1098,7 @@ function buildCrmHostedPaymentPageHtml({
 </html>`;
 }
 
-async function startPaymentRedirect(token, req) {
+async function startPaymentRedirect(token, req, card = null) {
   const link = await getPaymentLinkByToken(token);
   if (!link) {
     return {
@@ -809,9 +1152,36 @@ async function startPaymentRedirect(token, req) {
         title: 'Simülasyon (tahsilat yok)',
         message:
           'SIMULATION modunda fatura kapatılmaz ve tahsilat kaydı oluşmaz. ' +
-          'Canlı tahsilat için Microvise POS (PROD) + microvise.net fatura-odeme gerekir.',
+          'Canlı tahsilat için Microvise POS (PROD) + kartlı 3d akışı gerekir.',
         ok: true,
       }),
+    };
+  }
+
+  const hasCard = hasHalkbankCardDetails(
+    card?.cardNumber,
+    card?.expireMonth,
+    card?.expireYear,
+    card?.cvc,
+  );
+  const resolvedStoreType = resolveHalkbankStoreTypeForRequest(
+    config.storeType,
+    hasCard,
+  );
+  if (isHalkbank3DSecureFlow(resolvedStoreType) && !hasCard) {
+    return {
+      statusCode: 400,
+      html: buildStatusHtml({
+        title: 'Kart bilgisi gerekli',
+        message:
+          'Bu üye işyeri classic 3d kullanır. Ödeme linkindeki kart formunu doldurup tekrar deneyin.',
+        ok: false,
+      }),
+      json: {
+        success: false,
+        message:
+          'Kart bilgisi gerekli. Microvise POS classic 3d ile çalışır (lisans ödemesi gibi).',
+      },
     };
   }
 
@@ -854,25 +1224,41 @@ async function startPaymentRedirect(token, req) {
       currency: link.currency || 'TRY',
       callbackUrl,
       config,
+      card,
     }),
   };
 }
 
-function isSuccessfulCallback(body) {
-  const code = String(
-    body?.procreturncode ||
-      body?.ProcReturnCode ||
-      body?.Response ||
-      body?.mdStatus ||
-      '',
-  ).trim();
-  return (
+function isSuccessfulCallback(body, config) {
+  const code = getHalkbankCallbackField(
+    body,
+    'ProcReturnCode',
+    'procreturncode',
+    'PROCRETURNCODE',
+  );
+  const response = getHalkbankCallbackField(body, 'Response', 'response');
+  if (
     code === '00' ||
     code === '0000' ||
-    code === 'Approved' ||
-    code === '1' ||
-    String(body?.Response || '').toLowerCase() === 'approved'
+    String(response || '').toUpperCase() === 'APPROVED'
+  ) {
+    return true;
+  }
+  const callbackStoreType = normalizeHalkbankStoreType(
+    getHalkbankCallbackField(body, 'storetype', 'storeType', 'StoreType') ||
+      config?.storeType,
   );
+  const mdStatus = getHalkbankCallbackField(
+    body,
+    'mdStatus',
+    'mdstatus',
+    'MDStatus',
+  );
+  // 3d_pay gateway'de tamamlanır; classic 3d için mdStatus tek başına yeterli değil.
+  if (callbackStoreType === '3d_pay' && isSuccessfulMdStatus(mdStatus)) {
+    return true;
+  }
+  return false;
 }
 
 async function completeInvoicePayment(link, { success, providerPayload, providerOrderId }) {
@@ -990,15 +1376,54 @@ async function handlePaymentCallback(token, body) {
       }),
     };
   }
-  const success = isSuccessfulCallback(body || {});
+
+  const config = getPosConfigFromEnv();
+  let success = isSuccessfulCallback(body || {}, config);
+  let failMessage = String(
+    body?.errmsg || body?.ErrMsg || body?.mdErrorMsg || 'İşlem tamamlanamadı.',
+  );
+  const providerPayload = { ...(body || {}) };
+
+  // Classic 3d: 3D Secure sonrası API Auth gerekir (lisans ödemesiyle aynı).
+  if (!success) {
+    const mdStatus = getHalkbankCallbackField(
+      body,
+      'mdStatus',
+      'mdstatus',
+      'MDStatus',
+    );
+    const callbackStoreType = normalizeHalkbankStoreType(
+      getHalkbankCallbackField(body, 'storetype', 'storeType', 'StoreType') ||
+        config.storeType,
+    );
+    const needsFinalize =
+      isHalkbank3DSecureFlow(callbackStoreType) ||
+      isHalkbank3DSecureFlow(config.storeType) ||
+      Boolean(getHalkbankCallbackField(body, 'md', 'MD'));
+    if (needsFinalize && isSuccessfulMdStatus(mdStatus)) {
+      const finalResult = await finalizeHalkbank3DSecurePayment(
+        body || {},
+        config,
+      );
+      success = Boolean(finalResult.approved);
+      failMessage = finalResult.message || failMessage;
+      providerPayload.apiFinalize = {
+        approved: success,
+        message: finalResult.message || null,
+        parsed: finalResult.parsed || null,
+      };
+    } else if (needsFinalize) {
+      failMessage = failMessage || `MDStatus ${mdStatus || '0'}`;
+    }
+  }
+
   await completeInvoicePayment(link, {
     success,
-    providerPayload: body || {},
+    providerPayload,
     providerOrderId:
       body?.oid || body?.OrderId || body?.orderid || link.provider_order_id,
   });
 
-  const config = getPosConfigFromEnv();
   if (useHostedPaymentPage(config)) {
     const resultUrl = getHostedPageUrl();
     resultUrl.searchParams.set('invoice', success ? 'success' : 'fail');
@@ -1015,10 +1440,7 @@ async function handlePaymentCallback(token, body) {
       resultUrl.searchParams.set('invoices', String(invoiceCount));
     }
     if (!success) {
-      const errmsg = String(
-        body?.errmsg || body?.ErrMsg || body?.mdErrorMsg || 'İşlem tamamlanamadı.',
-      );
-      resultUrl.searchParams.set('errmsg', errmsg.slice(0, 240));
+      resultUrl.searchParams.set('errmsg', failMessage.slice(0, 240));
     }
     return {
       statusCode: 302,
@@ -1027,7 +1449,7 @@ async function handlePaymentCallback(token, body) {
         title: success ? 'Ödeme başarılı' : 'Ödeme başarısız',
         message: success
           ? 'Teşekkürler. Ödemeniz alındı, faturalar güncellendi.'
-          : String(body?.errmsg || body?.ErrMsg || 'İşlem tamamlanamadı.'),
+          : failMessage,
         ok: success,
       }),
     };
@@ -1039,7 +1461,7 @@ async function handlePaymentCallback(token, body) {
       title: success ? 'Ödeme başarılı' : 'Ödeme başarısız',
       message: success
         ? 'Teşekkürler. Ödemeniz alındı, faturalar güncellendi.'
-        : String(body?.errmsg || body?.ErrMsg || 'İşlem tamamlanamadı.'),
+        : failMessage,
       ok: success,
     }),
   };
@@ -1079,7 +1501,7 @@ async function getHostedSessionInfo({ sessionToken, token }) {
   };
 }
 
-async function startHostedPayment({ sessionToken, token, req }) {
+async function startHostedPayment({ sessionToken, token, req, card }) {
   const session = sessionToken ? verifyInvoiceHostedSession(sessionToken) : null;
   const lookupToken = String(token || session?.token || '').trim();
   if (!lookupToken) {
@@ -1094,7 +1516,13 @@ async function startHostedPayment({ sessionToken, token, req }) {
       json: { success: false, message: 'Oturum token eşleşmiyor' },
     };
   }
-  const result = await startPaymentRedirect(lookupToken, req);
+  const result = await startPaymentRedirect(lookupToken, req, card || null);
+  if (result.json && !result.html) {
+    return {
+      statusCode: result.statusCode || 400,
+      json: result.json,
+    };
+  }
   if (result.html) {
     return {
       statusCode: result.statusCode || 200,
@@ -1102,6 +1530,10 @@ async function startHostedPayment({ sessionToken, token, req }) {
         success: result.statusCode < 400,
         html: result.html,
         token: lookupToken,
+        message:
+          result.statusCode >= 400
+            ? result.json?.message || 'Ödeme başlatılamadı'
+            : undefined,
       },
     };
   }

@@ -141,6 +141,13 @@ module.exports = async (req, res) => {
         sessionToken,
         token: token || body.token,
         req,
+        card: {
+          cardHolderName: body.cardHolderName || body.cardholdername,
+          cardNumber: body.cardNumber || body.pan,
+          expireMonth: body.expireMonth || body.Ecom_Payment_Card_ExpDate_Month,
+          expireYear: body.expireYear || body.Ecom_Payment_Card_ExpDate_Year,
+          cvc: body.cvc || body.cv2,
+        },
       });
       return sendJson(res, result.statusCode, result.json);
     }
