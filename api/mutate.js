@@ -2428,10 +2428,9 @@ module.exports = async (req, res) => {
     }
     if (op === 'refundInvoicePosPayment') {
       if (
-        !hasPageAccess(user, 'faturalama') &&
-        !hasPageAccess(user, 'e_fatura')
+        !requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)
       ) {
-        return forbidden(req, res);
+        return;
       }
       try {
         return ok(

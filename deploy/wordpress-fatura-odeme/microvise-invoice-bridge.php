@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Microvise Invoice Payment Bridge
  * Description: Fatura ödemesini WooCommerce Halkbank POS ile başlatır (aynı NestPay 3d + CC5). Banka dönüşünü CRM'e iletir.
- * Version: 1.3.0
+ * Version: 1.3.1
  * Author: Microvise
  */
 
@@ -446,8 +446,17 @@ function microvise_invoice_nestpay_refund() {
 		echo wp_json_encode( array( 'success' => false, 'message' => 'WooCommerce Halkbank gecidi yok.' ) );
 		exit;
 	}
-	$store_key = (string) $gw->get_option( 'store_key' );
-	if ( $bridge_key === '' || $store_key === '' || ! hash_equals( $store_key, $bridge_key ) ) {
+	$store_key    = (string) $gw->get_option( 'store_key' );
+	$api_password = (string) $gw->get_option( 'api_password' );
+	$option_secret = (string) get_option( 'microvise_invoice_bridge_secret', '' );
+	$auth_ok       = false;
+	foreach ( array( $store_key, $api_password, $option_secret ) as $candidate ) {
+		if ( $candidate !== '' && hash_equals( $candidate, $bridge_key ) ) {
+			$auth_ok = true;
+			break;
+		}
+	}
+	if ( $bridge_key === '' || ! $auth_ok ) {
 		status_header( 403 );
 		echo wp_json_encode( array( 'success' => false, 'message' => 'Yetkisiz iade istegi.' ) );
 		exit;
@@ -476,7 +485,8 @@ function microvise_invoice_nestpay_refund() {
 		$urls[] = preg_replace( '#/fim/api/?$#i', '/fim/cc5xml', $api_url );
 	}
 
-	$try_types = array( 'Void', 'Credit' );
+	// Once Credit (iade), sonra Void (ayni gun iptal)
+	$try_types = array( 'Credit', 'Void' );
 	$last_err  = 'Iade basarisiz';
 	foreach ( $try_types as $type ) {
 		$xml = '<?xml version="1.0" encoding="UTF-8"?>'

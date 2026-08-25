@@ -376,58 +376,101 @@ async function refundViaWordPressBridge({ orderId, amount, currency }) {
   const bridgeUrl =
     process.env.INVOICE_PAYMENT_REFUND_URL ||
     'https://www.microvise.net/wp-admin/admin-post.php?action=microvise_invoice_nestpay_refund';
-  const bridgeKey =
-    process.env.INVOICE_PAYMENT_BRIDGE_SECRET ||
-    process.env.INVOICE_PAYMENT_STORE_KEY ||
-    process.env.LICENSE_PAYMENT_STORE_KEY ||
-    process.env.HALKBANK_STORE_KEY ||
-    '';
-  if (!bridgeKey) {
+  const bridgeKeys = [
+    process.env.INVOICE_PAYMENT_BRIDGE_SECRET,
+    process.env.INVOICE_PAYMENT_STORE_KEY,
+    process.env.LICENSE_PAYMENT_STORE_KEY,
+    process.env.HALKBANK_STORE_KEY,
+    process.env.INVOICE_PAYMENT_API_PASSWORD,
+    process.env.LICENSE_PAYMENT_API_PASSWORD,
+  ]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
+  // unique preserve order
+  const keys = [...new Set(bridgeKeys)];
+  if (!keys.length) {
     return { approved: false, message: 'WP bridge anahtari yok', skipped: true };
   }
-  try {
-    const body = new URLSearchParams({
-      bridge_key: bridgeKey,
-      order_id: String(orderId || ''),
-      amount: Number(amount || 0).toFixed(2),
-      currency: String(currency || '949'),
-    });
-    const response = await fetch(bridgeUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
-        Accept: 'application/json',
-      },
-      body: body.toString(),
-    });
-    const text = await response.text();
-    let json = null;
+
+  let lastMessage = 'WP iade basarisiz';
+  for (const bridgeKey of keys) {
     try {
-      json = JSON.parse(text);
-    } catch {
-      json = null;
+      const body = new URLSearchParams({
+        bridge_key: bridgeKey,
+        order_id: String(orderId || ''),
+        amount: Number(amount || 0).toFixed(2),
+        currency: String(currency || '949'),
+      });
+      const response = await fetch(bridgeUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+          Accept: 'application/json',
+        },
+        body: body.toString(),
+      });
+      const text = await response.text();
+      let json = null;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = null;
+      }
+      if (json?.success) {
+        return {
+          approved: true,
+          message: json.message || 'OK',
+          via: 'wordpress',
+          parsed: json.parsed || null,
+          type: json.type || 'Credit',
+        };
+      }
+      if (json?.message) {
+        lastMessage = json.message;
+        // Yanlis anahtar ise diger key'i dene
+        if (/yetkisiz|unauthor|forbidden|invalid/i.test(json.message)) {
+          continue;
+        }
+        // Eklenti yok / action yok
+        if (/bulunamad|not found|unknown action/i.test(json.message)) {
+          lastMessage =
+            'WordPress iade eklentisi eksik (microvise-invoice-bridge 1.3+ gerekli).';
+          break;
+        }
+        // Banka hatasi — diger key denemek ise yaramaz
+        break;
+      }
+      if (!json && /admin-post|wordpress|html/i.test(text)) {
+        lastMessage =
+          'WordPress iade endpoint yanit vermedi. Eklenti surumu 1.3+ oldugundan emin olun.';
+        break;
+      }
+      lastMessage = `WP iade HTTP ${response.status}`;
+    } catch (error) {
+      lastMessage = error?.message || lastMessage;
     }
-    if (json?.success) {
-      return {
-        approved: true,
-        message: json.message || 'OK',
-        via: 'wordpress',
-        parsed: json.parsed || null,
-        type: json.type || 'Credit',
-      };
-    }
-    return {
-      approved: false,
-      message: json?.message || `WP iade HTTP ${response.status}`,
-      via: 'wordpress',
-    };
-  } catch (error) {
-    return {
-      approved: false,
-      message: error?.message || 'WP iade baglantisi basarisiz',
-      via: 'wordpress',
-    };
   }
+  return {
+    approved: false,
+    message: lastMessage,
+    via: 'wordpress',
+  };
+}
+
+function humanizePosRefundError(message) {
+  const raw = String(message || '').trim();
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes('insufficient permissions') ||
+    lower.includes('permission')
+  ) {
+    return (
+      'Banka iade yetkisi reddetti (Insufficient permissions). ' +
+      'WordPress eklentisini 1.3+ yapın; WooCommerce Halkbank API kullanıcısının iade yetkisi açık olmalı. ' +
+      `Banka mesajı: ${raw}`
+    );
+  }
+  return raw || 'Banka iadesi reddedildi.';
 }
 
 function extractPosOrderId(link) {
@@ -565,38 +608,41 @@ async function refundInvoicePosPayment({
     amount: refundAmount,
     currency: refundCurrency,
   });
+  const wpMessage = bankResult.message;
 
   if (!bankResult.approved) {
     const config = getPosConfigFromEnv();
-    const configError = validatePosConfig(config);
-    if (configError) {
-      const error = new Error(
-        bankResult.skipped
-          ? configError
-          : `${bankResult.message} | CRM POS: ${configError}`,
-      );
-      error.statusCode = 400;
-      throw error;
-    }
-    // Ayni gun Void, olmazsa Credit
-    bankResult = await sendHalkbankOrderAction(
-      'Void',
-      { orderId, amount: refundAmount, currency: refundCurrency },
-      config,
-    );
-    if (!bankResult.approved) {
+    const { apiName, apiPassword } = resolveHalkbankApiCredentials(config);
+    if (apiName && apiPassword && config.merchantId) {
+      // Credit once, then Void (ayni gun iptal)
       bankResult = await sendHalkbankOrderAction(
         'Credit',
         { orderId, amount: refundAmount, currency: refundCurrency },
         config,
       );
+      if (!bankResult.approved) {
+        bankResult = await sendHalkbankOrderAction(
+          'Void',
+          { orderId, amount: refundAmount, currency: refundCurrency },
+          config,
+        );
+      }
+      if (bankResult.approved) bankResult.via = 'crm';
+    } else if (!bankResult.skipped) {
+      bankResult = {
+        approved: false,
+        message:
+          `${wpMessage} | CRM API kullanicisi eksik; iade icin WordPress eklentisi (1.3+) zorunlu.`,
+        via: 'wordpress',
+      };
     }
-    if (bankResult.approved) bankResult.via = 'crm';
   }
 
   if (!bankResult.approved) {
     const error = new Error(
-      bankResult.message || 'Banka iadesi reddedildi.',
+      humanizePosRefundError(
+        [wpMessage, bankResult.message].filter(Boolean).join(' | '),
+      ),
     );
     error.statusCode = 400;
     throw error;
