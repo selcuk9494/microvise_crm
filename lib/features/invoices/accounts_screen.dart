@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
@@ -458,10 +461,27 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
         ],
       ),
       floatingActionButton: _selectedInvoices.isNotEmpty
-          ? FloatingActionButton.extended(
-              onPressed: _exportSelectedStatement,
-              icon: const Icon(LucideIcons.fileText),
-              label: Text('${_selectedInvoices.length} Fatura Seçili'),
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                FloatingActionButton.extended(
+                  heroTag: 'pay_link',
+                  onPressed: () => _createPaymentLinkForSelected(invoicesAsync),
+                  backgroundColor: const Color(0xFF277777),
+                  icon: const Icon(LucideIcons.link),
+                  label: Text(
+                    '${_selectedInvoices.length} Fatura · Ödeme Linki',
+                  ),
+                ),
+                const Gap(10),
+                FloatingActionButton.extended(
+                  heroTag: 'export_selected',
+                  onPressed: _exportSelectedStatement,
+                  icon: const Icon(LucideIcons.fileText),
+                  label: Text('${_selectedInvoices.length} Fatura Seçili'),
+                ),
+              ],
             )
           : FloatingActionButton(
               onPressed: () => _addTransaction(context),
@@ -540,6 +560,9 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
                         _selectedInvoices.add(invoice.id);
                       }
                     }),
+                    onPaymentLink: invoice.remainingAmount > 0
+                        ? () => _createPaymentLink([invoice])
+                        : null,
                   );
                 },
               ),
@@ -576,6 +599,9 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
                   _selectedInvoices.add(invoice.id);
                 }
               }),
+              onPaymentLink: invoice.remainingAmount > 0
+                  ? () => _createPaymentLink([invoice])
+                  : null,
             );
           },
         );
@@ -859,6 +885,183 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
       );
     }
   }
+
+  Future<void> _createPaymentLinkForSelected(
+    AsyncValue<List<Invoice>> invoicesAsync,
+  ) async {
+    final invoices = invoicesAsync.value ?? const <Invoice>[];
+    final selected = invoices
+        .where(
+          (invoice) =>
+              _selectedInvoices.contains(invoice.id) &&
+              invoice.remainingAmount > 0,
+        )
+        .toList(growable: false);
+    await _createPaymentLink(selected);
+  }
+
+  Future<void> _createPaymentLink(List<Invoice> invoices) async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (invoices.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Ödeme için açık fatura seçin')),
+      );
+      return;
+    }
+
+    final customerIds = invoices.map((e) => e.customerId).toSet();
+    if (customerIds.length > 1) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Ödeme linki aynı cari için oluşturulabilir'),
+        ),
+      );
+      return;
+    }
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+
+    final total = invoices.fold<double>(
+      0,
+      (sum, inv) => sum + inv.remainingAmount,
+    );
+    final currency = invoices.first.currency.trim().toUpperCase();
+    final money = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: switch (currency) {
+        'TRY' || 'TL' => '₺',
+        'USD' => '\$',
+        'EUR' => '€',
+        'GBP' => '£',
+        _ => '$currency ',
+      },
+      decimalDigits: 2,
+    );
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ödeme linki oluştur'),
+        content: Text(
+          '${invoices.length} fatura için toplam ${money.format(total)} '
+          'tutarında Microvise sanal POS ödeme linki oluşturulacak.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('İptal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Oluştur'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final response = await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'createInvoicePaymentLink',
+          'invoiceIds': invoices.map((e) => e.id).toList(),
+        },
+      );
+      final paymentUrl = response['paymentUrl']?.toString() ?? '';
+      if (paymentUrl.isEmpty) {
+        throw Exception('Ödeme linki alınamadı');
+      }
+      if (!mounted) return;
+      await _showPaymentLinkResult(
+        paymentUrl: paymentUrl,
+        amount: (response['amount'] as num?)?.toDouble() ?? total,
+        currency:
+            (response['currency']?.toString() ?? currency).trim().toUpperCase(),
+        invoiceCount: (response['invoiceCount'] as num?)?.toInt() ??
+            invoices.length,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Ödeme linki oluşturulamadı: $e')),
+      );
+    }
+  }
+
+  Future<void> _showPaymentLinkResult({
+    required String paymentUrl,
+    required double amount,
+    required String currency,
+    required int invoiceCount,
+  }) async {
+    final money = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: switch (currency) {
+        'TRY' || 'TL' => '₺',
+        'USD' => '\$',
+        'EUR' => '€',
+        'GBP' => '£',
+        _ => '$currency ',
+      },
+      decimalDigits: 2,
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ödeme linki hazır'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$invoiceCount fatura · ${money.format(amount)}',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Gap(12),
+            SelectableText(
+              paymentUrl,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: paymentUrl));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Link kopyalandı')),
+                );
+              }
+            },
+            child: const Text('Kopyala'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await Share.share(
+                'Fatura ödemesi için link:\n$paymentUrl',
+                subject: 'Microvise fatura ödeme linki',
+              );
+            },
+            child: const Text('Paylaş'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final uri = Uri.tryParse(paymentUrl);
+              if (uri != null) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+            child: const Text('Aç'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _InvoiceSelectCard extends StatelessWidget {
@@ -867,12 +1070,14 @@ class _InvoiceSelectCard extends StatelessWidget {
     required this.money,
     required this.selected,
     required this.onTap,
+    this.onPaymentLink,
   });
 
   final Invoice invoice;
   final NumberFormat money;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback? onPaymentLink;
 
   @override
   Widget build(BuildContext context) {
@@ -955,6 +1160,15 @@ class _InvoiceSelectCard extends StatelessWidget {
                   ),
               ],
             ),
+            if (onPaymentLink != null) ...[
+              const Gap(4),
+              IconButton(
+                tooltip: 'Ödeme linki gönder',
+                onPressed: onPaymentLink,
+                icon: const Icon(LucideIcons.creditCard, size: 20),
+                color: const Color(0xFF277777),
+              ),
+            ],
           ],
         ),
       ),

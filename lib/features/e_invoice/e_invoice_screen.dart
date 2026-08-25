@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/theme/app_theme.dart';
@@ -72,6 +73,168 @@ Map<String, dynamic> _archivePdfRequestBody(String invoiceId) => {
   'includePdf': true,
   'refreshOfficial': false,
 };
+
+Future<void> _createInvoicePaymentLinkFlow({
+  required BuildContext context,
+  required WidgetRef ref,
+  required List<Invoice> invoices,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final payable = invoices
+      .where(
+        (invoice) =>
+            invoice.isActive &&
+            invoice.isOpen &&
+            invoice.remainingAmount > 0 &&
+            invoice.invoiceType == 'sales',
+      )
+      .toList(growable: false);
+  if (payable.isEmpty) {
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Ödeme linki için açık satış faturası seçin.'),
+      ),
+    );
+    return;
+  }
+
+  final customerIds = payable.map((e) => e.customerId).toSet();
+  if (customerIds.length > 1) {
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Ödeme linki aynı cari için oluşturulabilir.'),
+      ),
+    );
+    return;
+  }
+
+  final currencies = payable.map((e) => e.currency).toSet();
+  if (currencies.length > 1) {
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Seçilen faturaların para birimi aynı olmalıdır.'),
+      ),
+    );
+    return;
+  }
+
+  final total = payable.fold<double>(
+    0,
+    (sum, inv) => sum + inv.remainingAmount,
+  );
+  final currency = (currencies.first).toString().trim().toUpperCase();
+  final money = NumberFormat.currency(
+    locale: 'tr_TR',
+    symbol: _currencySymbol(currency),
+    decimalDigits: 2,
+  );
+
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Ödeme linki oluştur'),
+      content: Text(
+        '${payable.length} fatura için toplam ${money.format(total)} '
+        'tutarında Microvise sanal POS ödeme linki oluşturulacak.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Vazgeç'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Oluştur'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+
+  final apiClient = ref.read(apiClientProvider);
+  if (apiClient == null) return;
+
+  try {
+    final response = await apiClient.postJson(
+      '/mutate',
+      body: {
+        'op': 'createInvoicePaymentLink',
+        'invoiceIds': payable.map((e) => e.id).toList(),
+      },
+    );
+    final paymentUrl = response['paymentUrl']?.toString() ?? '';
+    if (paymentUrl.isEmpty) {
+      throw Exception('Ödeme linki alınamadı');
+    }
+    if (!context.mounted) return;
+    final amount = (response['amount'] as num?)?.toDouble() ?? total;
+    final responseCurrency =
+        (response['currency']?.toString() ?? currency).trim().toUpperCase();
+    final resultMoney = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: _currencySymbol(responseCurrency),
+      decimalDigits: 2,
+    );
+    final invoiceCount =
+        (response['invoiceCount'] as num?)?.toInt() ?? payable.length;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ödeme linki hazır'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$invoiceCount fatura · ${resultMoney.format(amount)}',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Gap(12),
+            SelectableText(
+              paymentUrl,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: paymentUrl));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Link kopyalandı')),
+                );
+              }
+            },
+            child: const Text('Kopyala'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await Share.share(
+                'Fatura ödemesi için link:\n$paymentUrl',
+                subject: 'Microvise fatura ödeme linki',
+              );
+            },
+            child: const Text('Paylaş'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await openExternalUrl(paymentUrl);
+            },
+            child: const Text('Aç'),
+          ),
+        ],
+      ),
+    );
+  } catch (error) {
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text('Ödeme linki oluşturulamadı: $error')),
+    );
+  }
+}
 
 String _formatJobElapsed(Duration value) {
   final minutes = value.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -792,6 +955,22 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                             _bulkDeleting ||
                                             _bulkProcessing
                                         ? null
+                                        : () => _createPaymentLinkSelected(
+                                            items,
+                                          ),
+                                    icon: const Icon(
+                                      AppPhosphorIcons.link,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Ödeme Linki'),
+                                  ),
+                                  const Gap(8),
+                                  OutlinedButton.icon(
+                                    onPressed:
+                                        _selectedInvoiceIds.isEmpty ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing
+                                        ? null
                                         : () => _exportSelectedStatement(items),
                                     icon: const Icon(
                                       AppPhosphorIcons.receipt,
@@ -977,6 +1156,19 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                     size: 18,
                                   ),
                                   label: const Text('Tahsilat Yap'),
+                                ),
+                                OutlinedButton.icon(
+                                  onPressed:
+                                      _selectedInvoiceIds.isEmpty ||
+                                          _bulkDeleting ||
+                                          _bulkProcessing
+                                      ? null
+                                      : () => _createPaymentLinkSelected(items),
+                                  icon: const Icon(
+                                    AppPhosphorIcons.link,
+                                    size: 18,
+                                  ),
+                                  label: const Text('Ödeme Linki'),
                                 ),
                                 OutlinedButton.icon(
                                   onPressed:
@@ -1991,6 +2183,17 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     } finally {
       if (mounted) setState(() => _bulkProcessing = false);
     }
+  }
+
+  Future<void> _createPaymentLinkSelected(List<Invoice> visibleInvoices) async {
+    final selected = visibleInvoices
+        .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
+        .toList(growable: false);
+    await _createInvoicePaymentLinkFlow(
+      context: context,
+      ref: ref,
+      invoices: selected,
+    );
   }
 
   Future<void> _collectSelected(List<Invoice> visibleInvoices) async {
@@ -3454,6 +3657,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           offset: const Offset(0, 36),
           onSelected: (value) {
             switch (value) {
+              case 'payment_link':
+                _sendPaymentLink();
               case 'manual':
                 _toggleManual();
               case 'manual_sent':
@@ -3469,6 +3674,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             }
           },
           itemBuilder: (context) => [
+            if (invoice.invoiceType == 'sales' &&
+                invoice.isActive &&
+                invoice.isOpen &&
+                invoice.remainingAmount > 0)
+              const PopupMenuItem(
+                value: 'payment_link',
+                child: Text('Ödeme linki gönder'),
+              ),
             if (!alreadySent)
               PopupMenuItem(
                 value: 'manual',
@@ -3586,6 +3799,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         offset: const Offset(0, 36),
         onSelected: (value) {
           switch (value) {
+            case 'payment_link':
+              _sendPaymentLink();
             case 'manual':
               _toggleManual();
             case 'manual_sent':
@@ -3601,6 +3816,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           }
         },
         itemBuilder: (context) => [
+          if (invoice.invoiceType == 'sales' &&
+              invoice.isActive &&
+              invoice.isOpen &&
+              invoice.remainingAmount > 0)
+            const PopupMenuItem(
+              value: 'payment_link',
+              child: Text('Ödeme linki gönder'),
+            ),
           if (!alreadySent)
             PopupMenuItem(
               value: 'manual',
@@ -4016,6 +4239,19 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         ),
       ),
     );
+  }
+
+  Future<void> _sendPaymentLink() async {
+    setState(() => _busy = true);
+    try {
+      await _createInvoicePaymentLinkFlow(
+        context: context,
+        ref: ref,
+        invoices: [widget.invoice],
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _edit() async {

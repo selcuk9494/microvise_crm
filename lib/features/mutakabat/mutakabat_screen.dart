@@ -1175,15 +1175,24 @@ class _MutakabatDashboardWithFiltersState
               columns: const ['Kalem', 'Adet', 'Birim Fiyat', 'Worldline'],
               emphasized: true,
               rows: [
-                if (showGmp3 || showTsm)
+                if (showGmp3 || showTsm) ...[
                   [
-                    'GMP3 / IRESTO (INGENICO + PAX)',
-                    '${gmp3Qty + tsmQty}',
+                    'GMP3 / IRESTO INGENICO',
+                    '${ingGmp3Qty + ingTsmQty}',
                     gmp3Unit == tsmUnit
                         ? money.format(gmp3Unit)
                         : '—',
-                    money.format(gmp3Amount + tsmAmount),
+                    money.format(ingGmp3Amount + ingTsmAmount),
                   ],
+                  [
+                    'GMP3 / IRESTO PAX',
+                    '${paxGmp3Qty + paxTsmQty}',
+                    gmp3Unit == tsmUnit
+                        ? money.format(gmp3Unit)
+                        : '—',
+                    money.format(paxGmp3Amount + paxTsmAmount),
+                  ],
+                ],
                 if (showYkb || _integrationKey == 'ALL')
                   [
                     'YKB_KOOP BANKA',

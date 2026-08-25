@@ -45,6 +45,7 @@ const {
   exportMutakabatExcel,
   decodeBase64File,
 } = require('./_lib/mutakabat_processor');
+const { createInvoicePaymentLink } = require('./_lib/invoice_payment');
 const {
   handleCors,
   ok,
@@ -2393,6 +2394,33 @@ module.exports = async (req, res) => {
       if (!hasPageAccess(user, 'mutakabat')) return forbidden(req, res);
       try {
         return ok(req, res, await runExportMutakabatExcel(body));
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'createInvoicePaymentLink') {
+      if (
+        !hasPageAccess(user, 'faturalama') &&
+        !hasPageAccess(user, 'e_fatura')
+      ) {
+        return forbidden(req, res);
+      }
+      try {
+        const invoiceIds = Array.isArray(body.invoiceIds)
+          ? body.invoiceIds
+          : body.invoiceId
+            ? [body.invoiceId]
+            : [];
+        return ok(
+          req,
+          res,
+          await createInvoicePaymentLink({
+            invoiceIds,
+            createdBy: user?.id || null,
+            req,
+          }),
+        );
       } catch (error) {
         if (error?.statusCode === 400) return badRequest(req, res, error.message);
         throw error;

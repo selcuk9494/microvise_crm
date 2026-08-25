@@ -741,10 +741,15 @@ function applyRangeStyle(sheet, startRow, endRow, startCol, endCol, style) {
 function setCell(sheet, r, c, value, style) {
   const addr = XLSXStyle.utils.encode_cell({ r, c });
   const isNum = typeof value === 'number' && Number.isFinite(value);
+  const numFmt = (style && style.numFmt) || (isNum ? '#,##0.00' : undefined);
   sheet[addr] = isNum
-    ? { t: 'n', v: value, z: '#,##0.00' }
+    ? { t: 'n', v: value, z: numFmt }
     : { t: 's', v: value == null ? '' : String(value) };
   if (style) sheet[addr].s = style;
+}
+
+function asQty(n) {
+  return Math.round(Number(n) || 0);
 }
 
 const COLORS = {
@@ -869,6 +874,11 @@ function buildDashboardSheet(summary, unitPrices, periodLabel) {
     alignment: { horizontal: 'right', vertical: 'center' },
     numFmt: '₺#,##0.00',
   };
+  const qtyStyle = {
+    ...bodyStyle,
+    alignment: { horizontal: 'center', vertical: 'center' },
+    numFmt: '0',
+  };
   const totalStyle = {
     font: baseFont({ bold: true }),
     fill: { patternType: 'solid', fgColor: { rgb: COLORS.totalRow } },
@@ -878,6 +888,11 @@ function buildDashboardSheet(summary, unitPrices, periodLabel) {
     ...totalStyle,
     alignment: { horizontal: 'right', vertical: 'center' },
     numFmt: '₺#,##0.00',
+  };
+  const totalQtyStyle = {
+    ...totalStyle,
+    alignment: { horizontal: 'center', vertical: 'center' },
+    numFmt: '0',
   };
 
   function fillRow(style) {
@@ -908,20 +923,14 @@ function buildDashboardSheet(summary, unitPrices, periodLabel) {
     } else {
       for (const row of dataRows) {
         setCell(sheet, r, 0, row[0], bodyStyle);
-        setCell(sheet, r, 1, row[1], {
-          ...bodyStyle,
-          alignment: { horizontal: 'center', vertical: 'center' },
-        });
+        setCell(sheet, r, 1, asQty(row[1]), qtyStyle);
         setCell(sheet, r, 2, row[2], moneyStyle);
         setCell(sheet, r, 3, row[3], moneyStyle);
         setCell(sheet, r, 4, '', bodyStyle);
         r += 1;
       }
       setCell(sheet, r, 0, totalLabel, totalStyle);
-      setCell(sheet, r, 1, totalQty, {
-        ...totalStyle,
-        alignment: { horizontal: 'center' },
-      });
+      setCell(sheet, r, 1, asQty(totalQty), totalQtyStyle);
       setCell(sheet, r, 2, '', totalStyle);
       setCell(sheet, r, 3, money(totalAmount), totalMoneyStyle);
       setCell(sheet, r, 4, '', totalStyle);
@@ -1040,10 +1049,7 @@ function buildDashboardSheet(summary, unitPrices, periodLabel) {
   ];
   for (const row of productRows) {
     setCell(sheet, r, 0, row[0], bodyStyle);
-    setCell(sheet, r, 1, row[1], {
-      ...bodyStyle,
-      alignment: { horizontal: 'center', vertical: 'center' },
-    });
+    setCell(sheet, r, 1, asQty(row[1]), qtyStyle);
     setCell(sheet, r, 2, row[2], bodyStyle);
     setCell(sheet, r, 3, money(row[3]), moneyStyle);
     setCell(sheet, r, 4, '', bodyStyle);
@@ -1201,27 +1207,30 @@ function buildDashboardSheet(summary, unitPrices, periodLabel) {
 
   writeTitleRow('Microvise Keseceği Fatura', COLORS.microHeader);
   setCell(sheet, r, 0, 'INGENICO', microRowStyle);
-  setCell(sheet, r, 1, ingenico.totals.qty, {
+  setCell(sheet, r, 1, asQty(ingenico.totals.qty), {
     ...microRowStyle,
     alignment: { horizontal: 'center', vertical: 'center' },
+    numFmt: '0',
   });
   setCell(sheet, r, 2, '', microRowStyle);
   setCell(sheet, r, 3, money(ingenico.totals.micro), microRowMoney);
   setCell(sheet, r, 4, '', microRowStyle);
   r += 1;
   setCell(sheet, r, 0, 'PAX', microRowStyle);
-  setCell(sheet, r, 1, pax.totals.qty, {
+  setCell(sheet, r, 1, asQty(pax.totals.qty), {
     ...microRowStyle,
     alignment: { horizontal: 'center', vertical: 'center' },
+    numFmt: '0',
   });
   setCell(sheet, r, 2, '', microRowStyle);
   setCell(sheet, r, 3, money(pax.totals.micro), microRowMoney);
   setCell(sheet, r, 4, '', microRowStyle);
   r += 1;
   setCell(sheet, r, 0, 'Microvise Keseceği Fatura', microGrandStyle);
-  setCell(sheet, r, 1, ingenico.totals.qty + pax.totals.qty, {
+  setCell(sheet, r, 1, asQty(ingenico.totals.qty + pax.totals.qty), {
     ...microGrandStyle,
     alignment: { horizontal: 'center', vertical: 'center' },
+    numFmt: '0',
   });
   setCell(sheet, r, 2, '', microGrandStyle);
   setCell(sheet, r, 3, money(summary.totals.microviseGrand), microGrandMoney);
@@ -1267,10 +1276,16 @@ function buildDashboardSheet(summary, unitPrices, periodLabel) {
 
   const worldlineOzetRows = [
     {
-      label: 'GMP3 / IRESTO (INGENICO + PAX)',
-      qty: gmp3Qty + tsmQty,
+      label: 'GMP3 / IRESTO INGENICO',
+      qty: ingGmp3Qty + ingTsmQty,
       unit: gmp3Unit === tsmUnit ? gmp3Unit : null,
-      amount: gmp3Amount + tsmAmount,
+      amount: ingGmp3Amount + ingTsmAmount,
+    },
+    {
+      label: 'GMP3 / IRESTO PAX',
+      qty: paxGmp3Qty + paxTsmQty,
+      unit: gmp3Unit === tsmUnit ? gmp3Unit : null,
+      amount: paxGmp3Amount + paxTsmAmount,
     },
     {
       label: 'YKB_KOOP BANKA',
@@ -1281,9 +1296,10 @@ function buildDashboardSheet(summary, unitPrices, periodLabel) {
   ];
   for (const row of worldlineOzetRows) {
     setCell(sheet, r, 0, row.label, worldRowStyle);
-    setCell(sheet, r, 1, row.qty, {
+    setCell(sheet, r, 1, asQty(row.qty), {
       ...worldRowStyle,
       alignment: { horizontal: 'center', vertical: 'center' },
+      numFmt: '0',
     });
     if (row.unit == null || Number.isNaN(Number(row.unit))) {
       setCell(sheet, r, 2, '—', {
@@ -1298,9 +1314,10 @@ function buildDashboardSheet(summary, unitPrices, periodLabel) {
     r += 1;
   }
   setCell(sheet, r, 0, 'Worldline Keseceği Fatura', worldGrandStyle);
-  setCell(sheet, r, 1, ykb.totals.qty + gmp3Qty + tsmQty, {
+  setCell(sheet, r, 1, asQty(ykb.totals.qty + gmp3Qty + tsmQty), {
     ...worldGrandStyle,
     alignment: { horizontal: 'center', vertical: 'center' },
+    numFmt: '0',
   });
   setCell(sheet, r, 2, '', worldGrandStyle);
   setCell(sheet, r, 3, money(summary.totals.worldlineGrand), worldGrandMoney);
