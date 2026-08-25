@@ -3,6 +3,14 @@ set -euo pipefail
 FLUTTER_VERSION="3.41.2"
 CACHE_DIR="${VERCEL_CACHE_DIR:-$PWD/.vercel/cache}"
 FLUTTER_DIR="$CACHE_DIR/flutter/$FLUTTER_VERSION"
+COMMIT_SHA="${VERCEL_GIT_COMMIT_SHA:-local}"
+BUILD_MARKER="$CACHE_DIR/flutter_web_built_${COMMIT_SHA}"
+
+# Vercel may invoke vercel-build once per serverless function. Build Flutter web only once.
+if [ -f "$BUILD_MARKER" ] && [ -f "build/web/index.html" ] && [ -f "build/web/main.dart.js" ]; then
+  echo "Flutter web already built for ${COMMIT_SHA}; skipping duplicate build."
+  exit 0
+fi
 
 if [ ! -x "$FLUTTER_DIR/bin/flutter" ]; then
   echo "Flutter indiriliyor ($FLUTTER_VERSION)..."
@@ -54,3 +62,7 @@ BUILD_DEFINES+=("--dart-define=API_BASE_URL=${API_BASE_URL:-https://crm.microvis
 
 # Build faster: skip source maps and icon tree shaking for CI web builds
 flutter build web --release --no-source-maps --no-tree-shake-icons "${BUILD_DEFINES[@]}"
+
+mkdir -p "$CACHE_DIR"
+touch "$BUILD_MARKER"
+echo "Flutter web build complete for ${COMMIT_SHA}"

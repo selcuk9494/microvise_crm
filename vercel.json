@@ -3,8 +3,20 @@
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "build/web",
   "functions": {
-    "api/**/*.js": {
-      "includeFiles": "assets/**"
+    "api/*.js": {
+      "includeFiles": "{assets/**,api/_lib/**}"
+    },
+    "api/auth/*.js": {
+      "includeFiles": "{assets/**,api/_lib/**}"
+    },
+    "api/dashboard/*.js": {
+      "includeFiles": "{assets/**,api/_lib/**}"
+    },
+    "api/personnel/*.js": {
+      "includeFiles": "{assets/**,api/_lib/**}"
+    },
+    "api/akinsoft/*.js": {
+      "includeFiles": "{assets/**,api/_lib/**}"
     }
   },
   "rewrites": [
