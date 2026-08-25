@@ -81,6 +81,21 @@ class PosCollectionRow {
     this.paymentLinkStatus,
   });
 
+  static double _toDouble(dynamic value, {double fallback = 0}) {
+    if (value == null) return fallback;
+    if (value is num) return value.toDouble();
+    final text = value.toString().trim().replaceAll(',', '.');
+    if (text.isEmpty) return fallback;
+    return double.tryParse(text) ?? fallback;
+  }
+
+  static int _toInt(dynamic value, {int fallback = 0}) {
+    if (value == null) return fallback;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString().trim()) ?? fallback;
+  }
+
   factory PosCollectionRow.fromJson(Map<String, dynamic> json) {
     final invoices = json['invoices'];
     final customers = json['customers'];
@@ -93,7 +108,7 @@ class PosCollectionRow {
           ? invoices['invoice_number']?.toString()
           : null,
       invoiceStatus: invoices is Map ? invoices['status']?.toString() : null,
-      amount: (json['amount'] as num?)?.toDouble() ?? 0,
+      amount: _toDouble(json['amount']),
       currency: json['currency']?.toString() ?? 'TRY',
       paidOn:
           parseAppDateTime(json['paid_on']?.toString()) ??
@@ -101,7 +116,8 @@ class PosCollectionRow {
           appNow(),
       createdAt: parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
       description: json['description']?.toString(),
-      isActive: json['is_active'] as bool? ?? true,
+      isActive: json['is_active'] == true ||
+          json['is_active']?.toString().toLowerCase() == 'true',
       providerOrderId: json['provider_order_id']?.toString(),
       paymentLinkStatus: json['payment_link_status']?.toString(),
     );
@@ -147,19 +163,23 @@ final posCollectionsProvider = FutureProvider.autoDispose
           .map(PosCollectionRow.fromJson)
           .toList(growable: false);
       final summary = response['summary'];
+      final summaryMap = summary is Map ? Map<String, dynamic>.from(summary) : null;
       return PosCollectionsResult(
         items: items,
-        count: (summary is Map ? summary['count'] as num? : null)?.toInt() ??
-            items.length,
-        activeCount:
-            (summary is Map ? summary['activeCount'] as num? : null)?.toInt() ??
-            items.where((e) => e.isActive).length,
-        totalAmount:
-            (summary is Map ? summary['totalAmount'] as num? : null)
-                ?.toDouble() ??
-            items
-                .where((e) => e.isActive)
-                .fold<double>(0, (sum, e) => sum + e.amount),
+        count: PosCollectionRow._toInt(
+          summaryMap?['count'],
+          fallback: items.length,
+        ),
+        activeCount: PosCollectionRow._toInt(
+          summaryMap?['activeCount'],
+          fallback: items.where((e) => e.isActive).length,
+        ),
+        totalAmount: PosCollectionRow._toDouble(
+          summaryMap?['totalAmount'],
+          fallback: items
+              .where((e) => e.isActive)
+              .fold<double>(0, (sum, e) => sum + e.amount),
+        ),
       );
     });
 
