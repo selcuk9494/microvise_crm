@@ -1177,13 +1177,11 @@ function buildCrmHostedPaymentPageHtml({
       }
       loader.style.display='block';
       btn.disabled=true;
-      // Once: microvise.net WooCommerce POS (ayni kart orada calisiyor)
-      payViaMicrovisePos(holder,number,expMonth,expYear,cvc).catch(function(){
-        return payViaCrm(holder,number,expMonth,expYear,cvc);
-      }).catch(function(e){
+      // Sadece microvise.net WooCommerce POS (CRM NestPay yoluna sessiz dusme)
+      payViaMicrovisePos(holder,number,expMonth,expYear,cvc).catch(function(e){
         loader.style.display='none';
         btn.disabled=false;
-        showError(e&&e.message?e.message:'Odeme baslatilamadi.');
+        showError((e&&e.message?e.message:'Odeme baslatilamadi.')+' Eklenti/POS ayarini kontrol edin.');
       });
     });
   })();
