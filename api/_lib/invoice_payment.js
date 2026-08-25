@@ -262,6 +262,23 @@ function getHostedPageUrl() {
 }
 
 function getHostedBridgeCallbackUrl() {
+  // Live WP tema henüz invoice_hosted kabul etmiyor ("Gecersiz callback").
+  // Varsayılan: doğrudan CRM callback. WP plugin yüklendikten sonra
+  // INVOICE_PAYMENT_USE_WP_BRIDGE=1 ile bridge tekrar açılır.
+  const useWpBridge = String(
+    process.env.INVOICE_PAYMENT_USE_WP_BRIDGE || '',
+  )
+    .trim()
+    .toLowerCase();
+  if (
+    useWpBridge !== '1' &&
+    useWpBridge !== 'true' &&
+    useWpBridge !== 'yes' &&
+    useWpBridge !== 'on'
+  ) {
+    return '';
+  }
+
   const exactUrl =
     process.env.INVOICE_PAYMENT_HOSTED_CALLBACK_URL ||
     process.env.PAYMENT_INVOICE_HOSTED_CALLBACK_URL ||
