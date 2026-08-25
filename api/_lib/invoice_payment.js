@@ -970,6 +970,8 @@ function buildCrmHostedPaymentPageHtml({
         ? `${invoiceCount} adet`
         : '-';
   const payApi = 'https://crm.microvise.net/api/invoice-pay?action=pay';
+  const nestpayApi =
+    'https://www.microvise.net/wp-admin/admin-post.php?action=microvise_invoice_nestpay';
 
   if (status === 'success') {
     return buildStatusHtml({
@@ -1080,7 +1082,10 @@ function buildCrmHostedPaymentPageHtml({
   (function(){
     var sessionToken=${JSON.stringify(sessionToken)};
     var token=${JSON.stringify(token || '')};
+    var amount=${JSON.stringify(amountText)};
+    var currency=${JSON.stringify(currencyLabel === '₺' ? 'TRY' : currencyLabel)};
     var apiUrl=${JSON.stringify(payApi)};
+    var nestpayUrl=${JSON.stringify(nestpayApi)};
     var form=document.getElementById('pay-form');
     var err=document.getElementById('err');
     var loader=document.getElementById('loader');
@@ -1091,6 +1096,60 @@ function buildCrmHostedPaymentPageHtml({
     var cardCvc=document.getElementById('card-cvc');
     function digits(v){return (v||'').replace(/\\D/g,'');}
     function showError(message){err.textContent=message;err.style.display='block';}
+    function writeHtml(html){document.open();document.write(html);document.close();}
+    function payViaCrm(holder,number,expMonth,expYear,cvc){
+      return fetch(apiUrl,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          sessionToken:sessionToken,
+          token:token,
+          cardHolderName:holder,
+          cardNumber:number,
+          expireMonth:expMonth,
+          expireYear:expYear,
+          sc:cvc
+        })
+      }).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+      .then(function(res){
+        if(res.d&&res.d.success&&res.d.html){writeHtml(res.d.html);return;}
+        throw new Error((res.d&&res.d.message)||'Odeme baslatilamadi.');
+      });
+    }
+    function payViaMicrovisePos(holder,number,expMonth,expYear,cvc){
+      var body=new URLSearchParams();
+      body.set('session',sessionToken);
+      body.set('token',token);
+      body.set('amount',amount);
+      body.set('currency',currency);
+      body.set('pan',number);
+      body.set('cv2',cvc);
+      body.set('sc',cvc);
+      body.set('mm',expMonth);
+      body.set('yy',expYearShortFrom(expYear));
+      return fetch(nestpayUrl,{
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+        body:body.toString(),
+        credentials:'omit'
+      }).then(function(r){
+        return r.text().then(function(t){return {ok:r.ok,status:r.status,t:t};});
+      }).then(function(res){
+        var text=res.t||'';
+        if(res.ok && /est3Dgate|Bankaya|sanalpos/i.test(text)){writeHtml(text);return;}
+        try{
+          var j=JSON.parse(text);
+          throw new Error((j&&j.message)||'Microvise POS baslatilamadi.');
+        }catch(e){
+          if(e&&e.message&&e.message!=='Unexpected end of JSON input') throw e;
+          throw new Error('Microvise POS eklentisi yanit vermedi.');
+        }
+      });
+    }
+    function expYearShortFrom(y){
+      var d=digits(y);
+      return d.length<=2?d:d.slice(-2);
+    }
     cardNumber.addEventListener('input',function(){
       var d=digits(cardNumber.value).slice(0,19);
       var p=[];for(var i=0;i<d.length;i+=4){p.push(d.slice(i,i+4));}
@@ -1118,29 +1177,13 @@ function buildCrmHostedPaymentPageHtml({
       }
       loader.style.display='block';
       btn.disabled=true;
-      fetch(apiUrl,{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          sessionToken:sessionToken,
-          token:token,
-          cardHolderName:holder,
-          cardNumber:number,
-          expireMonth:expMonth,
-          expireYear:expYear,
-          // cvc/cv2 adları bazı güvenlik katmanlarında silinebiliyor
-          sc:cvc
-        })
-      }).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
-      .then(function(res){
-        if(res.d&&res.d.success&&res.d.html){
-          document.open();document.write(res.d.html);document.close();return;
-        }
-        throw new Error((res.d&&res.d.message)||'Ödeme başlatılamadı.');
+      // Once: microvise.net WooCommerce POS (ayni kart orada calisiyor)
+      payViaMicrovisePos(holder,number,expMonth,expYear,cvc).catch(function(){
+        return payViaCrm(holder,number,expMonth,expYear,cvc);
       }).catch(function(e){
         loader.style.display='none';
         btn.disabled=false;
-        showError(e&&e.message?e.message:'Ödeme başlatılamadı.');
+        showError(e&&e.message?e.message:'Odeme baslatilamadi.');
       });
     });
   })();
