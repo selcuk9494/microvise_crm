@@ -359,13 +359,17 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
           child: async.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (error, _) => EmptyStateCard(
-              message: 'Liste alınamadı: $error',
+              icon: AppPhosphorIcons.warningCircle,
+              title: 'Liste alınamadı',
+              message: '$error',
             ),
             data: (result) {
               if (result.items.isEmpty) {
-                return EmptyStateCard(
+                return const EmptyStateCard(
+                  icon: AppPhosphorIcons.creditCard,
+                  title: 'Sanal POS tahsilatı yok',
                   message:
-                      'Seçilen tarihte sanal POS tahsilatı yok. Farklı tarih deneyin.',
+                      'Seçilen tarihte kayıt yok. Bugün / dün veya farklı tarih deneyin.',
                 );
               }
               return Column(
