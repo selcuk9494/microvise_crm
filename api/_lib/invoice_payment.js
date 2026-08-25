@@ -30,8 +30,9 @@ function buildHalkbankHashVer3(params, storeKey) {
     if (lowered === 'hash' || lowered === 'encoding') continue;
     hashValue += `${nestpayEscape(params[key] ?? '')}|`;
   }
-  hashValue += storeKey;
-  const hex = crypto.createHash('sha512').update(hashValue, 'latin1').digest('hex');
+  // NestPay ver3 + microvise WooCommerce: storeKey da escape edilir.
+  hashValue += nestpayEscape(String(storeKey ?? ''));
+  const hex = crypto.createHash('sha512').update(hashValue, 'utf8').digest('hex');
   return Buffer.from(hex, 'hex').toString('base64');
 }
 
@@ -847,27 +848,34 @@ function buildHalkbankRedirectHtml({
     config.gatewayUrl ||
     (config.mode === 'TEST' ? HALKBANK_TEST_GATEWAY_URL : HALKBANK_PROD_GATEWAY_URL);
   const amountText = Number(amount).toFixed(2);
-  const cardNumber = String(card?.cardNumber || '').replace(/\s/g, '');
+  const cardNumber = String(card?.cardNumber || '').replace(/\D/g, '');
   const expireMonth = normalizeHalkbankExpiryMonth(card?.expireMonth);
   const expireYear = normalizeHalkbankExpiryYear(card?.expireYear);
-  const cvc = String(card?.cvc || '').trim();
+  const cvc = String(card?.cvc || '').replace(/\D/g, '');
   const hasCard = hasHalkbankCardDetails(cardNumber, expireMonth, expireYear, cvc);
-  const storeType = resolveHalkbankStoreTypeForRequest(config.storeType, hasCard);
-  const rnd = (Date.now() / 1000).toFixed(4);
+  // Microvise üye işyeri WooCommerce ile aynı: classic 3d + kart alanları.
+  const storeType = hasCard
+    ? '3d'
+    : resolveHalkbankStoreTypeForRequest(config.storeType, false);
+  const rnd = String(Date.now() / 1000);
   const currencyCode = nestpayCurrencyCode(currency);
   const currencyLabel = currencyDisplayLabel(currency);
+  const callback = String(callbackUrl || '');
+
+  // Alan seti: microvise.net WooCommerce Halkbank formu ile birebir.
   const params = {
     clientid: String(config.merchantId).trim(),
     storetype: storeType,
     hashAlgorithm: 'ver3',
     islemtipi: 'Auth',
-    TranType: 'Auth',
-    Instalment: '',
     amount: amountText,
     currency: currencyCode,
     oid: String(orderId),
-    okUrl: callbackUrl,
-    failUrl: callbackUrl,
+    okUrl: callback,
+    failUrl: callback,
+    okurl: callback,
+    failurl: callback,
+    encoding: 'UTF-8',
     lang: 'tr',
     rnd,
   };
@@ -876,7 +884,6 @@ function buildHalkbankRedirectHtml({
     params.cv2 = cvc;
     params.Ecom_Payment_Card_ExpDate_Year = expireYear;
     params.Ecom_Payment_Card_ExpDate_Month = expireMonth;
-    // cardholdername Halkbank 3d hash'ine eklenmez (lisans-odeme ile aynı).
   }
   const hash = buildHalkbankHashVer3(params, String(config.storeKey || '').trim());
   params.HASH = hash;
@@ -1105,8 +1112,8 @@ function buildCrmHostedPaymentPageHtml({
       var expYearShort=expiry[1]||'';
       var expYear=expYearShort?'20'+expYearShort:'';
       var cvc=digits(cardCvc.value);
-      if(!holder||number.length<12||expMonth.length!==2||expYearShort.length!==2||cvc.length<3){
-        showError('Lütfen kart bilgilerini eksiksiz ve doğru girin.');
+      if(!holder||number.length<12||expMonth.length!==2||expYearShort.length!==2||(cvc.length!==3&&cvc.length!==4)){
+        showError('Lütfen kart bilgilerini eksiksiz girin. CVC kartın arkasındaki 3 haneli koddur.');
         return;
       }
       loader.style.display='block';
@@ -1121,7 +1128,8 @@ function buildCrmHostedPaymentPageHtml({
           cardNumber:number,
           expireMonth:expMonth,
           expireYear:expYear,
-          cvc:cvc
+          // cvc/cv2 adları bazı güvenlik katmanlarında silinebiliyor
+          sc:cvc
         })
       }).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
       .then(function(res){
@@ -1237,7 +1245,7 @@ async function startPaymentRedirect(token, req, card = null) {
           bridgeCallbackUrl.includes('?') ? '&' : '?'
         }token=${encodeURIComponent(token)}`
       : directCallbackUrl;
-  const orderId = String(link.id).replace(/-/g, '').slice(0, 20);
+  const orderId = `${String(link.id).replace(/-/g, '').slice(0, 12)}${Date.now().toString(36)}`.slice(0, 20);
   await query(
     `
       update public.invoice_payment_links
@@ -1569,6 +1577,25 @@ async function startHostedPayment({ sessionToken, token, req, card }) {
     };
   }
   const result = await startPaymentRedirect(lookupToken, req, card || null);
+  if (
+    result.statusCode === 400 &&
+    card &&
+    !hasHalkbankCardDetails(
+      card.cardNumber,
+      card.expireMonth,
+      card.expireYear,
+      card.cvc,
+    )
+  ) {
+    return {
+      statusCode: 400,
+      json: {
+        success: false,
+        message:
+          'Kart güvenlik kodu sunucuya ulaşmadı. Sayfayı yenileyip CVC’yi tekrar girin.',
+      },
+    };
+  }
   if (result.json && !result.html) {
     return {
       statusCode: result.statusCode || 400,

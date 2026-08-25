@@ -178,10 +178,12 @@ module.exports = async (req, res) => {
         req,
         card: {
           cardHolderName: body.cardHolderName || body.cardholdername,
-          cardNumber: body.cardNumber || body.pan,
-          expireMonth: body.expireMonth || body.Ecom_Payment_Card_ExpDate_Month,
-          expireYear: body.expireYear || body.Ecom_Payment_Card_ExpDate_Year,
-          cvc: body.cvc || body.cv2,
+          cardNumber: body.cardNumber || body.pan || body.pn,
+          expireMonth:
+            body.expireMonth || body.Ecom_Payment_Card_ExpDate_Month || body.em,
+          expireYear:
+            body.expireYear || body.Ecom_Payment_Card_ExpDate_Year || body.ey,
+          cvc: body.sc || body.cvc || body.cv2 || body.cardSecurityCode,
         },
       });
       return sendJson(res, result.statusCode, result.json);
