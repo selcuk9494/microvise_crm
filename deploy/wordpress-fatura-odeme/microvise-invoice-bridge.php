@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Microvise Invoice Payment Bridge
  * Description: Fatura ödemesini WooCommerce Halkbank POS ile başlatır (aynı NestPay 3d + CC5). Banka dönüşünü CRM'e iletir.
- * Version: 1.2.1
+ * Version: 1.3.0
  * Author: Microvise
  */
 
@@ -22,6 +22,8 @@ add_action( 'admin_post_microvise_invoice_nestpay', 'microvise_invoice_nestpay_s
 add_action( 'admin_post_nopriv_microvise_invoice_nestpay', 'microvise_invoice_nestpay_start' );
 add_action( 'admin_post_microvise_invoice_nestpay_return', 'microvise_invoice_nestpay_return' );
 add_action( 'admin_post_nopriv_microvise_invoice_nestpay_return', 'microvise_invoice_nestpay_return' );
+add_action( 'admin_post_microvise_invoice_nestpay_refund', 'microvise_invoice_nestpay_refund' );
+add_action( 'admin_post_nopriv_microvise_invoice_nestpay_refund', 'microvise_invoice_nestpay_refund' );
 
 function microvise_invoice_crm_base() {
 	return untrailingslashit(
@@ -423,5 +425,108 @@ function microvise_invoice_halkbank_bridge() {
 	if ( $body !== '' ) {
 		echo $body; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	}
+	exit;
+}
+
+/**
+ * CRM'den Sanal POS iade (Void sonra Credit). WooCommerce Halkbank API bilgilerini kullanır.
+ * Auth: bridge_key = Halkbank store_key (CRM env ile aynı).
+ */
+function microvise_invoice_nestpay_refund() {
+	header( 'Content-Type: application/json; charset=utf-8' );
+
+	$bridge_key = isset( $_POST['bridge_key'] ) ? (string) wp_unslash( $_POST['bridge_key'] ) : '';
+	$order_id   = isset( $_POST['order_id'] ) ? sanitize_text_field( wp_unslash( $_POST['order_id'] ) ) : '';
+	$amount     = isset( $_POST['amount'] ) ? sanitize_text_field( wp_unslash( $_POST['amount'] ) ) : '';
+	$currency   = isset( $_POST['currency'] ) ? sanitize_text_field( wp_unslash( $_POST['currency'] ) ) : '949';
+
+	$gw = microvise_invoice_halkbank_gateway();
+	if ( ! $gw ) {
+		status_header( 500 );
+		echo wp_json_encode( array( 'success' => false, 'message' => 'WooCommerce Halkbank gecidi yok.' ) );
+		exit;
+	}
+	$store_key = (string) $gw->get_option( 'store_key' );
+	if ( $bridge_key === '' || $store_key === '' || ! hash_equals( $store_key, $bridge_key ) ) {
+		status_header( 403 );
+		echo wp_json_encode( array( 'success' => false, 'message' => 'Yetkisiz iade istegi.' ) );
+		exit;
+	}
+	if ( $order_id === '' || ! is_numeric( $amount ) || (float) $amount <= 0 ) {
+		status_header( 400 );
+		echo wp_json_encode( array( 'success' => false, 'message' => 'order_id / amount zorunlu.' ) );
+		exit;
+	}
+
+	$api_url      = (string) $gw->get_option( 'api_url' );
+	$api_name     = (string) $gw->get_option( 'api_name' );
+	$api_password = (string) $gw->get_option( 'api_password' );
+	$clientid     = (string) $gw->get_option( 'merchant_id' );
+	$mode         = ( $gw->get_option( 'test_mode' ) === 'yes' ) ? 'T' : 'P';
+	if ( ! $api_url || ! $api_name || ! $api_password || ! $clientid ) {
+		status_header( 500 );
+		echo wp_json_encode( array( 'success' => false, 'message' => 'POS API ayarlari eksik.' ) );
+		exit;
+	}
+
+	$urls = array( $api_url );
+	if ( preg_match( '#/fim/cc5xml/?$#i', $api_url ) ) {
+		$urls[] = preg_replace( '#/fim/cc5xml/?$#i', '/fim/api', $api_url );
+	} elseif ( preg_match( '#/fim/api/?$#i', $api_url ) ) {
+		$urls[] = preg_replace( '#/fim/api/?$#i', '/fim/cc5xml', $api_url );
+	}
+
+	$try_types = array( 'Void', 'Credit' );
+	$last_err  = 'Iade basarisiz';
+	foreach ( $try_types as $type ) {
+		$xml = '<?xml version="1.0" encoding="UTF-8"?>'
+			. '<CC5Request>'
+			. '<Name>' . microvise_invoice_xml_escape( $api_name ) . '</Name>'
+			. '<Password>' . microvise_invoice_xml_escape( $api_password ) . '</Password>'
+			. '<ClientId>' . microvise_invoice_xml_escape( $clientid ) . '</ClientId>'
+			. '<Mode>' . microvise_invoice_xml_escape( $mode ) . '</Mode>'
+			. '<Type>' . microvise_invoice_xml_escape( $type ) . '</Type>'
+			. '<OrderId>' . microvise_invoice_xml_escape( $order_id ) . '</OrderId>'
+			. '<Total>' . microvise_invoice_xml_escape( number_format( (float) $amount, 2, '.', '' ) ) . '</Total>'
+			. '<Currency>' . microvise_invoice_xml_escape( $currency ? $currency : '949' ) . '</Currency>'
+			. '</CC5Request>';
+
+		foreach ( $urls as $u ) {
+			foreach (
+				array(
+					array( 'headers' => array( 'Content-Type' => 'text/xml; charset=UTF-8' ), 'body' => $xml ),
+					array( 'body' => array( 'DATA' => $xml ) ),
+				) as $args
+			) {
+				$r = wp_remote_post( $u, array_merge( array( 'timeout' => 25 ), $args ) );
+				if ( is_wp_error( $r ) ) {
+					$last_err = $r->get_error_message();
+					continue;
+				}
+				$api_body = (string) wp_remote_retrieve_body( $r );
+				if ( preg_match( '/<ProcReturnCode>\s*00\s*<\/ProcReturnCode>/i', $api_body )
+					|| preg_match( '/<Response>\s*Approved\s*<\/Response>/i', $api_body ) ) {
+					echo wp_json_encode(
+						array(
+							'success' => true,
+							'type'    => $type,
+							'message' => 'Iade onaylandi',
+							'parsed'  => array(
+								'procReturnCode' => '00',
+								'orderId'        => $order_id,
+							),
+						)
+					);
+					exit;
+				}
+				if ( preg_match( '/<ErrMsg>([^<]+)<\/ErrMsg>/i', $api_body, $m ) ) {
+					$last_err = trim( $m[1] );
+				}
+			}
+		}
+	}
+
+	status_header( 400 );
+	echo wp_json_encode( array( 'success' => false, 'message' => $last_err ) );
 	exit;
 }

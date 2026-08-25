@@ -280,6 +280,404 @@ async function finalizeHalkbank3DSecurePayment(payload, config) {
   return { approved: false, message: lastMessage };
 }
 
+function buildHalkbankOrderActionXml({
+  type,
+  orderId,
+  amount,
+  currency,
+  config,
+}) {
+  const { apiName, apiPassword } = resolveHalkbankApiCredentials(config);
+  const mode = getHalkbankModeValue(config.mode);
+  const total = Number(amount || 0).toFixed(2);
+  const cur = String(currency || '949').trim() || '949';
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<CC5Request>
+  <Name>${xmlEscape(apiName)}</Name>
+  <Password>${xmlEscape(apiPassword)}</Password>
+  <ClientId>${xmlEscape(config.merchantId)}</ClientId>
+  <Mode>${xmlEscape(mode)}</Mode>
+  <Type>${xmlEscape(type)}</Type>
+  <OrderId>${xmlEscape(orderId)}</OrderId>
+  <Total>${xmlEscape(total)}</Total>
+  <Currency>${xmlEscape(cur)}</Currency>
+</CC5Request>`;
+}
+
+async function sendHalkbankOrderAction(type, { orderId, amount, currency }, config) {
+  const { apiName, apiPassword } = resolveHalkbankApiCredentials(config);
+  if (!apiName || !apiPassword || !config.merchantId) {
+    return {
+      approved: false,
+      message: 'Halkbank API kullanıcı bilgisi eksik (API_NAME / API_PASSWORD / MERCHANT_ID).',
+    };
+  }
+  if (!orderId) {
+    return { approved: false, message: 'Iade icin banka siparis no (OrderId) bulunamadi.' };
+  }
+  const total = Number(amount || 0);
+  if (!(total > 0)) {
+    return { approved: false, message: 'Iade tutari gecersiz.' };
+  }
+
+  let lastMessage = 'Halkbank iade istegi basarisiz';
+  const xml = buildHalkbankOrderActionXml({
+    type,
+    orderId,
+    amount: total,
+    currency,
+    config,
+  });
+
+  for (const apiUrl of getHalkbankApiUrls(config)) {
+    for (const body of [
+      new URLSearchParams({ DATA: xml }).toString(),
+      xml,
+    ]) {
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              body === xml
+                ? 'text/xml; charset=utf-8'
+                : 'application/x-www-form-urlencoded; charset=utf-8',
+            Accept: 'application/xml, text/xml, */*',
+          },
+          body,
+        });
+        const rawXml = await response.text();
+        const parsed = parseHalkbankApiResponse(rawXml);
+        const approved =
+          parsed.procReturnCode === '00' ||
+          parsed.procReturnCode === '0000' ||
+          String(parsed.response || '').toUpperCase() === 'APPROVED';
+        if (approved) {
+          return {
+            approved: true,
+            parsed,
+            message: parsed.errMsg || 'OK',
+            type,
+            rawXml,
+          };
+        }
+        lastMessage =
+          parsed.errMsg ||
+          `Halkbank ${type} reddedildi (${parsed.procReturnCode || response.status})`;
+      } catch (error) {
+        lastMessage = error?.message || lastMessage;
+      }
+    }
+  }
+  return { approved: false, message: lastMessage, type };
+}
+
+async function refundViaWordPressBridge({ orderId, amount, currency }) {
+  const bridgeUrl =
+    process.env.INVOICE_PAYMENT_REFUND_URL ||
+    'https://www.microvise.net/wp-admin/admin-post.php?action=microvise_invoice_nestpay_refund';
+  const bridgeKey =
+    process.env.INVOICE_PAYMENT_BRIDGE_SECRET ||
+    process.env.INVOICE_PAYMENT_STORE_KEY ||
+    process.env.LICENSE_PAYMENT_STORE_KEY ||
+    process.env.HALKBANK_STORE_KEY ||
+    '';
+  if (!bridgeKey) {
+    return { approved: false, message: 'WP bridge anahtari yok', skipped: true };
+  }
+  try {
+    const body = new URLSearchParams({
+      bridge_key: bridgeKey,
+      order_id: String(orderId || ''),
+      amount: Number(amount || 0).toFixed(2),
+      currency: String(currency || '949'),
+    });
+    const response = await fetch(bridgeUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+        Accept: 'application/json',
+      },
+      body: body.toString(),
+    });
+    const text = await response.text();
+    let json = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = null;
+    }
+    if (json?.success) {
+      return {
+        approved: true,
+        message: json.message || 'OK',
+        via: 'wordpress',
+        parsed: json.parsed || null,
+        type: json.type || 'Credit',
+      };
+    }
+    return {
+      approved: false,
+      message: json?.message || `WP iade HTTP ${response.status}`,
+      via: 'wordpress',
+    };
+  } catch (error) {
+    return {
+      approved: false,
+      message: error?.message || 'WP iade baglantisi basarisiz',
+      via: 'wordpress',
+    };
+  }
+}
+
+function extractPosOrderId(link) {
+  const payload = link?.provider_payload || {};
+  return (
+    String(link?.provider_order_id || '').trim() ||
+    getHalkbankCallbackField(payload, 'oid', 'OrderId', 'orderid', 'Oid') ||
+    getHalkbankCallbackField(
+      payload.apiFinalize?.parsed || {},
+      'orderId',
+      'OrderId',
+    ) ||
+    ''
+  );
+}
+
+function extractPosChargeAmount(link, fallbackAmount) {
+  const payload = link?.provider_payload || {};
+  const fromPayload = Number(
+    getHalkbankCallbackField(payload, 'amount', 'Total', 'total') ||
+      payload?.amount ||
+      0,
+  );
+  if (fromPayload > 0) return fromPayload;
+  const fromLink = Number(link?.amount || 0);
+  const currency = String(link?.currency || 'TRY').toUpperCase();
+  if (fromLink > 0 && (currency === 'TRY' || currency === 'TL' || currency === '949')) {
+    return fromLink;
+  }
+  const fb = Number(fallbackAmount || 0);
+  return fb > 0 ? fb : fromLink;
+}
+
+function extractPosChargeCurrency(link) {
+  const payload = link?.provider_payload || {};
+  const raw =
+    getHalkbankCallbackField(payload, 'currency', 'Currency') ||
+    (String(link?.currency || '').toUpperCase() === 'TRY' ||
+    String(link?.currency || '').toUpperCase() === 'TL'
+      ? '949'
+      : '');
+  if (raw === '949' || raw === 'TRY' || raw === 'TL') return '949';
+  if (/^\d+$/.test(raw)) return raw;
+  // USD faturalar WP'de TRY'ye cevrildigi icin iade varsayilan 949
+  return '949';
+}
+
+async function refundInvoicePosPayment({
+  invoiceId,
+  transactionId = null,
+  amount = null,
+  createdBy = null,
+}) {
+  await ensureInvoicePaymentLinksTable();
+  const invId = String(invoiceId || '').trim();
+  if (!invId) {
+    const error = new Error('invoiceId zorunludur.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const txFilter = transactionId
+    ? 'and t.id = $2::uuid'
+    : '';
+  const txParams = transactionId ? [invId, String(transactionId).trim()] : [invId];
+  const collections = await query(
+    `
+      select t.*
+      from public.transactions t
+      where t.invoice_id = $1::uuid
+        and t.is_active = true
+        and t.transaction_type = 'collection'
+        and (
+          lower(coalesce(t.payment_method, '')) = 'pos'
+          or lower(coalesce(t.description, '')) like '%sanal pos%'
+          or lower(coalesce(t.description, '')) like '%odeme linki%'
+          or lower(coalesce(t.description, '')) like '%ödeme linki%'
+        )
+      ${txFilter}
+      order by t.created_at desc
+    `,
+    txParams,
+  );
+  if (!collections.rows.length) {
+    const error = new Error(
+      'Bu fatura icin sanal POS tahsilati bulunamadi (veya daha once iade edilmis).',
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const linkResult = await query(
+    `
+      select *
+      from public.invoice_payment_links
+      where status = 'paid'
+        and $1::uuid = any(invoice_ids)
+      order by paid_at desc nulls last, created_at desc
+      limit 1
+    `,
+    [invId],
+  );
+  const link = linkResult.rows[0];
+  if (!link) {
+    const error = new Error(
+      'Ilgili odeme linki kaydi bulunamadi. Banka iadesi icin order no yok.',
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+  if (String(link.status || '') === 'refunded') {
+    const error = new Error('Bu odeme linki zaten iade edilmis.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const orderId = extractPosOrderId(link);
+  const refundAmount = Number(amount || 0) > 0
+    ? Number(amount)
+    : extractPosChargeAmount(
+        link,
+        collections.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+      );
+  const refundCurrency = extractPosChargeCurrency(link);
+  if (!orderId) {
+    const error = new Error(
+      'Banka siparis numarasi (OrderId) kayitli degil; iade yapilamiyor.',
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  let bankResult = await refundViaWordPressBridge({
+    orderId,
+    amount: refundAmount,
+    currency: refundCurrency,
+  });
+
+  if (!bankResult.approved) {
+    const config = getPosConfigFromEnv();
+    const configError = validatePosConfig(config);
+    if (configError) {
+      const error = new Error(
+        bankResult.skipped
+          ? configError
+          : `${bankResult.message} | CRM POS: ${configError}`,
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+    // Ayni gun Void, olmazsa Credit
+    bankResult = await sendHalkbankOrderAction(
+      'Void',
+      { orderId, amount: refundAmount, currency: refundCurrency },
+      config,
+    );
+    if (!bankResult.approved) {
+      bankResult = await sendHalkbankOrderAction(
+        'Credit',
+        { orderId, amount: refundAmount, currency: refundCurrency },
+        config,
+      );
+    }
+    if (bankResult.approved) bankResult.via = 'crm';
+  }
+
+  if (!bankResult.approved) {
+    const error = new Error(
+      bankResult.message || 'Banka iadesi reddedildi.',
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const collectionIds = collections.rows.map((row) => row.id);
+  await withTransaction(async (txQuery) => {
+    await txQuery(
+      `
+        update public.transactions
+        set
+          is_active = false,
+          description = trim(
+            both from coalesce(description, '') || ' [Sanal POS iade ' || to_char(now(), 'YYYY-MM-DD HH24:MI') || ']'
+          )
+        where id = any($1::uuid[])
+          and is_active = true
+      `,
+      [collectionIds],
+    );
+
+    // Tum link faturalarinin POS tahsilatlari bu order ile kapandiysa linki refunded yap
+    const linkInvoiceIds = link.invoice_ids || [invId];
+    const remainingPos = await txQuery(
+      `
+        select count(*)::int as cnt
+        from public.transactions t
+        where t.invoice_id = any($1::uuid[])
+          and t.is_active = true
+          and t.transaction_type = 'collection'
+          and (
+            lower(coalesce(t.payment_method, '')) = 'pos'
+            or lower(coalesce(t.description, '')) like '%sanal pos%'
+          )
+      `,
+      [linkInvoiceIds],
+    );
+    const stillOpen = Number(remainingPos.rows[0]?.cnt || 0) > 0;
+    await txQuery(
+      `
+        update public.invoice_payment_links
+        set
+          status = case when $2::boolean then status else 'refunded' end,
+          provider_payload = coalesce(provider_payload, '{}'::jsonb) || $3::jsonb,
+          updated_at = now()
+        where id = $1
+      `,
+      [
+        link.id,
+        stillOpen,
+        JSON.stringify({
+          refund: {
+            at: new Date().toISOString(),
+            by: createdBy || null,
+            orderId,
+            amount: refundAmount,
+            currency: refundCurrency,
+            via: bankResult.via || 'crm',
+            type: bankResult.type || 'Credit',
+            message: bankResult.message || null,
+            parsed: bankResult.parsed || null,
+            transactionIds: collectionIds,
+            invoiceId: invId,
+          },
+        }),
+      ],
+    );
+  });
+
+  return {
+    ok: true,
+    orderId,
+    amount: refundAmount,
+    currency: refundCurrency,
+    via: bankResult.via || 'crm',
+    type: bankResult.type || 'Credit',
+    reversedTransactionIds: collectionIds,
+    message: 'Sanal POS iadesi tamamlandi; fatura tahsilati geri alindi.',
+  };
+}
+
 function normalizeProvider(value) {
   const normalized =
     typeof value === 'string' && value.trim() !== ''
@@ -1646,6 +2044,7 @@ module.exports = {
   startHostedPayment,
   startPaymentRedirect,
   handlePaymentCallback,
+  refundInvoicePosPayment,
   getPosConfigFromEnv,
   validatePosConfig,
   getHostedPageUrl,

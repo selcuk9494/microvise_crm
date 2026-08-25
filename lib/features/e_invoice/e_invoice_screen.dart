@@ -3600,6 +3600,9 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           invoice.isActive &&
           invoice.isOpen &&
           invoice.remainingAmount > 0;
+      final canPosRefund = invoice.invoiceType == 'sales' &&
+          invoice.isActive &&
+          invoice.isPaidViaPos;
       final actions = <Widget>[
         if (canPaymentLink)
           _InvoiceIconAction(
@@ -3607,6 +3610,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             icon: AppPhosphorIcons.link,
             tone: _InvoiceActionTone.primary,
             onPressed: _busy ? null : _sendPaymentLink,
+          ),
+        if (canPosRefund)
+          _InvoiceIconAction(
+            tooltip: 'Sanal POS iade',
+            icon: AppPhosphorIcons.arrowUUpLeft,
+            tone: _InvoiceActionTone.danger,
+            onPressed: _busy ? null : _refundPosPayment,
           ),
         if (showSendAction)
           _InvoiceIconAction(
@@ -3670,6 +3680,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             switch (value) {
               case 'payment_link':
                 _sendPaymentLink();
+              case 'pos_refund':
+                _refundPosPayment();
               case 'manual':
                 _toggleManual();
               case 'manual_sent':
@@ -3692,6 +3704,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               const PopupMenuItem(
                 value: 'payment_link',
                 child: Text('Tekil ödeme linki'),
+              ),
+            if (invoice.invoiceType == 'sales' &&
+                invoice.isActive &&
+                invoice.isPaidViaPos)
+              const PopupMenuItem(
+                value: 'pos_refund',
+                child: Text('Sanal POS iade'),
               ),
             if (!alreadySent)
               PopupMenuItem(
@@ -3812,6 +3831,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           switch (value) {
             case 'payment_link':
               _sendPaymentLink();
+            case 'pos_refund':
+              _refundPosPayment();
             case 'manual':
               _toggleManual();
             case 'manual_sent':
@@ -3834,6 +3855,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             const PopupMenuItem(
               value: 'payment_link',
               child: Text('Tekil ödeme linki'),
+            ),
+          if (invoice.invoiceType == 'sales' &&
+              invoice.isActive &&
+              invoice.isPaidViaPos)
+            const PopupMenuItem(
+              value: 'pos_refund',
+              child: Text('Sanal POS iade'),
             ),
           if (!alreadySent)
             PopupMenuItem(
@@ -4315,6 +4343,69 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         context: context,
         ref: ref,
         invoices: [widget.invoice],
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _refundPosPayment() async {
+    final invoice = widget.invoice;
+    final money = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: _currencySymbol(invoice.currency),
+      decimalDigits: 2,
+    );
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sanal POS iade'),
+        content: Text(
+          '${invoice.invoiceNumberDisplay} faturasındaki sanal POS tahsilatı '
+          '(${money.format(invoice.paidAmount > 0 ? invoice.paidAmount : invoice.grandTotal)}) '
+          'bankaya iade edilecek ve CRM tahsilatı geri alınacak. Devam edilsin mi?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('İade Et'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      if (apiClient == null) return;
+      final response = await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'refundInvoicePosPayment',
+          'invoiceId': invoice.id,
+        },
+      );
+      if (!mounted) return;
+      ref.invalidate(invoicesProvider);
+      ref.invalidate(accountBalancesProvider);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            response['message']?.toString() ??
+                'Sanal POS iadesi tamamlandı.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Sanal POS iade başarısız: $error')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
