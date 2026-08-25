@@ -59,7 +59,18 @@ function classifyRow(row) {
   const app = normalizeHeader(row.appName);
   const model = normalizeHeader(row.model);
   if (app === YKB_APP || app.includes('koop')) return 'YKB';
-  if (model === PAX_MODEL || model.includes('a910sf')) return 'PAX';
+  if (model === PAX_MODEL || model.includes('a910sf') || model.includes('paxa910')) {
+    return 'PAX';
+  }
+  return 'INGENICO';
+}
+
+/** GMP3 / TSM satırları: PAX A910SF → PAX, diğerleri → INGENICO */
+function classifyDeviceBrand(model) {
+  const m = normalizeHeader(model);
+  if (m.includes('a910sf') || m.includes('paxa910') || m === PAX_MODEL) {
+    return 'PAX';
+  }
   return 'INGENICO';
 }
 
@@ -149,6 +160,7 @@ function loadGmp3Rows(buffer) {
   const headers = matrix[0].map((h) => String(h ?? ''));
   const idx = {
     sicil: findHeaderIndex(headers, ['Sicil', 'Sicil No', 'Seri No']),
+    model: findHeaderIndex(headers, ['Cihaz Modeli']),
     yetki: findHeaderIndex(headers, [
       'Harici Cihaz Yetkisi Açık',
       'Harici Cihaz Yetkisi Acik',
@@ -175,7 +187,12 @@ function loadGmp3Rows(buffer) {
     for (let c = 0; c < headers.length; c++) {
       record[headers[c] || `col_${c}`] = line[c] ?? '';
     }
-    rows.push({ raw: record });
+    const model = idx.model >= 0 ? String(line[idx.model] ?? '') : '';
+    rows.push({
+      raw: record,
+      model,
+      brand: classifyDeviceBrand(model),
+    });
   }
   return {
     headers,
@@ -192,6 +209,7 @@ function loadTsmRows(buffer) {
   const headers = matrix[0].map((h) => String(h ?? ''));
   const idx = {
     sicil: findHeaderIndex(headers, ['Sicil No', 'Sicil', 'Seri No']),
+    model: findHeaderIndex(headers, ['Cihaz Modeli']),
     lisans: findHeaderIndex(headers, ['Uygulama Lisansı', 'Uygulama Lisansi']),
   };
   if (idx.lisans < 0) {
@@ -214,7 +232,12 @@ function loadTsmRows(buffer) {
     for (let c = 0; c < headers.length; c++) {
       record[headers[c] || `col_${c}`] = line[c] ?? '';
     }
-    rows.push({ raw: record });
+    const model = idx.model >= 0 ? String(line[idx.model] ?? '') : '';
+    rows.push({
+      raw: record,
+      model,
+      brand: classifyDeviceBrand(model),
+    });
   }
   return {
     headers,
@@ -329,6 +352,153 @@ function rowsToSheetData(headers, rows) {
   };
 }
 
+function countRowsByBrand(rows) {
+  const out = { INGENICO: 0, PAX: 0 };
+  for (const row of rows || []) {
+    const brand = row.brand === 'PAX' ? 'PAX' : 'INGENICO';
+    out[brand] += 1;
+  }
+  return out;
+}
+
+function buildBrandIntegrations({ gmp3ByBrand, tsmByBrand, prices }) {
+  const gmp3Unit = prices.gmp3;
+  const tsmUnit = prices.tsm;
+  const ingGmp3 = Number(gmp3ByBrand?.INGENICO || 0);
+  const paxGmp3 = Number(gmp3ByBrand?.PAX || 0);
+  const ingTsm = Number(tsmByBrand?.INGENICO || 0);
+  const paxTsm = Number(tsmByBrand?.PAX || 0);
+  return [
+    {
+      key: 'ingenico_gmp3',
+      brand: 'INGENICO',
+      kind: 'gmp3',
+      label: 'INGENICO GMP3',
+      quantity: ingGmp3,
+      unitPrice: gmp3Unit,
+      worldlineAmount: ingGmp3 * gmp3Unit,
+    },
+    {
+      key: 'pax_gmp3',
+      brand: 'PAX',
+      kind: 'gmp3',
+      label: 'PAX GMP3',
+      quantity: paxGmp3,
+      unitPrice: gmp3Unit,
+      worldlineAmount: paxGmp3 * gmp3Unit,
+    },
+    {
+      key: 'ingenico_tsm',
+      brand: 'INGENICO',
+      kind: 'tsm',
+      label: 'INGENICO IRESTO',
+      quantity: ingTsm,
+      unitPrice: tsmUnit,
+      worldlineAmount: ingTsm * tsmUnit,
+    },
+    {
+      key: 'pax_tsm',
+      brand: 'PAX',
+      kind: 'tsm',
+      label: 'PAX IRESTO',
+      quantity: paxTsm,
+      unitPrice: tsmUnit,
+      worldlineAmount: paxTsm * tsmUnit,
+    },
+  ];
+}
+
+/** Kayıtlı detail_sheets içinden Cihaz Modeli ile marka kırılımı üretir. */
+function brandCountsFromSheetData(sheetData) {
+  const out = { INGENICO: 0, PAX: 0 };
+  if (!sheetData || !Array.isArray(sheetData.headers) || !Array.isArray(sheetData.rows)) {
+    return out;
+  }
+  const modelIdx = findHeaderIndex(sheetData.headers, ['Cihaz Modeli']);
+  if (modelIdx < 0) {
+    // Model yoksa tamamı INGENICO kabul (eski davranışa yakın)
+    out.INGENICO = sheetData.rows.length;
+    return out;
+  }
+  for (const row of sheetData.rows) {
+    const model = Array.isArray(row) ? row[modelIdx] : '';
+    const brand = classifyDeviceBrand(model);
+    out[brand] += 1;
+  }
+  return out;
+}
+
+function ensureBrandIntegrations(summary, detailSheets, unitPrices) {
+  const prices = normalizeUnitPrices(unitPrices);
+  const integrations = Array.isArray(summary?.integrations) ? summary.integrations : [];
+  const hasBrandKeys = integrations.some((i) =>
+    String(i?.key || '').includes('ingenico_') || String(i?.key || '').includes('pax_'),
+  );
+  if (hasBrandKeys && integrations.length >= 4) {
+    return summary;
+  }
+
+  let gmp3ByBrand = {
+    INGENICO: Number(summary?.gmp3?.ingenico || 0),
+    PAX: Number(summary?.gmp3?.pax || 0),
+  };
+  let tsmByBrand = {
+    INGENICO: Number(summary?.tsm?.ingenico || 0),
+    PAX: Number(summary?.tsm?.pax || 0),
+  };
+
+  const gmp3Total = Number(summary?.gmp3?.count || 0);
+  const tsmTotal = Number(summary?.tsm?.count || 0);
+  if (gmp3ByBrand.INGENICO + gmp3ByBrand.PAX === 0 && detailSheets?.gmp3) {
+    gmp3ByBrand = brandCountsFromSheetData(detailSheets.gmp3);
+  }
+  if (tsmByBrand.INGENICO + tsmByBrand.PAX === 0 && detailSheets?.tsm) {
+    tsmByBrand = brandCountsFromSheetData(detailSheets.tsm);
+  }
+  // Hâlâ 0 ama toplam varsa eski kayıt: tümünü INGENICO'ya yaz
+  if (gmp3ByBrand.INGENICO + gmp3ByBrand.PAX === 0 && gmp3Total > 0) {
+    gmp3ByBrand = { INGENICO: gmp3Total, PAX: 0 };
+  }
+  if (tsmByBrand.INGENICO + tsmByBrand.PAX === 0 && tsmTotal > 0) {
+    tsmByBrand = { INGENICO: tsmTotal, PAX: 0 };
+  }
+
+  const brandIntegrations = buildBrandIntegrations({
+    gmp3ByBrand,
+    tsmByBrand,
+    prices,
+  });
+  const worldlineIntegrations = brandIntegrations.reduce(
+    (s, i) => s + (Number(i.worldlineAmount) || 0),
+    0,
+  );
+  const worldlineBank = Number(summary?.totals?.worldlineBank || 0);
+  const microviseGrand = Number(summary?.totals?.microviseGrand || 0);
+
+  return {
+    ...summary,
+    gmp3: {
+      ...(summary?.gmp3 || {}),
+      count: gmp3ByBrand.INGENICO + gmp3ByBrand.PAX,
+      ingenico: gmp3ByBrand.INGENICO,
+      pax: gmp3ByBrand.PAX,
+    },
+    tsm: {
+      ...(summary?.tsm || {}),
+      count: tsmByBrand.INGENICO + tsmByBrand.PAX,
+      ingenico: tsmByBrand.INGENICO,
+      pax: tsmByBrand.PAX,
+    },
+    integrations: brandIntegrations,
+    totals: {
+      ...(summary?.totals || {}),
+      worldlineIntegrations,
+      worldlineGrand: worldlineBank + worldlineIntegrations,
+      microviseGrand,
+    },
+  };
+}
+
 function mapCountsToLines(groupName, counts, priceMap, invoiceSide) {
   const normalized = {};
   if (counts instanceof Map) {
@@ -354,35 +524,79 @@ function recalculateSummary(summary, unitPrices) {
     'microvise',
   );
   const ykb = buildYkbSingleLineItems(summary?.ykb || {}, prices.ykbTiers);
-  const gmp3Count = Number(summary?.gmp3?.count || 0) || 0;
-  const tsmCount = Number(summary?.tsm?.count || 0) || 0;
-  const gmp3Amount = gmp3Count * prices.gmp3;
-  const tsmAmount = tsmCount * prices.tsm;
+
+  const gmp3ByBrand = {
+    INGENICO:
+      Number(summary?.gmp3?.ingenico ?? 0) ||
+      Number(
+        (summary?.integrations || []).find((i) => i.key === 'ingenico_gmp3')
+          ?.quantity || 0,
+      ),
+    PAX:
+      Number(summary?.gmp3?.pax ?? 0) ||
+      Number(
+        (summary?.integrations || []).find((i) => i.key === 'pax_gmp3')
+          ?.quantity || 0,
+      ),
+  };
+  const tsmByBrand = {
+    INGENICO:
+      Number(summary?.tsm?.ingenico ?? 0) ||
+      Number(
+        (summary?.integrations || []).find((i) => i.key === 'ingenico_tsm')
+          ?.quantity || 0,
+      ),
+    PAX:
+      Number(summary?.tsm?.pax ?? 0) ||
+      Number(
+        (summary?.integrations || []).find((i) => i.key === 'pax_tsm')
+          ?.quantity || 0,
+      ),
+  };
+  // Eski kayıt: sadece toplam count varsa
+  const gmp3CountLegacy = Number(summary?.gmp3?.count || 0) || 0;
+  const tsmCountLegacy = Number(summary?.tsm?.count || 0) || 0;
+  if (gmp3ByBrand.INGENICO + gmp3ByBrand.PAX === 0 && gmp3CountLegacy > 0) {
+    gmp3ByBrand.INGENICO = gmp3CountLegacy;
+  }
+  if (tsmByBrand.INGENICO + tsmByBrand.PAX === 0 && tsmCountLegacy > 0) {
+    tsmByBrand.INGENICO = tsmCountLegacy;
+  }
+
+  const integrations = buildBrandIntegrations({
+    gmp3ByBrand,
+    tsmByBrand,
+    prices,
+  });
+  const worldlineIntegrations = integrations.reduce(
+    (s, i) => s + (Number(i.worldlineAmount) || 0),
+    0,
+  );
+  const gmp3Count = gmp3ByBrand.INGENICO + gmp3ByBrand.PAX;
+  const tsmCount = tsmByBrand.INGENICO + tsmByBrand.PAX;
+
   const nextSummary = {
     ...summary,
     lineItems: [...ing.lines, ...pax.lines, ...ykb.lines],
-    integrations: [
-      {
-        key: 'tsm',
-        label: 'TSM Kablosuz Entegrasyon / Iresto',
-        quantity: tsmCount,
-        unitPrice: prices.tsm,
-        worldlineAmount: tsmAmount,
-      },
-      {
-        key: 'gmp3',
-        label: 'GMP3 Kablolu Entegrasyon',
-        quantity: gmp3Count,
-        unitPrice: prices.gmp3,
-        worldlineAmount: gmp3Amount,
-      },
-    ],
+    gmp3: {
+      ...(summary?.gmp3 || {}),
+      count: gmp3Count,
+      ingenico: gmp3ByBrand.INGENICO,
+      pax: gmp3ByBrand.PAX,
+    },
+    tsm: {
+      ...(summary?.tsm || {}),
+      count: tsmCount,
+      ingenico: tsmByBrand.INGENICO,
+      pax: tsmByBrand.PAX,
+    },
+    integrations,
     totals: {
       microviseBank: ing.microviseTotal + pax.microviseTotal,
       worldlineBank: ykb.worldlineTotal,
-      worldlineIntegrations: gmp3Amount + tsmAmount,
+      worldlineIntegrations,
       microviseGrand: ing.microviseTotal + pax.microviseTotal,
-      worldlineGrand: ykb.worldlineTotal + gmp3Amount + tsmAmount,
+      worldlineGrand: ykb.worldlineTotal + worldlineIntegrations,
     },
   };
   return { summary: nextSummary, unitPrices: prices };
@@ -406,18 +620,27 @@ function processMutakabat({ bankBuffer, gmp3Buffer, tsmBuffer, unitPrices }) {
   let tsmData = null;
   if (tsmBuffer) tsmData = loadTsmRows(tsmBuffer);
 
-  const gmp3Count = gmp3Data?.rows.length || 0;
-  const tsmCount = tsmData?.rows.length || 0;
-  const gmp3Amount = gmp3Count * prices.gmp3;
-  const tsmAmount = tsmCount * prices.tsm;
+  const gmp3ByBrand = countRowsByBrand(gmp3Data?.rows);
+  const tsmByBrand = countRowsByBrand(tsmData?.rows);
+  const gmp3Count = gmp3ByBrand.INGENICO + gmp3ByBrand.PAX;
+  const tsmCount = tsmByBrand.INGENICO + tsmByBrand.PAX;
 
   const ing = buildLineItems('INGENICO', ingenicoCounts, prices.bankTiers, 'microvise');
   const pax = buildLineItems('PAX (A910SF)', paxCounts, prices.bankTiers, 'microvise');
   const ykb = buildYkbSingleLineItems(ykbCounts, prices.ykbTiers);
 
+  const integrations = buildBrandIntegrations({
+    gmp3ByBrand,
+    tsmByBrand,
+    prices,
+  });
+  const worldlineIntegrationTotal = integrations.reduce(
+    (s, i) => s + (Number(i.worldlineAmount) || 0),
+    0,
+  );
+
   const microviseBankTotal = ing.microviseTotal + pax.microviseTotal;
   const worldlineBankTotal = ykb.worldlineTotal;
-  const worldlineIntegrationTotal = gmp3Amount + tsmAmount;
 
   const summary = {
     ingenico: counterToObject(ingenicoCounts),
@@ -425,31 +648,20 @@ function processMutakabat({ bankBuffer, gmp3Buffer, tsmBuffer, unitPrices }) {
     ykb: counterToObject(ykbCounts),
     gmp3: {
       count: gmp3Count,
+      ingenico: gmp3ByBrand.INGENICO,
+      pax: gmp3ByBrand.PAX,
       rawYesCount: gmp3Data?.rawYesCount || 0,
       duplicateSkipped: gmp3Data?.duplicateSkipped || 0,
     },
     tsm: {
       count: tsmCount,
+      ingenico: tsmByBrand.INGENICO,
+      pax: tsmByBrand.PAX,
       rawVarCount: tsmData?.rawVarCount || 0,
       duplicateSkipped: tsmData?.duplicateSkipped || 0,
     },
     lineItems: [...ing.lines, ...pax.lines, ...ykb.lines],
-    integrations: [
-      {
-        key: 'tsm',
-        label: 'TSM Kablosuz Entegrasyon / Iresto',
-        quantity: tsmCount,
-        unitPrice: prices.tsm,
-        worldlineAmount: tsmAmount,
-      },
-      {
-        key: 'gmp3',
-        label: 'GMP3 Kablolu Entegrasyon',
-        quantity: gmp3Count,
-        unitPrice: prices.gmp3,
-        worldlineAmount: gmp3Amount,
-      },
-    ],
+    integrations,
     totals: {
       microviseBank: microviseBankTotal,
       worldlineBank: worldlineBankTotal,
@@ -464,6 +676,10 @@ function processMutakabat({ bankBuffer, gmp3Buffer, tsmBuffer, unitPrices }) {
       ykb: ykbRows.length,
       gmp3: gmp3Count,
       tsm: tsmCount,
+      gmp3Ingenico: gmp3ByBrand.INGENICO,
+      gmp3Pax: gmp3ByBrand.PAX,
+      tsmIngenico: tsmByBrand.INGENICO,
+      tsmPax: tsmByBrand.PAX,
     },
   };
 
@@ -474,15 +690,25 @@ function processMutakabat({ bankBuffer, gmp3Buffer, tsmBuffer, unitPrices }) {
     ykb: rowsToSheetData(bank.headers, ykbRows),
   };
   if (gmp3Data) {
-    detailSheets.gmp3 = rowsToSheetData(
+    detailSheets.gmp3 = rowsToSheetData(gmp3Data.headers, gmp3Data.rows);
+    detailSheets.gmp3_ingenico = rowsToSheetData(
       gmp3Data.headers,
-      gmp3Data.rows,
+      gmp3Data.rows.filter((r) => r.brand === 'INGENICO'),
+    );
+    detailSheets.gmp3_pax = rowsToSheetData(
+      gmp3Data.headers,
+      gmp3Data.rows.filter((r) => r.brand === 'PAX'),
     );
   }
   if (tsmData) {
-    detailSheets.tsm = rowsToSheetData(
+    detailSheets.tsm = rowsToSheetData(tsmData.headers, tsmData.rows);
+    detailSheets.tsm_ingenico = rowsToSheetData(
       tsmData.headers,
-      tsmData.rows,
+      tsmData.rows.filter((r) => r.brand === 'INGENICO'),
+    );
+    detailSheets.tsm_pax = rowsToSheetData(
+      tsmData.headers,
+      tsmData.rows.filter((r) => r.brand === 'PAX'),
     );
   }
 
@@ -536,8 +762,12 @@ const COLORS = {
   headerFg: 'FFFFFF',
   tableHeader: 'E2E8F0',
   totalRow: 'F1F5F9',
-  grandMicro: 'E2E8F0',
-  grandWorld: 'C5E0DC',
+  grandMicro: '1E293B',
+  grandWorld: '1A5C5C',
+  highlightMicroRow: 'E8EEF5',
+  highlightWorldRow: 'D8EFEA',
+  borderStrong: '0F172A',
+  borderWorldStrong: '1A5C5C',
   groupIngenico: 'F8FAFC',
   groupPax: 'F1F5F9',
   groupYkb: 'E3F5F2',
@@ -548,6 +778,11 @@ const COLORS = {
 
 function borderThin() {
   const edge = { style: 'thin', color: { rgb: COLORS.border } };
+  return { top: edge, bottom: edge, left: edge, right: edge };
+}
+
+function borderMedium(rgb) {
+  const edge = { style: 'medium', color: { rgb: rgb || COLORS.borderStrong } };
   return { top: edge, bottom: edge, left: edge, right: edge };
 }
 
@@ -704,8 +939,45 @@ function buildDashboardSheet(summary, unitPrices, periodLabel) {
   const pax = buildGroupTableRows('PAX (A910SF)', summary.lineItems);
   const ykb = buildGroupTableRows('YKB (Koop Bank)', summary.lineItems);
   const integrations = summary.integrations || [];
-  const integQty = integrations.reduce((s, i) => s + (i.quantity || 0), 0);
-  const integAmount = Number(summary.totals.worldlineIntegrations) || 0;
+  const integOf = (key) => integrations.find((i) => i.key === key) || null;
+  const ingenicoGmp3 = integOf('ingenico_gmp3');
+  const paxGmp3 = integOf('pax_gmp3');
+  const ingenicoTsm = integOf('ingenico_tsm');
+  const paxTsm = integOf('pax_tsm');
+  const legacyGmp3 = integOf('gmp3');
+  const legacyTsm = integOf('tsm');
+  const hasBrandGmp3 = Boolean(ingenicoGmp3 || paxGmp3);
+  const hasBrandTsm = Boolean(ingenicoTsm || paxTsm);
+  const ingGmp3Qty = hasBrandGmp3
+    ? Number(ingenicoGmp3?.quantity) || 0
+    : Number(legacyGmp3?.quantity) || 0;
+  const ingGmp3Amount = hasBrandGmp3
+    ? Number(ingenicoGmp3?.worldlineAmount) || 0
+    : Number(legacyGmp3?.worldlineAmount) || 0;
+  const paxGmp3Qty = Number(paxGmp3?.quantity) || 0;
+  const paxGmp3Amount = Number(paxGmp3?.worldlineAmount) || 0;
+  const ingTsmQty = hasBrandTsm
+    ? Number(ingenicoTsm?.quantity) || 0
+    : Number(legacyTsm?.quantity) || 0;
+  const ingTsmAmount = hasBrandTsm
+    ? Number(ingenicoTsm?.worldlineAmount) || 0
+    : Number(legacyTsm?.worldlineAmount) || 0;
+  const paxTsmQty = Number(paxTsm?.quantity) || 0;
+  const paxTsmAmount = Number(paxTsm?.worldlineAmount) || 0;
+  const gmp3Qty = ingGmp3Qty + paxGmp3Qty;
+  const gmp3Amount = ingGmp3Amount + paxGmp3Amount;
+  const tsmQty = ingTsmQty + paxTsmQty;
+  const tsmAmount = ingTsmAmount + paxTsmAmount;
+  const gmp3Unit =
+    Number(
+      ingenicoGmp3?.unitPrice ??
+        paxGmp3?.unitPrice ??
+        legacyGmp3?.unitPrice,
+    ) || 0;
+  const tsmUnit =
+    Number(
+      ingenicoTsm?.unitPrice ?? paxTsm?.unitPrice ?? legacyTsm?.unitPrice,
+    ) || 0;
 
   // --- Üst özet: iki taraf yan yana ---
   setCell(sheet, r, 0, 'FATURA ÖZETİ — Taraflar Ayrı', {
@@ -750,6 +1022,35 @@ function buildDashboardSheet(summary, unitPrices, periodLabel) {
   merges.push({ s: { r, c: 3 }, e: { r, c: 4 } });
   r += 2;
 
+  // --- Ürün satırları (ayrı) ---
+  writeTitleRow('ÜRÜN SATIRLARI — Ayrı Özet', COLORS.titleBg);
+  setCell(sheet, r, 0, 'Ürün', colHeaderStyle);
+  setCell(sheet, r, 1, 'Adet', colHeaderStyle);
+  setCell(sheet, r, 2, 'Taraf', colHeaderStyle);
+  setCell(sheet, r, 3, 'Tutar', colHeaderStyle);
+  setCell(sheet, r, 4, '', colHeaderStyle);
+  r += 1;
+  const productRows = [
+    ['INGENICO', ingenico.totals.qty, 'Microvise', ingenico.totals.micro],
+    ['PAX', pax.totals.qty, 'Microvise', pax.totals.micro],
+    ['INGENICO GMP3', ingGmp3Qty, 'Worldline', ingGmp3Amount],
+    ['PAX GMP3', paxGmp3Qty, 'Worldline', paxGmp3Amount],
+    ['INGENICO IRESTO', ingTsmQty, 'Worldline', ingTsmAmount],
+    ['PAX IRESTO', paxTsmQty, 'Worldline', paxTsmAmount],
+  ];
+  for (const row of productRows) {
+    setCell(sheet, r, 0, row[0], bodyStyle);
+    setCell(sheet, r, 1, row[1], {
+      ...bodyStyle,
+      alignment: { horizontal: 'center', vertical: 'center' },
+    });
+    setCell(sheet, r, 2, row[2], bodyStyle);
+    setCell(sheet, r, 3, money(row[3]), moneyStyle);
+    setCell(sheet, r, 4, '', bodyStyle);
+    r += 1;
+  }
+  r += 1;
+
   // =========================================================
   // A) Microvise Keseceği Fatura (INGENICO + PAX)
   // =========================================================
@@ -775,47 +1076,13 @@ function buildDashboardSheet(summary, unitPrices, periodLabel) {
     pax.totals.qty,
     pax.totals.micro,
   );
-
-  writeTitleRow('Microvise Keseceği Fatura', COLORS.microHeader);
-  setCell(sheet, r, 0, 'INGENICO', bodyStyle);
-  setCell(sheet, r, 1, ingenico.totals.qty, {
-    ...bodyStyle,
-    alignment: { horizontal: 'center' },
-  });
-  setCell(sheet, r, 2, '', bodyStyle);
-  setCell(sheet, r, 3, money(ingenico.totals.micro), moneyStyle);
-  setCell(sheet, r, 4, '', bodyStyle);
   r += 1;
-  setCell(sheet, r, 0, 'PAX', bodyStyle);
-  setCell(sheet, r, 1, pax.totals.qty, {
-    ...bodyStyle,
-    alignment: { horizontal: 'center' },
-  });
-  setCell(sheet, r, 2, '', bodyStyle);
-  setCell(sheet, r, 3, money(pax.totals.micro), moneyStyle);
-  setCell(sheet, r, 4, '', bodyStyle);
-  r += 1;
-  setCell(sheet, r, 0, 'Microvise Keseceği Fatura', totalStyle);
-  setCell(sheet, r, 1, ingenico.totals.qty + pax.totals.qty, {
-    ...totalStyle,
-    alignment: { horizontal: 'center' },
-  });
-  setCell(sheet, r, 2, '', totalStyle);
-  setCell(sheet, r, 3, money(summary.totals.microviseGrand), {
-    ...totalMoneyStyle,
-    fill: { patternType: 'solid', fgColor: { rgb: COLORS.grandMicro } },
-  });
-  setCell(sheet, r, 4, '', {
-    ...totalStyle,
-    fill: { patternType: 'solid', fgColor: { rgb: COLORS.grandMicro } },
-  });
-  r += 2;
 
   // =========================================================
-  // B) Worldline Keseceği Fatura (YKB + GMP3 + TSM)
+  // B) Worldline detayları
   // =========================================================
   writeTitleRow(
-    'B) Worldline Keseceği Fatura (YKB + GMP3 + TSM)',
+    'B) Worldline Detay (YKB + GMP3 + IRESTO)',
     COLORS.worldHeader,
   );
 
@@ -828,54 +1095,217 @@ function buildDashboardSheet(summary, unitPrices, periodLabel) {
     ykb.totals.world,
   );
 
-  writeTitleRow('GMP3 DATA / TSM IRESTO DATA', COLORS.integHeader);
+  writeTitleRow('INGENICO GMP3', COLORS.integHeader);
   writeSimpleTable(
     ['Açıklama', 'Adet', 'Birim Fiyat', 'Tutar (Worldline)', ''],
-    integrations.map((item) => [
-      item.label,
-      item.quantity,
-      money(item.unitPrice),
-      money(item.worldlineAmount),
-      '',
-    ]),
-    'ENTEGRASYON TOPLAM',
-    integQty,
-    integAmount,
+    ingGmp3Qty || ingenicoGmp3 || legacyGmp3
+      ? [['INGENICO GMP3', ingGmp3Qty, money(gmp3Unit), money(ingGmp3Amount), '']]
+      : [],
+    'INGENICO GMP3 TOPLAM',
+    ingGmp3Qty,
+    ingGmp3Amount,
   );
 
+  writeTitleRow('PAX GMP3', COLORS.integHeader);
+  writeSimpleTable(
+    ['Açıklama', 'Adet', 'Birim Fiyat', 'Tutar (Worldline)', ''],
+    paxGmp3Qty || paxGmp3
+      ? [['PAX GMP3', paxGmp3Qty, money(gmp3Unit), money(paxGmp3Amount), '']]
+      : [],
+    'PAX GMP3 TOPLAM',
+    paxGmp3Qty,
+    paxGmp3Amount,
+  );
+
+  writeTitleRow('INGENICO IRESTO', COLORS.integHeader);
+  writeSimpleTable(
+    ['Açıklama', 'Adet', 'Birim Fiyat', 'Tutar (Worldline)', ''],
+    ingTsmQty || ingenicoTsm || legacyTsm
+      ? [['INGENICO IRESTO', ingTsmQty, money(tsmUnit), money(ingTsmAmount), '']]
+      : [],
+    'INGENICO IRESTO TOPLAM',
+    ingTsmQty,
+    ingTsmAmount,
+  );
+
+  writeTitleRow('PAX IRESTO', COLORS.integHeader);
+  writeSimpleTable(
+    ['Açıklama', 'Adet', 'Birim Fiyat', 'Tutar (Worldline)', ''],
+    paxTsmQty || paxTsm
+      ? [['PAX IRESTO', paxTsmQty, money(tsmUnit), money(paxTsmAmount), '']]
+      : [],
+    'PAX IRESTO TOPLAM',
+    paxTsmQty,
+    paxTsmAmount,
+  );
+
+  const ykbUnitFromItems = (summary.lineItems || [])
+    .filter((i) => i.group === 'YKB (Koop Bank)' && Number(i.unitPrice) > 0)
+    .map((i) => Number(i.unitPrice));
+  const ykbUnitNum =
+    ykbUnitFromItems.length > 0
+      ? ykbUnitFromItems[0]
+      : ykb.totals.qty > 0
+        ? ykb.totals.world / ykb.totals.qty
+        : null;
+
+  // 1) Marka detay (kendi toplamı) + YKB
+  writeTitleRow('Worldline Detay — Marka', COLORS.integHeader);
+  writeSimpleTable(
+    ['Kalem', 'Adet', 'Birim Fiyat', 'Tutar (Worldline)', ''],
+    [
+      ['INGENICO GMP3', ingGmp3Qty, money(gmp3Unit), money(ingGmp3Amount), ''],
+      ['PAX GMP3', paxGmp3Qty, money(gmp3Unit), money(paxGmp3Amount), ''],
+      ['INGENICO IRESTO', ingTsmQty, money(tsmUnit), money(ingTsmAmount), ''],
+      ['PAX IRESTO', paxTsmQty, money(tsmUnit), money(paxTsmAmount), ''],
+      [
+        'YKB_KOOP BANKA',
+        ykb.totals.qty,
+        ykbUnitNum == null ? '—' : money(ykbUnitNum),
+        money(ykb.totals.world),
+        '',
+      ],
+    ],
+    'DETAY TOPLAM',
+    gmp3Qty + tsmQty + ykb.totals.qty,
+    gmp3Amount + tsmAmount + ykb.totals.world,
+  );
+
+  // =========================================================
+  // EN ALT: 2 özel fatura özeti (yan yana değil, alt alta vurgulu)
+  // =========================================================
+  writeTitleRow('FATURA ÖZETLERİ — ÖZEL', COLORS.titleBg);
+
+  const microRowStyle = {
+    font: baseFont({ bold: true, sz: 11 }),
+    fill: { patternType: 'solid', fgColor: { rgb: COLORS.highlightMicroRow } },
+    border: borderMedium(COLORS.borderStrong),
+    alignment: { vertical: 'center' },
+  };
+  const microRowMoney = {
+    ...microRowStyle,
+    alignment: { horizontal: 'right', vertical: 'center' },
+    numFmt: '₺#,##0.00',
+  };
+  const microGrandStyle = {
+    font: baseFont({ bold: true, sz: 13, color: { rgb: COLORS.headerFg } }),
+    fill: { patternType: 'solid', fgColor: { rgb: COLORS.grandMicro } },
+    border: borderMedium(COLORS.borderStrong),
+    alignment: { vertical: 'center' },
+  };
+  const microGrandMoney = {
+    ...microGrandStyle,
+    alignment: { horizontal: 'right', vertical: 'center' },
+    numFmt: '₺#,##0.00',
+  };
+
+  writeTitleRow('Microvise Keseceği Fatura', COLORS.microHeader);
+  setCell(sheet, r, 0, 'INGENICO', microRowStyle);
+  setCell(sheet, r, 1, ingenico.totals.qty, {
+    ...microRowStyle,
+    alignment: { horizontal: 'center', vertical: 'center' },
+  });
+  setCell(sheet, r, 2, '', microRowStyle);
+  setCell(sheet, r, 3, money(ingenico.totals.micro), microRowMoney);
+  setCell(sheet, r, 4, '', microRowStyle);
+  r += 1;
+  setCell(sheet, r, 0, 'PAX', microRowStyle);
+  setCell(sheet, r, 1, pax.totals.qty, {
+    ...microRowStyle,
+    alignment: { horizontal: 'center', vertical: 'center' },
+  });
+  setCell(sheet, r, 2, '', microRowStyle);
+  setCell(sheet, r, 3, money(pax.totals.micro), microRowMoney);
+  setCell(sheet, r, 4, '', microRowStyle);
+  r += 1;
+  setCell(sheet, r, 0, 'Microvise Keseceği Fatura', microGrandStyle);
+  setCell(sheet, r, 1, ingenico.totals.qty + pax.totals.qty, {
+    ...microGrandStyle,
+    alignment: { horizontal: 'center', vertical: 'center' },
+  });
+  setCell(sheet, r, 2, '', microGrandStyle);
+  setCell(sheet, r, 3, money(summary.totals.microviseGrand), microGrandMoney);
+  setCell(sheet, r, 4, '', microGrandStyle);
+  r += 2;
+
+  const worldColHeader = {
+    font: baseFont({ bold: true, sz: 11, color: { rgb: COLORS.headerFg } }),
+    fill: { patternType: 'solid', fgColor: { rgb: '1F6B6B' } },
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: borderMedium(COLORS.borderWorldStrong),
+  };
+  const worldRowStyle = {
+    font: baseFont({ bold: true, sz: 11 }),
+    fill: { patternType: 'solid', fgColor: { rgb: COLORS.highlightWorldRow } },
+    border: borderMedium(COLORS.borderWorldStrong),
+    alignment: { vertical: 'center' },
+  };
+  const worldRowMoney = {
+    ...worldRowStyle,
+    alignment: { horizontal: 'right', vertical: 'center' },
+    numFmt: '₺#,##0.00',
+  };
+  const worldGrandStyle = {
+    font: baseFont({ bold: true, sz: 13, color: { rgb: COLORS.headerFg } }),
+    fill: { patternType: 'solid', fgColor: { rgb: COLORS.grandWorld } },
+    border: borderMedium(COLORS.borderWorldStrong),
+    alignment: { vertical: 'center' },
+  };
+  const worldGrandMoney = {
+    ...worldGrandStyle,
+    alignment: { horizontal: 'right', vertical: 'center' },
+    numFmt: '₺#,##0.00',
+  };
+
   writeTitleRow('Worldline Keseceği Fatura', COLORS.worldHeader);
-  setCell(sheet, r, 0, 'YKB_KOOP BANKA', bodyStyle);
-  setCell(sheet, r, 1, ykb.totals.qty, {
-    ...bodyStyle,
-    alignment: { horizontal: 'center' },
-  });
-  setCell(sheet, r, 2, '', bodyStyle);
-  setCell(sheet, r, 3, money(ykb.totals.world), moneyStyle);
-  setCell(sheet, r, 4, '', bodyStyle);
+  setCell(sheet, r, 0, 'Kalem', worldColHeader);
+  setCell(sheet, r, 1, 'Adet', worldColHeader);
+  setCell(sheet, r, 2, 'Birim Fiyat', worldColHeader);
+  setCell(sheet, r, 3, 'Tutar (Worldline)', worldColHeader);
+  setCell(sheet, r, 4, '', worldColHeader);
   r += 1;
-  setCell(sheet, r, 0, 'GMP3 / TSM', bodyStyle);
-  setCell(sheet, r, 1, integQty, {
-    ...bodyStyle,
-    alignment: { horizontal: 'center' },
+
+  const worldlineOzetRows = [
+    {
+      label: 'GMP3 / IRESTO (INGENICO + PAX)',
+      qty: gmp3Qty + tsmQty,
+      unit: gmp3Unit === tsmUnit ? gmp3Unit : null,
+      amount: gmp3Amount + tsmAmount,
+    },
+    {
+      label: 'YKB_KOOP BANKA',
+      qty: ykb.totals.qty,
+      unit: ykbUnitNum,
+      amount: ykb.totals.world,
+    },
+  ];
+  for (const row of worldlineOzetRows) {
+    setCell(sheet, r, 0, row.label, worldRowStyle);
+    setCell(sheet, r, 1, row.qty, {
+      ...worldRowStyle,
+      alignment: { horizontal: 'center', vertical: 'center' },
+    });
+    if (row.unit == null || Number.isNaN(Number(row.unit))) {
+      setCell(sheet, r, 2, '—', {
+        ...worldRowStyle,
+        alignment: { horizontal: 'center', vertical: 'center' },
+      });
+    } else {
+      setCell(sheet, r, 2, money(Number(row.unit)), worldRowMoney);
+    }
+    setCell(sheet, r, 3, money(row.amount), worldRowMoney);
+    setCell(sheet, r, 4, '', worldRowStyle);
+    r += 1;
+  }
+  setCell(sheet, r, 0, 'Worldline Keseceği Fatura', worldGrandStyle);
+  setCell(sheet, r, 1, ykb.totals.qty + gmp3Qty + tsmQty, {
+    ...worldGrandStyle,
+    alignment: { horizontal: 'center', vertical: 'center' },
   });
-  setCell(sheet, r, 2, '', bodyStyle);
-  setCell(sheet, r, 3, money(integAmount), moneyStyle);
-  setCell(sheet, r, 4, '', bodyStyle);
+  setCell(sheet, r, 2, '', worldGrandStyle);
+  setCell(sheet, r, 3, money(summary.totals.worldlineGrand), worldGrandMoney);
+  setCell(sheet, r, 4, '', worldGrandStyle);
   r += 1;
-  setCell(sheet, r, 0, 'Worldline Keseceği Fatura', totalStyle);
-  setCell(sheet, r, 1, ykb.totals.qty + integQty, {
-    ...totalStyle,
-    alignment: { horizontal: 'center' },
-  });
-  setCell(sheet, r, 2, '', totalStyle);
-  setCell(sheet, r, 3, money(summary.totals.worldlineGrand), {
-    ...totalMoneyStyle,
-    fill: { patternType: 'solid', fgColor: { rgb: COLORS.grandWorld } },
-  });
-  setCell(sheet, r, 4, '', {
-    ...totalStyle,
-    fill: { patternType: 'solid', fgColor: { rgb: COLORS.grandWorld } },
-  });
 
   sheet['!merges'] = merges;
   sheet['!cols'] = [
@@ -896,12 +1326,47 @@ function buildDashboardSheet(summary, unitPrices, periodLabel) {
   return sheet;
 }
 
+function splitSheetDataByBrand(sheetData) {
+  if (!sheetData || !Array.isArray(sheetData.headers) || !Array.isArray(sheetData.rows)) {
+    return { ingenico: null, pax: null };
+  }
+  const modelIdx = findHeaderIndex(sheetData.headers, ['Cihaz Modeli']);
+  const ingenicoRows = [];
+  const paxRows = [];
+  for (const row of sheetData.rows) {
+    const model = modelIdx >= 0 && Array.isArray(row) ? row[modelIdx] : '';
+    if (classifyDeviceBrand(model) === 'PAX') paxRows.push(row);
+    else ingenicoRows.push(row);
+  }
+  return {
+    ingenico: { headers: sheetData.headers, rows: ingenicoRows },
+    pax: { headers: sheetData.headers, rows: paxRows },
+  };
+}
+
+function ensureBrandDetailSheets(detailSheets) {
+  const sheets = detailSheets && typeof detailSheets === 'object' ? { ...detailSheets } : {};
+  if (sheets.gmp3 && (!sheets.gmp3_ingenico || !sheets.gmp3_pax)) {
+    const split = splitSheetDataByBrand(sheets.gmp3);
+    if (!sheets.gmp3_ingenico) sheets.gmp3_ingenico = split.ingenico;
+    if (!sheets.gmp3_pax) sheets.gmp3_pax = split.pax;
+  }
+  if (sheets.tsm && (!sheets.tsm_ingenico || !sheets.tsm_pax)) {
+    const split = splitSheetDataByBrand(sheets.tsm);
+    if (!sheets.tsm_ingenico) sheets.tsm_ingenico = split.ingenico;
+    if (!sheets.tsm_pax) sheets.tsm_pax = split.pax;
+  }
+  return sheets;
+}
+
 function buildMutakabatWorkbook({ summary, detailSheets, unitPrices, periodLabel }) {
-  const sheets = detailSheets && typeof detailSheets === 'object' ? detailSheets : {};
+  const prices = normalizeUnitPrices(unitPrices);
+  const enrichedSummary = ensureBrandIntegrations(summary, detailSheets, prices);
+  const sheets = ensureBrandDetailSheets(detailSheets);
   const wb = XLSXStyle.utils.book_new();
   XLSXStyle.utils.book_append_sheet(
     wb,
-    buildDashboardSheet(summary, unitPrices, periodLabel),
+    buildDashboardSheet(enrichedSummary, prices, periodLabel),
     'Dashboard',
   );
   if (sheets.ingenico) {
@@ -913,10 +1378,31 @@ function buildMutakabatWorkbook({ summary, detailSheets, unitPrices, periodLabel
   if (sheets.ykb) {
     XLSXStyle.utils.book_append_sheet(wb, sheetFromData(sheets.ykb), 'YKB_KOOP BANKA');
   }
-  if (sheets.gmp3) {
+  if (sheets.gmp3_ingenico) {
+    XLSXStyle.utils.book_append_sheet(
+      wb,
+      sheetFromData(sheets.gmp3_ingenico),
+      'INGENICO GMP3',
+    );
+  }
+  if (sheets.gmp3_pax) {
+    XLSXStyle.utils.book_append_sheet(wb, sheetFromData(sheets.gmp3_pax), 'PAX GMP3');
+  }
+  if (sheets.tsm_ingenico) {
+    XLSXStyle.utils.book_append_sheet(
+      wb,
+      sheetFromData(sheets.tsm_ingenico),
+      'INGENICO IRESTO',
+    );
+  }
+  if (sheets.tsm_pax) {
+    XLSXStyle.utils.book_append_sheet(wb, sheetFromData(sheets.tsm_pax), 'PAX IRESTO');
+  }
+  // Marka sheet yoksa eski birleşik sheet'leri yaz
+  if (!sheets.gmp3_ingenico && !sheets.gmp3_pax && sheets.gmp3) {
     XLSXStyle.utils.book_append_sheet(wb, sheetFromData(sheets.gmp3), 'GMP3 DATA');
   }
-  if (sheets.tsm) {
+  if (!sheets.tsm_ingenico && !sheets.tsm_pax && sheets.tsm) {
     XLSXStyle.utils.book_append_sheet(wb, sheetFromData(sheets.tsm), 'TSM IRESTO DATA');
   }
   return wb;
@@ -938,6 +1424,7 @@ function decodeBase64File(value) {
 module.exports = {
   processMutakabat,
   recalculateSummary,
+  ensureBrandIntegrations,
   exportMutakabatExcel,
   decodeBase64File,
   normalizeUnitPrices,

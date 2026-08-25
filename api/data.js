@@ -39,6 +39,7 @@ const {
   ensureQuotesTables,
   ensureProductImageUrlColumn,
 } = require('./_lib/schema');
+const { ensureBrandIntegrations } = require('./_lib/mutakabat_processor');
 const {
   handleCors,
   ok,
@@ -2978,6 +2979,11 @@ module.exports = async (req, res) => {
         );
         const row = result.rows[0];
         if (!row) return badRequest(req, res, 'Mutakabat kaydı bulunamadı.');
+        row.summary = ensureBrandIntegrations(
+          row.summary,
+          row.detail_sheets,
+          row.unit_prices,
+        );
         return ok(req, res, { item: row });
       }
 

@@ -41,6 +41,7 @@ const {
 const {
   processMutakabat,
   recalculateSummary,
+  ensureBrandIntegrations,
   exportMutakabatExcel,
   decodeBase64File,
 } = require('./_lib/mutakabat_processor');
@@ -454,7 +455,12 @@ function decodeMutakabatFileField(body, key) {
 async function runProcessMutakabat(body) {
   const unitPrices = body.unitPrices || {};
   if (!body.bankFileBase64 && body.summary) {
-    const recalculated = recalculateSummary(body.summary, unitPrices);
+    const enriched = ensureBrandIntegrations(
+      body.summary,
+      body.detailSheets || {},
+      unitPrices,
+    );
+    const recalculated = recalculateSummary(enriched, unitPrices);
     return {
       summary: recalculated.summary,
       detailSheets: body.detailSheets || {},

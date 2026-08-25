@@ -607,24 +607,178 @@ class _MutakabatDashboardWithFiltersState
     final paxT = totalsOf(pax);
     final ykbT = totalsOf(ykb);
 
-    final integrations = summary.integrations.where((i) {
-      if (_integrationKey == 'ALL') return true;
-      return i.key == _integrationKey;
-    }).toList(growable: false);
+    MutakabatIntegrationItem? integrationOf(String key) {
+      for (final item in summary.integrations) {
+        if (item.key == key) return item;
+      }
+      return null;
+    }
 
-    final integQty = integrations.fold<int>(0, (s, e) => s + e.quantity);
-    final integAmount =
-        integrations.fold<double>(0, (s, e) => s + e.worldlineAmount);
+    final hasBrandGmp3 = integrationOf('ingenico_gmp3') != null ||
+        integrationOf('pax_gmp3') != null;
+    final hasBrandTsm = integrationOf('ingenico_tsm') != null ||
+        integrationOf('pax_tsm') != null;
+    final legacyGmp3 = integrationOf('gmp3');
+    final legacyTsm = integrationOf('tsm');
+    final ingenicoGmp3 = integrationOf('ingenico_gmp3');
+    final paxGmp3 = integrationOf('pax_gmp3');
+    final ingenicoTsm = integrationOf('ingenico_tsm');
+    final paxTsm = integrationOf('pax_tsm');
 
-    final showMicro =
-        _bankGroup == 'ALL' ||
-        _bankGroup == 'INGENICO' ||
-        _bankGroup == 'PAX (A910SF)';
-    final showWorldSection =
-        _bankGroup == 'ALL' || _bankGroup == 'YKB (Koop Bank)';
-    final showYkbRows =
-        _bankGroup == 'ALL' || _bankGroup == 'YKB (Koop Bank)';
-    final showIntegRows = _bankGroup == 'ALL';
+    final ingGmp3Qty =
+        hasBrandGmp3 ? (ingenicoGmp3?.quantity ?? 0) : (legacyGmp3?.quantity ?? 0);
+    final ingGmp3Amount = hasBrandGmp3
+        ? (ingenicoGmp3?.worldlineAmount ?? 0)
+        : (legacyGmp3?.worldlineAmount ?? 0);
+    final paxGmp3Qty = paxGmp3?.quantity ?? 0;
+    final paxGmp3Amount = paxGmp3?.worldlineAmount ?? 0;
+    final ingTsmQty =
+        hasBrandTsm ? (ingenicoTsm?.quantity ?? 0) : (legacyTsm?.quantity ?? 0);
+    final ingTsmAmount = hasBrandTsm
+        ? (ingenicoTsm?.worldlineAmount ?? 0)
+        : (legacyTsm?.worldlineAmount ?? 0);
+    final paxTsmQty = paxTsm?.quantity ?? 0;
+    final paxTsmAmount = paxTsm?.worldlineAmount ?? 0;
+    final gmp3Qty = ingGmp3Qty + paxGmp3Qty;
+    final gmp3Amount = ingGmp3Amount + paxGmp3Amount;
+    final tsmQty = ingTsmQty + paxTsmQty;
+    final tsmAmount = ingTsmAmount + paxTsmAmount;
+    final gmp3Unit = ingenicoGmp3?.unitPrice ??
+        paxGmp3?.unitPrice ??
+        legacyGmp3?.unitPrice ??
+        0;
+    final tsmUnit =
+        ingenicoTsm?.unitPrice ?? paxTsm?.unitPrice ?? legacyTsm?.unitPrice ?? 0;
+    final ykbUnit = ykb.isNotEmpty
+        ? ykb.firstWhere(
+            (item) => item.unitPrice > 0,
+            orElse: () => ykb.first,
+          ).unitPrice
+        : (ykbT.qty > 0 ? ykbT.world / ykbT.qty : 0.0);
+
+    // Filtreler: banka grubu Microvise taraflıysa sadece INGENICO/PAX;
+    // entegrasyon seçiliyse yalnızca o tablo.
+    final showIngenico =
+        _bankGroup == 'ALL' || _bankGroup == 'INGENICO';
+    final showPax =
+        _bankGroup == 'ALL' || _bankGroup == 'PAX (A910SF)';
+    final showYkb =
+        (_bankGroup == 'ALL' || _bankGroup == 'YKB (Koop Bank)') &&
+        _integrationKey == 'ALL';
+    final showGmp3 = _integrationKey == 'ALL' ||
+        _integrationKey == 'gmp3' ||
+        _integrationKey == 'ingenico_gmp3' ||
+        _integrationKey == 'pax_gmp3';
+    final showTsm = _integrationKey == 'ALL' ||
+        _integrationKey == 'tsm' ||
+        _integrationKey == 'ingenico_tsm' ||
+        _integrationKey == 'pax_tsm';
+    final showIngGmp3 = showGmp3 &&
+        (_integrationKey == 'ALL' ||
+            _integrationKey == 'gmp3' ||
+            _integrationKey == 'ingenico_gmp3');
+    final showPaxGmp3 = showGmp3 &&
+        (_integrationKey == 'ALL' ||
+            _integrationKey == 'gmp3' ||
+            _integrationKey == 'pax_gmp3');
+    final showIngTsm = showTsm &&
+        (_integrationKey == 'ALL' ||
+            _integrationKey == 'tsm' ||
+            _integrationKey == 'ingenico_tsm');
+    final showPaxTsm = showTsm &&
+        (_integrationKey == 'ALL' ||
+            _integrationKey == 'tsm' ||
+            _integrationKey == 'pax_tsm');
+    // Banka filtresi INGENICO/PAX iken entegrasyon tablolarını gizle.
+    final showWorldIntegrations =
+        (_bankGroup == 'ALL' || _bankGroup == 'YKB (Koop Bank)') &&
+        (showGmp3 || showTsm);
+    final showMicro = showIngenico || showPax;
+    final showWorld =
+        showYkb || showWorldIntegrations;
+
+    Widget productCards() {
+      final cards = <Widget>[
+        _ProductLineCard(
+          label: 'INGENICO',
+          qty: '${ingenicoT.qty}',
+          amount: money.format(ingenicoT.micro),
+          color: _kMicrovise,
+          soft: _kMicroviseSoft,
+        ),
+        _ProductLineCard(
+          label: 'PAX',
+          qty: '${paxT.qty}',
+          amount: money.format(paxT.micro),
+          color: _kMicrovise,
+          soft: _kMicroviseSoft,
+        ),
+        _ProductLineCard(
+          label: 'INGENICO GMP3',
+          qty: '$ingGmp3Qty',
+          amount: money.format(ingGmp3Amount),
+          color: _kWorldline,
+          soft: _kWorldlineSoft,
+        ),
+        _ProductLineCard(
+          label: 'PAX GMP3',
+          qty: '$paxGmp3Qty',
+          amount: money.format(paxGmp3Amount),
+          color: _kWorldline,
+          soft: _kWorldlineSoft,
+        ),
+        _ProductLineCard(
+          label: 'INGENICO IRESTO',
+          qty: '$ingTsmQty',
+          amount: money.format(ingTsmAmount),
+          color: _kWorldline,
+          soft: _kWorldlineSoft,
+        ),
+        _ProductLineCard(
+          label: 'PAX IRESTO',
+          qty: '$paxTsmQty',
+          amount: money.format(paxTsmAmount),
+          color: _kWorldline,
+          soft: _kWorldlineSoft,
+        ),
+      ];
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 1100;
+          if (wide) {
+            return Column(
+              children: [
+                Row(
+                  children: [
+                    for (var i = 0; i < 3; i++) ...[
+                      if (i > 0) const Gap(10),
+                      Expanded(child: cards[i]),
+                    ],
+                  ],
+                ),
+                const Gap(10),
+                Row(
+                  children: [
+                    for (var i = 3; i < 6; i++) ...[
+                      if (i > 3) const Gap(10),
+                      Expanded(child: cards[i]),
+                    ],
+                  ],
+                ),
+              ],
+            );
+          }
+          return Column(
+            children: [
+              for (var i = 0; i < cards.length; i++) ...[
+                if (i > 0) const Gap(10),
+                cards[i],
+              ],
+            ],
+          );
+        },
+      );
+    }
 
     return AppCard(
       child: Column(
@@ -665,7 +819,7 @@ class _MutakabatDashboardWithFiltersState
                 ),
               ),
               SizedBox(
-                width: 180,
+                width: 200,
                 child: DropdownButtonFormField<String>(
                   initialValue: _integrationKey,
                   decoration: const InputDecoration(
@@ -674,8 +828,27 @@ class _MutakabatDashboardWithFiltersState
                   ),
                   items: const [
                     DropdownMenuItem(value: 'ALL', child: Text('Tümü')),
-                    DropdownMenuItem(value: 'gmp3', child: Text('GMP3')),
-                    DropdownMenuItem(value: 'tsm', child: Text('TSM')),
+                    DropdownMenuItem(value: 'gmp3', child: Text('GMP3 (hepsi)')),
+                    DropdownMenuItem(
+                      value: 'ingenico_gmp3',
+                      child: Text('INGENICO GMP3'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'pax_gmp3',
+                      child: Text('PAX GMP3'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'tsm',
+                      child: Text('iResto (hepsi)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'ingenico_tsm',
+                      child: Text('INGENICO IRESTO'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'pax_tsm',
+                      child: Text('PAX IRESTO'),
+                    ),
                   ],
                   onChanged: (value) {
                     if (value == null) return;
@@ -686,6 +859,8 @@ class _MutakabatDashboardWithFiltersState
             ],
           ),
           const Gap(16),
+          productCards(),
+          const Gap(12),
           LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth >= 640;
@@ -721,10 +896,138 @@ class _MutakabatDashboardWithFiltersState
               );
             },
           ),
+          // GMP3 / iResto marka kırılımlı — uzun banka tablolarından ÖNCE
+          if (showWorldIntegrations) ...[
+            const Gap(20),
+            _SectionBanner(
+              title: 'GMP3 / iResto — Marka',
+              color: _kWorldline,
+            ),
+            const Gap(10),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final wide = constraints.maxWidth >= 900;
+                final tables = <Widget>[
+                  if (showIngGmp3)
+                    _ExcelSectionTable(
+                      title: 'INGENICO GMP3',
+                      headerColor: _kWorldline,
+                      softColor: _kWorldlineSoft,
+                      amountHeader: 'Worldline',
+                      rows: [
+                        [
+                          'INGENICO GMP3',
+                          '$ingGmp3Qty',
+                          money.format(gmp3Unit),
+                          money.format(ingGmp3Amount),
+                        ],
+                      ],
+                      footerLabel: 'INGENICO GMP3 TOPLAM',
+                      footerQty: '$ingGmp3Qty',
+                      footerAmount: money.format(ingGmp3Amount),
+                    ),
+                  if (showPaxGmp3)
+                    _ExcelSectionTable(
+                      title: 'PAX GMP3',
+                      headerColor: _kWorldline,
+                      softColor: _kWorldlineSoft,
+                      amountHeader: 'Worldline',
+                      rows: [
+                        [
+                          'PAX GMP3',
+                          '$paxGmp3Qty',
+                          money.format(gmp3Unit),
+                          money.format(paxGmp3Amount),
+                        ],
+                      ],
+                      footerLabel: 'PAX GMP3 TOPLAM',
+                      footerQty: '$paxGmp3Qty',
+                      footerAmount: money.format(paxGmp3Amount),
+                    ),
+                  if (showIngTsm)
+                    _ExcelSectionTable(
+                      title: 'INGENICO IRESTO',
+                      headerColor: _kWorldline,
+                      softColor: _kWorldlineSoft,
+                      amountHeader: 'Worldline',
+                      rows: [
+                        [
+                          'INGENICO IRESTO',
+                          '$ingTsmQty',
+                          money.format(tsmUnit),
+                          money.format(ingTsmAmount),
+                        ],
+                      ],
+                      footerLabel: 'INGENICO IRESTO TOPLAM',
+                      footerQty: '$ingTsmQty',
+                      footerAmount: money.format(ingTsmAmount),
+                    ),
+                  if (showPaxTsm)
+                    _ExcelSectionTable(
+                      title: 'PAX IRESTO',
+                      headerColor: _kWorldline,
+                      softColor: _kWorldlineSoft,
+                      amountHeader: 'Worldline',
+                      rows: [
+                        [
+                          'PAX IRESTO',
+                          '$paxTsmQty',
+                          money.format(tsmUnit),
+                          money.format(paxTsmAmount),
+                        ],
+                      ],
+                      footerLabel: 'PAX IRESTO TOPLAM',
+                      footerQty: '$paxTsmQty',
+                      footerAmount: money.format(paxTsmAmount),
+                    ),
+                ];
+                if (tables.isEmpty) return const SizedBox.shrink();
+                if (tables.length == 1) return tables.first;
+                if (wide && tables.length == 2) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: tables[0]),
+                      const Gap(12),
+                      Expanded(child: tables[1]),
+                    ],
+                  );
+                }
+                if (wide && tables.length >= 3) {
+                  return Column(
+                    children: [
+                      for (var i = 0; i < tables.length; i += 2) ...[
+                        if (i > 0) const Gap(12),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: tables[i]),
+                            if (i + 1 < tables.length) ...[
+                              const Gap(12),
+                              Expanded(child: tables[i + 1]),
+                            ] else
+                              const Expanded(child: SizedBox.shrink()),
+                          ],
+                        ),
+                      ],
+                    ],
+                  );
+                }
+                return Column(
+                  children: [
+                    for (var i = 0; i < tables.length; i++) ...[
+                      if (i > 0) const Gap(12),
+                      tables[i],
+                    ],
+                  ],
+                );
+              },
+            ),
+          ],
           if (showMicro) ...[
             const Gap(20),
             _SectionBanner(
-              title: 'A) Microvise Keseceği Fatura',
+              title: 'A) Microvise — INGENICO / PAX',
               color: _kMicrovise,
             ),
             const Gap(10),
@@ -769,6 +1072,8 @@ class _MutakabatDashboardWithFiltersState
                 );
                 if (_bankGroup == 'INGENICO') return ingenicoTable;
                 if (_bankGroup == 'PAX (A910SF)') return paxTable;
+                if (!showIngenico) return paxTable;
+                if (!showPax) return ingenicoTable;
                 if (wide) {
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -788,75 +1093,108 @@ class _MutakabatDashboardWithFiltersState
                 );
               },
             ),
+          ],
+          if (showYkb) ...[
+            const Gap(20),
+            _SectionBanner(
+              title: 'C) Worldline — YKB_KOOP BANKA',
+              color: _kWorldline,
+            ),
             const Gap(10),
-            _GrandTotalBar(
-              label: 'A) Microvise Genel Toplam',
-              value: money.format(
+            _ExcelSectionTable(
+              title: 'YKB_KOOP BANKA',
+              headerColor: _kWorldline,
+              softColor: _kWorldlineSoft,
+              amountHeader: 'Worldline',
+              rows: [
+                for (final item in ykb)
+                  [
+                    item.label,
+                    '${item.quantity}',
+                    money.format(item.unitPrice),
+                    money.format(item.worldlineAmount),
+                  ],
+              ],
+              footerLabel: 'YKB TOPLAM',
+              footerQty: '${ykbT.qty}',
+              footerAmount: money.format(ykbT.world),
+            ),
+          ],
+          // En alt: 2 özel fatura özeti
+          if (showMicro || showWorld) ...[
+            const Gap(20),
+            _SectionBanner(
+              title: 'Fatura Özetleri — Özel',
+              color: AppTheme.text,
+            ),
+          ],
+          if (showMicro) ...[
+            const Gap(10),
+            _ExcelSectionTable(
+              title: 'Microvise Keseceği Fatura',
+              headerColor: _kMicrovise,
+              softColor: _kMicroviseSoft,
+              amountHeader: 'Microvise',
+              columns: const ['Kalem', 'Adet', 'Birim Fiyat', 'Microvise'],
+              emphasized: true,
+              rows: [
+                if (showIngenico)
+                  [
+                    'INGENICO',
+                    '${ingenicoT.qty}',
+                    '—',
+                    money.format(ingenicoT.micro),
+                  ],
+                if (showPax)
+                  [
+                    'PAX',
+                    '${paxT.qty}',
+                    '—',
+                    money.format(paxT.micro),
+                  ],
+              ],
+              footerLabel: 'Microvise Keseceği Fatura',
+              footerQty:
+                  '${(showIngenico ? ingenicoT.qty : 0) + (showPax ? paxT.qty : 0)}',
+              footerAmount: money.format(
                 _bankGroup == 'INGENICO'
                     ? ingenicoT.micro
                     : _bankGroup == 'PAX (A910SF)'
                         ? paxT.micro
                         : summary.totals.microviseGrand,
               ),
-              color: _kMicrovise,
             ),
           ],
-          if (showWorldSection) ...[
-            const Gap(20),
-            _SectionBanner(
-              title: 'B) Worldline Keseceği Fatura',
-              color: _kWorldline,
-            ),
-            const Gap(10),
+          if (showWorld) ...[
+            const Gap(12),
             _ExcelSectionTable(
-              title: 'YKB / GMP3 / TSM',
+              title: 'Worldline Keseceği Fatura',
               headerColor: _kWorldline,
               softColor: _kWorldlineSoft,
-              columns: const [
-                'Banka',
-                'Entegrasyon',
-                'Adet',
-                'Birim Fiyat',
-                'Worldline',
-              ],
+              amountHeader: 'Worldline',
+              columns: const ['Kalem', 'Adet', 'Birim Fiyat', 'Worldline'],
+              emphasized: true,
               rows: [
-                if (showYkbRows)
-                  for (final item in ykb)
-                    [
-                      'YKB (Koop Bank)',
-                      'YKB',
-                      '${item.quantity}',
-                      money.format(item.unitPrice),
-                      money.format(item.worldlineAmount),
-                    ],
-                if (showIntegRows)
-                  for (final item in integrations)
-                    [
-                      '—',
-                      item.label,
-                      '${item.quantity}',
-                      money.format(item.unitPrice),
-                      money.format(item.worldlineAmount),
-                    ],
+                if (showGmp3 || showTsm)
+                  [
+                    'GMP3 / IRESTO (INGENICO + PAX)',
+                    '${gmp3Qty + tsmQty}',
+                    gmp3Unit == tsmUnit
+                        ? money.format(gmp3Unit)
+                        : '—',
+                    money.format(gmp3Amount + tsmAmount),
+                  ],
+                if (showYkb || _integrationKey == 'ALL')
+                  [
+                    'YKB_KOOP BANKA',
+                    '${ykbT.qty}',
+                    money.format(ykbUnit),
+                    money.format(ykbT.world),
+                  ],
               ],
-              footerLabel: 'WORLDLINE TOPLAM',
-              footerQty:
-                  '${(showYkbRows ? ykbT.qty : 0) + (showIntegRows ? integQty : 0)}',
-              footerAmount: money.format(
-                (showYkbRows ? ykbT.world : 0) +
-                    (showIntegRows ? integAmount : 0),
-              ),
-              amountColumnIndex: 4,
-            ),
-            const Gap(10),
-            _GrandTotalBar(
-              label: 'B) Worldline Genel Toplam',
-              value: money.format(
-                _bankGroup == 'YKB (Koop Bank)'
-                    ? ykbT.world
-                    : summary.totals.worldlineGrand,
-              ),
-              color: _kWorldline,
+              footerLabel: 'Worldline Keseceği Fatura',
+              footerQty: '${ykbT.qty + gmp3Qty + tsmQty}',
+              footerAmount: money.format(summary.totals.worldlineGrand),
             ),
           ],
           const Gap(14),
@@ -864,6 +1202,62 @@ class _MutakabatDashboardWithFiltersState
             'Not: Tutarlar KDV hariç gösterilmektedir.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: AppTheme.textMuted,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProductLineCard extends StatelessWidget {
+  const _ProductLineCard({
+    required this.label,
+    required this.qty,
+    required this.amount,
+    required this.color,
+    required this.soft,
+  });
+
+  final String label;
+  final String qty;
+  final String amount;
+  final Color color;
+  final Color soft;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: soft,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          const Gap(6),
+          Text(
+            '$qty adet',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppTheme.textSoft,
+                ),
+          ),
+          const Gap(2),
+          Text(
+            amount,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: color,
                 ),
           ),
         ],
@@ -1002,6 +1396,7 @@ class _ExcelSectionTable extends StatelessWidget {
     this.amountHeader = 'Tutar',
     this.columns,
     this.amountColumnIndex = 3,
+    this.emphasized = false,
   });
 
   final String title;
@@ -1014,6 +1409,7 @@ class _ExcelSectionTable extends StatelessWidget {
   final String amountHeader;
   final List<String>? columns;
   final int amountColumnIndex;
+  final bool emphasized;
 
   @override
   Widget build(BuildContext context) {
@@ -1023,33 +1419,52 @@ class _ExcelSectionTable extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: headerColor.withValues(alpha: 0.18)),
+        border: Border.all(
+          color: headerColor.withValues(alpha: emphasized ? 0.55 : 0.18),
+          width: emphasized ? 2 : 1,
+        ),
         borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+        boxShadow: emphasized
+            ? [
+                BoxShadow(
+                  color: headerColor.withValues(alpha: 0.18),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ]
+            : null,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            color: softColor,
+            padding: EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: emphasized ? 12 : 8,
+            ),
+            color: emphasized ? headerColor : softColor,
             child: Text(
               title,
               style: TextStyle(
-                color: headerColor,
+                color: emphasized ? Colors.white : headerColor,
                 fontWeight: FontWeight.w800,
+                fontSize: emphasized ? 15 : 14,
               ),
             ),
           ),
           LayoutBuilder(
             builder: (context, constraints) {
+              final tableWidth = constraints.maxWidth.isFinite
+                  ? constraints.maxWidth
+                  : 400.0;
               return SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                child: SizedBox(
+                  width: tableWidth < 360 ? 360 : tableWidth,
                   child: DataTable(
                     headingRowColor: WidgetStatePropertyAll(
-                      headerColor.withValues(alpha: 0.92),
+                      headerColor.withValues(alpha: emphasized ? 1 : 0.92),
                     ),
                     headingTextStyle: const TextStyle(
                       color: Colors.white,
@@ -1063,12 +1478,29 @@ class _ExcelSectionTable extends StatelessWidget {
                     rows: [
                       for (final row in rows)
                         DataRow(
+                          color: emphasized
+                              ? WidgetStatePropertyAll(
+                                  softColor.withValues(alpha: 0.65),
+                                )
+                              : null,
                           cells: [
-                            for (final cell in row) DataCell(Text(cell)),
+                            for (var i = 0; i < cols.length; i++)
+                              DataCell(
+                                Text(
+                                  i < row.length ? row[i] : '',
+                                  style: emphasized
+                                      ? const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        )
+                                      : null,
+                                ),
+                              ),
                           ],
                         ),
                       DataRow(
-                        color: WidgetStatePropertyAll(softColor),
+                        color: WidgetStatePropertyAll(
+                          emphasized ? headerColor : softColor,
+                        ),
                         cells: [
                           for (var i = 0; i < cols.length; i++)
                             DataCell(
@@ -1082,7 +1514,10 @@ class _ExcelSectionTable extends StatelessWidget {
                                             : '',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w800,
-                                  color: headerColor,
+                                  fontSize: emphasized ? 14 : null,
+                                  color: emphasized
+                                      ? Colors.white
+                                      : headerColor,
                                 ),
                               ),
                             ),
@@ -2081,7 +2516,7 @@ class _MutakabatEditorState extends ConsumerState<_MutakabatEditor> {
                 const Gap(12),
                 const Expanded(
                   child: Text(
-                                    'Hesaplanan datayı Excel olarak indirin: Dashboard, INGENICO BANKA, PAX BANKA, YKB_KOOP BANKA, GMP3 DATA, TSM IRESTO DATA.',
+                                    'Hesaplanan datayı Excel olarak indirin: Dashboard, INGENICO BANKA, PAX BANKA, YKB_KOOP BANKA, INGENICO GMP3, PAX GMP3, INGENICO IRESTO, PAX IRESTO.',
                   ),
                 ),
                 const Gap(12),

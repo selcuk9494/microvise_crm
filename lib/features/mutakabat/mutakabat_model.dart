@@ -209,12 +209,20 @@ class MutakabatSummary {
           ? (tsmRaw['count'] as num?)?.toInt() ?? 0
           : (tsmRaw as num?)?.toInt() ?? 0,
       lineItems: ((json['lineItems'] as List?) ?? const [])
-          .whereType<Map<String, dynamic>>()
-          .map(MutakabatLineItem.fromJson)
+          .whereType<Map>()
+          .map(
+            (e) => MutakabatLineItem.fromJson(
+              Map<String, dynamic>.from(e),
+            ),
+          )
           .toList(growable: false),
       integrations: ((json['integrations'] as List?) ?? const [])
-          .whereType<Map<String, dynamic>>()
-          .map(MutakabatIntegrationItem.fromJson)
+          .whereType<Map>()
+          .map(
+            (e) => MutakabatIntegrationItem.fromJson(
+              Map<String, dynamic>.from(e),
+            ),
+          )
           .toList(growable: false),
       totals: MutakabatTotals.fromJson(
         (json['totals'] as Map?)?.cast<String, dynamic>(),
