@@ -23,7 +23,8 @@ module.exports = async (req, res) => {
     if (!user) return unauthorized(req, res);
     if (
       !hasPageAccess(user, 'musteriler') &&
-      !hasPageAccess(user, 'e_fatura')
+      !hasPageAccess(user, 'e_fatura') &&
+      !hasPageAccess(user, 'formlar')
     ) {
       return forbidden(req, res, 'Mükellef sorgusu için yetkiniz yok.');
     }

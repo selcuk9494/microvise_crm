@@ -1166,8 +1166,16 @@ module.exports = async (req, res) => {
       }
 
       case 'form_customer_by_vkn': {
-        const digits = String(req.query.vkn || '').replace(/\D/g, '');
-        if (!digits) return badRequest(req, res, 'VKN zorunludur.');
+        const rawQ = String(req.query.q || req.query.vkn || '')
+          .trim()
+          .replace(/[\s\-_.]/g, '');
+        const digits = String(req.query.vkn || rawQ || '').replace(/\D/g, '');
+        const normalizedQ = String(rawQ || '')
+          .replace(/[^0-9A-Za-zÇĞİÖŞÜçğıöşü]/g, '')
+          .toLocaleUpperCase('tr-TR');
+        if (!digits && !normalizedQ) {
+          return badRequest(req, res, 'VKN, MŞ veya Kimlik numarası giriniz.');
+        }
         const result = await query(
           `
             select
@@ -1182,11 +1190,24 @@ module.exports = async (req, res) => {
               director_name,
               is_active
             from public.customers
-            where regexp_replace(coalesce(vkn, ''), '\\D', '', 'g') = $1
+            where
+              (
+                $1::text <> ''
+                and regexp_replace(coalesce(vkn, ''), '\\D', '', 'g') = $1
+              )
+              or (
+                $2::text <> ''
+                and upper(regexp_replace(coalesce(tckn_ms, ''), '[\\s\\-_.]', '', 'g')) = $2
+              )
+              or (
+                $2::text <> ''
+                and regexp_replace(coalesce(vkn, ''), '\\D', '', 'g') = regexp_replace($2, '\\D', '', 'g')
+                and regexp_replace($2, '\\D', '', 'g') <> ''
+              )
             order by created_at desc nulls last
             limit 1
           `,
-          [digits],
+          [digits.length >= 10 ? digits.slice(0, 11) : '', normalizedQ],
         );
         return ok(req, res, { item: result.rows[0] || null });
       }

@@ -3936,10 +3936,20 @@ class _BankApplicationFormDialogState
               .firstOrNull;
           _selectedTaxOfficeCityId = city?.id;
         });
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              found.name.trim().isEmpty
+                  ? 'CRM’de müşteri bulundu.'
+                  : 'CRM’de bulundu: ${found.name.trim()}',
+            ),
+          ),
+        );
         return;
       }
 
-      // CRM'de yok → vergi dairesi mükellef sorgusu (başvuru / cari ile aynı).
+      // CRM'de yok → vergi dairesi mükellef sorgusu (yeni müşteri ekleme ile aynı).
       if (apiClient == null) {
         if (!mounted) return;
         setState(() => _lookupDone = true);
@@ -4001,6 +4011,16 @@ class _BankApplicationFormDialogState
         _directorController.clear();
         _selectedTaxOfficeCityId = cityMatch?.id;
       });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            name.isNotEmpty
+                ? 'Vergi dairesinde bulundu: $name — yeni cari açılacak.'
+                : 'Mükellef bilgileri dolduruldu — yeni cari açılacak.',
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       final message = e
@@ -4477,6 +4497,11 @@ class _BankApplicationFormDialogState
     final paxModel = _resolvePaxModel(models);
     final existingCustomer = _customer != null;
     final identityLocked = _identityFromLookup && !_isEditing;
+    // Sorgudan gelmeyen alanlar kilitlenmez (vergi sorgusunda genelde yok).
+    final directorLocked =
+        identityLocked && _directorController.text.trim().isNotEmpty;
+    final taxOfficeLocked =
+        identityLocked && (_selectedTaxOfficeCityId ?? '').trim().isNotEmpty;
 
     return Dialog(
       insetPadding: EdgeInsets.symmetric(
@@ -4506,7 +4531,7 @@ class _BankApplicationFormDialogState
                           ),
                           const Gap(6),
                           Text(
-                            'VKN, MŞ veya Kimlik numarası giriniz. Ünvan / vergi bilgileri sorgudan gelir; yalnızca adresi değiştirebilirsiniz.',
+                            'Yeni müşteri ekleme gibi VKN, MŞ veya Kimlik ile sorgulayın. CRM’de yoksa vergi dairesinden bulunur ve yeni cari açılır; ünvan / VKN kilitli kalır, adresi (ve boş kalan alanları) doldurun.',
                             style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(color: AppTheme.textMuted),
                           ),
@@ -4586,9 +4611,9 @@ class _BankApplicationFormDialogState
                   const Gap(12),
                   AppBadge(
                     label: existingCustomer
-                        ? 'Müşteri bulundu. Ünvan / VKN / MŞ kilitli; yalnızca adresi değiştirebilirsiniz.'
+                        ? 'CRM’de müşteri bulundu. Ünvan / VKN / MŞ kilitli; adresi güncelleyebilirsiniz.'
                         : _identityFromLookup
-                            ? 'Mükellef sorgulandı, yeni cari oluşturulacak. Ünvan / VKN / MŞ kilitli; yalnızca adresi değiştirebilirsiniz.'
+                            ? 'Vergi sorgusu tamam. Yeni cari oluşturulacak. Ünvan / VKN / MŞ kilitli; adresi ve boş alanları doldurun.'
                             : 'Müşteri bulunamadı, kayıt oluşturulacak.',
                     tone: existingCustomer || _identityFromLookup
                         ? AppBadgeTone.success
@@ -4622,7 +4647,7 @@ class _BankApplicationFormDialogState
                           controller: _directorController,
                           label: 'Yetkili / Direktör',
                           hintText: 'Örn: Ahmet Yılmaz',
-                          enabled: !identityLocked && !_saving,
+                          enabled: !directorLocked && !_saving && _lookupDone,
                           validator: _requiredValidator,
                         ),
                         const Gap(14),
@@ -4642,7 +4667,9 @@ class _BankApplicationFormDialogState
                                 ),
                               )
                               .toList(growable: false),
-                          onChanged: (_saving || identityLocked)
+                          onChanged: (_saving ||
+                                  taxOfficeLocked ||
+                                  !_lookupDone)
                               ? null
                               : (value) => setState(
                                   () => _selectedTaxOfficeCityId = value,

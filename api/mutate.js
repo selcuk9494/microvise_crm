@@ -2339,7 +2339,17 @@ async function sanitizeValuesForTable({ table, values, user }) {
   if (table === 'customers' && isBankLikeUser(user)) {
     const next = {};
     const source = values || {};
-    for (const key of ['name', 'vkn', 'address', 'director_name', 'city', 'email', 'phone_1', 'is_active']) {
+    for (const key of [
+      'name',
+      'vkn',
+      'tckn_ms',
+      'address',
+      'director_name',
+      'city',
+      'email',
+      'phone_1',
+      'is_active',
+    ]) {
       if (Object.prototype.hasOwnProperty.call(source, key)) {
         next[key] = source[key];
       }
@@ -2347,6 +2357,12 @@ async function sanitizeValuesForTable({ table, values, user }) {
     next.is_active = true;
     if (source.vkn != null) {
       next.vkn = String(source.vkn || '').replace(/\D/g, '');
+    }
+    if (source.tckn_ms != null) {
+      next.tckn_ms = String(source.tckn_ms || '')
+        .trim()
+        .replace(/[\s\-_.]/g, '')
+        .toLocaleUpperCase('tr-TR');
     }
     if (source.name != null) {
       next.name = String(source.name || '').trim();
