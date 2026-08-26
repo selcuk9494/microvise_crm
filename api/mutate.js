@@ -2357,7 +2357,14 @@ async function sanitizeValuesForTable({ table, values, user }) {
     }
     next.is_active = true;
     if (source.vkn != null) {
-      next.vkn = String(source.vkn || '').replace(/\D/g, '');
+      let vkn = String(source.vkn || '').replace(/\D/g, '');
+      // KKTC 8–9 hane → CRM’de soldan 0 ile 10 hane.
+      if (vkn.length >= 8 && vkn.length < 10) {
+        vkn = vkn.padStart(10, '0');
+      } else if (vkn.length > 10) {
+        vkn = vkn.slice(0, 10);
+      }
+      next.vkn = vkn;
     }
     if (source.tckn_ms != null) {
       next.tckn_ms = String(source.tckn_ms || '')

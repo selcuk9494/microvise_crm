@@ -3895,14 +3895,33 @@ class _BankApplicationFormDialogState
     return _toTurkishUpper(cleaned);
   }
 
+  /// Portal sorgusu: CRM’de 10 haneli (0’lı) tutulan VKN’yi soldaki 0’lar
+  /// olmadan gönder (vergi dairesi 0384… kabul etmiyor).
+  String get _taxPortalQuery {
+    final q = _lookupQuery;
+    if (q.isEmpty || _queryLooksLikeMs) return q;
+    final digits = q.replaceAll(RegExp(r'\D'), '');
+    final stripped = digits.replaceFirst(RegExp(r'^0+'), '');
+    if (stripped.length >= 8) return stripped;
+    return digits.isNotEmpty ? digits : q;
+  }
+
   String get _normalizedVkn {
     final resolved = (_resolvedVkn ?? '').replaceAll(RegExp(r'\D'), '');
-    if (_isValidVknDigits(resolved)) return resolved;
+    final fromResolved = _padVknForStorage(resolved);
+    if (fromResolved.isNotEmpty) return fromResolved;
     // MŞ/kimlik sorgusundaki rakam kırıntısını (örn. 19715) VKN sanma.
     if (_queryLooksLikeMs) return '';
-    final digits = _lookupQuery.replaceAll(RegExp(r'\D'), '');
-    if (_isValidVknDigits(digits)) return digits;
-    return '';
+    return _padVknForStorage(_lookupQuery);
+  }
+
+  /// KKTC portalı 9 hane dönebilir; CRM/sicil için soldan 0 ile 10 hane.
+  String _padVknForStorage(String raw) {
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (!_isValidVknDigits(digits)) return '';
+    if (digits.length > 10) return digits.substring(0, 10);
+    if (digits.length == 10) return digits;
+    return digits.padLeft(10, '0');
   }
 
   bool _isValidVknDigits(String digits) =>
@@ -4049,10 +4068,11 @@ class _BankApplicationFormDialogState
       );
       return;
     }
-    final digitQuery = query.replaceAll(RegExp(r'\D'), '');
-    if (!_queryLooksLikeMs && digitQuery.length < 10) {
+    final portalQuery = _taxPortalQuery;
+    final digitQuery = portalQuery.replaceAll(RegExp(r'\D'), '');
+    if (!_queryLooksLikeMs && digitQuery.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('VKN en az 10 haneli olmalı.')),
+        const SnackBar(content: Text('VKN en az 8 haneli olmalı.')),
       );
       return;
     }
@@ -4081,12 +4101,14 @@ class _BankApplicationFormDialogState
       Map<String, dynamic>? row;
       if (apiClient != null) {
         try {
+          final paddedVkn = _padVknForStorage(digitQuery);
           final response = await apiClient.getJson(
             '/data',
             queryParameters: {
               'resource': 'form_customer_by_vkn',
-              if (digitQuery.length >= 10) 'vkn': digitQuery,
-              'q': query,
+              if (paddedVkn.isNotEmpty) 'vkn': paddedVkn,
+              if (digitQuery.length >= 8) 'vkn_alt': digitQuery,
+              'q': portalQuery,
             },
           );
           row = (response['item'] as Map?)?.cast<String, dynamic>();
@@ -4109,8 +4131,14 @@ class _BankApplicationFormDialogState
             final tckn = _toTurkishUpper(
               (item['tckn_ms']?.toString() ?? '').trim(),
             );
-            if (digitQuery.length >= 10 && vkn == digitQuery) return true;
-            if (tckn.isNotEmpty && tckn == query) return true;
+            final padded = _padVknForStorage(digitQuery);
+            if (padded.isNotEmpty && vkn == padded) return true;
+            if (digitQuery.length >= 8 &&
+                (vkn == digitQuery ||
+                    vkn.replaceFirst(RegExp(r'^0+'), '') == digitQuery)) {
+              return true;
+            }
+            if (tckn.isNotEmpty && tckn == portalQuery) return true;
             return false;
           }).firstOrNull;
         }
@@ -4129,8 +4157,14 @@ class _BankApplicationFormDialogState
           final tckn = _toTurkishUpper(
             (item['tckn_ms']?.toString() ?? '').trim(),
           );
-          if (digitQuery.length >= 10 && vkn == digitQuery) return true;
-          if (tckn.isNotEmpty && tckn == query) return true;
+          final padded = _padVknForStorage(digitQuery);
+          if (padded.isNotEmpty && vkn == padded) return true;
+          if (digitQuery.length >= 8 &&
+              (vkn == digitQuery ||
+                  vkn.replaceFirst(RegExp(r'^0+'), '') == digitQuery)) {
+            return true;
+          }
+          if (tckn.isNotEmpty && tckn == portalQuery) return true;
           return false;
         }).firstOrNull;
       }
@@ -4138,7 +4172,8 @@ class _BankApplicationFormDialogState
       final found = row == null ? null : _CustomerOption.fromJson(row);
       if (found != null) {
         final foundVkn = (found.vkn ?? '').replaceAll(RegExp(r'\D'), '');
-        final hasValidVkn = _isValidVknDigits(foundVkn);
+        final storedVkn = _padVknForStorage(foundVkn);
+        final hasValidVkn = storedVkn.isNotEmpty;
         if (!mounted) return;
         setState(() {
           _customer = found;
@@ -4148,7 +4183,7 @@ class _BankApplicationFormDialogState
           _resolvedTcknMs = (found.tcknMs ?? '').trim().isNotEmpty
               ? _toTurkishUpper(found.tcknMs!.trim())
               : null;
-          _vknController.text = (_resolvedVkn ?? query);
+          _vknController.text = hasValidVkn ? storedVkn : portalQuery;
           _customerNameController.text = found.name;
           _addressController.text = (found.address ?? '').trim();
           _directorController.text = (found.directorName ?? '').trim();
@@ -4193,7 +4228,7 @@ class _BankApplicationFormDialogState
 
       final tax = await apiClient.getJson(
         '/tax-lookup',
-        queryParameters: {'q': query},
+        queryParameters: {'q': portalQuery},
       );
       if (!mounted) return;
 
@@ -4236,7 +4271,9 @@ class _BankApplicationFormDialogState
         _identityFromLookup = true;
         _resolvedVkn = resolvedVkn ?? _resolvedVkn;
         _resolvedTcknMs = resolvedTckn ?? _resolvedTcknMs;
-        _vknController.text = _resolvedVkn ?? query;
+        _vknController.text = _resolvedVkn != null
+            ? _padVknForStorage(_resolvedVkn!)
+            : query;
         if (name.isNotEmpty) {
           _customerNameController.text = name;
         }
@@ -4249,13 +4286,16 @@ class _BankApplicationFormDialogState
       });
       if (!mounted) return;
       final shownName = _customerNameController.text.trim();
+      final shownVkn = resolvedVkn != null
+          ? _padVknForStorage(resolvedVkn)
+          : '';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            resolvedVkn != null
+            shownVkn.isNotEmpty
                 ? (shownName.isNotEmpty
-                      ? 'VKN alındı ($resolvedVkn): $shownName'
-                      : 'VKN alındı: $resolvedVkn')
+                      ? 'VKN alındı ($shownVkn): $shownName'
+                      : 'VKN alındı: $shownVkn')
                 : (shownName.isNotEmpty
                       ? 'Mükellef bulundu: $shownName — VKN gelmedi, kontrol edin.'
                       : 'Mükellef bilgileri dolduruldu.'),
@@ -4854,8 +4894,8 @@ class _BankApplicationFormDialogState
                             final hasLetters = RegExp(
                               r'[A-Za-zÇĞİÖŞÜçğıöşü]',
                             ).hasMatch(q);
-                            if (!hasLetters && digits.length < 10) {
-                              return 'VKN en az 10 haneli olmalı.';
+                            if (!hasLetters && digits.length < 8) {
+                              return 'VKN en az 8 haneli olmalı.';
                             }
                             return null;
                           },

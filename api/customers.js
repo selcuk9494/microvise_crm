@@ -112,6 +112,18 @@ function normalizeDigits(value) {
   return digits ? digits : null;
 }
 
+/** CRM’de VKN her zaman 10 hane (KKTC 8–9 → soldan 0). */
+function normalizeStoredVkn(value) {
+  let digits = String(value || '').replace(/[^0-9]/g, '');
+  if (!digits) return null;
+  if (digits.length >= 8 && digits.length < 10) {
+    digits = digits.padStart(10, '0');
+  } else if (digits.length > 10) {
+    digits = digits.slice(0, 10);
+  }
+  return digits;
+}
+
 /** TCKN (rakam) veya MŞ mükellef no (harf+rakam) — harfler korunur. */
 function normalizeTcknMs(value) {
   const raw = String(value || '')

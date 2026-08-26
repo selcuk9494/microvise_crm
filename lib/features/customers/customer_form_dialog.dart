@@ -1116,8 +1116,11 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     }
 
     final vknDigits = _vknController.text.replaceAll(RegExp(r'[^0-9]'), '');
-    final normalizedVkn =
-        (vknDigits.length >= 8 && vknDigits.length <= 11) ? vknDigits : null;
+    final normalizedVkn = (vknDigits.length >= 8 && vknDigits.length <= 11)
+        ? (vknDigits.length > 10
+              ? vknDigits.substring(0, 10)
+              : vknDigits.padLeft(10, '0'))
+        : null;
     final normalizedTcknMs = _normalizeTcknMsValue(_tcknMsController.text);
     _vknController.text = normalizedVkn ?? '';
     _tcknMsController.text = normalizedTcknMs ?? '';
@@ -1443,13 +1446,17 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
         _nameController.text = name;
       }
       if (vknRaw.length >= 8 && vknRaw.length <= 11) {
-        _vknController.text = vknRaw;
+        _vknController.text = vknRaw.length > 10
+            ? vknRaw.substring(0, 10)
+            : vknRaw.padLeft(10, '0');
       } else {
         final qDigits = q.replaceAll(RegExp(r'\D'), '');
         if (qDigits.length >= 8 &&
             qDigits.length <= 11 &&
             !RegExp(r'[A-Za-zÇĞİÖŞÜçğıöşü]').hasMatch(q)) {
-          _vknController.text = qDigits;
+          _vknController.text = qDigits.length > 10
+              ? qDigits.substring(0, 10)
+              : qDigits.padLeft(10, '0');
         }
       }
 
