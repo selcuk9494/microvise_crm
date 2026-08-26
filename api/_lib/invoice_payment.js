@@ -561,7 +561,8 @@ function humanizePosRefundError(message) {
   ) {
     return (
       'Banka iade yetkisi reddetti (Insufficient permissions). ' +
-      'WordPress eklentisini 1.3+ yapın; WooCommerce Halkbank API kullanıcısının iade yetkisi açık olmalı. ' +
+      'Halkbank / NestPay üye işyeri panelinde WooCommerce API kullanıcısına Credit (iade) ve Void yetkisi açılmalı. ' +
+      'Yetki açılana kadar banka panelinden iade edip CRM’de «CRM kaydını eşitle» kullanın. ' +
       `Banka mesajı: ${raw}`
     );
   }
@@ -618,6 +619,7 @@ async function refundInvoicePosPayment({
   transactionId = null,
   amount = null,
   createdBy = null,
+  crmOnly = false,
 }) {
   await ensureInvoicePaymentLinksTable();
   const invId = String(invoiceId || '').trim();
@@ -690,7 +692,7 @@ async function refundInvoicePosPayment({
         collections.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0),
       );
   const refundCurrency = extractPosChargeCurrency(link);
-  if (!orderId) {
+  if (!crmOnly && !orderId) {
     const error = new Error(
       'Banka siparis numarasi (OrderId) kayitli degil; iade yapilamiyor.',
     );
@@ -699,59 +701,75 @@ async function refundInvoicePosPayment({
   }
 
   const collectionIds = collections.rows.map((row) => row.id);
-  const pending = await createPosRefundTicket({
-    linkId: link.id,
-    orderId,
-    amount: refundAmount,
-    currency: refundCurrency,
-    invoiceId: invId,
-    transactionIds: collectionIds,
-  });
+  let bankResult = {
+    approved: false,
+    message: '',
+    via: 'none',
+    type: null,
+    parsed: null,
+  };
 
-  let bankResult = await refundViaWordPressBridge({
-    orderId,
-    amount: refundAmount,
-    currency: refundCurrency,
-    refundTicket: pending.ticket,
-  });
-  const wpMessage = bankResult.message;
+  if (crmOnly) {
+    bankResult = {
+      approved: true,
+      message: 'CRM-only reverse (banka iadesi yapilmadi)',
+      via: 'crm_only',
+      type: 'CRM',
+      parsed: null,
+    };
+  } else {
+    const pending = await createPosRefundTicket({
+      linkId: link.id,
+      orderId,
+      amount: refundAmount,
+      currency: refundCurrency,
+      invoiceId: invId,
+      transactionIds: collectionIds,
+    });
 
-  if (!bankResult.approved) {
-    const config = getPosConfigFromEnv();
-    const { apiName, apiPassword } = resolveHalkbankApiCredentials(config);
-    if (apiName && apiPassword && config.merchantId) {
-      bankResult = await sendHalkbankOrderAction(
-        'Credit',
-        { orderId, amount: refundAmount, currency: refundCurrency },
-        config,
-      );
-      if (!bankResult.approved) {
-        bankResult = await sendHalkbankOrderAction(
-          'Void',
-          { orderId, amount: refundAmount, currency: refundCurrency },
-          config,
-        );
+    bankResult = await refundViaWordPressBridge({
+      orderId,
+      amount: refundAmount,
+      currency: refundCurrency,
+      refundTicket: pending.ticket,
+    });
+    const wpMessage = bankResult.message;
+
+    if (!bankResult.approved) {
+      const config = getPosConfigFromEnv();
+      const { apiName, apiPassword } = resolveHalkbankApiCredentials(config);
+      if (apiName && apiPassword && config.merchantId) {
+        for (const type of ['Credit', 'Refund', 'Void']) {
+          bankResult = await sendHalkbankOrderAction(
+            type,
+            { orderId, amount: refundAmount, currency: refundCurrency },
+            config,
+          );
+          if (bankResult.approved) {
+            bankResult.via = 'crm';
+            break;
+          }
+        }
+      } else if (!bankResult.skipped) {
+        bankResult = {
+          approved: false,
+          message: `${wpMessage} | CRM API kullanicisi eksik.`,
+          via: 'wordpress',
+        };
       }
-      if (bankResult.approved) bankResult.via = 'crm';
-    } else if (!bankResult.skipped) {
-      bankResult = {
-        approved: false,
-        message:
-          `${wpMessage} | CRM API kullanicisi eksik; iade icin WordPress eklentisi (1.3.2+) zorunlu.`,
-        via: 'wordpress',
-      };
     }
-  }
 
-  if (!bankResult.approved) {
-    await clearPosRefundTicket(link.id);
-    const error = new Error(
-      humanizePosRefundError(
-        [wpMessage, bankResult.message].filter(Boolean).join(' | '),
-      ),
-    );
-    error.statusCode = 400;
-    throw error;
+    if (!bankResult.approved) {
+      await clearPosRefundTicket(link.id);
+      const error = new Error(
+        humanizePosRefundError(
+          [wpMessage, bankResult.message].filter(Boolean).join(' | '),
+        ),
+      );
+      error.statusCode = 400;
+      error.code = 'BANK_REFUND_DENIED';
+      throw error;
+    }
   }
 
   await withTransaction(async (txQuery) => {
@@ -825,7 +843,9 @@ async function refundInvoicePosPayment({
     via: bankResult.via || 'crm',
     type: bankResult.type || 'Credit',
     reversedTransactionIds: collectionIds,
-    message: 'Sanal POS iadesi tamamlandi; fatura tahsilati geri alindi.',
+    message: crmOnly
+      ? 'CRM tahsilati geri alindi (banka iadesi yapilmadi).'
+      : 'Sanal POS iadesi tamamlandi; fatura tahsilati geri alindi.',
   };
 }
 

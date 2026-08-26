@@ -15,6 +15,7 @@ import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../../core/ui/empty_state_card.dart';
 import '../customers/customer_form_dialog.dart';
+import '../billing/invoice_queue_helper.dart';
 import 'form_document_actions.dart';
 import 'fault_form_model.dart';
 import 'fault_form_print.dart';
@@ -1325,6 +1326,7 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
       };
 
       Map<String, dynamic> row;
+      Map<String, dynamic>? invoiceLink;
       if (apiClient != null) {
         final response = await apiClient.postJson(
           '/mutate',
@@ -1336,6 +1338,36 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
           },
         );
         row = (response['row'] as Map?)?.cast<String, dynamic>() ?? {};
+        invoiceLink = invoiceLinkFromResponse(response);
+        final sourceId = (response['id'] ?? row['id'] ?? '').toString();
+        if (!widget.isEdit &&
+            sourceId.isNotEmpty &&
+            !invoiceLinkSucceeded(invoiceLink)) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'insertMany',
+              'table': 'invoice_items',
+              'rows': [
+                {
+                  'customer_id': selected.id,
+                  'item_type': 'fault_form',
+                  'source_table': 'fault_forms',
+                  'source_id': sourceId,
+                  'description':
+                      'Arıza Formu - ${_customerNameController.text.trim()}'
+                      '${_deviceBrandModelController.text.trim().isEmpty ? '' : ' / ${_deviceBrandModelController.text.trim()}'}',
+                  'amount': null,
+                  'currency': 'TRY',
+                  'status': 'pending',
+                  'is_active': true,
+                  'source_event': 'fault_form_created',
+                  'source_label': 'Arıza Formu',
+                },
+              ],
+            },
+          );
+        }
       } else {
         if (client == null) return;
         if (widget.isEdit) {
@@ -1356,10 +1388,29 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
               )
               .single();
           row = inserted;
+          await enqueueInvoiceItem(
+            client,
+            customerId: selected.id,
+            itemType: 'fault_form',
+            sourceTable: 'fault_forms',
+            sourceId: inserted['id'].toString(),
+            description:
+                'Arıza Formu - ${_customerNameController.text.trim()}'
+                '${_deviceBrandModelController.text.trim().isEmpty ? '' : ' / ${_deviceBrandModelController.text.trim()}'}',
+            sourceEvent: 'fault_form_created',
+            sourceLabel: 'Arıza Formu',
+          );
         }
       }
 
       if (!mounted) return;
+      if (!widget.isEdit) {
+        showFormInvoiceLinkSnackBar(
+          context,
+          invoiceLink: invoiceLink,
+          formLabel: 'Arıza formu',
+        );
+      }
       Navigator.of(context).pop(FaultFormRecord.fromJson(row));
     } catch (e) {
       if (!mounted) return;

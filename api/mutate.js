@@ -732,6 +732,13 @@ async function setApplicationFormInvoiceNumber(formId, invoiceNumber) {
 }
 
 async function markApplicationFormBillingQueueInvoiced(formId) {
+  return markBillingQueueInvoiced('application_forms', formId);
+}
+
+async function markBillingQueueInvoiced(sourceTable, sourceId) {
+  const table = textOrEmpty(sourceTable);
+  const id = textOrEmpty(sourceId);
+  if (!table || !id) return;
   try {
     await query(
       `
@@ -739,15 +746,359 @@ async function markApplicationFormBillingQueueInvoiced(formId) {
         set
           status = 'invoiced',
           invoiced_at = coalesce(invoiced_at, now())
-        where source_table = 'application_forms'
-          and source_id = $1::uuid
+        where source_table = $1
+          and source_id = $2::uuid
           and invoice_id is null
           and coalesce(status, 'pending') = 'pending'
       `,
-      [formId],
+      [table, id],
     );
   } catch (_) {
     // Eski şemada source/status kolonları yoksa sessiz geç.
+  }
+}
+
+const SERVICE_FORM_INVOICE_CONFIG = {
+  scrap_forms: {
+    itemType: 'scrap_form',
+    sourceLabel: 'Hurda Formu',
+    sourceEvent: 'scrap_form_sales_invoice',
+    productHints: ['Hurda Formu', 'Hurda'],
+    customerField: 'customer_id',
+    dateField: 'form_date',
+    selectColumns: `
+      id, customer_id, customer_name, device_brand_model_registry,
+      form_date::date as form_date
+    `,
+    notes: (row) => textOrEmpty(row.device_brand_model_registry).toUpperCase(),
+    description: (row) => {
+      const name = textOrEmpty(row.customer_name) || 'Müşteri';
+      const device = textOrEmpty(row.device_brand_model_registry);
+      return device ? `Hurda Formu - ${name} / ${device}` : `Hurda Formu - ${name}`;
+    },
+  },
+  fault_forms: {
+    itemType: 'fault_form',
+    sourceLabel: 'Arıza Formu',
+    sourceEvent: 'fault_form_sales_invoice',
+    productHints: ['Arıza Formu', 'Arıza'],
+    customerField: 'customer_id',
+    dateField: 'form_date',
+    selectColumns: `
+      id, customer_id, customer_name, device_brand_model, company_code_and_registry,
+      form_date::date as form_date
+    `,
+    notes: (row) =>
+      textOrEmpty(row.company_code_and_registry).toUpperCase() ||
+      textOrEmpty(row.device_brand_model).toUpperCase(),
+    description: (row) => {
+      const name = textOrEmpty(row.customer_name) || 'Müşteri';
+      const device = textOrEmpty(row.device_brand_model);
+      const registry = textOrEmpty(row.company_code_and_registry);
+      const suffix = [device, registry].filter(Boolean).join(' / ');
+      return suffix ? `Arıza Formu - ${name} / ${suffix}` : `Arıza Formu - ${name}`;
+    },
+  },
+  transfer_forms: {
+    itemType: 'transfer_form',
+    sourceLabel: 'Devir Formu',
+    sourceEvent: 'transfer_form_sales_invoice',
+    productHints: ['Devir Formu', 'Devir'],
+    customerField: 'transferor_customer_id',
+    dateField: 'transfer_date',
+    selectColumns: `
+      id, transferor_customer_id, transferor_name, transferee_name,
+      brand_model, device_serial_no, transfer_date::date as transfer_date
+    `,
+    notes: (row) => textOrEmpty(row.device_serial_no).toUpperCase(),
+    description: (row) => {
+      const from = textOrEmpty(row.transferor_name) || 'Devreden';
+      const to = textOrEmpty(row.transferee_name) || 'Devralan';
+      const serial = textOrEmpty(row.device_serial_no);
+      const base = `Devir Formu - ${from} → ${to}`;
+      return serial ? `${base} / ${serial}` : base;
+    },
+  },
+};
+
+async function resolveProductByHints(hints) {
+  const list = (Array.isArray(hints) ? hints : [])
+    .map((item) => textOrEmpty(item))
+    .filter(Boolean);
+  for (const hint of list) {
+    const exact = await query(
+      `
+        select id, name, code, sale_price, tax_rate, currency, unit
+        from public.products
+        where coalesce(is_active, true) = true
+          and lower(name) = lower($1)
+        order by sale_price desc nulls last, name asc
+        limit 1
+      `,
+      [hint],
+    );
+    if (exact.rows?.[0]) return exact.rows[0];
+  }
+  for (const hint of list) {
+    const fuzzy = await query(
+      `
+        select id, name, code, sale_price, tax_rate, currency, unit
+        from public.products
+        where coalesce(is_active, true) = true
+          and name ilike '%' || $1 || '%'
+        order by
+          case when lower(name) like lower($1) || '%' then 0 else 1 end,
+          sale_price desc nulls last,
+          name asc
+        limit 1
+      `,
+      [hint],
+    );
+    if (fuzzy.rows?.[0]) return fuzzy.rows[0];
+  }
+  return null;
+}
+
+async function findExistingSalesInvoiceForSource(sourceTable, sourceId) {
+  const result = await query(
+    `
+      select i.id, i.invoice_number
+      from public.invoice_items ii
+      join public.invoices i
+        on i.id = ii.invoice_id
+      where ii.source_table = $1
+        and ii.source_id = $2::uuid
+        and coalesce(i.invoice_type, 'sales') = 'sales'
+        and coalesce(i.is_active, true) = true
+        and coalesce(i.status, '') <> 'cancelled'
+      order by i.created_at desc nulls last
+      limit 1
+    `,
+    [sourceTable, sourceId],
+  );
+  return result.rows?.[0] || null;
+}
+
+/**
+ * Hurda / Arıza / Devir formu için açık satış e-faturası oluşturur.
+ */
+async function createSalesInvoiceForServiceForm(sourceTable, formId) {
+  const config = SERVICE_FORM_INVOICE_CONFIG[sourceTable];
+  if (!config) {
+    return { created: false, linked: false, reason: 'unsupported_table' };
+  }
+  const id = textOrEmpty(formId);
+  if (!id) {
+    const err = new Error('formId zorunludur.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const existing = await findExistingSalesInvoiceForSource(sourceTable, id);
+  if (existing?.id) {
+    await markBillingQueueInvoiced(sourceTable, id);
+    return {
+      created: false,
+      linked: true,
+      reason: 'already_linked',
+      invoiceId: existing.id,
+      invoiceNumber: existing.invoice_number,
+    };
+  }
+
+  const formResult = await query(
+    `
+      select ${config.selectColumns}
+      from public.${sourceTable}
+      where id = $1::uuid
+      limit 1
+    `,
+    [id],
+  );
+  const form = formResult.rows?.[0];
+  if (!form) {
+    const err = new Error('Form kaydı bulunamadı.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const customerId = textOrEmpty(form[config.customerField]);
+  if (!customerId) {
+    return { created: false, linked: false, reason: 'missing_customer' };
+  }
+
+  const product = await resolveProductByHints(config.productHints);
+  const unit = textOrEmpty(product?.unit) || 'Adet';
+  const taxRate = Number(product?.tax_rate);
+  const safeTaxRate = Number.isFinite(taxRate) ? taxRate : 20;
+  const unitPrice = round4(Number(product?.sale_price) || 0);
+  const taxAmount = round2(unitPrice * (safeTaxRate / 100));
+  const lineTotal = round2(unitPrice + taxAmount);
+  const description = config.description(form) || config.sourceLabel;
+  const registry = config.notes(form) || null;
+
+  const currency = 'USD';
+  const rates = await fetchHalkbankSellingRates();
+  const exchangeRate = round4(rates.USD || FX_FALLBACK.USD || 1);
+
+  const numberResult = await query(
+    `select public.generate_invoice_number('sales') as value`,
+  );
+  const invoiceNumber =
+    textOrEmpty(numberResult.rows?.[0]?.value) || `STŞ-${Date.now()}`;
+
+  const rawDate = form[config.dateField];
+  const invoiceDate =
+    (rawDate && String(rawDate).slice(0, 10)) ||
+    new Date().toISOString().slice(0, 10);
+
+  const invoiceInsert = await query(
+    `
+      insert into public.invoices (
+        invoice_number,
+        invoice_type,
+        customer_id,
+        invoice_date,
+        currency,
+        exchange_rate,
+        prices_include_vat,
+        subtotal,
+        tax_total,
+        discount_total,
+        grand_total,
+        paid_amount,
+        status,
+        notes,
+        is_active
+      )
+      values (
+        $1, 'sales', $2::uuid, $3::date, $4, $5, false,
+        $6, $7, 0, $8, 0, 'open', null, true
+      )
+      returning id, invoice_number
+    `,
+    [
+      invoiceNumber,
+      customerId,
+      invoiceDate,
+      currency,
+      exchangeRate,
+      unitPrice,
+      taxAmount,
+      lineTotal,
+    ],
+  );
+  const invoice = invoiceInsert.rows?.[0];
+  if (!invoice?.id) {
+    const err = new Error('Satış faturası oluşturulamadı.');
+    err.statusCode = 500;
+    throw err;
+  }
+
+  const itemInsert = await query(
+    `
+      insert into public.invoice_items (
+        invoice_id,
+        product_id,
+        customer_id,
+        item_type,
+        source_table,
+        source_id,
+        source_event,
+        source_label,
+        description,
+        notes,
+        quantity,
+        unit,
+        unit_price,
+        tax_rate,
+        tax_amount,
+        discount_rate,
+        discount_amount,
+        line_total,
+        sort_order,
+        status,
+        is_active
+      )
+      values (
+        $1::uuid,
+        $2::uuid,
+        $3::uuid,
+        $4,
+        $5,
+        $6::uuid,
+        $7,
+        $8,
+        $9,
+        $10,
+        1,
+        $11,
+        $12,
+        $13,
+        $14,
+        0,
+        0,
+        $15,
+        0,
+        'invoiced',
+        true
+      )
+      returning id
+    `,
+    [
+      invoice.id,
+      product?.id || null,
+      customerId,
+      config.itemType,
+      sourceTable,
+      id,
+      config.sourceEvent,
+      config.sourceLabel,
+      description,
+      registry,
+      unit,
+      unitPrice,
+      safeTaxRate,
+      taxAmount,
+      lineTotal,
+    ],
+  );
+
+  await markBillingQueueInvoiced(sourceTable, id);
+
+  return {
+    created: true,
+    linked: true,
+    registry,
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoice_number,
+    invoiceItemId: itemInsert.rows?.[0]?.id || null,
+    status: 'open',
+    currency,
+    exchangeRate,
+    unitPrice,
+    taxRate: safeTaxRate,
+    productId: product?.id || null,
+    productName: product?.name || description,
+    reason: product ? null : 'product_not_found_zero_price',
+    sourceTable,
+    sourceId: id,
+  };
+}
+
+async function maybeLinkServiceFormInvoice(sourceTable, formId) {
+  const table = textOrEmpty(sourceTable);
+  const id = textOrEmpty(formId);
+  if (!table || !id || !SERVICE_FORM_INVOICE_CONFIG[table]) return null;
+  try {
+    return await createSalesInvoiceForServiceForm(table, id);
+  } catch (error) {
+    return {
+      created: false,
+      linked: false,
+      reason: 'error',
+      error: error?.message || String(error),
+    };
   }
 }
 
@@ -880,8 +1231,7 @@ async function ensureInvoiceLineNotes(invoiceId, registry) {
   return itemId;
 }
 
-async function createSalesInvoiceForApplicationForm(form, formId, customerId) {
-  const product = await resolveProductForApplicationForm(form);
+function buildApplicationFormInvoiceLineMeta(form, product) {
   const brand = textOrEmpty(form.brand_name);
   const model = textOrEmpty(form.model_name);
   const stockName = textOrEmpty(form.stock_product_name);
@@ -897,8 +1247,51 @@ async function createSalesInvoiceForApplicationForm(form, formId, customerId) {
   const unitPrice = round4(Number(product?.sale_price) || 0);
   const taxAmount = round2(unitPrice * (safeTaxRate / 100));
   const lineTotal = round2(unitPrice + taxAmount);
+  const registry = textOrEmpty(form.stock_registry_number).toUpperCase();
+  return {
+    description,
+    unit,
+    safeTaxRate,
+    unitPrice,
+    taxAmount,
+    lineTotal,
+    registry,
+    productId: product?.id || null,
+    productName: description,
+    reason: product ? null : 'product_not_found_zero_price',
+  };
+}
+
+/**
+ * Birden fazla başvuru formu için TEK satış faturası + her sicil için ayrı kalem.
+ */
+async function createSalesInvoiceForApplicationForms(formRows) {
+  const rows = (Array.isArray(formRows) ? formRows : []).filter(
+    (row) => row?.form && row?.formId && row?.customerId,
+  );
+  if (!rows.length) {
+    const err = new Error('Fatura için başvuru formu bulunamadı.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const customerId = textOrEmpty(rows[0].customerId);
+  if (!customerId) {
+    const err = new Error('E-Fatura için müşteri zorunludur.');
+    err.statusCode = 400;
+    throw err;
+  }
+  for (const row of rows) {
+    if (textOrEmpty(row.customerId) !== customerId) {
+      const err = new Error(
+        'Tek faturada tüm başvurular aynı müşteriye ait olmalı.',
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
   // Yalnızca yeni başvuru formu taslakları için varsayılan: KDV hariç + USD.
-  // Mevcut / WOLVOX'tan gelen faturaları güncellemez; sync import ayrı yoldan gider.
   const currency = 'USD';
   const rates = await fetchHalkbankSellingRates();
   const exchangeRate = round4(rates.USD || FX_FALLBACK.USD || 1);
@@ -907,12 +1300,27 @@ async function createSalesInvoiceForApplicationForm(form, formId, customerId) {
     `select public.generate_invoice_number('sales') as value`,
   );
   const invoiceNumber =
-    textOrEmpty(numberResult.rows?.[0]?.value) ||
-    `STŞ-${Date.now()}`;
+    textOrEmpty(numberResult.rows?.[0]?.value) || `STŞ-${Date.now()}`;
 
-  const registry = textOrEmpty(form.stock_registry_number).toUpperCase();
   const invoiceDate =
-    form.application_date || new Date().toISOString().slice(0, 10);
+    rows[0].form.application_date || new Date().toISOString().slice(0, 10);
+
+  const lineMetas = [];
+  for (const row of rows) {
+    const product = await resolveProductForApplicationForm(row.form);
+    lineMetas.push({
+      formId: row.formId,
+      ...buildApplicationFormInvoiceLineMeta(row.form, product),
+    });
+  }
+
+  const subtotal = round2(
+    lineMetas.reduce((sum, line) => sum + Number(line.unitPrice || 0), 0),
+  );
+  const taxTotal = round2(
+    lineMetas.reduce((sum, line) => sum + Number(line.taxAmount || 0), 0),
+  );
+  const grandTotal = round2(subtotal + taxTotal);
 
   const invoiceInsert = await query(
     `
@@ -945,9 +1353,9 @@ async function createSalesInvoiceForApplicationForm(form, formId, customerId) {
       invoiceDate,
       currency,
       exchangeRate,
-      unitPrice,
-      taxAmount,
-      lineTotal,
+      subtotal,
+      taxTotal,
+      grandTotal,
     ],
   );
   const invoice = invoiceInsert.rows?.[0];
@@ -957,90 +1365,110 @@ async function createSalesInvoiceForApplicationForm(form, formId, customerId) {
     throw err;
   }
 
-  const itemInsert = await query(
-    `
-      insert into public.invoice_items (
-        invoice_id,
-        product_id,
-        customer_id,
-        item_type,
-        source_table,
-        source_id,
-        source_event,
-        source_label,
-        description,
-        notes,
-        quantity,
-        unit,
-        unit_price,
-        tax_rate,
-        tax_amount,
-        discount_rate,
-        discount_amount,
-        line_total,
-        sort_order,
-        status,
-        is_active
-      )
-      values (
-        $1::uuid,
-        $2::uuid,
-        $3::uuid,
-        'application_form',
-        'application_forms',
-        $4::uuid,
-        'application_form_sales_invoice',
-        'Başvuru Formu',
-        $5,
-        $6,
-        1,
-        $7,
-        $8,
-        $9,
-        $10,
-        0,
-        0,
-        $11,
-        0,
-        'invoiced',
-        true
-      )
-      returning id
-    `,
-    [
-      invoice.id,
-      product?.id || null,
-      customerId,
-      formId,
-      description,
-      registry || null,
-      unit,
-      unitPrice,
-      safeTaxRate,
-      taxAmount,
-      lineTotal,
-    ],
-  );
+  const itemIds = [];
+  for (let i = 0; i < lineMetas.length; i += 1) {
+    const line = lineMetas[i];
+    const itemInsert = await query(
+      `
+        insert into public.invoice_items (
+          invoice_id,
+          product_id,
+          customer_id,
+          item_type,
+          source_table,
+          source_id,
+          source_event,
+          source_label,
+          description,
+          notes,
+          quantity,
+          unit,
+          unit_price,
+          tax_rate,
+          tax_amount,
+          discount_rate,
+          discount_amount,
+          line_total,
+          sort_order,
+          status,
+          is_active
+        )
+        values (
+          $1::uuid,
+          $2::uuid,
+          $3::uuid,
+          'application_form',
+          'application_forms',
+          $4::uuid,
+          'application_form_sales_invoice',
+          'Başvuru Formu',
+          $5,
+          $6,
+          1,
+          $7,
+          $8,
+          $9,
+          $10,
+          0,
+          0,
+          $11,
+          $12,
+          'invoiced',
+          true
+        )
+        returning id
+      `,
+      [
+        invoice.id,
+        line.productId,
+        customerId,
+        line.formId,
+        line.description,
+        line.registry || null,
+        line.unit,
+        line.unitPrice,
+        line.safeTaxRate,
+        line.taxAmount,
+        line.lineTotal,
+        i,
+      ],
+    );
+    itemIds.push(itemInsert.rows?.[0]?.id || null);
+    await setApplicationFormInvoiceNumber(line.formId, invoice.invoice_number);
+    await markApplicationFormBillingQueueInvoiced(line.formId);
+  }
 
-  await setApplicationFormInvoiceNumber(formId, invoice.invoice_number);
-  await markApplicationFormBillingQueueInvoiced(formId);
-
+  const first = lineMetas[0];
   return {
     created: true,
     linked: true,
-    registry: registry || null,
+    shared: lineMetas.length > 1,
+    formCount: lineMetas.length,
+    registry: first.registry || null,
+    registries: lineMetas.map((line) => line.registry || null),
     invoiceId: invoice.id,
     invoiceNumber: invoice.invoice_number,
-    invoiceItemId: itemInsert.rows?.[0]?.id || null,
+    invoiceItemId: itemIds[0] || null,
+    invoiceItemIds: itemIds,
+    applicationFormIds: lineMetas.map((line) => line.formId),
     status: 'open',
     currency,
     exchangeRate,
-    unitPrice,
-    taxRate: safeTaxRate,
-    productId: product?.id || null,
-    productName: description,
-    reason: product ? null : 'product_not_found_zero_price',
+    unitPrice: first.unitPrice,
+    taxRate: first.safeTaxRate,
+    subtotal,
+    taxTotal,
+    grandTotal,
+    productId: first.productId,
+    productName: first.productName,
+    reason: lineMetas.some((line) => line.reason) ? 'product_not_found_zero_price' : null,
   };
+}
+
+async function createSalesInvoiceForApplicationForm(form, formId, customerId) {
+  return createSalesInvoiceForApplicationForms([
+    { form, formId, customerId },
+  ]);
 }
 
 /**
@@ -1240,6 +1668,156 @@ async function maybeLinkApplicationFormInvoice(formId) {
       error: error?.message || String(error),
     };
   }
+}
+
+/**
+ * Birden fazla başvuru (her cihaz sicili) için TEK satış faturası oluşturur.
+ * Zaten faturalı formlar atlanır; hepsi aynı faturadaysa tekrar oluşturmaz.
+ */
+async function linkApplicationFormsBatchToInvoice(body) {
+  await ensureInvoiceItemsTable();
+  await ensureInvoicePricesIncludeVatColumn();
+
+  const rawIds = Array.isArray(body.applicationFormIds)
+    ? body.applicationFormIds
+    : Array.isArray(body.formIds)
+      ? body.formIds
+      : [];
+  const formIds = [
+    ...new Set(
+      rawIds.map((id) => textOrEmpty(id)).filter(Boolean),
+    ),
+  ];
+  if (!formIds.length) {
+    const single = textOrEmpty(body.applicationFormId || body.formId || body.id);
+    if (single) formIds.push(single);
+  }
+  if (!formIds.length) {
+    const err = new Error('applicationFormIds zorunludur.');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (formIds.length === 1) {
+    return linkApplicationFormDeviceToInvoice({
+      applicationFormId: formIds[0],
+    });
+  }
+
+  const formsResult = await query(
+    `
+      select
+        id,
+        customer_id,
+        model_name,
+        brand_name,
+        stock_product_id,
+        stock_product_name,
+        stock_registry_number,
+        invoice_number,
+        application_date::date as application_date
+      from public.application_forms
+      where id = any($1::uuid[])
+    `,
+    [formIds],
+  );
+  const byId = new Map(
+    (formsResult.rows || []).map((row) => [String(row.id), row]),
+  );
+  const missing = formIds.filter((id) => !byId.has(id));
+  if (missing.length) {
+    const err = new Error(
+      `Başvuru formu bulunamadı: ${missing.slice(0, 3).join(', ')}`,
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const forms = formIds.map((id) => byId.get(id));
+  const customerId = textOrEmpty(forms[0].customer_id);
+  if (!customerId) {
+    return {
+      created: false,
+      linked: false,
+      reason: 'missing_customer',
+    };
+  }
+  for (const form of forms) {
+    if (textOrEmpty(form.customer_id) !== customerId) {
+      const err = new Error(
+        'Tek faturada tüm başvurular aynı müşteriye ait olmalı.',
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  const already = [];
+  const pending = [];
+  for (const form of forms) {
+    const existing = await findExistingSalesInvoiceForForm(
+      form,
+      form.id,
+      customerId,
+    );
+    if (existing?.id) {
+      already.push({ form, existing });
+    } else {
+      pending.push(form);
+    }
+  }
+
+  if (!pending.length) {
+    const invoiceIds = [
+      ...new Set(already.map((item) => String(item.existing.id))),
+    ];
+    if (invoiceIds.length === 1) {
+      const inv = already[0].existing;
+      for (const item of already) {
+        await ensureInvoiceLineNotes(
+          inv.id,
+          textOrEmpty(item.form.stock_registry_number).toUpperCase(),
+        );
+        await setApplicationFormInvoiceNumber(item.form.id, inv.invoice_number);
+        await markApplicationFormBillingQueueInvoiced(item.form.id);
+      }
+      return {
+        created: false,
+        linked: true,
+        shared: true,
+        reason: 'already_linked',
+        formCount: forms.length,
+        invoiceId: inv.id,
+        invoiceNumber: inv.invoice_number,
+        applicationFormIds: formIds,
+      };
+    }
+    // Farklı faturalara dağılmışsa dokunma; her biri kendi faturasında kalsın.
+    return {
+      created: false,
+      linked: true,
+      shared: false,
+      reason: 'already_linked_separate',
+      formCount: forms.length,
+      invoiceIds,
+      applicationFormIds: formIds,
+    };
+  }
+
+  // Kısmen bağlıysa: kalan başvuruları yeni paylaşılan faturaya koy
+  // (mevcut ayrı faturaları birleştirme).
+  const created = await createSalesInvoiceForApplicationForms(
+    pending.map((form) => ({
+      form,
+      formId: form.id,
+      customerId,
+    })),
+  );
+
+  return {
+    ...created,
+    skippedAlreadyLinked: already.length,
+    pendingCount: pending.length,
+  };
 }
 
 /**
@@ -2346,7 +2924,8 @@ module.exports = async (req, res) => {
     }
     if (
       op === 'linkApplicationFormDeviceToInvoice' ||
-      op === 'ensureApplicationFormSalesInvoice'
+      op === 'ensureApplicationFormSalesInvoice' ||
+      op === 'linkApplicationFormsBatchToInvoice'
     ) {
       if (
         !hasPageAccess(user, 'formlar') &&
@@ -2356,6 +2935,9 @@ module.exports = async (req, res) => {
         return forbidden(req, res);
       }
       try {
+        if (op === 'linkApplicationFormsBatchToInvoice') {
+          return ok(req, res, await linkApplicationFormsBatchToInvoice(body));
+        }
         return ok(req, res, await linkApplicationFormDeviceToInvoice(body));
       } catch (error) {
         if (error?.statusCode === 400) return badRequest(req, res, error.message);
@@ -2441,6 +3023,7 @@ module.exports = async (req, res) => {
             transactionId: body.transactionId || null,
             amount: body.amount != null ? Number(body.amount) : null,
             createdBy: user?.id || null,
+            crmOnly: body.crmOnly === true || body.crmOnly === 'true',
           }),
         );
       } catch (error) {
@@ -2614,13 +3197,36 @@ module.exports = async (req, res) => {
           user,
         });
         if (textOrEmpty(after?.customer_id || values?.customer_id)) {
-          invoiceLink = await maybeLinkApplicationFormInvoice(result.id);
+          if (body.skipInvoiceLink === true || body.skipInvoiceLink === 'true') {
+            invoiceLink = {
+              created: false,
+              linked: false,
+              reason: 'skipped',
+            };
+          } else {
+            invoiceLink = await maybeLinkApplicationFormInvoice(result.id);
+          }
         } else {
           invoiceLink = {
             created: false,
             linked: false,
             reason: 'missing_customer',
           };
+        }
+      } else if (
+        ['scrap_forms', 'fault_forms', 'transfer_forms'].includes(table) &&
+        result.id &&
+        !textOrEmpty(values?.id)
+      ) {
+        // Yalnızca yeni kayıt: açık satış e-faturası oluştur.
+        if (body.skipInvoiceLink === true || body.skipInvoiceLink === 'true') {
+          invoiceLink = {
+            created: false,
+            linked: false,
+            reason: 'skipped',
+          };
+        } else {
+          invoiceLink = await maybeLinkServiceFormInvoice(table, result.id);
         }
       }
       return ok(req, res, {
@@ -2712,3 +3318,7 @@ module.exports = async (req, res) => {
 
 module.exports.linkApplicationFormDeviceToInvoice =
   linkApplicationFormDeviceToInvoice;
+module.exports.linkApplicationFormsBatchToInvoice =
+  linkApplicationFormsBatchToInvoice;
+module.exports.createSalesInvoiceForServiceForm =
+  createSalesInvoiceForServiceForm;

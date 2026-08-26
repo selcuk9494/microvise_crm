@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 Future<void> enqueueInvoiceItem(
@@ -42,5 +43,61 @@ Future<void> enqueueInvoiceItem(
       fallback.remove('source_label');
     }
     await client.from('invoice_items').insert(fallback);
+  }
+}
+
+Map<String, dynamic>? invoiceLinkFromResponse(Map<String, dynamic>? response) {
+  final link = response?['invoiceLink'];
+  if (link is Map) return link.cast<String, dynamic>();
+  return null;
+}
+
+bool invoiceLinkSucceeded(Map<String, dynamic>? link) {
+  if (link == null) return false;
+  return link['linked'] == true || link['created'] == true;
+}
+
+void showFormInvoiceLinkSnackBar(
+  BuildContext context, {
+  required Map<String, dynamic>? invoiceLink,
+  required String formLabel,
+}) {
+  if (!context.mounted || invoiceLink == null) return;
+  final messenger = ScaffoldMessenger.of(context);
+  if (invoiceLinkSucceeded(invoiceLink)) {
+    final number = (invoiceLink['invoiceNumber'] ?? '').toString().trim();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          number.isEmpty
+              ? '$formLabel için e-fatura oluşturuldu.'
+              : '$formLabel için e-fatura oluşturuldu: $number',
+        ),
+      ),
+    );
+    return;
+  }
+  final reason = (invoiceLink['reason'] ?? '').toString();
+  if (reason == 'missing_customer') {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          '$formLabel kaydedildi; e-fatura için müşteri seçili değil.',
+        ),
+      ),
+    );
+    return;
+  }
+  if (reason == 'error' || invoiceLink['error'] != null) {
+    final detail = (invoiceLink['error'] ?? reason).toString().trim();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          detail.isEmpty
+              ? '$formLabel kaydedildi; e-fatura oluşturulamadı.'
+              : '$formLabel kaydedildi; e-fatura hatası: $detail',
+        ),
+      ),
+    );
   }
 }

@@ -37,10 +37,51 @@ Future<Map<String, dynamic>?> linkApplicationFormDeviceToInvoice(
   }
 }
 
+/// Birden fazla başvuru (her cihaz sicili) için **tek** satış faturası oluşturur.
+/// Her sicil ayrı kalem (notes) olarak yazılır.
+Future<Map<String, dynamic>?> linkApplicationFormsBatchToInvoice(
+  ApiClient apiClient, {
+  required List<String> applicationFormIds,
+  bool throwOnFailure = true,
+}) async {
+  final ids = applicationFormIds
+      .map((id) => id.trim())
+      .where((id) => id.isNotEmpty)
+      .toList(growable: false);
+  if (ids.isEmpty) return null;
+  if (ids.length == 1) {
+    return linkApplicationFormDeviceToInvoice(
+      apiClient,
+      applicationFormId: ids.first,
+      throwOnFailure: throwOnFailure,
+    );
+  }
+  try {
+    final result = await apiClient.postJson(
+      '/mutate',
+      body: {
+        'op': 'linkApplicationFormsBatchToInvoice',
+        'applicationFormIds': ids,
+      },
+    );
+    final reason = (result['reason'] ?? '').toString();
+    final linked = result['linked'] == true || result['created'] == true;
+    if (!linked && throwOnFailure) {
+      throw Exception(_invoiceLinkFailureMessage(reason, result));
+    }
+    return result;
+  } catch (e) {
+    if (!throwOnFailure) return null;
+    rethrow;
+  }
+}
+
 String _invoiceLinkFailureMessage(String reason, Map<String, dynamic> result) {
   switch (reason) {
     case 'missing_customer':
       return 'E-Fatura oluşturulamadı: başvuru formunda müşteri seçili değil.';
+    case 'skipped':
+      return 'E-Fatura bağlama atlandı.';
     case 'error':
       final detail = (result['error'] ?? '').toString().trim();
       return detail.isEmpty
@@ -63,6 +104,8 @@ void assertApplicationFormInvoiceLink(Map<String, dynamic>? response) {
   final linked = map['linked'] == true || map['created'] == true;
   if (linked) return;
   final reason = (map['reason'] ?? '').toString();
+  // Çoklu sicilde fatura sonra batch ile açılır.
+  if (reason == 'skipped') return;
   // Müşteri yoksa veya sunucu hatası: form kaydı durur ama kullanıcıya göster.
   if (reason == 'missing_customer' ||
       reason == 'error' ||

@@ -929,8 +929,11 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
           },
         );
         inserted = (response['row'] as Map?)?.cast<String, dynamic>() ?? {};
-        final sourceId = (response['id'] ?? '').toString();
-        if (!widget.isEdit && sourceId.isNotEmpty) {
+        final sourceId = (response['id'] ?? inserted['id'] ?? '').toString();
+        final invoiceLink = invoiceLinkFromResponse(response);
+        if (!widget.isEdit &&
+            sourceId.isNotEmpty &&
+            !invoiceLinkSucceeded(invoiceLink)) {
           await apiClient.postJson(
             '/mutate',
             body: {
@@ -953,6 +956,13 @@ class _ScrapFormDialogState extends ConsumerState<_ScrapFormDialog> {
                 },
               ],
             },
+          );
+        }
+        if (!widget.isEdit && mounted) {
+          showFormInvoiceLinkSnackBar(
+            context,
+            invoiceLink: invoiceLink,
+            formLabel: 'Hurda formu',
           );
         }
       } else {

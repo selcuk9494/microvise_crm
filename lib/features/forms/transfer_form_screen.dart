@@ -975,8 +975,11 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
           },
         );
         inserted = (response['row'] as Map?)?.cast<String, dynamic>() ?? {};
-        final sourceId = (response['id'] ?? '').toString();
-        if (!widget.isEdit && sourceId.isNotEmpty) {
+        final sourceId = (response['id'] ?? inserted['id'] ?? '').toString();
+        final invoiceLink = invoiceLinkFromResponse(response);
+        if (!widget.isEdit &&
+            sourceId.isNotEmpty &&
+            !invoiceLinkSucceeded(invoiceLink)) {
           await apiClient.postJson(
             '/mutate',
             body: {
@@ -1001,6 +1004,13 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
             },
           );
         }
+        if (!widget.isEdit && mounted) {
+          showFormInvoiceLinkSnackBar(
+            context,
+            invoiceLink: invoiceLink,
+            formLabel: 'Devir formu',
+          );
+        }
       } else {
         inserted =
             await (widget.isEdit
@@ -1016,6 +1026,7 @@ class _TransferFormDialogState extends ConsumerState<_TransferFormDialog> {
         if (!widget.isEdit) {
           await enqueueInvoiceItem(
             client,
+            customerId: _transferorCustomerId,
             itemType: 'transfer_form',
             sourceTable: 'transfer_forms',
             sourceId: inserted['id'].toString(),

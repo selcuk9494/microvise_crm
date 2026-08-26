@@ -378,7 +378,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${savedRecords.length} ayrı başvuru kaydı oluşturuldu.'),
+        content: Text(
+          '${savedRecords.length} ayrı başvuru oluşturuldu (tek fatura).',
+        ),
       ),
     );
   }
@@ -653,7 +655,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${savedRecords.length} ayrı başvuru kaydı oluşturuldu.'),
+        content: Text(
+          '${savedRecords.length} ayrı başvuru oluşturuldu (tek fatura).',
+        ),
       ),
     );
   }
@@ -719,7 +723,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
           error != null
               ? '${kind.label} yazdırma hatası: $error'
               : ok
-              ? '${kind.label} çıktısı hazırlandı.'
+              ? '${kind.label} PDF paylaşıma hazır.'
               : '${kind.label} çıktısı bu platformda açılamadı.',
         ),
       ),
@@ -754,7 +758,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
           error != null
               ? '${kind.label} toplu yazdırma hatası: $error'
               : ok
-              ? '${kind.label} toplu çıktısı hazırlandı.'
+              ? '${kind.label} toplu PDF paylaşıma hazır.'
               : '${kind.label} toplu çıktısı bu platformda açılamadı.',
         ),
       ),
@@ -5556,6 +5560,7 @@ class _ApplicationFormDialogState
       Object? invoiceLinkError;
       if (apiClient != null) {
         final rows = <Map<String, dynamic>>[];
+        final skipAutoInvoice = payloads.length > 1;
         for (final payload in payloads) {
           final response = await apiClient.postJson(
             '/mutate',
@@ -5563,6 +5568,7 @@ class _ApplicationFormDialogState
               'op': 'upsert',
               'table': 'application_forms',
               'returning': 'row',
+              if (skipAutoInvoice) 'skipInvoiceLink': true,
               'values': {...payload, 'is_active': true},
             },
           );
@@ -5605,16 +5611,24 @@ class _ApplicationFormDialogState
               ],
             },
           );
-          // Sunucu upsert sırasında fatura oluşturur; yine de eşitlemek için dene.
-          if ((inserted.customerId ?? customer?.id ?? '').trim().isNotEmpty) {
-            try {
-              await linkApplicationFormDeviceToInvoice(
-                apiClient,
-                applicationFormId: inserted.id,
-              );
-            } catch (e) {
-              invoiceLinkError ??= e;
-            }
+        }
+
+        // Çoklu sicil: N başvuru, tek fatura (her sicil ayrı kalem).
+        final formIdsForInvoice = insertedRecords
+            .where(
+              (row) =>
+                  (row.customerId ?? customer?.id ?? '').trim().isNotEmpty,
+            )
+            .map((row) => row.id)
+            .toList(growable: false);
+        if (formIdsForInvoice.isNotEmpty) {
+          try {
+            await linkApplicationFormsBatchToInvoice(
+              apiClient,
+              applicationFormIds: formIdsForInvoice,
+            );
+          } catch (e) {
+            invoiceLinkError ??= e;
           }
         }
 
@@ -5724,17 +5738,21 @@ class _ApplicationFormDialogState
           );
         }
 
-        // E-Fatura taslağı oluştur / bağla (API üzerinden).
+        // E-Fatura: N başvuru → tek fatura (API üzerinden).
         final linkClient = ref.read(apiClientProvider);
         if (linkClient != null) {
-          for (final inserted in insertedRecords) {
-            if ((inserted.customerId ?? customer?.id ?? '').trim().isEmpty) {
-              continue;
-            }
+          final formIdsForInvoice = insertedRecords
+              .where(
+                (row) =>
+                    (row.customerId ?? customer?.id ?? '').trim().isNotEmpty,
+              )
+              .map((row) => row.id)
+              .toList(growable: false);
+          if (formIdsForInvoice.isNotEmpty) {
             try {
-              await linkApplicationFormDeviceToInvoice(
+              await linkApplicationFormsBatchToInvoice(
                 linkClient,
-                applicationFormId: inserted.id,
+                applicationFormIds: formIdsForInvoice,
               );
             } catch (e) {
               invoiceLinkError ??= e;

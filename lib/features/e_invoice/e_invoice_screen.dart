@@ -4353,7 +4353,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     }
   }
 
-  Future<void> _refundPosPayment() async {
+  Future<void> _refundPosPayment({bool crmOnly = false}) async {
     final invoice = widget.invoice;
     final money = NumberFormat.currency(
       locale: 'tr_TR',
@@ -4363,11 +4363,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Sanal POS iade'),
+        title: Text(crmOnly ? 'CRM kaydını eşitle' : 'Sanal POS iade'),
         content: Text(
-          '${invoice.invoiceNumberDisplay} faturasındaki sanal POS tahsilatı '
-          '(${money.format(invoice.paidAmount > 0 ? invoice.paidAmount : invoice.grandTotal)}) '
-          'bankaya iade edilecek ve CRM tahsilatı geri alınacak. Devam edilsin mi?',
+          crmOnly
+              ? '${invoice.invoiceNumberDisplay}: banka paneli üzerinden iade yaptıysanız '
+                  'CRM tahsilatı geri alınır. Karttan otomatik iade yapılmaz.'
+              : '${invoice.invoiceNumberDisplay} faturasındaki sanal POS tahsilatı '
+                  '(${money.format(invoice.paidAmount > 0 ? invoice.paidAmount : invoice.grandTotal)}) '
+                  'bankaya iade edilecek ve CRM tahsilatı geri alınacak. Devam edilsin mi?',
         ),
         actions: [
           TextButton(
@@ -4376,7 +4379,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('İade Et'),
+            child: Text(crmOnly ? 'CRM’de geri al' : 'İade Et'),
           ),
         ],
       ),
@@ -4393,6 +4396,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         body: {
           'op': 'refundInvoicePosPayment',
           'invoiceId': invoice.id,
+          if (crmOnly) 'crmOnly': true,
         },
       );
       if (!mounted) return;
@@ -4402,12 +4406,25 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         SnackBar(
           content: Text(
             response['message']?.toString() ??
-                'Sanal POS iadesi tamamlandı.',
+                (crmOnly
+                    ? 'CRM tahsilatı geri alındı.'
+                    : 'Sanal POS iadesi tamamlandı.'),
           ),
         ),
       );
     } catch (error) {
       if (!mounted) return;
+      final text = error.toString();
+      final bankDenied = text.toLowerCase().contains('insufficient') ||
+          text.contains('iade yetkisi');
+      if (!crmOnly && bankDenied) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Sanal POS iade başarısız: $error')),
+        );
+        setState(() => _busy = false);
+        await _refundPosPayment(crmOnly: true);
+        return;
+      }
       messenger.showSnackBar(
         SnackBar(content: Text('Sanal POS iade başarısız: $error')),
       );

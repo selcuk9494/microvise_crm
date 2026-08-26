@@ -248,18 +248,23 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
     });
   }
 
-  Future<void> _refund(PosCollectionRow row) async {
+  Future<void> _refund(PosCollectionRow row, {bool crmOnly = false}) async {
     if (row.invoiceId == null || row.invoiceId!.isEmpty || !row.isActive) {
       return;
     }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Sanal POS iade'),
+        title: Text(crmOnly ? 'CRM kaydını eşitle' : 'Sanal POS iade'),
         content: Text(
-          '${formatInvoiceNumberForDisplay(row.invoiceNumber)} · '
-          '${row.customerName ?? 'Cari'}\n'
-          '${widget.moneyTry.format(row.amount)} bankaya iade edilecek.',
+          crmOnly
+              ? '${formatInvoiceNumberForDisplay(row.invoiceNumber)} · '
+                  '${row.customerName ?? 'Cari'}\n'
+                  'Banka paneli üzerinden iade yaptıysanız CRM tahsilatı geri alınır. '
+                  'Karttan otomatik iade yapılmaz.'
+              : '${formatInvoiceNumberForDisplay(row.invoiceNumber)} · '
+                  '${row.customerName ?? 'Cari'}\n'
+                  '${widget.moneyTry.format(row.amount)} bankaya iade edilecek.',
         ),
         actions: [
           TextButton(
@@ -268,7 +273,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('İade Et'),
+            child: Text(crmOnly ? 'CRM’de geri al' : 'İade Et'),
           ),
         ],
       ),
@@ -285,6 +290,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
           'op': 'refundInvoicePosPayment',
           'invoiceId': row.invoiceId,
           'transactionId': row.id,
+          if (crmOnly) 'crmOnly': true,
         },
       );
       if (!mounted) return;
@@ -294,12 +300,25 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            response['message']?.toString() ?? 'Sanal POS iadesi tamamlandı.',
+            response['message']?.toString() ??
+                (crmOnly
+                    ? 'CRM tahsilatı geri alındı.'
+                    : 'Sanal POS iadesi tamamlandı.'),
           ),
         ),
       );
     } catch (error) {
       if (!mounted) return;
+      final text = error.toString();
+      final bankDenied = text.toLowerCase().contains('insufficient') ||
+          text.contains('iade yetkisi');
+      if (!crmOnly && bankDenied) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('İade başarısız: $error')),
+        );
+        await _refund(row, crmOnly: true);
+        return;
+      }
       messenger.showSnackBar(
         SnackBar(content: Text('İade başarısız: $error')),
       );

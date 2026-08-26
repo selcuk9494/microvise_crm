@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Microvise Invoice Payment Bridge
  * Description: Fatura ödemesini WooCommerce Halkbank POS ile başlatır (aynı NestPay 3d + CC5). Banka dönüşünü CRM'e iletir.
- * Version: 1.3.2
+ * Version: 1.3.3
  * Author: Microvise
  */
 
@@ -515,7 +515,7 @@ function microvise_invoice_nestpay_refund() {
 		$urls[] = preg_replace( '#/fim/api/?$#i', '/fim/cc5xml', $api_url );
 	}
 
-	$try_types = array( 'Credit', 'Void' );
+	$try_types = array( 'Credit', 'Refund', 'Void' );
 	$last_err  = 'Iade basarisiz';
 	foreach ( $try_types as $type ) {
 		$xml = '<?xml version="1.0" encoding="UTF-8"?>'
