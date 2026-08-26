@@ -32,6 +32,7 @@ const {
   ensureServiceActivityLogsTable,
   ensureFinanceTables,
   ensureApplicationFormsApprovalColumns,
+  ensureApplicationFormsCreatedByRepair,
   ensureApplicationFormActivityLogsTable,
   ensureInvoicePricesIncludeVatColumn,
   ensureMutakabatRecordsTable,
@@ -2393,9 +2394,14 @@ async function sanitizeValuesForTable({ table, values, user }) {
     };
   }
   if (table === 'application_forms') {
-    const next = { ...(values || {}) };
-    if (!next.created_by) {
-      next.created_by = user?.auth_user_id || user?.id || null;
+    const source = values || {};
+    const next = { ...source };
+    // Partial update (banka/normal onay vb.) created_by göndermez.
+    // Burada enjekte edersek sahiplik personele geçer ve banka listeden kaybolur.
+    if (Object.prototype.hasOwnProperty.call(source, 'created_by')) {
+      if (!String(next.created_by || '').trim()) {
+        next.created_by = user?.auth_user_id || user?.id || null;
+      }
     }
     return next;
   }
@@ -3147,6 +3153,7 @@ module.exports = async (req, res) => {
     }
     if (table === 'application_forms') {
       await ensureApplicationFormsApprovalColumns();
+      await ensureApplicationFormsCreatedByRepair();
       await ensureApplicationFormActivityLogsTable();
     }
     if (table === 'device_registries') {

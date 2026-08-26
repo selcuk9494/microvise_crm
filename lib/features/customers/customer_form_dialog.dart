@@ -1336,11 +1336,17 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     return s;
   }
 
-  String? _normalizeDigitsFixedLength(String value, {required int length}) {
+  String? _normalizeDigitsFixedLength(
+    String value, {
+    required int length,
+    bool padShort = false,
+  }) {
     final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return null;
     if (digits.length == length) return digits;
     if (digits.length > length) return digits.substring(0, length);
+    // Kısa MŞ/kimlik rakamlarını VKN diye 0 ile doldurma (19715 → 0000019715 olmasın).
+    if (!padShort) return null;
     return digits.padLeft(length, '0');
   }
 
@@ -1356,7 +1362,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
     if (RegExp(r'[A-Za-zÇĞİÖŞÜçğıöşü]').hasMatch(cleaned)) {
       return _toTurkishUpper(cleaned);
     }
-    return _normalizeDigitsFixedLength(cleaned, length: 11);
+    return _normalizeDigitsFixedLength(cleaned, length: 11, padShort: true);
   }
 
   String _toTurkishUpper(String value) {
@@ -1417,6 +1423,10 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       final normalizedVkn = _normalizeDigitsFixedLength(vknRaw, length: 10);
       if (normalizedVkn != null && normalizedVkn.isNotEmpty) {
         _vknController.text = normalizedVkn;
+      } else if (RegExp(r'^\d{10,}$').hasMatch(q.replaceAll(RegExp(r'\D'), ''))) {
+        // Sorgunun kendisi 10 haneli VKN ise alanı doldur.
+        final fromQuery = _normalizeDigitsFixedLength(q, length: 10);
+        if (fromQuery != null) _vknController.text = fromQuery;
       }
 
       // MŞ veya kimlik → TCKN-MŞ; yoksa sorgu değeri harfliyse onu kullan.
@@ -1426,6 +1436,16 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       final normalizedTckn = _normalizeTcknMsValue(tcknSource);
       if (normalizedTckn != null && normalizedTckn.isNotEmpty) {
         _tcknMsController.text = normalizedTckn;
+      }
+
+      if (_vknController.text.trim().isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Ünvan bulundu ancak VKN gelmedi. VKN alanını kontrol edin / VKN ile tekrar sorgulayın.',
+            ),
+          ),
+        );
       }
 
       if (address.isNotEmpty && _addressController.text.trim().isEmpty) {

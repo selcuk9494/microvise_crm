@@ -62,10 +62,12 @@ function portalMessages(payload) {
 }
 
 function mapKimlik(kimlik = {}, { source } = {}) {
-  const vkn = normalizeLookupQuery(kimlik.vergiNo);
-  const kimlikNo = normalizeLookupQuery(kimlik.mukellefNo);
-  const name = String(kimlik.unvan || '').trim();
-  if (!name && !vkn) return null;
+  // VKN yalnızca rakam; MŞ/kimlik harf+rakam kalabilir.
+  const vknDigits = digits(kimlik.vergiNo || kimlik.vergiNumarasi || kimlik.vkn);
+  const vkn = vknDigits.length >= 10 ? vknDigits.slice(0, 10) : '';
+  const kimlikNo = normalizeLookupQuery(kimlik.mukellefNo || kimlik.kimlikNo);
+  const name = String(kimlik.unvan || kimlik.unvanAdi || '').trim();
+  if (!name && !vkn && !kimlikNo) return null;
   return {
     name,
     vkn,

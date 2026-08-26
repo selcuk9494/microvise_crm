@@ -3900,20 +3900,31 @@ class _BankApplicationFormDialogState
     if (resolved.length >= 10) {
       return resolved.length > 10 ? resolved.substring(0, 10) : resolved;
     }
+    // MŞ/kimlik sorgusundaki rakam kırıntısını (örn. 19715) VKN sanma.
+    if (_queryLooksLikeMs) return '';
     final digits = _lookupQuery.replaceAll(RegExp(r'\D'), '');
     if (digits.length >= 10) {
       return digits.length > 10 ? digits.substring(0, 10) : digits;
     }
-    return digits;
+    return '';
   }
 
   String get _normalizedTcknMs {
     final resolved = (_resolvedTcknMs ?? '').trim();
-    if (resolved.isNotEmpty) return resolved;
+    if (resolved.isNotEmpty) return _toTurkishUpper(resolved);
     final q = _lookupQuery;
-    if (q.isEmpty) return _normalizedVkn;
-    if (RegExp(r'[A-ZÇĞİÖŞÜ]', caseSensitive: false).hasMatch(q)) return q;
-    return _normalizedVkn;
+    if (q.isEmpty) return '';
+    if (RegExp(r'[A-ZÇĞİÖŞÜ]', caseSensitive: false).hasMatch(q)) {
+      return q;
+    }
+    return '';
+  }
+
+  /// Dosya sicil: önce gerçek VKN, yoksa MŞ/kimlik.
+  String get _fileRegistryValue {
+    if (_normalizedVkn.isNotEmpty) return _normalizedVkn;
+    if (_normalizedTcknMs.isNotEmpty) return _normalizedTcknMs;
+    return _lookupQuery;
   }
 
   bool get _queryLooksLikeMs =>
@@ -4127,15 +4138,16 @@ class _BankApplicationFormDialogState
 
       final found = row == null ? null : _CustomerOption.fromJson(row);
       if (found != null) {
+        final foundVkn = (found.vkn ?? '').replaceAll(RegExp(r'\D'), '');
+        final hasValidVkn = foundVkn.length >= 10;
         if (!mounted) return;
         setState(() {
           _customer = found;
           _lookupDone = true;
           _identityFromLookup = true;
-          final foundVkn = (found.vkn ?? '').replaceAll(RegExp(r'\D'), '');
-          _resolvedVkn = foundVkn.length >= 10 ? foundVkn : null;
+          _resolvedVkn = hasValidVkn ? foundVkn : null;
           _resolvedTcknMs = (found.tcknMs ?? '').trim().isNotEmpty
-              ? found.tcknMs!.trim()
+              ? _toTurkishUpper(found.tcknMs!.trim())
               : null;
           _vknController.text = (_resolvedVkn ?? query);
           _customerNameController.text = found.name;
@@ -4150,20 +4162,23 @@ class _BankApplicationFormDialogState
               .firstOrNull;
           _selectedTaxOfficeCityId = city?.id;
         });
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              found.name.trim().isEmpty
-                  ? 'CRM’de müşteri bulundu.'
-                  : 'CRM’de bulundu: ${found.name.trim()}',
+        // CRM'de VKN yok/bozuksa vergi sorgusuyla tamamla (19715 gibi MŞ kırıntısı VKN olmasın).
+        if (hasValidVkn) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                found.name.trim().isEmpty
+                    ? 'CRM’de müşteri bulundu.'
+                    : 'CRM’de bulundu: ${found.name.trim()}',
+              ),
             ),
-          ),
-        );
-        return;
+          );
+          return;
+        }
       }
 
-      // CRM'de yok → vergi dairesi mükellef sorgusu (yeni müşteri ekleme ile aynı).
+      // CRM'de yok veya VKN eksik → vergi dairesi mükellef sorgusu.
       if (apiClient == null) {
         if (!mounted) return;
         setState(() => _lookupDone = true);
@@ -4190,15 +4205,20 @@ class _BankApplicationFormDialogState
       final cityRaw = (tax['city'] ?? '').toString().trim();
       final taxOfficeRaw = (tax['taxOffice'] ?? '').toString().trim();
 
-      if (name.isEmpty && vknRaw.isEmpty) {
+      if (name.isEmpty && vknRaw.isEmpty && kimlikNo.isEmpty) {
         throw Exception('Mükellef bilgisi bulunamadı.');
       }
 
       final resolvedVkn = vknRaw.length >= 10
           ? (vknRaw.length > 10 ? vknRaw.substring(0, 10) : vknRaw)
           : null;
+      if (resolvedVkn == null && !_queryLooksLikeMs && vknRaw.isEmpty) {
+        throw Exception(
+          'Sorgudan VKN gelmedi. VKN ile tekrar deneyin veya mükellef numarasını kontrol edin.',
+        );
+      }
       final resolvedTckn = kimlikNo.isNotEmpty
-          ? kimlikNo
+          ? _toTurkishUpper(kimlikNo)
           : (_queryLooksLikeMs ? query : null);
 
       final cityMatch = _currentTaxOfficeCities()
@@ -4214,24 +4234,34 @@ class _BankApplicationFormDialogState
           .firstOrNull;
 
       setState(() {
-        _customer = null;
+        // Mevcut CRM cariyi koru; sadece kimlik alanlarını vergi sonucundan doldur.
         _lookupDone = true;
         _identityFromLookup = true;
-        _resolvedVkn = resolvedVkn;
-        _resolvedTcknMs = resolvedTckn;
-        _vknController.text = resolvedVkn ?? query;
-        _customerNameController.text = name;
-        _addressController.text = address;
-        _directorController.clear();
-        _selectedTaxOfficeCityId = cityMatch?.id;
+        _resolvedVkn = resolvedVkn ?? _resolvedVkn;
+        _resolvedTcknMs = resolvedTckn ?? _resolvedTcknMs;
+        _vknController.text = _resolvedVkn ?? query;
+        if (name.isNotEmpty) {
+          _customerNameController.text = name;
+        }
+        if (address.isNotEmpty) {
+          _addressController.text = address;
+        }
+        if (cityMatch != null) {
+          _selectedTaxOfficeCityId = cityMatch.id;
+        }
       });
       if (!mounted) return;
+      final shownName = _customerNameController.text.trim();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            name.isNotEmpty
-                ? 'Vergi dairesinde bulundu: $name — yeni cari açılacak.'
-                : 'Mükellef bilgileri dolduruldu — yeni cari açılacak.',
+            resolvedVkn != null
+                ? (shownName.isNotEmpty
+                      ? 'VKN alındı ($resolvedVkn): $shownName'
+                      : 'VKN alındı: $resolvedVkn')
+                : (shownName.isNotEmpty
+                      ? 'Mükellef bulundu: $shownName — VKN gelmedi, kontrol edin.'
+                      : 'Mükellef bilgileri dolduruldu.'),
           ),
         ),
       );
@@ -4436,9 +4466,22 @@ class _BankApplicationFormDialogState
     };
 
     if (_customer != null && _customer!.id.trim().isNotEmpty) {
-      // Mevcut cari: yalnızca adres (ve iletişim) güncellenebilir.
+      // Mevcut cari: adres/iletişim + eksik VKN/MŞ tamamlanabilir.
       final apiClient = ref.read(apiClientProvider);
       final client = ref.read(supabaseClientProvider);
+      final existingVkn = (_customer!.vkn ?? '').replaceAll(RegExp(r'\D'), '');
+      final patch = <String, dynamic>{
+        'id': _customer!.id,
+        'address': values['address'],
+        'email': values['email'],
+        'phone_1': values['phone_1'],
+        'is_active': true,
+        if (_normalizedVkn.isNotEmpty && existingVkn.length < 10)
+          'vkn': _normalizedVkn,
+        if (_normalizedTcknMs.isNotEmpty &&
+            (_customer!.tcknMs ?? '').trim().isEmpty)
+          'tckn_ms': _normalizedTcknMs,
+      };
       try {
         if (apiClient != null) {
           final response = await apiClient.postJson(
@@ -4447,13 +4490,7 @@ class _BankApplicationFormDialogState
               'op': 'upsert',
               'table': 'customers',
               'returning': 'row',
-              'values': {
-                'id': _customer!.id,
-                'address': values['address'],
-                'email': values['email'],
-                'phone_1': values['phone_1'],
-                'is_active': true,
-              },
+              'values': patch,
             },
           );
           final row = (response['row'] as Map?)?.cast<String, dynamic>();
@@ -4464,9 +4501,11 @@ class _BankApplicationFormDialogState
           final row = await client
               .from('customers')
               .update({
-                'address': values['address'],
-                'email': values['email'],
-                'phone_1': values['phone_1'],
+                'address': patch['address'],
+                'email': patch['email'],
+                'phone_1': patch['phone_1'],
+                if (patch.containsKey('vkn')) 'vkn': patch['vkn'],
+                if (patch.containsKey('tckn_ms')) 'tckn_ms': patch['tckn_ms'],
               })
               .eq('id', _customer!.id)
               .select(
@@ -4606,7 +4645,7 @@ class _BankApplicationFormDialogState
         'customer_name': _customerNameController.text.trim(),
         'customer_tckn_ms': _normalizedTcknMs.isNotEmpty
             ? _normalizedTcknMs
-            : _normalizedVkn,
+            : (_normalizedVkn.isNotEmpty ? _normalizedVkn : null),
         'work_address': _addressController.text.trim(),
         'tax_office_city_id': _persistableTaxOfficeCityId(taxOfficeCity),
         'tax_office_city_name': taxOfficeCity?.name,
@@ -4615,9 +4654,9 @@ class _BankApplicationFormDialogState
                     false)
             ? 'MŞ'
             : 'VKN',
-        'file_registry_number': _normalizedVkn.isNotEmpty
-            ? _normalizedVkn
-            : _normalizedTcknMs,
+        'file_registry_number': _fileRegistryValue.isEmpty
+            ? null
+            : _fileRegistryValue,
         'director': _directorController.text.trim(),
         'brand_id': paxModel?.brandId,
         'brand_name': 'PAX',

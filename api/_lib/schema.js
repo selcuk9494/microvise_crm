@@ -26,6 +26,7 @@ const ensured = {
   work_orders_status_check: false,
   finance_tables: false,
   application_forms_approval: false,
+  application_forms_created_by_repair: false,
   application_form_activity_logs: false,
   customer_country_columns: false,
   invoice_prices_include_vat: false,
@@ -1717,7 +1718,66 @@ async function ensureApplicationFormsApprovalColumns() {
     `,
   );
 
+  // Onay update'inde yanlışlıkla created_by personel yapılan banka kayıtlarını geri al.
+  try {
+    await query(
+      `
+        update public.application_forms af
+        set created_by = create_log.actor_id
+        from (
+          select distinct on (application_form_id)
+            application_form_id,
+            actor_id
+          from public.application_form_activity_logs
+          where action = 'create'
+            and actor_id is not null
+          order by application_form_id, created_at asc
+        ) create_log
+        where af.id = create_log.application_form_id
+          and create_log.actor_id is distinct from af.created_by
+          and (
+            af.created_by is not distinct from af.approved_by
+            or af.created_by is not distinct from af.bank_approved_by
+          )
+      `,
+    );
+  } catch (_) {
+    // activity log tablosu yoksa sessiz geç
+  }
+
   ensured.application_forms_approval = true;
+  return true;
+}
+
+async function ensureApplicationFormsCreatedByRepair() {
+  if (ensured.application_forms_created_by_repair) return true;
+  try {
+    await ensureApplicationFormActivityLogsTable();
+    await query(
+      `
+        update public.application_forms af
+        set created_by = create_log.actor_id
+        from (
+          select distinct on (application_form_id)
+            application_form_id,
+            actor_id
+          from public.application_form_activity_logs
+          where action = 'create'
+            and actor_id is not null
+          order by application_form_id, created_at asc
+        ) create_log
+        where af.id = create_log.application_form_id
+          and create_log.actor_id is distinct from af.created_by
+          and (
+            af.created_by is not distinct from af.approved_by
+            or af.created_by is not distinct from af.bank_approved_by
+          )
+      `,
+    );
+  } catch (_) {
+    // best-effort
+  }
+  ensured.application_forms_created_by_repair = true;
   return true;
 }
 
@@ -2042,6 +2102,7 @@ module.exports = {
   ensureWorkOrdersStatusCheckConstraint,
   ensureFinanceTables,
   ensureApplicationFormsApprovalColumns,
+  ensureApplicationFormsCreatedByRepair,
   ensureApplicationFormActivityLogsTable,
   ensureInvoicePricesIncludeVatColumn,
   ensureAkinsoftInvoiceSyncColumns,

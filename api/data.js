@@ -31,6 +31,7 @@ const {
   ensureWorkOrdersStatusCheckConstraint,
   ensureFinanceTables,
   ensureApplicationFormsApprovalColumns,
+  ensureApplicationFormsCreatedByRepair,
   ensureApplicationFormActivityLogsTable,
   ensureCustomerCountryColumns,
   ensureAkinsoftInvoiceSyncColumns,
@@ -1253,6 +1254,7 @@ module.exports = async (req, res) => {
 
       case 'form_application_list': {
         await ensureApplicationFormsApprovalColumns();
+        await ensureApplicationFormsCreatedByRepair();
         const showPassive = parseBoolean(req.query.showPassive, false);
         const values = [];
         let whereSql = 'where true';
