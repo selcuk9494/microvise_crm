@@ -153,11 +153,11 @@ class _BankApplicationReportScreenState
                           DropdownMenuItem(value: 'all', child: Text('Tümü')),
                           DropdownMenuItem(
                             value: 'pending',
-                            child: Text('Onay Bekleyen'),
+                            child: Text('Banka Onayı'),
                           ),
                           DropdownMenuItem(
                             value: 'approved',
-                            child: Text('Onaylanmış'),
+                            child: Text('Banka Onaylandı'),
                           ),
                         ],
                         onChanged: (value) =>
@@ -191,19 +191,19 @@ class _BankApplicationReportScreenState
                     icon: LucideIcons.fileText,
                   ),
                   _ReportStat(
-                    label: 'Onay Bekleyen',
+                    label: 'Banka Onayı',
                     value: pending.toString(),
                     icon: LucideIcons.clipboardClock,
                     tone: AppBadgeTone.warning,
                   ),
                   _ReportStat(
-                    label: 'Onaylanmış',
+                    label: 'Banka Onaylandı',
                     value: approved.toString(),
                     icon: LucideIcons.badgeCheck,
                     tone: AppBadgeTone.success,
                   ),
                   _ReportStat(
-                    label: 'Cihaz/Sicil',
+                    label: 'Sicil Atanan',
                     value: deviceCount.toString(),
                     icon: LucideIcons.memoryStick,
                   ),
@@ -415,9 +415,22 @@ class _ReportRow extends StatelessWidget {
           ),
           Expanded(child: Text(date)),
           Expanded(child: Text(record.fileRegistryNumber ?? '-')),
-          Expanded(child: Text(record.stockRegistryNumber ?? '-')),
+          Expanded(
+            child: Text(
+              record.isApproved
+                  ? (record.approvedRegistryNumber ?? '-')
+                  : (record.stockRegistryNumber ?? '-'),
+              style: record.isApproved &&
+                      (record.approvedRegistryNumber ?? '').isNotEmpty
+                  ? Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.success,
+                      )
+                  : null,
+            ),
+          ),
           AppBadge(
-            label: record.isApproved ? 'Onaylandı' : 'Onay Bekliyor',
+            label: record.approvalStatusLabel,
             tone: record.isApproved
                 ? AppBadgeTone.success
                 : AppBadgeTone.warning,

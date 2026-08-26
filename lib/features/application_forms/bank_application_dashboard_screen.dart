@@ -399,19 +399,19 @@ class _VisualStats extends StatelessWidget {
           AppTheme.primary,
         ),
         _MetricTile(
-          'Bekleyen',
+          'Banka Onayı',
           metrics.pending,
           LucideIcons.clipboardClock,
           AppTheme.warning,
         ),
         _MetricTile(
-          'Onaylı',
+          'Onaylandı',
           metrics.approved,
           LucideIcons.badgeCheck,
           AppTheme.success,
         ),
         _MetricTile(
-          'Sicilli',
+          'Sicil',
           metrics.withRegistry,
           LucideIcons.memoryStick,
           AppTheme.accent,
@@ -837,6 +837,9 @@ class _RecentRow extends StatelessWidget {
                       'tr_TR',
                     ).format(record.applicationDate),
                     _recentPersonLabel(record, personNames),
+                    if (record.isApproved &&
+                        (record.approvedRegistryNumber ?? '').isNotEmpty)
+                      'Sicil: ${record.approvedRegistryNumber}',
                   ].where((item) => item.trim().isNotEmpty).join(' • '),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
@@ -844,7 +847,7 @@ class _RecentRow extends StatelessWidget {
             ),
           ),
           AppBadge(
-            label: record.isApproved ? 'Onaylı' : 'Bekliyor',
+            label: record.approvalStatusLabel,
             tone: record.isApproved
                 ? AppBadgeTone.success
                 : AppBadgeTone.warning,

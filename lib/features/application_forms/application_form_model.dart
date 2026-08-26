@@ -89,6 +89,21 @@ class ApplicationFormRecord {
 
   bool get isApproved => approvalStatus == 'approved';
   bool get isPendingApproval => approvalStatus == 'pending';
+  bool get isBankSubmission => createdByIsBank;
+
+  /// Bankadan gelen başvuru için durum metni.
+  String get approvalStatusLabel {
+    if (isBankSubmission) {
+      return isApproved ? 'Banka Onaylandı' : 'Banka Onayı';
+    }
+    return isApproved ? 'Onaylandı' : 'Onay Bekliyor';
+  }
+
+  String? get approvedRegistryNumber {
+    final value = stockRegistryNumber?.trim() ?? '';
+    return value.isEmpty ? null : value;
+  }
+
   bool get hasTaxpayerRegistrationDocument =>
       (taxpayerRegistrationDocumentData?.trim().isNotEmpty ?? false) ||
       (taxpayerRegistrationDocumentUrl?.trim().isNotEmpty ?? false);
