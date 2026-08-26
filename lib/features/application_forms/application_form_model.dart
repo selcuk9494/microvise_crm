@@ -39,6 +39,9 @@ class ApplicationFormRecord {
     required this.approvalStatus,
     required this.approvedAt,
     required this.approvedBy,
+    required this.bankApprovalStatus,
+    required this.bankApprovedAt,
+    required this.bankApprovedBy,
     required this.createdBy,
     required this.createdByIsBank,
     required this.isActive,
@@ -82,6 +85,9 @@ class ApplicationFormRecord {
   final String approvalStatus;
   final DateTime? approvedAt;
   final String? approvedBy;
+  final String bankApprovalStatus;
+  final DateTime? bankApprovedAt;
+  final String? bankApprovedBy;
   final String? createdBy;
   final bool createdByIsBank;
   final bool isActive;
@@ -90,14 +96,25 @@ class ApplicationFormRecord {
   bool get isApproved => approvalStatus == 'approved';
   bool get isPendingApproval => approvalStatus == 'pending';
   bool get isBankSubmission => createdByIsBank;
+  bool get isBankApproved => bankApprovalStatus == 'approved';
+  bool get isBankApprovalPending =>
+      isBankSubmission && bankApprovalStatus != 'approved';
 
-  /// Bankadan gelen başvuru için durum metni.
-  String get approvalStatusLabel {
-    if (isBankSubmission) {
-      return isApproved ? 'Banka Onaylandı' : 'Banka Onayı';
+  /// Capital / banka ekranı: Onay Bekliyor | Onaylandı
+  String get bankFacingStatusLabel {
+    if (!isBankSubmission) {
+      return isApproved ? 'Onaylandı' : 'Onay Bekliyor';
     }
-    return isApproved ? 'Onaylandı' : 'Onay Bekliyor';
+    return isBankApproved ? 'Onaylandı' : 'Onay Bekliyor';
   }
+
+  /// Mikrovis ekranı (banka kaydı): Bankayı Onayla | Banka Onaylandı
+  String get staffBankApprovalLabel {
+    if (!isBankSubmission) return isApproved ? 'Onaylandı' : 'Onay Bekliyor';
+    return isBankApproved ? 'Banka Onaylandı' : 'Bankayı Onayla';
+  }
+
+  String get approvalStatusLabel => isApproved ? 'Onaylandı' : 'Onay Bekliyor';
 
   String? get approvedRegistryNumber {
     final value = stockRegistryNumber?.trim() ?? '';
@@ -119,6 +136,15 @@ class ApplicationFormRecord {
   }
 
   factory ApplicationFormRecord.fromJson(Map<String, dynamic> json) {
+    final createdByIsBank = json['created_by_is_bank'] == true;
+    var bankApproval =
+        json['bank_approval_status']?.toString() ?? 'pending';
+    // Eski kayıtlarda kolon yoksa: banka başvurusu internal onaylıysa banka onaylı say.
+    if (json['bank_approval_status'] == null &&
+        createdByIsBank &&
+        (json['approval_status']?.toString() ?? '') == 'approved') {
+      bankApproval = 'approved';
+    }
     return ApplicationFormRecord(
       id: json['id'].toString(),
       applicationDate:
@@ -169,8 +195,11 @@ class ApplicationFormRecord {
       approvalStatus: json['approval_status']?.toString() ?? 'pending',
       approvedAt: parseAppDateTime(json['approved_at']?.toString()),
       approvedBy: json['approved_by']?.toString(),
+      bankApprovalStatus: bankApproval,
+      bankApprovedAt: parseAppDateTime(json['bank_approved_at']?.toString()),
+      bankApprovedBy: json['bank_approved_by']?.toString(),
       createdBy: json['created_by']?.toString(),
-      createdByIsBank: json['created_by_is_bank'] == true,
+      createdByIsBank: createdByIsBank,
       isActive: json['is_active'] as bool? ?? true,
       createdAt: parseAppDateTime(json['created_at']?.toString()),
     );

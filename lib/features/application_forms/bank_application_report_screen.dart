@@ -74,8 +74,8 @@ class _BankApplicationReportScreenState
             isBankUser: profile?.isBankLike ?? false,
           ).where((record) => record.isActive).toList(growable: false);
           final filtered = _filter(visible);
-          final pending = filtered.where((r) => r.isPendingApproval).length;
-          final approved = filtered.where((r) => r.isApproved).length;
+          final pending = filtered.where((r) => r.isBankApprovalPending).length;
+          final approved = filtered.where((r) => r.isBankApproved).length;
           final deviceCount = filtered
               .where((r) => (r.stockRegistryNumber ?? '').trim().isNotEmpty)
               .length;
@@ -153,11 +153,11 @@ class _BankApplicationReportScreenState
                           DropdownMenuItem(value: 'all', child: Text('Tümü')),
                           DropdownMenuItem(
                             value: 'pending',
-                            child: Text('Banka Onayı'),
+                            child: Text('Onay Bekleyen'),
                           ),
                           DropdownMenuItem(
                             value: 'approved',
-                            child: Text('Banka Onaylandı'),
+                            child: Text('Onaylandı'),
                           ),
                         ],
                         onChanged: (value) =>
@@ -191,13 +191,13 @@ class _BankApplicationReportScreenState
                     icon: LucideIcons.fileText,
                   ),
                   _ReportStat(
-                    label: 'Banka Onayı',
+                    label: 'Onay Bekleyen',
                     value: pending.toString(),
                     icon: LucideIcons.clipboardClock,
                     tone: AppBadgeTone.warning,
                   ),
                   _ReportStat(
-                    label: 'Banka Onaylandı',
+                    label: 'Onaylandı',
                     value: approved.toString(),
                     icon: LucideIcons.badgeCheck,
                     tone: AppBadgeTone.success,
@@ -255,8 +255,10 @@ class _BankApplicationReportScreenState
             );
             if (!haystack.contains(registry)) return false;
           }
-          if (_approvalStatus != 'all' &&
-              record.approvalStatus != _approvalStatus) {
+          if (_approvalStatus == 'approved' && !record.isBankApproved) {
+            return false;
+          }
+          if (_approvalStatus == 'pending' && !record.isBankApprovalPending) {
             return false;
           }
           final day = DateTime(
@@ -417,10 +419,10 @@ class _ReportRow extends StatelessWidget {
           Expanded(child: Text(record.fileRegistryNumber ?? '-')),
           Expanded(
             child: Text(
-              record.isApproved
+              record.isBankApproved
                   ? (record.approvedRegistryNumber ?? '-')
                   : (record.stockRegistryNumber ?? '-'),
-              style: record.isApproved &&
+              style: record.isBankApproved &&
                       (record.approvedRegistryNumber ?? '').isNotEmpty
                   ? Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w800,
@@ -430,8 +432,8 @@ class _ReportRow extends StatelessWidget {
             ),
           ),
           AppBadge(
-            label: record.approvalStatusLabel,
-            tone: record.isApproved
+            label: record.bankFacingStatusLabel,
+            tone: record.isBankApproved
                 ? AppBadgeTone.success
                 : AppBadgeTone.warning,
           ),

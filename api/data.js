@@ -1278,8 +1278,16 @@ module.exports = async (req, res) => {
             )
           `;
         } else if (isBankLikeUser(user)) {
-          values.push(user.auth_user_id || user.id);
-          whereSql += ` and created_by = $${values.length}`;
+          const ids = [...new Set([user.id, user.auth_user_id].filter(Boolean))];
+          if (ids.length === 1) {
+            values.push(ids[0]);
+            whereSql += ` and created_by = $${values.length}`;
+          } else if (ids.length > 1) {
+            values.push(ids);
+            whereSql += ` and created_by = any($${values.length}::uuid[])`;
+          } else {
+            whereSql += ' and false';
+          }
         }
         const result = await query(
           `
@@ -1321,6 +1329,9 @@ module.exports = async (req, res) => {
               coalesce(approval_status, 'pending') as approval_status,
               approved_at,
               approved_by,
+              coalesce(bank_approval_status, 'pending') as bank_approval_status,
+              bank_approved_at,
+              bank_approved_by,
               created_by,
               exists (
                 select 1

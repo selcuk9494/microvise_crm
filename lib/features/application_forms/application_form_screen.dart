@@ -315,6 +315,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   bool _showPassive = false;
   bool _todayOnly = false;
   bool _bankOnly = false;
+  bool _bankFilterDefaultsApplied = false;
   String _approvalFilter = 'pending';
   DateTime? _fromDate;
   DateTime? _toDate;
@@ -325,6 +326,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       _refreshApplicationsSoon();
     });
+  }
+
+  void _ensureBankDefaultFilters(bool isBankUser) {
+    if (!isBankUser || _bankFilterDefaultsApplied) return;
+    _bankFilterDefaultsApplied = true;
+    if (_approvalFilter != 'all') {
+      _approvalFilter = 'all';
+    }
   }
 
   @override
@@ -1205,7 +1214,6 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   Future<void> _approveRecord(ApplicationFormRecord record) async {
     if (record.isApproved) return;
 
-    final isBankSubmission = record.isBankSubmission;
     final registryController = TextEditingController(
       text: record.stockRegistryNumber?.trim() ?? '',
     );
@@ -1215,17 +1223,13 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         builder: (context, setDialogState) {
           final current = registryController.text.trim();
           return AlertDialog(
-            title: Text(
-              isBankSubmission ? 'Banka onayı yap' : 'Başvuruyu onayla',
-            ),
+            title: const Text('Başvuruyu onayla'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isBankSubmission
-                      ? '"${record.customerName}" için banka onayı verilecek. Sicil numarası banka panelinde görünecek.'
-                      : '"${record.customerName}" başvurusu onaylanmış başvurulara taşınacak.',
+                  '"${record.customerName}" başvurusu onaylanmış başvurulara taşınacak.',
                 ),
                 const Gap(14),
                 TextField(
@@ -1235,12 +1239,10 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                     FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9-]')),
                   ],
                   onChanged: (_) => setDialogState(() {}),
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'Cihaz sicil numarası',
-                    hintText: isBankSubmission
-                        ? 'Bankaya gösterilecek sicil no'
-                        : 'Onaylanan sicil no',
-                    border: const OutlineInputBorder(),
+                    hintText: 'Onaylanan sicil no',
+                    border: OutlineInputBorder(),
                   ),
                 ),
               ],
@@ -1254,7 +1256,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                 onPressed: current.isEmpty
                     ? null
                     : () => Navigator.of(context).pop(current.toUpperCase()),
-                child: Text(isBankSubmission ? 'Banka Onayla' : 'Onayla'),
+                child: const Text('Onayla'),
               ),
             ],
           );
@@ -1272,6 +1274,155 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       return;
     }
 
+    await _persistInternalApproval(record, approvedRegistry);
+  }
+
+  Future<void> _bankApproveRecord(ApplicationFormRecord record) async {
+    if (!record.isBankSubmission || record.isBankApproved) return;
+
+    final registryController = TextEditingController(
+      text: record.stockRegistryNumber?.trim() ?? '',
+    );
+    final registryNumber = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final current = registryController.text.trim();
+          return AlertDialog(
+            title: const Text('Bankayı onayla'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '"${record.customerName}" için banka onayı verilecek. Capital Bank ekranında Onaylandı ve sicil görünecek. Bu işlem normal başvuru onayından ayrıdır.',
+                ),
+                const Gap(14),
+                TextField(
+                  controller: registryController,
+                  textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9-]')),
+                  ],
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'Cihaz sicil numarası',
+                    hintText: 'Bankaya gösterilecek sicil no',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Vazgeç'),
+              ),
+              FilledButton(
+                onPressed: current.isEmpty
+                    ? null
+                    : () => Navigator.of(context).pop(current.toUpperCase()),
+                child: const Text('Bankayı Onayla'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    registryController.dispose();
+    if (registryNumber == null) return;
+    final approvedRegistry = registryNumber.trim().toUpperCase();
+    if (approvedRegistry.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sicil numarası girmeden banka onaylanamaz.')),
+      );
+      return;
+    }
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    final profile = await ref.read(currentUserProfileProvider.future);
+    final approverId = (profile?.id ?? '').trim();
+    final nowIso = DateTime.now().toIso8601String();
+
+    try {
+      final values = {
+        'stock_registry_number': approvedRegistry,
+        'bank_approval_status': 'approved',
+        'bank_approved_at': nowIso,
+        'bank_approved_by': approverId.isEmpty ? null : approverId,
+      };
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'application_forms',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': record.id},
+            ],
+            'values': values,
+          },
+        );
+        if ((record.customerId ?? '').trim().isNotEmpty) {
+          await apiClient.postJson(
+            '/mutate',
+            body: {
+              'op': 'upsert',
+              'table': 'device_registries',
+              'values': {
+                'registry_number': approvedRegistry,
+                'model': record.modelName,
+                'customer_id': record.customerId,
+                'application_form_id': record.id,
+                'is_active': true,
+                'assigned_at': nowIso,
+                'released_at': null,
+              },
+            },
+          );
+        }
+      } else {
+        if (client == null) return;
+        await client
+            .from('application_forms')
+            .update(values)
+            .eq('id', record.id);
+        if ((record.customerId ?? '').trim().isNotEmpty) {
+          await client.from('device_registries').upsert({
+            'registry_number': approvedRegistry,
+            'model': record.modelName,
+            'customer_id': record.customerId,
+            'application_form_id': record.id,
+            'is_active': true,
+            'assigned_at': nowIso,
+            'released_at': null,
+          });
+        }
+      }
+      if (!mounted) return;
+      _refreshApplicationsSoon();
+      await reloadCurrentPage();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Banka onaylandı. Sicil: $approvedRegistry — Capital Bank’ta görünür.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Banka onaylanamadı: $e')));
+    }
+  }
+
+  Future<void> _persistInternalApproval(
+    ApplicationFormRecord record,
+    String approvedRegistry,
+  ) async {
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
     final profile = await ref.read(currentUserProfileProvider.future);
@@ -1339,6 +1490,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         }
       }
       if (!mounted) return;
+      _refreshApplicationsSoon();
       await reloadCurrentPage();
       return;
     } catch (e) {
@@ -2305,6 +2457,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     );
     final canApprove = !isBankUser && canEdit;
     final canUseInternalApplicationActions = !isBankUser;
+    _ensureBankDefaultFilters(isBankUser);
 
     return AppPageLayout(
       title: isBankUser ? 'Capital Bank ÖKC Talep' : 'Başvuru Formları',
@@ -2337,11 +2490,19 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                   )
                   .toList(growable: false);
           final baseFiltered = activeFiltered
-              .where(
-                (item) =>
-                    _approvalFilter == 'all' ||
-                    item.approvalStatus == _approvalFilter,
-              )
+              .where((item) {
+                if (_approvalFilter == 'all') return true;
+                if (isBankUser) {
+                  if (_approvalFilter == 'approved') {
+                    return item.isBankApproved;
+                  }
+                  if (_approvalFilter == 'pending') {
+                    return item.isBankApprovalPending;
+                  }
+                  return true;
+                }
+                return item.approvalStatus == _approvalFilter;
+              })
               .where((item) => !_bankOnly || item.createdByIsBank)
               .toList(growable: false);
           final today = DateTime.now();
@@ -2372,10 +2533,17 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
               .where((item) => _isSameDay(item.applicationDate, today))
               .length;
           final pendingCount = activeFiltered
-              .where((item) => item.isPendingApproval)
+              .where(
+                (item) => isBankUser
+                    ? item.isBankApprovalPending
+                    : item.isPendingApproval,
+              )
               .length;
           final approvedCount = activeFiltered
-              .where((item) => item.isApproved)
+              .where(
+                (item) =>
+                    isBankUser ? item.isBankApproved : item.isApproved,
+              )
               .length;
 
           Future<void> openMobileFiltersSheet() async {
@@ -2692,7 +2860,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                             setState(() => _approvalFilter = 'pending'),
                         label: Text(
                           isBankUser
-                              ? 'Banka Onayı ($pendingCount)'
+                              ? 'Onay Bekleyen ($pendingCount)'
                               : 'Onay Bekleyen ($pendingCount)',
                         ),
                         visualDensity: VisualDensity.compact,
@@ -2703,7 +2871,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                             setState(() => _approvalFilter = 'approved'),
                         label: Text(
                           isBankUser
-                              ? 'Banka Onaylandı ($approvedCount)'
+                              ? 'Onaylandı ($approvedCount)'
                               : 'Onaylanmış ($approvedCount)',
                         ),
                         visualDensity: VisualDensity.compact,
@@ -2867,7 +3035,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                           ),
                                           title: Text(
                                             isBankUser
-                                                ? 'Banka Onayı ($pendingCount)'
+                                                ? 'Onay Bekleyen ($pendingCount)'
                                                 : 'Onay Bekleyen ($pendingCount)',
                                           ),
                                           selected:
@@ -2887,7 +3055,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                           ),
                                           title: Text(
                                             isBankUser
-                                                ? 'Banka Onaylandı ($approvedCount)'
+                                                ? 'Onaylandı ($approvedCount)'
                                                 : 'Onaylanmış ($approvedCount)',
                                           ),
                                           selected:
@@ -3132,6 +3300,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                   canDeletePermanently: canDeletePermanently,
                   canPrintKdv4a: canUseInternalApplicationActions,
                   canCreateWorkOrder: canUseInternalApplicationActions,
+                  isBankViewer: isBankUser,
                   selected: _selectedRecordIds.contains(r.id),
                   onSelectionChanged: (selected) {
                     setState(() {
@@ -3154,6 +3323,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                       _print(r, kind: ApplicationPrintKind.kdv4a),
                   onCreateWorkOrder: () => _openCreateWorkOrdersDialog([r]),
                   onApprove: () => _approveRecord(r),
+                  onBankApprove: () => _bankApproveRecord(r),
                   onUnapprove: () => _unapproveRecord(r),
                   onEdit: () => _openEditDialog(r),
                   onDuplicate: () => _openDuplicateDialog(r),
@@ -3195,6 +3365,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                 canDeletePermanently: canDeletePermanently,
                 canPrintKdv4a: canUseInternalApplicationActions,
                 canCreateWorkOrder: canUseInternalApplicationActions,
+                isBankViewer: isBankUser,
                 selected: _selectedRecordIds.contains(r.id),
                 onSelectionChanged: (selected) {
                   setState(() {
@@ -3216,6 +3387,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                 onPrintKdv4a: () => _print(r, kind: ApplicationPrintKind.kdv4a),
                 onCreateWorkOrder: () => _openCreateWorkOrdersDialog([r]),
                 onApprove: () => _approveRecord(r),
+                onBankApprove: () => _bankApproveRecord(r),
                 onUnapprove: () => _unapproveRecord(r),
                 onEdit: () => _openEditDialog(r),
                 onDuplicate: () => _openDuplicateDialog(r),
@@ -3322,17 +3494,19 @@ List<ApplicationFormRecord> bankVisibleApplicationRecords({
   required bool isBankUser,
 }) {
   if (!isBankUser) return records;
+  // API already scopes bank users; keep all returned rows so approved
+  // applications remain visible (do not re-filter away by id mismatch).
   if (profile?.isBankAdminLike ?? false) {
-    return records
-        .where((record) => (record.createdBy ?? '').trim().isNotEmpty)
-        .toList(growable: false);
+    return records;
   }
   final userId = (profile?.id ?? '').trim();
-  if (userId.isEmpty) return const [];
+  if (userId.isEmpty) return records;
 
-  return records
+  final own = records
       .where((record) => (record.createdBy ?? '').trim() == userId)
       .toList(growable: false);
+  // If client id filter empties a non-empty API list, prefer API results.
+  return own.isNotEmpty || records.isEmpty ? own : records;
 }
 
 List<BusinessActivityTypeDefinition> bankBusinessActivitiesFromRecords(
@@ -7048,6 +7222,7 @@ class _ApplicationRecordCard extends StatelessWidget {
     required this.canDeletePermanently,
     required this.canPrintKdv4a,
     required this.canCreateWorkOrder,
+    required this.isBankViewer,
     required this.selected,
     required this.onSelectionChanged,
     required this.onPrintKdv,
@@ -7059,6 +7234,7 @@ class _ApplicationRecordCard extends StatelessWidget {
     required this.onPrintKdv4a,
     required this.onCreateWorkOrder,
     required this.onApprove,
+    required this.onBankApprove,
     required this.onUnapprove,
     required this.onEdit,
     required this.onDuplicate,
@@ -7074,6 +7250,7 @@ class _ApplicationRecordCard extends StatelessWidget {
   final bool canDeletePermanently;
   final bool canPrintKdv4a;
   final bool canCreateWorkOrder;
+  final bool isBankViewer;
   final bool selected;
   final ValueChanged<bool> onSelectionChanged;
   final VoidCallback onPrintKdv;
@@ -7085,6 +7262,7 @@ class _ApplicationRecordCard extends StatelessWidget {
   final VoidCallback onPrintKdv4a;
   final VoidCallback onCreateWorkOrder;
   final VoidCallback onApprove;
+  final VoidCallback onBankApprove;
   final VoidCallback onUnapprove;
   final VoidCallback onEdit;
   final VoidCallback onDuplicate;
@@ -7105,17 +7283,20 @@ class _ApplicationRecordCard extends StatelessWidget {
         : isBankSubmission
         ? bankAccent
         : AppTheme.primary;
-    final approvalLabel = record.approvalStatusLabel;
-    final approvalTone = record.isApproved
+    final approvalLabel = isBankViewer
+        ? record.bankFacingStatusLabel
+        : record.approvalStatusLabel;
+    final approvalTone =
+        (isBankViewer ? record.isBankApproved : record.isApproved)
         ? AppBadgeTone.success
         : AppBadgeTone.warning;
-    final approveActionLabel =
-        isBankSubmission ? 'Banka Onayla' : 'Onayla';
-    final approvedRegistry = record.approvedRegistryNumber;
+    final canBankApprove =
+        canApprove && isBankSubmission && record.isBankApprovalPending;
     final canModify = canEdit && !record.isApproved;
     final canChangeActive = canArchive && !record.isApproved;
     final canDelete =
         !record.isActive && canDeletePermanently && !record.isApproved;
+    final approvedRegistry = record.approvedRegistryNumber;
 
     // Not const: AppTheme.softTint reads the current brightness so the
     // pastel card backgrounds stay visible (instead of near-invisible
@@ -7162,8 +7343,13 @@ class _ApplicationRecordCard extends StatelessWidget {
           child: Text('Onay Belgesi Kaydını Temizle'),
         ),
       const PopupMenuItem(value: 'logs', child: Text('Loglar')),
+      if (canBankApprove)
+        const PopupMenuItem(
+          value: 'bank_approve',
+          child: Text('Bankayı Onayla'),
+        ),
       if (canApprove && record.isPendingApproval)
-        PopupMenuItem(value: 'approve', child: Text(approveActionLabel)),
+        const PopupMenuItem(value: 'approve', child: Text('Onayla')),
       if (canApprove && record.isApproved)
         const PopupMenuItem(value: 'unapprove', child: Text('Onayı Geri Al')),
       const PopupMenuItem(value: 'print_kdv4', child: Text('KDV4 Yazdır')),
@@ -7217,6 +7403,9 @@ class _ApplicationRecordCard extends StatelessWidget {
           break;
         case 'create_work_order':
           onCreateWorkOrder();
+          break;
+        case 'bank_approve':
+          onBankApprove();
           break;
         case 'approve':
           onApprove();
@@ -7350,12 +7539,23 @@ class _ApplicationRecordCard extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: AppDenseBadgeRow(
                     children: [
+                      if (!isBankViewer && isBankSubmission)
+                        AppBadge(
+                          dense: true,
+                          label: record.staffBankApprovalLabel,
+                          tone: record.isBankApproved
+                              ? AppBadgeTone.success
+                              : AppBadgeTone.warning,
+                        ),
                       AppBadge(
                         label: approvalLabel,
                         tone: approvalTone,
                         dense: true,
                       ),
-                      if (record.isApproved && approvedRegistry != null)
+                      if ((isBankViewer
+                              ? record.isBankApproved
+                              : record.isApproved) &&
+                          approvedRegistry != null)
                         AppBadge(
                           dense: true,
                           label: 'Sicil: $approvedRegistry',
@@ -7382,11 +7582,18 @@ class _ApplicationRecordCard extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      if (canApprove && record.isPendingApproval)
+                      if (canBankApprove)
+                        _RecordPrimaryAction(
+                          onPressed: onBankApprove,
+                          icon: LucideIcons.landmark,
+                          label: 'Bankayı Onayla',
+                          primary: true,
+                        )
+                      else if (canApprove && record.isPendingApproval)
                         _RecordPrimaryAction(
                           onPressed: onApprove,
                           icon: LucideIcons.badgeCheck,
-                          label: approveActionLabel,
+                          label: 'Onayla',
                           primary: true,
                         )
                       else if (canApprove && record.isApproved)
@@ -7481,8 +7688,20 @@ class _ApplicationRecordCard extends StatelessWidget {
                 ),
               ),
               const Gap(8),
+              if (!isBankViewer && isBankSubmission) ...[
+                AppBadge(
+                  label: record.staffBankApprovalLabel,
+                  tone: record.isBankApproved
+                      ? AppBadgeTone.success
+                      : AppBadgeTone.warning,
+                ),
+                const Gap(4),
+              ],
               AppBadge(label: approvalLabel, tone: approvalTone),
-              if (record.isApproved && approvedRegistry != null) ...[
+              if ((isBankViewer
+                      ? record.isBankApproved
+                      : record.isApproved) &&
+                  approvedRegistry != null) ...[
                 const Gap(4),
                 AppBadge(
                   label: 'Sicil: $approvedRegistry',
@@ -7571,12 +7790,21 @@ class _ApplicationRecordCard extends StatelessWidget {
                   ),
                   const Gap(4),
                 ],
+                if (canBankApprove) ...[
+                  _ActionButton(
+                    onPressed: onBankApprove,
+                    icon: LucideIcons.landmark,
+                    label: 'Bankayı Onayla',
+                    primary: true,
+                  ),
+                  const Gap(4),
+                ],
                 if (canApprove && record.isPendingApproval) ...[
                   _ActionButton(
                     onPressed: onApprove,
                     icon: LucideIcons.badgeCheck,
-                    label: approveActionLabel,
-                    primary: true,
+                    label: 'Onayla',
+                    primary: !canBankApprove,
                   ),
                   const Gap(4),
                 ],
@@ -7638,7 +7866,7 @@ class _ApplicationRecordCard extends StatelessWidget {
                       : 'Cihaz: $approvedRegistry',
                   highlighted: record.isApproved,
                 )
-              else if (isBankSubmission && record.isPendingApproval)
+              else if (isBankSubmission && record.isBankApprovalPending)
                 const _InfoChip(
                   icon: LucideIcons.clock3,
                   text: 'Sicil banka onayından sonra görünür',

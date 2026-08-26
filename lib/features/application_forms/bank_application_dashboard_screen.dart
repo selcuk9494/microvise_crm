@@ -226,8 +226,8 @@ class _BankDashboardMetrics {
         id: entry.key,
         label: personNames[entry.key] ?? _personLabel(entry.key),
         total: list.length,
-        pending: list.where((r) => r.isPendingApproval).length,
-        approved: list.where((r) => r.isApproved).length,
+        pending: list.where((r) => r.isBankApprovalPending).length,
+        approved: list.where((r) => r.isBankApproved).length,
         today: list
             .where((r) => _sameDay(r.applicationDate, startOfToday))
             .length,
@@ -250,8 +250,8 @@ class _BankDashboardMetrics {
 
     return _BankDashboardMetrics(
       records: sorted,
-      pending: records.where((r) => r.isPendingApproval).length,
-      approved: records.where((r) => r.isApproved).length,
+      pending: records.where((r) => r.isBankApprovalPending).length,
+      approved: records.where((r) => r.isBankApproved).length,
       today: records
           .where((r) => _sameDay(r.applicationDate, startOfToday))
           .length,
@@ -399,7 +399,7 @@ class _VisualStats extends StatelessWidget {
           AppTheme.primary,
         ),
         _MetricTile(
-          'Banka Onayı',
+          'Onay Bekleyen',
           metrics.pending,
           LucideIcons.clipboardClock,
           AppTheme.warning,
@@ -809,14 +809,14 @@ class _RecentRow extends StatelessWidget {
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: record.isApproved
+              color: record.isBankApproved
                   ? AppTheme.success.withValues(alpha: 0.12)
                   : AppTheme.warning.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
-              record.isApproved ? LucideIcons.badgeCheck : LucideIcons.clock3,
-              color: record.isApproved ? AppTheme.success : AppTheme.warning,
+              record.isBankApproved ? LucideIcons.badgeCheck : LucideIcons.clock3,
+              color: record.isBankApproved ? AppTheme.success : AppTheme.warning,
             ),
           ),
           const Gap(10),
@@ -837,7 +837,7 @@ class _RecentRow extends StatelessWidget {
                       'tr_TR',
                     ).format(record.applicationDate),
                     _recentPersonLabel(record, personNames),
-                    if (record.isApproved &&
+                    if (record.isBankApproved &&
                         (record.approvedRegistryNumber ?? '').isNotEmpty)
                       'Sicil: ${record.approvedRegistryNumber}',
                   ].where((item) => item.trim().isNotEmpty).join(' • '),
@@ -847,8 +847,8 @@ class _RecentRow extends StatelessWidget {
             ),
           ),
           AppBadge(
-            label: record.approvalStatusLabel,
-            tone: record.isApproved
+            label: record.bankFacingStatusLabel,
+            tone: record.isBankApproved
                 ? AppBadgeTone.success
                 : AppBadgeTone.warning,
           ),

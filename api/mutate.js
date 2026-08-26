@@ -2666,6 +2666,9 @@ const applicationFormAuditLabels = {
   approval_status: 'Onay durumu',
   approved_at: 'Onay tarihi',
   approved_by: 'Onaylayan',
+  bank_approval_status: 'Banka onay durumu',
+  bank_approved_at: 'Banka onay tarihi',
+  bank_approved_by: 'Banka onaylayan',
   created_by: 'Kaydı giren',
   is_active: 'Aktiflik',
 };
@@ -2825,6 +2828,7 @@ async function assertApplicationFormsMutable({ op, values, filters, id }) {
   if (op !== 'updateWhere') return;
 
   const nextStatus = String(values?.approval_status || '').trim();
+  const nextBankStatus = String(values?.bank_approval_status || '').trim();
   const onlyApprovalUpdate =
     nextStatus === 'approved' &&
     Object.keys(values || {}).every((key) =>
@@ -2834,6 +2838,21 @@ async function assertApplicationFormsMutable({ op, values, filters, id }) {
     nextStatus === 'pending' &&
     Object.keys(values || {}).every((key) =>
       ['approval_status', 'approved_at', 'approved_by'].includes(key),
+    );
+  const onlyBankApprovalUpdate =
+    nextBankStatus === 'approved' &&
+    Object.keys(values || {}).every((key) =>
+      [
+        'bank_approval_status',
+        'bank_approved_at',
+        'bank_approved_by',
+        'stock_registry_number',
+      ].includes(key),
+    );
+  const onlyBankApprovalReset =
+    nextBankStatus === 'pending' &&
+    Object.keys(values || {}).every((key) =>
+      ['bank_approval_status', 'bank_approved_at', 'bank_approved_by'].includes(key),
     );
   const onlyApprovalDocumentUpdate =
     Object.keys(values || {}).length > 0 &&
@@ -2854,7 +2873,15 @@ async function assertApplicationFormsMutable({ op, values, filters, id }) {
         'approval_document_uploaded_at',
       ].includes(key),
     );
-  if (onlyApprovalUpdate || onlyApprovalReset || onlyApprovalDocumentUpdate) return;
+  if (
+    onlyApprovalUpdate ||
+    onlyApprovalReset ||
+    onlyBankApprovalUpdate ||
+    onlyBankApprovalReset ||
+    onlyApprovalDocumentUpdate
+  ) {
+    return;
+  }
 
   const idFilter = Array.isArray(filters)
     ? filters.find((f) => f?.col === 'id' && f?.op === 'eq')

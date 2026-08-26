@@ -1663,6 +1663,60 @@ async function ensureApplicationFormsApprovalColumns() {
     `,
   );
 
+  await query(
+    `
+      alter table public.application_forms
+        add column if not exists bank_approval_status text not null default 'pending',
+        add column if not exists bank_approved_at timestamptz,
+        add column if not exists bank_approved_by uuid
+    `,
+  );
+  await query(
+    `
+      alter table public.application_forms
+        drop constraint if exists application_forms_bank_approval_status_check
+    `,
+  );
+  await query(
+    `
+      alter table public.application_forms
+        add constraint application_forms_bank_approval_status_check
+        check (bank_approval_status in ('pending','approved'))
+    `,
+  );
+  await query(
+    `
+      create index if not exists idx_application_forms_bank_approval_status
+      on public.application_forms (bank_approval_status, created_at desc)
+    `,
+  );
+  // Eski karışık onay: bankadan gelen ve internal onaylı kayıtları banka onayına taşı.
+  await query(
+    `
+      update public.application_forms af
+      set
+        bank_approval_status = 'approved',
+        bank_approved_at = coalesce(af.bank_approved_at, af.approved_at, now()),
+        bank_approved_by = coalesce(af.bank_approved_by, af.approved_by)
+      where coalesce(af.bank_approval_status, 'pending') = 'pending'
+        and coalesce(af.approval_status, 'pending') = 'approved'
+        and af.created_by in (
+          select id
+          from public.users
+          where
+            role = 'bank'
+            or (
+              role = 'personel'
+              and coalesce(page_permissions, '{}'::text[]) = array['formlar']::text[]
+              and (
+                coalesce(action_permissions, '{}'::text[]) = '{}'::text[]
+                or 'banka_admin' = any(coalesce(action_permissions, '{}'::text[]))
+              )
+            )
+        )
+    `,
+  );
+
   ensured.application_forms_approval = true;
   return true;
 }
