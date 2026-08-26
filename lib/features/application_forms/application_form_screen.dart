@@ -314,6 +314,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   Timer? _autoRefreshTimer;
   bool _showPassive = false;
   bool _todayOnly = false;
+  bool _bankOnly = false;
   String _approvalFilter = 'pending';
   DateTime? _fromDate;
   DateTime? _toDate;
@@ -2334,6 +2335,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                     _approvalFilter == 'all' ||
                     item.approvalStatus == _approvalFilter,
               )
+              .where((item) => !_bankOnly || item.createdByIsBank)
               .toList(growable: false);
           final today = DateTime.now();
           final filtered = _todayOnly
@@ -2341,6 +2343,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                     .where((item) => _isSameDay(item.applicationDate, today))
                     .toList(growable: false)
               : baseFiltered;
+          final bankSubmissionCount = activeFiltered
+              .where((item) => item.createdByIsBank)
+              .length;
           final selectedRecords = filtered
               .where((record) => _selectedRecordIds.contains(record.id))
               .toList(growable: false);
@@ -2617,6 +2622,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                         }
                       }),
                     ),
+                    if (!isBankUser)
+                      _CompactStat(
+                        label: 'Banka',
+                        value: bankSubmissionCount.toString(),
+                        icon: LucideIcons.landmark,
+                        selected: _bankOnly,
+                        onTap: () => setState(() => _bankOnly = !_bankOnly),
+                      ),
                   ],
                 ),
                 Wrap(
@@ -2650,6 +2663,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                 ? 'Seçimi Temizle'
                                 : 'Tümünü Seç',
                           ),
+                        ),
+                      if (!isBankUser)
+                        FilterChip(
+                          selected: _bankOnly,
+                          onSelected: (value) =>
+                              setState(() => _bankOnly = value),
+                          label: Text('Banka ($bankSubmissionCount)'),
+                          visualDensity: VisualDensity.compact,
                         ),
                       FilterChip(
                         selected: _showPassive,
@@ -7058,7 +7079,13 @@ class _ApplicationRecordCard extends StatelessWidget {
       'tr_TR',
     ).format(record.applicationDate);
     final isMobile = MediaQuery.sizeOf(context).width < 900;
-    final accentColor = record.isActive ? AppTheme.primary : AppTheme.textMuted;
+    const bankAccent = Color(0xFF0F766E);
+    final isBankSubmission = record.createdByIsBank;
+    final accentColor = !record.isActive
+        ? AppTheme.textMuted
+        : isBankSubmission
+        ? bankAccent
+        : AppTheme.primary;
     final approvalLabel = record.isApproved ? 'Onaylandı' : 'Onay Bekliyor';
     final approvalTone = record.isApproved
         ? AppBadgeTone.success
@@ -7078,8 +7105,13 @@ class _ApplicationRecordCard extends StatelessWidget {
       AppTheme.softTint(const Color(0xFFEC4899), alpha: 0.10),
       AppTheme.softTint(AppTheme.purple, alpha: 0.10),
     ];
-    final backgroundColor = record.isActive
-        ? backgrounds[colorIndex % backgrounds.length]
+    final backgroundColor = !record.isActive
+        ? null
+        : isBankSubmission
+        ? AppTheme.softTint(bankAccent, alpha: 0.16)
+        : backgrounds[colorIndex % backgrounds.length];
+    final bankBorderColor = isBankSubmission && record.isActive
+        ? bankAccent.withValues(alpha: 0.45)
         : null;
 
     final menuItems = <PopupMenuEntry<String>>[
@@ -7184,14 +7216,16 @@ class _ApplicationRecordCard extends StatelessWidget {
     if (!isMobile) {
       return AppCard(
         padding: EdgeInsets.zero,
+        color: backgroundColor,
+        borderColor: bankBorderColor,
         child: IntrinsicHeight(
           child: Row(
             children: [
               Container(
-                width: 5,
+                width: isBankSubmission ? 7 : 5,
                 decoration: BoxDecoration(
                   color: accentColor.withValues(
-                    alpha: record.isActive ? 0.75 : 0.35,
+                    alpha: record.isActive ? 0.85 : 0.35,
                   ),
                   borderRadius: const BorderRadius.horizontal(
                     left: Radius.circular(AppTheme.radiusMd),
@@ -7294,6 +7328,12 @@ class _ApplicationRecordCard extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: AppDenseBadgeRow(
                     children: [
+                      if (isBankSubmission)
+                        const AppBadge(
+                          label: 'Banka',
+                          tone: AppBadgeTone.primary,
+                          dense: true,
+                        ),
                       AppBadge(
                         label: approvalLabel,
                         tone: approvalTone,
@@ -7377,6 +7417,7 @@ class _ApplicationRecordCard extends StatelessWidget {
         vertical: isMobile ? 7 : 6,
       ),
       color: backgroundColor,
+      borderColor: bankBorderColor,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -7418,6 +7459,13 @@ class _ApplicationRecordCard extends StatelessWidget {
                 ),
               ),
               const Gap(8),
+              if (isBankSubmission) ...[
+                const AppBadge(
+                  label: 'Banka',
+                  tone: AppBadgeTone.primary,
+                ),
+                const Gap(4),
+              ],
               AppBadge(label: approvalLabel, tone: approvalTone),
               if (record.isApproved) ...[
                 const Gap(4),

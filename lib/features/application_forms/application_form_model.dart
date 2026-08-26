@@ -40,6 +40,7 @@ class ApplicationFormRecord {
     required this.approvedAt,
     required this.approvedBy,
     required this.createdBy,
+    required this.createdByIsBank,
     required this.isActive,
     required this.createdAt,
   });
@@ -82,6 +83,7 @@ class ApplicationFormRecord {
   final DateTime? approvedAt;
   final String? approvedBy;
   final String? createdBy;
+  final bool createdByIsBank;
   final bool isActive;
   final DateTime? createdAt;
 
@@ -153,6 +155,7 @@ class ApplicationFormRecord {
       approvedAt: parseAppDateTime(json['approved_at']?.toString()),
       approvedBy: json['approved_by']?.toString(),
       createdBy: json['created_by']?.toString(),
+      createdByIsBank: json['created_by_is_bank'] == true,
       isActive: json['is_active'] as bool? ?? true,
       createdAt: parseAppDateTime(json['created_at']?.toString()),
     );

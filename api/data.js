@@ -1322,6 +1322,22 @@ module.exports = async (req, res) => {
               approved_at,
               approved_by,
               created_by,
+              exists (
+                select 1
+                from public.users u
+                where u.id = application_forms.created_by
+                  and (
+                    u.role = 'bank'
+                    or (
+                      u.role = 'personel'
+                      and coalesce(u.page_permissions, '{}'::text[]) = array['formlar']::text[]
+                      and (
+                        coalesce(u.action_permissions, '{}'::text[]) = '{}'::text[]
+                        or 'banka_admin' = any(coalesce(u.action_permissions, '{}'::text[]))
+                      )
+                    )
+                  )
+              ) as created_by_is_bank,
               is_active,
               created_at
             from public.application_forms
