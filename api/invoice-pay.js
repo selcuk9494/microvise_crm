@@ -14,6 +14,7 @@ const {
   getInvoiceNumbersForLink,
   verifyInvoiceHostedSession,
   verifyPosRefundTicket,
+  signInvoiceHostedSession,
 } = require('./_lib/invoice_payment');
 
 function sendHtml(res, statusCode, html) {
@@ -37,6 +38,78 @@ function getQuery(req) {
   } catch {
     return {};
   }
+}
+
+async function buildHostedPageFromToken({
+  token,
+  session,
+  query = {},
+  status = '',
+}) {
+  const lookupToken =
+    String(token || '').trim() ||
+    String(verifyInvoiceHostedSession(session)?.token || '').trim();
+  if (!lookupToken && !status) {
+    return {
+      statusCode: 400,
+      html: '<h1>Eksik token</h1><p>Ödeme linki geçersiz.</p>',
+    };
+  }
+
+  let invoiceNumbers = String(query.numbers || '')
+    .split(',')
+    .map((n) => n.trim())
+    .filter(Boolean);
+  let amount = query.amount;
+  let currency = query.currency;
+  let customerName = query.customer;
+  let invoiceCount = Number(query.invoices || 0) || 0;
+  let sessionToken = String(session || '').trim();
+
+  if (lookupToken) {
+    const link = await getPaymentLinkByToken(lookupToken);
+    if (!link) {
+      return {
+        statusCode: 404,
+        html: '<h1>Link bulunamadı</h1><p>Ödeme linki geçersiz veya süresi dolmuş.</p>',
+      };
+    }
+    amount = Number(link.amount).toFixed(2);
+    currency = link.currency || 'TRY';
+    customerName = link.customer_name || '';
+    invoiceCount = Array.isArray(link.invoice_ids) ? link.invoice_ids.length : 0;
+    if (!invoiceNumbers.length) {
+      invoiceNumbers = await getInvoiceNumbersForLink(link);
+    }
+    if (!sessionToken) {
+      sessionToken = signInvoiceHostedSession({
+        kind: 'invoice-hosted',
+        linkId: link.id,
+        token: lookupToken,
+        amount: Number(link.amount),
+        currency: link.currency || 'TRY',
+        customerId: link.customer_id,
+        customerName,
+        invoiceCount,
+        invoiceNumbers,
+      });
+    }
+  }
+
+  return {
+    statusCode: 200,
+    html: buildCrmHostedPaymentPageHtml({
+      sessionToken,
+      token: lookupToken,
+      amount,
+      currency,
+      customerName,
+      invoiceCount,
+      invoiceNumbers,
+      status,
+      errorMessage: query.errmsg || '',
+    }),
+  };
 }
 
 async function readBody(req) {
@@ -76,63 +149,26 @@ module.exports = async (req, res) => {
     await ensureInvoicePaymentLinksTable();
     const query = getQuery(req);
     const action = String(query.action || '').trim().toLowerCase();
-    const token = String(query.token || '').trim();
+    const token = String(query.token || query.t || '').trim();
     const session = String(query.session || '').trim();
     const invoiceStatus = String(query.invoice || '').trim().toLowerCase();
 
-    // Hosted ödeme ekranı (CRM fallback; WP /fatura-odeme hazır olunca env ile oraya alınır)
+    // Kısa link (/p/TOKEN) veya eski uzun link → hosted ödeme ekranı
     if (
       req.method === 'GET' &&
       !action &&
-      (session || invoiceStatus === 'success' || invoiceStatus === 'fail')
+      (token ||
+        session ||
+        invoiceStatus === 'success' ||
+        invoiceStatus === 'fail')
     ) {
-      let invoiceNumbers = String(query.numbers || '')
-        .split(',')
-        .map((n) => n.trim())
-        .filter(Boolean);
-      let amount = query.amount;
-      let currency = query.currency;
-      let customerName = query.customer;
-      let invoiceCount = Number(query.invoices || 0) || 0;
-
-      const lookupToken =
-        token ||
-        (session ? verifyInvoiceHostedSession(session)?.token : '') ||
-        '';
-      if (lookupToken) {
-        try {
-          const link = await getPaymentLinkByToken(lookupToken);
-          if (link) {
-            if (!amount) amount = Number(link.amount).toFixed(2);
-            if (!currency) currency = link.currency || 'TRY';
-            if (!customerName) customerName = link.customer_name || '';
-            if (!invoiceCount && Array.isArray(link.invoice_ids)) {
-              invoiceCount = link.invoice_ids.length;
-            }
-            if (!invoiceNumbers.length) {
-              invoiceNumbers = await getInvoiceNumbersForLink(link);
-            }
-          }
-        } catch {
-          // query params ile devam
-        }
-      }
-
-      return sendHtml(
-        res,
-        200,
-        buildCrmHostedPaymentPageHtml({
-          sessionToken: session,
-          token: lookupToken || token,
-          amount,
-          currency,
-          customerName,
-          invoiceCount,
-          invoiceNumbers,
-          status: invoiceStatus,
-          errorMessage: query.errmsg || '',
-        }),
-      );
+      const page = await buildHostedPageFromToken({
+        token,
+        session,
+        query,
+        status: invoiceStatus,
+      });
+      return sendHtml(res, page.statusCode, page.html);
     }
 
     if (req.method === 'POST' && action === 'callback') {

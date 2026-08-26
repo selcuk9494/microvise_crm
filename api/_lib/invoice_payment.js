@@ -1205,28 +1205,17 @@ function verifyInvoiceHostedSession(token) {
 }
 
 function buildHostedPaymentUrl({
-  sessionToken,
   token,
-  amount,
-  currency,
-  customerName,
-  invoiceCount,
-  invoiceNumbers,
+  req,
 }) {
-  const hostedUrl = getHostedPageUrl();
-  hostedUrl.searchParams.set('session', sessionToken);
-  hostedUrl.searchParams.set('token', token);
-  hostedUrl.searchParams.set('amount', Number(amount).toFixed(2));
-  hostedUrl.searchParams.set('currency', currency || 'TRY');
-  if (customerName) hostedUrl.searchParams.set('customer', String(customerName));
-  if (invoiceCount) hostedUrl.searchParams.set('invoices', String(invoiceCount));
-  const numbers = (invoiceNumbers || [])
-    .map((n) => String(n || '').trim())
-    .filter(Boolean);
-  if (numbers.length) {
-    hostedUrl.searchParams.set('numbers', numbers.join(', '));
+  const baseUrl = getPublicBaseUrl(req);
+  // Kısa, müşteri dostu link — tutar/ünvan URL'de taşınmaz; sayfa token ile DB'den yükler.
+  const shortToken = String(token || '').trim();
+  if (!shortToken) {
+    const hostedUrl = getHostedPageUrl();
+    return hostedUrl.toString();
   }
-  return hostedUrl.toString();
+  return `${baseUrl.replace(/\/$/, '')}/p/${encodeURIComponent(shortToken)}`;
 }
 
 async function createInvoicePaymentLink({
@@ -1295,7 +1284,7 @@ async function createInvoicePaymentLink({
 
   const row = inserted.rows[0];
   const baseUrl = getPublicBaseUrl(req);
-  const directUrl = `${baseUrl}/api/invoice-pay?token=${encodeURIComponent(token)}`;
+  const directUrl = `${baseUrl.replace(/\/$/, '')}/p/${encodeURIComponent(token)}`;
   const sessionToken = signInvoiceHostedSession({
     kind: 'invoice-hosted',
     linkId: row.id,
@@ -1310,15 +1299,7 @@ async function createInvoicePaymentLink({
 
   const hosted = useHostedPaymentPage(config);
   const paymentUrl = hosted
-    ? buildHostedPaymentUrl({
-        sessionToken,
-        token,
-        amount,
-        currency,
-        customerName,
-        invoiceCount: invoices.length,
-        invoiceNumbers,
-      })
+    ? buildHostedPaymentUrl({ token, req })
     : directUrl;
 
   return {
@@ -1562,7 +1543,7 @@ function buildCrmHostedPaymentPageHtml({
       ok: false,
     });
   }
-  if (!sessionToken) {
+  if (!sessionToken && !token) {
     return buildStatusHtml({
       title: 'Ödeme bağlantısı geçersiz',
       message: 'Bu ekran CRM üzerinden oluşturulan geçerli ödeme oturumu ile açılmalıdır.',
@@ -2224,4 +2205,5 @@ module.exports = {
   buildCrmHostedPaymentPageHtml,
   getInvoiceNumbersForLink,
   verifyInvoiceHostedSession,
+  signInvoiceHostedSession,
 };

@@ -214,8 +214,8 @@ Future<void> _createInvoicePaymentLinkFlow({
           TextButton(
             onPressed: () async {
               await Share.share(
-                'Fatura ödemesi için link:\n$paymentUrl',
-                subject: 'Microvise fatura ödeme linki',
+                'Microvise fatura ödemesi:\n$paymentUrl',
+                subject: 'Microvise fatura ödeme',
               );
             },
             child: const Text('Paylaş'),
