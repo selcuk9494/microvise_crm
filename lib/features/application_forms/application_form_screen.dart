@@ -3678,7 +3678,7 @@ class _BankApplicationFormDialogState
       RegExp(r'[^0-9A-Za-zÇĞİÖŞÜçğıöşü]'),
       '',
     );
-    return cleaned.toLocaleUpperCase('tr-TR');
+    return _toTurkishUpper(cleaned);
   }
 
   String get _normalizedVkn {
@@ -3819,7 +3819,9 @@ class _BankApplicationFormDialogState
     final query = _lookupQuery;
     if (query.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('VKN veya MŞ mükellef numarası girin.')),
+        const SnackBar(
+          content: Text('VKN, MŞ veya Kimlik numarası giriniz.'),
+        ),
       );
       return;
     }
@@ -3880,9 +3882,9 @@ class _BankApplicationFormDialogState
               RegExp(r'\D'),
               '',
             );
-            final tckn = (item['tckn_ms']?.toString() ?? '')
-                .trim()
-                .toLocaleUpperCase('tr-TR');
+            final tckn = _toTurkishUpper(
+              (item['tckn_ms']?.toString() ?? '').trim(),
+            );
             if (digitQuery.length >= 10 && vkn == digitQuery) return true;
             if (tckn.isNotEmpty && tckn == query) return true;
             return false;
@@ -3900,9 +3902,9 @@ class _BankApplicationFormDialogState
             RegExp(r'\D'),
             '',
           );
-          final tckn = (item['tckn_ms']?.toString() ?? '')
-              .trim()
-              .toLocaleUpperCase('tr-TR');
+          final tckn = _toTurkishUpper(
+            (item['tckn_ms']?.toString() ?? '').trim(),
+          );
           if (digitQuery.length >= 10 && vkn == digitQuery) return true;
           if (tckn.isNotEmpty && tckn == query) return true;
           return false;
@@ -4301,7 +4303,9 @@ class _BankApplicationFormDialogState
   Future<void> _save() async {
     if (!_lookupDone || !_identityFromLookup) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Önce VKN / MŞ sorgulayın.')),
+        const SnackBar(
+          content: Text('Önce VKN, MŞ veya Kimlik numarası ile sorgulayın.'),
+        ),
       );
       return;
     }
@@ -4502,7 +4506,7 @@ class _BankApplicationFormDialogState
                           ),
                           const Gap(6),
                           Text(
-                            'VKN veya MŞ ile sorgulayın. Ünvan / VKN / MŞ / vergi dairesi sorgudan gelir; yalnızca adresi değiştirebilirsiniz.',
+                            'VKN, MŞ veya Kimlik numarası giriniz. Ünvan / vergi bilgileri sorgudan gelir; yalnızca adresi değiştirebilirsiniz.',
                             style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(color: AppTheme.textMuted),
                           ),
@@ -4531,11 +4535,10 @@ class _BankApplicationFormDialogState
                       Expanded(
                         child: _BankTextField(
                           controller: _vknController,
-                          label: 'VKN / MŞ',
-                          hintText: 'Örn: 0938010101 veya MŞ19660',
+                          label: 'VKN, MŞ veya Kimlik numarası',
+                          hintText: 'VKN, MŞ veya Kimlik numarası giriniz',
                           enabled: !_saving && !_lookupBusy,
                           keyboardType: TextInputType.text,
-                          textCapitalization: TextCapitalization.characters,
                           inputFormatters: [
                             LengthLimitingTextInputFormatter(20),
                           ],
@@ -4544,7 +4547,7 @@ class _BankApplicationFormDialogState
                                 .trim()
                                 .replaceAll(RegExp(r'[\s\-_.]'), '');
                             if (q.isEmpty) {
-                              return 'VKN veya MŞ girin.';
+                              return 'VKN, MŞ veya Kimlik numarası giriniz.';
                             }
                             final digits = q.replaceAll(RegExp(r'\D'), '');
                             final hasLetters = RegExp(
@@ -9241,6 +9244,18 @@ String _sortKey(String value) {
       .replaceAll('ö', 'o')
       .replaceAll('ş', 's')
       .replaceAll('ü', 'u');
+}
+
+String _toTurkishUpper(String value) {
+  return value
+      .replaceAll('i', 'İ')
+      .replaceAll('ı', 'I')
+      .replaceAll('ş', 'Ş')
+      .replaceAll('ğ', 'Ğ')
+      .replaceAll('ü', 'Ü')
+      .replaceAll('ö', 'Ö')
+      .replaceAll('ç', 'Ç')
+      .toUpperCase();
 }
 
 bool _isSameDay(DateTime a, DateTime b) {
