@@ -61,10 +61,19 @@ function portalMessages(payload) {
     .join(' ');
 }
 
+/**
+ * KKTC vergi no genelde 9 hane (bazen 8–11). MŞ rakam kırıntısı (örn. 19715)
+ * VKN sayılmaz.
+ */
+function isValidVknDigits(value) {
+  const d = digits(value);
+  return d.length >= 8 && d.length <= 11;
+}
+
 function mapKimlik(kimlik = {}, { source } = {}) {
   // VKN yalnızca rakam; MŞ/kimlik harf+rakam kalabilir.
   const vknDigits = digits(kimlik.vergiNo || kimlik.vergiNumarasi || kimlik.vkn);
-  const vkn = vknDigits.length >= 10 ? vknDigits.slice(0, 10) : '';
+  const vkn = isValidVknDigits(vknDigits) ? vknDigits.slice(0, 11) : '';
   const kimlikNo = normalizeLookupQuery(kimlik.mukellefNo || kimlik.kimlikNo);
   const name = String(kimlik.unvan || kimlik.unvanAdi || '').trim();
   if (!name && !vkn && !kimlikNo) return null;
@@ -307,6 +316,7 @@ module.exports = {
   CMD_BY_VKN,
   CMD_ADDRESS,
   digits,
+  isValidVknDigits,
   normalizeLookupQuery,
   hasLetters,
   cleanLocationLabel,

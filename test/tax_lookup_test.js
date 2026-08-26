@@ -286,7 +286,8 @@ test('harfli sorguda kimlik tutmazsa vergiNo yolunu dener (mock upstream)', asyn
 
   const result = await lookupTaxpayer('MŞ19660', { fetch: fetchImpl, includeAddress: false });
   assert.equal(result.name, 'VKN FALLBACK A.Ş.');
-  assert.equal(result.vkn, 'MŞ19660');
+  // Harfli vergiNo VKN sayılmaz (yalnızca 8–11 haneli rakam).
+  assert.equal(result.vkn, '');
   assert.equal(result.source, 'vkn');
   assert.deepEqual(calls, [CMD_BY_KIMLIK, CMD_BY_VKN]);
 });

@@ -161,7 +161,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
 
     _vknFocusNode.addListener(() {
       if (!_vknFocusNode.hasFocus) {
-        _padDigitsController(_vknController, length: 10);
+        _padDigitsController(_vknController, length: 11, minKeepLength: 8);
       }
     });
     _tcknMsFocusNode.addListener(() {
@@ -200,10 +200,22 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   void _padDigitsController(
     TextEditingController controller, {
     required int length,
+    int? minKeepLength,
   }) {
     final digits = controller.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return;
     if (digits.length >= length) return;
+    // KKTC VKN çoğu 9 hane; kısa geçerli numarayı 0 ile şişirme.
+    if (minKeepLength != null && digits.length >= minKeepLength) {
+      if (controller.text != digits) {
+        controller.value = TextEditingValue(
+          text: digits,
+          selection: TextSelection.collapsed(offset: digits.length),
+          composing: TextRange.empty,
+        );
+      }
+      return;
+    }
     final padded = digits.padLeft(length, '0');
     controller.value = TextEditingValue(
       text: padded,
@@ -365,15 +377,23 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
 
     String? validateRequiredDigits(
       String? value, {
-      required int length,
+      int? length,
+      int minLength = 8,
+      int maxLength = 11,
       required String fieldLabel,
     }) {
       final digits = value?.replaceAll(RegExp(r'[^0-9]'), '') ?? '';
       if (digits.isEmpty) {
         return '$fieldLabel zorunlu';
       }
-      if (digits.length != length) {
-        return '$fieldLabel tam olarak $length hane olmalı';
+      if (length != null) {
+        if (digits.length != length) {
+          return '$fieldLabel tam olarak $length hane olmalı';
+        }
+        return null;
+      }
+      if (digits.length < minLength || digits.length > maxLength) {
+        return '$fieldLabel $minLength–$maxLength hane olmalı';
       }
       return null;
     }
@@ -454,18 +474,21 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
         keyboardType: TextInputType.number,
         inputFormatters: [
           FilteringTextInputFormatter.digitsOnly,
-          LengthLimitingTextInputFormatter(10),
+          LengthLimitingTextInputFormatter(11),
         ],
         decoration: const InputDecoration(
           labelText: 'VKN',
-          hintText: '10 haneli vergi numarası',
+          hintText: '8–11 haneli vergi numarası',
           prefixIcon: Icon(LucideIcons.idCard),
           counterText: '',
         ),
-        onFieldSubmitted: (_) =>
-            _padDigitsController(_vknController, length: 10),
+        onFieldSubmitted: (_) => _padDigitsController(
+          _vknController,
+          length: 11,
+          minKeepLength: 8,
+        ),
         validator: (value) =>
-            validateRequiredDigits(value, length: 10, fieldLabel: 'VKN'),
+            validateRequiredDigits(value, fieldLabel: 'VKN'),
       );
     }
 
@@ -1080,7 +1103,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
   }
 
   Future<void> _submit() async {
-    _padDigitsController(_vknController, length: 10);
+    _padDigitsController(_vknController, length: 11, minKeepLength: 8);
     _normalizeTcknMsField();
     if (!_formKey.currentState!.validate()) return;
 
@@ -1092,10 +1115,9 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       _phone1Controller.text = '05333333333';
     }
 
-    final normalizedVkn = _normalizeDigitsFixedLength(
-      _vknController.text,
-      length: 10,
-    );
+    final vknDigits = _vknController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final normalizedVkn =
+        (vknDigits.length >= 8 && vknDigits.length <= 11) ? vknDigits : null;
     final normalizedTcknMs = _normalizeTcknMsValue(_tcknMsController.text);
     _vknController.text = normalizedVkn ?? '';
     _tcknMsController.text = normalizedTcknMs ?? '';
@@ -1411,7 +1433,7 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       if (!mounted) return;
 
       final name = (result['name'] ?? '').toString().trim();
-      final vknRaw = (result['vkn'] ?? '').toString().trim();
+      final vknRaw = (result['vkn'] ?? '').toString().replaceAll(RegExp(r'\D'), '');
       final kimlikNo = (result['kimlikNo'] ?? '').toString().trim();
       final address = (result['address'] ?? '').toString().trim();
       final cityRaw = (result['city'] ?? '').toString().trim();
@@ -1420,13 +1442,15 @@ class _CustomerFormDialogState extends ConsumerState<_CustomerFormDialog> {
       if (name.isNotEmpty) {
         _nameController.text = name;
       }
-      final normalizedVkn = _normalizeDigitsFixedLength(vknRaw, length: 10);
-      if (normalizedVkn != null && normalizedVkn.isNotEmpty) {
-        _vknController.text = normalizedVkn;
-      } else if (RegExp(r'^\d{10,}$').hasMatch(q.replaceAll(RegExp(r'\D'), ''))) {
-        // Sorgunun kendisi 10 haneli VKN ise alanı doldur.
-        final fromQuery = _normalizeDigitsFixedLength(q, length: 10);
-        if (fromQuery != null) _vknController.text = fromQuery;
+      if (vknRaw.length >= 8 && vknRaw.length <= 11) {
+        _vknController.text = vknRaw;
+      } else {
+        final qDigits = q.replaceAll(RegExp(r'\D'), '');
+        if (qDigits.length >= 8 &&
+            qDigits.length <= 11 &&
+            !RegExp(r'[A-Za-zÇĞİÖŞÜçğıöşü]').hasMatch(q)) {
+          _vknController.text = qDigits;
+        }
       }
 
       // MŞ veya kimlik → TCKN-MŞ; yoksa sorgu değeri harfliyse onu kullan.

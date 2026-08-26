@@ -3897,17 +3897,16 @@ class _BankApplicationFormDialogState
 
   String get _normalizedVkn {
     final resolved = (_resolvedVkn ?? '').replaceAll(RegExp(r'\D'), '');
-    if (resolved.length >= 10) {
-      return resolved.length > 10 ? resolved.substring(0, 10) : resolved;
-    }
+    if (_isValidVknDigits(resolved)) return resolved;
     // MŞ/kimlik sorgusundaki rakam kırıntısını (örn. 19715) VKN sanma.
     if (_queryLooksLikeMs) return '';
     final digits = _lookupQuery.replaceAll(RegExp(r'\D'), '');
-    if (digits.length >= 10) {
-      return digits.length > 10 ? digits.substring(0, 10) : digits;
-    }
+    if (_isValidVknDigits(digits)) return digits;
     return '';
   }
+
+  bool _isValidVknDigits(String digits) =>
+      digits.length >= 8 && digits.length <= 11;
 
   String get _normalizedTcknMs {
     final resolved = (_resolvedTcknMs ?? '').trim();
@@ -4139,7 +4138,7 @@ class _BankApplicationFormDialogState
       final found = row == null ? null : _CustomerOption.fromJson(row);
       if (found != null) {
         final foundVkn = (found.vkn ?? '').replaceAll(RegExp(r'\D'), '');
-        final hasValidVkn = foundVkn.length >= 10;
+        final hasValidVkn = _isValidVknDigits(foundVkn);
         if (!mounted) return;
         setState(() {
           _customer = found;
@@ -4209,9 +4208,7 @@ class _BankApplicationFormDialogState
         throw Exception('Mükellef bilgisi bulunamadı.');
       }
 
-      final resolvedVkn = vknRaw.length >= 10
-          ? (vknRaw.length > 10 ? vknRaw.substring(0, 10) : vknRaw)
-          : null;
+      final resolvedVkn = _isValidVknDigits(vknRaw) ? vknRaw : null;
       if (resolvedVkn == null && !_queryLooksLikeMs && vknRaw.isEmpty) {
         throw Exception(
           'Sorgudan VKN gelmedi. VKN ile tekrar deneyin veya mükellef numarasını kontrol edin.',
@@ -4460,6 +4457,7 @@ class _BankApplicationFormDialogState
           ? null
           : _directorController.text.trim(),
       'city': city?.name,
+      'tax_office': city?.name,
       'email': _emailController.text.trim(),
       'phone_1': formattedPhone,
       'is_active': true,
@@ -4473,10 +4471,13 @@ class _BankApplicationFormDialogState
       final patch = <String, dynamic>{
         'id': _customer!.id,
         'address': values['address'],
+        'city': values['city'],
+        'tax_office': values['tax_office'],
+        'director_name': values['director_name'],
         'email': values['email'],
         'phone_1': values['phone_1'],
         'is_active': true,
-        if (_normalizedVkn.isNotEmpty && existingVkn.length < 10)
+        if (_normalizedVkn.isNotEmpty && !_isValidVknDigits(existingVkn))
           'vkn': _normalizedVkn,
         if (_normalizedTcknMs.isNotEmpty &&
             (_customer!.tcknMs ?? '').trim().isEmpty)
@@ -4579,6 +4580,28 @@ class _BankApplicationFormDialogState
         const SnackBar(
           content: Text('Önce VKN, MŞ veya Kimlik numarası ile sorgulayın.'),
         ),
+      );
+      return;
+    }
+    if (_normalizedVkn.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Sorgudan VKN gelmedi. Tekrar sorgulayın veya VKN ile deneyin.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (_addressController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('İş yeri adresini doldurun.')),
+      );
+      return;
+    }
+    if (_selectedTaxOfficeCity() == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vergi dairesi seçin.')),
       );
       return;
     }
