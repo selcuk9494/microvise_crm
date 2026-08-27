@@ -6,6 +6,7 @@ import '../supabase/supabase_providers.dart';
 const kPagePanel = 'panel';
 const kPageCustomers = 'musteriler';
 const kPageForms = 'formlar';
+const kPageTsmLog = 'tsm_log';
 const kPageWorkOrders = 'is_emirleri';
 const kPageService = 'servis';
 const kPageReports = 'raporlar';
@@ -37,6 +38,7 @@ const allPagePermissions = <String>{
   kPagePanel,
   kPageCustomers,
   kPageForms,
+  kPageTsmLog,
   kPageWorkOrders,
   kPageService,
   kPageReports,
@@ -73,6 +75,7 @@ const pagePermissionLabels = <String, String>{
   kPagePanel: 'Panel',
   kPageCustomers: 'Müşteriler',
   kPageForms: 'Formlar',
+  kPageTsmLog: 'TSM Log',
   kPageWorkOrders: 'İş Emirleri',
   kPageService: 'Servis',
   kPageReports: 'Raporlar',
@@ -92,6 +95,7 @@ const pagePermissionOrder = <String>[
   kPagePanel,
   kPageCustomers,
   kPageForms,
+  kPageTsmLog,
   kPageEInvoice,
   kPageQuotes,
   kPageWorkOrders,

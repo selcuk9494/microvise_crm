@@ -109,6 +109,7 @@ const adminPagePermissions = [
   'panel',
   'musteriler',
   'formlar',
+  'tsm_log',
   'is_emirleri',
   'servis',
   'raporlar',

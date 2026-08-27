@@ -16,6 +16,8 @@ import '../forms/scrap_form_model.dart';
 import '../forms/transfer_form_model.dart';
 import '../service/service_definitions.dart';
 import '../work_orders/work_order_region_colors.dart';
+import 'bkm_acquirer_definition.dart';
+import 'bkm_acquirer_editor.dart';
 
 final deviceBrandsProvider = FutureProvider<List<DeviceBrand>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
@@ -565,7 +567,7 @@ class DefinitionsScreen extends ConsumerWidget {
     final height = MediaQuery.sizeOf(context).height;
     final availableHeight = (height - 260).clamp(520.0, 920.0);
     return DefaultTabController(
-      length: 9,
+      length: 10,
       child: AppPageLayout(
         title: 'Tanımlamalar',
         subtitle: 'Sistem tanımları ve ayarları',
@@ -591,6 +593,7 @@ class DefinitionsScreen extends ConsumerWidget {
                       Tab(text: 'KDV Oranları'),
                       Tab(text: 'Faaliyet Türü'),
                       Tab(text: 'Yazılım Firmaları'),
+                      Tab(text: 'BKM ID'),
                       Tab(text: 'Servis'),
                     ],
                   ),
@@ -607,6 +610,7 @@ class DefinitionsScreen extends ConsumerWidget {
                         _TaxRatesTab(isAdmin: isAdmin),
                         _BusinessActivityTypesTab(isAdmin: isAdmin),
                         _SoftwareCompaniesTab(isAdmin: isAdmin),
+                        _BkmAcquirersTab(isAdmin: isAdmin),
                         _ServiceDefinitionsTab(isAdmin: isAdmin),
                       ],
                     ),
@@ -3024,6 +3028,231 @@ Future<void> _showCreateSoftwareCompanyDialog(
   );
 
   controller.dispose();
+}
+
+class _BkmAcquirersTab extends ConsumerWidget {
+  const _BkmAcquirersTab({required this.isAdmin});
+
+  final bool isAdmin;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final itemsAsync = ref.watch(bkmAcquirersProvider);
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'BKM ID (AcquirerId)',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: isAdmin
+                    ? () async {
+                        await _showBkmAcquirerDialog(context, ref);
+                        ref.invalidate(bkmAcquirersProvider);
+                      }
+                    : null,
+                icon: const Icon(LucideIcons.plus, size: 18),
+                label: const Text('Ekle'),
+              ),
+            ],
+          ),
+          const Gap(6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'TSM iş emri logundaki AcquirerId değerine göre banka adı gösterilir.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: AppTheme.textMuted,
+              ),
+            ),
+          ),
+          const Gap(12),
+          Expanded(
+            child: itemsAsync.when(
+              data: (items) {
+                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+                return ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, _) => const Gap(10),
+                  itemBuilder: (context, index) =>
+                      _BkmAcquirerRow(item: items[index], isAdmin: isAdmin),
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => const _Empty(text: 'Yüklenemedi.'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BkmAcquirerRow extends ConsumerStatefulWidget {
+  const _BkmAcquirerRow({required this.item, required this.isAdmin});
+
+  final BkmAcquirerDefinition item;
+  final bool isAdmin;
+
+  @override
+  ConsumerState<_BkmAcquirerRow> createState() => _BkmAcquirerRowState();
+}
+
+class _BkmAcquirerRowState extends ConsumerState<_BkmAcquirerRow> {
+  bool _saving = false;
+
+  Future<void> _toggleActive() async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+    setState(() => _saving = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'bkm_acquirers',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.item.id},
+            ],
+            'values': {'is_active': !widget.item.isActive},
+          },
+        );
+      } else {
+        await client!
+            .from('bkm_acquirers')
+            .update({'is_active': !widget.item.isActive})
+            .eq('id', widget.item.id);
+      }
+      ref.invalidate(bkmAcquirersProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _edit() async {
+    await _showBkmAcquirerDialog(context, ref, initial: widget.item);
+    ref.invalidate(bkmAcquirersProvider);
+  }
+
+  Future<void> _delete() async {
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    if (apiClient == null && client == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('BKM ID Sil'),
+        content: Text(
+          '${widget.item.bkmId} — ${widget.item.name} kaydını silmek istiyor musunuz?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _saving = true);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'deleteWhere',
+            'table': 'bkm_acquirers',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': widget.item.id},
+            ],
+          },
+        );
+      } else {
+        await client!.from('bkm_acquirers').delete().eq('id', widget.item.id);
+      }
+      ref.invalidate(bkmAcquirersProvider);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceMuted,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          AppBadge(
+            label: '${item.bkmId}',
+            tone: AppBadgeTone.primary,
+            dense: true,
+          ),
+          const Gap(12),
+          Expanded(
+            child: Text(
+              item.name,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                decoration: item.isActive ? null : TextDecoration.lineThrough,
+              ),
+            ),
+          ),
+          DsActiveBadge(isActive: item.isActive),
+          const Gap(10),
+          if (widget.isAdmin) ...[
+            OutlinedButton(
+              onPressed: _saving ? null : _toggleActive,
+              child: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(item.isActive ? 'Pasif Yap' : 'Aktif Yap'),
+            ),
+            const Gap(6),
+            IconButton(
+              tooltip: 'Düzenle',
+              onPressed: _saving ? null : _edit,
+              icon: const Icon(LucideIcons.pencil),
+            ),
+            IconButton(
+              tooltip: 'Sil',
+              onPressed: _saving ? null : _delete,
+              icon: const Icon(LucideIcons.trash2),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _showBkmAcquirerDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  BkmAcquirerDefinition? initial,
+}) {
+  return showBkmAcquirerEditor(context, ref, initial: initial);
 }
 
 class _BusinessActivityTypeRow extends ConsumerStatefulWidget {

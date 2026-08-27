@@ -9,6 +9,7 @@ const ensured = {
   device_registries: false,
   business_activity_types: false,
   software_companies: false,
+  bkm_acquirers: false,
   licenses_software_company: false,
   licenses_registry_number: false,
   lines_operator: false,
@@ -990,6 +991,72 @@ async function ensureSoftwareCompaniesTable() {
   }
 
   ensured.software_companies = true;
+  return true;
+}
+
+async function ensureBkmAcquirersTable() {
+  if (ensured.bkm_acquirers) return true;
+
+  const exists = await tableExists('bkm_acquirers');
+  if (!exists) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allow = String(process.env.ALLOW_SCHEMA_AUTO_CREATE || '').trim();
+    if (isProd && allow !== 'true') {
+      throw new Error(
+        'bkm_acquirers table is missing. Set ALLOW_SCHEMA_AUTO_CREATE=true to auto-create (non-production recommended).',
+      );
+    }
+    await query(`create extension if not exists pgcrypto`);
+    await query(
+      `
+        create table if not exists public.bkm_acquirers (
+          id uuid primary key default gen_random_uuid(),
+          bkm_id integer not null unique,
+          name text not null,
+          is_active boolean not null default true,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now()
+        )
+      `,
+    );
+    await query(
+      `
+        create or replace function public.bkm_acquirers_set_updated_at()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          new.updated_at = now();
+          return new;
+        end;
+        $$;
+      `,
+    );
+    await query(
+      `
+        drop trigger if exists set_bkm_acquirers_updated_at on public.bkm_acquirers;
+        create trigger set_bkm_acquirers_updated_at
+        before update on public.bkm_acquirers
+        for each row
+        execute function public.bkm_acquirers_set_updated_at();
+      `,
+    );
+    await query(
+      `
+        insert into public.bkm_acquirers (bkm_id, name) values
+          (10, 'Ziraat Bankası'),
+          (12, 'Halk Bankası'),
+          (32, 'TEB'),
+          (62, 'Garanti'),
+          (64, 'İş Bankası'),
+          (67, 'YKB'),
+          (134, 'Denizbank')
+        on conflict (bkm_id) do nothing
+      `,
+    );
+  }
+
+  ensured.bkm_acquirers = true;
   return true;
 }
 
@@ -2087,6 +2154,7 @@ module.exports = {
   ensureDeviceRegistriesTable,
   ensureBusinessActivityTypesTable,
   ensureSoftwareCompaniesTable,
+  ensureBkmAcquirersTable,
   ensureLicensesSoftwareCompanyColumn,
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,

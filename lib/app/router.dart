@@ -34,6 +34,7 @@ import '../features/service/service_screen.dart';
 import '../features/service/service_detail_screen.dart';
 import '../features/setup/setup_required_screen.dart';
 import '../features/shell/app_shell.dart';
+import '../features/tsm_log/tsm_log_screen.dart';
 import '../features/work_orders/work_orders_kanban_screen.dart';
 import '../features/work_orders/work_orders_list_screen.dart';
 import '../features/work_orders/work_order_payments_screen.dart';
@@ -127,6 +128,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   const NoTransitionPage(child: SerialTrackingScreen()),
             ),
           ],
+        ),
+        GoRoute(
+          path: '/tsm-log',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: TsmLogScreen()),
         ),
         GoRoute(
           path: '/belgeler',
@@ -336,7 +342,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final pages = ref.read(currentUserPagePermissionsProvider);
       if ((profile?.isBankLike ?? false) &&
           location != '/banka-panel' &&
-          location.startsWith('/formlar') &&
+          (location.startsWith('/formlar') || location.startsWith('/tsm-log')) &&
           location != '/formlar/basvuru' &&
           location != '/formlar/banka-rapor') {
         return '/banka-panel';
@@ -358,6 +364,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
       if (location == '/panel' && !pages.contains('panel')) {
         if (pages.contains('formlar')) return '/formlar/basvuru';
+        if (pages.contains('tsm_log')) return '/tsm-log';
         if (pages.contains('musteriler')) return '/musteriler';
         if (pages.contains('is_emirleri')) return '/is-emirleri';
         if (pages.contains('servis')) return '/servis';
@@ -366,7 +373,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       String? requiredPage;
       if (location.startsWith('/musteriler')) requiredPage = 'musteriler';
-      if (location.startsWith('/formlar')) requiredPage = 'formlar';
+      if (location.startsWith('/formlar')) {
+        requiredPage = 'formlar';
+      }
+      if (location.startsWith('/tsm-log')) requiredPage = 'tsm_log';
       if (location.startsWith('/belgeler')) requiredPage = 'formlar';
       if (location.startsWith('/is-emirleri')) requiredPage = 'is_emirleri';
       if (location.startsWith('/servis')) requiredPage = 'servis';

@@ -2095,6 +2095,8 @@ Color _navAccentColor(String pageKey) {
       return AppTheme.blue;
     case 'formlar':
       return AppTheme.orange;
+    case 'tsm_log':
+      return AppTheme.orange;
     case 'e_fatura':
       return AppTheme.blue;
     case 'teklif':
@@ -2256,6 +2258,12 @@ final _navItems = <_NavItem>[
     label: 'Formlar',
     icon: AppPhosphorIcons.notePencil,
     pageKey: 'formlar',
+  ),
+  _NavItem(
+    path: '/tsm-log',
+    label: 'TSM Log',
+    icon: AppPhosphorIcons.fileMagnifyingGlass,
+    pageKey: 'tsm_log',
   ),
   _NavItem(
     path: '/e-fatura',

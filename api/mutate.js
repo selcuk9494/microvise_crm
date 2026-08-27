@@ -19,6 +19,7 @@ const {
   ensureDeviceRegistriesTable,
   ensureBusinessActivityTypesTable,
   ensureSoftwareCompaniesTable,
+  ensureBkmAcquirersTable,
   ensureLicensesSoftwareCompanyColumn,
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,
@@ -2142,6 +2143,7 @@ const allowedTables = new Set([
   'fiscal_symbols',
   'business_activity_types',
   'software_companies',
+  'bkm_acquirers',
   'region_colors',
   'work_order_signatures',
   'invoices',
@@ -2206,6 +2208,7 @@ const tablePermissions = {
   fiscal_symbols: 'tanimlamalar',
   business_activity_types: 'tanimlamalar',
   software_companies: 'tanimlamalar',
+  bkm_acquirers: ['tanimlamalar', 'tsm_log'],
   region_colors: 'tanimlamalar',
   work_order_signatures: 'is_emirleri',
   application_forms: 'formlar',
@@ -3171,6 +3174,9 @@ module.exports = async (req, res) => {
     }
     if (table === 'software_companies') {
       await ensureSoftwareCompaniesTable();
+    }
+    if (table === 'bkm_acquirers') {
+      await ensureBkmAcquirersTable();
     }
     if (table === 'licenses') {
       await ensureLicensesSoftwareCompanyColumn();

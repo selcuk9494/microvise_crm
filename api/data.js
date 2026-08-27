@@ -16,6 +16,7 @@ const {
   ensureDeviceRegistriesTable,
   ensureBusinessActivityTypesTable,
   ensureSoftwareCompaniesTable,
+  ensureBkmAcquirersTable,
   ensureLicensesSoftwareCompanyColumn,
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,
@@ -190,9 +191,10 @@ module.exports = async (req, res) => {
         resource === 'definition_device_brands' ||
         resource === 'definition_device_models' ||
         resource === 'definition_fiscal_symbols' ||
-        resource === 'definition_business_activity_types'
+        resource === 'definition_business_activity_types' ||
+        resource === 'definition_bkm_acquirers'
       ) {
-        if (!requireAnyPage(req, user, ['tanimlamalar', 'formlar'], res)) return;
+        if (!requireAnyPage(req, user, ['tanimlamalar', 'formlar', 'tsm_log'], res)) return;
       } else if (resource === 'definition_tax_rates') {
         if (!requireAnyPage(req, user, ['tanimlamalar', 'e_fatura', 'faturalama'], res)) return;
       } else {
@@ -1029,6 +1031,14 @@ module.exports = async (req, res) => {
         await ensureSoftwareCompaniesTable();
         const result = await query(
           `select id,name,is_active,created_at from public.software_companies order by name asc`,
+        );
+        return ok(req, res, { items: result.rows });
+      }
+
+      case 'definition_bkm_acquirers': {
+        await ensureBkmAcquirersTable();
+        const result = await query(
+          `select id,bkm_id,name,is_active,created_at from public.bkm_acquirers order by bkm_id asc`,
         );
         return ok(req, res, { items: result.rows });
       }
