@@ -1032,8 +1032,9 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
       throw Exception('API bağlantısı yok.');
     }
     final response = await apiClient.postJson(
-      '/tsm-log',
+      '/mutate',
       body: {
+        'op': 'parseTsmLog',
         'fileName': fileName,
         'fileBase64': base64Encode(bytes),
       },

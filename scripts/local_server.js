@@ -5445,7 +5445,8 @@ function getApiHandler(urlPath) {
   const relative = urlPath.replace(/^\/api\/?/, '');
   if (!relative) return null;
   const clean = relative.replace(/\/+$/, '');
-  const handlerPath = path.join(rootDir, 'api', `${clean}.js`);
+  const mapped = clean === 'tsm-log' ? 'mutate' : clean;
+  const handlerPath = path.join(rootDir, 'api', `${mapped}.js`);
   if (!fs.existsSync(handlerPath)) return null;
   delete require.cache[require.resolve(handlerPath)];
   return require(handlerPath);
@@ -8088,6 +8089,9 @@ function startLocalServer(options = {}) {
         req.query = {};
         for (const [key, value] of url.searchParams.entries()) {
           req.query[key] = value;
+        }
+        if (pathname === '/api/tsm-log' && !req.query.op) {
+          req.query.op = 'parseTsmLog';
         }
 
         if (pathname.startsWith('/api/_local/uploads/')) {

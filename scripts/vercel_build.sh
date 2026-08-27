@@ -40,11 +40,9 @@ if command -v git >/dev/null 2>&1; then
 fi
 
 flutter --version
-if [ -d "$PUB_CACHE" ] && [ "$(ls -A "$PUB_CACHE" 2>/dev/null | wc -l)" -gt 0 ]; then
-  flutter pub get --offline || flutter pub get
-else
-  flutter pub get
-fi
+# Always allow network: restored pub cache can miss newly added packages
+# (offline mode prints a red failure even when the online retry succeeds).
+flutter pub get
 
 BUILD_DEFINES=()
 

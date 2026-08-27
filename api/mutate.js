@@ -48,6 +48,7 @@ const {
   decodeBase64File,
 } = require('./_lib/mutakabat_processor');
 const { createInvoicePaymentLink, refundInvoicePosPayment } = require('./_lib/invoice_payment');
+const { parseTsmLogRequestBody } = require('./_lib/tsm_log');
 const {
   handleCors,
   ok,
@@ -2924,10 +2925,24 @@ module.exports = async (req, res) => {
     if (!user) return unauthorized(req, res);
 
     const body = await readJson(req);
-    const op = String(body.op || '').trim();
+    const op = String(body.op || req.query?.op || '').trim();
     const table = String(body.table || '').trim();
 
     if (!op) return badRequest(req, res, 'op zorunludur.');
+    if (op === 'parseTsmLog') {
+      if (!hasPageAccess(user, 'tsm_log') && !hasPageAccess(user, 'formlar')) {
+        return forbidden(req, res, 'TSM Log için yetkiniz yok.');
+      }
+      try {
+        return ok(req, res, parseTsmLogRequestBody(body));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Excel okunamadı.';
+        if (error?.statusCode === 400 || /Excel|sayfa|format|Unsupported/i.test(message)) {
+          return badRequest(req, res, message.startsWith('Excel') ? message : `Excel okunamadı: ${message}`);
+        }
+        throw error;
+      }
+    }
     if (op === 'uploadServiceImage') {
       if (!hasPageAccess(user, 'servis')) return forbidden(req, res);
       try {

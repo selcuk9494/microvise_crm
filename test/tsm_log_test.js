@@ -6,6 +6,7 @@ const XLSX = require('xlsx');
 const {
   parseTsmLogRows,
   parseTsmLogBuffer,
+  parseTsmLogRequestBody,
   extractTermSeriNos,
   classifyTsmOrderKind,
   normalizeTsmResultMessage,
@@ -159,4 +160,11 @@ test('ana islem sonuc mesaji alt seceneklerini cikarir', () => {
   const messages = result.uniqueSerials.flatMap((item) => item.resultMessages);
   assert.ok(messages.includes('Acquirera ait Lisans Yok'));
   assert.ok(messages.includes('İŞLEM ONAYLANDI'));
+});
+
+test('parseTsmLogRequestBody dosya yoksa 400 doner', () => {
+  assert.throws(
+    () => parseTsmLogRequestBody({}),
+    (error) => error.statusCode === 400 && /Excel dosyası gerekli/.test(error.message),
+  );
 });

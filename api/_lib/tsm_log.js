@@ -10,9 +10,40 @@ const ALLOWED_OPERATIONS = {
   ISEMRIACMA: 'ISEMRI_ACMA',
 };
 
+const MAX_TSM_LOG_FILE_BYTES = 20 * 1024 * 1024;
+
 function parseTsmLogBuffer(buffer, fileName = 'tsm.xls') {
   const rows = readSpreadsheetRows(buffer);
   return parseTsmLogRows(rows, fileName);
+}
+
+function decodeTsmLogBase64(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return null;
+  const comma = text.indexOf(',');
+  const payload = text.startsWith('data:') && comma >= 0 ? text.slice(comma + 1) : text;
+  try {
+    const buffer = Buffer.from(payload, 'base64');
+    return buffer.length ? buffer : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function parseTsmLogRequestBody(body = {}) {
+  const fileName = String(body.fileName || 'tsm.xls').trim() || 'tsm.xls';
+  const buffer = decodeTsmLogBase64(body.fileBase64);
+  if (!buffer) {
+    const error = new Error('Excel dosyası gerekli.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (buffer.length > MAX_TSM_LOG_FILE_BYTES) {
+    const error = new Error('Excel dosyası 20 MB sınırını aşıyor.');
+    error.statusCode = 400;
+    throw error;
+  }
+  return parseTsmLogBuffer(buffer, fileName);
 }
 
 function readSpreadsheetRows(buffer) {
@@ -525,6 +556,7 @@ function foldTurkish(value) {
 
 module.exports = {
   parseTsmLogBuffer,
+  parseTsmLogRequestBody,
   parseTsmLogRows,
   extractTermSeriNos,
   parseTsmLogOperation,
