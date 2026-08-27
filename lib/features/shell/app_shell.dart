@@ -11,6 +11,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_breakpoints.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_phosphor_icons.dart';
+import 'nav_favorites.dart';
 
 class _FormsNavExpandedNotifier extends Notifier<bool> {
   @override
@@ -95,66 +96,6 @@ class _DesktopShell extends ConsumerWidget {
 
   static const _sidebarWidth = 260.0;
 
-  List<_ExecutiveFavorite> _favorites({
-    required Set<String> allowedPages,
-    required bool isBankUser,
-  }) {
-    if (isBankUser) return const [];
-    final favorites = <_ExecutiveFavorite>[];
-    if (allowedPages.contains('panel')) {
-      favorites.add(
-        const _ExecutiveFavorite(
-          label: 'Panel',
-          path: '/panel',
-          icon: AppPhosphorIcons.gauge,
-          pageKey: 'panel',
-        ),
-      );
-    }
-    if (allowedPages.contains('musteriler')) {
-      favorites.add(
-        const _ExecutiveFavorite(
-          label: 'Müşteriler',
-          path: '/musteriler',
-          icon: AppPhosphorIcons.addressBook,
-          pageKey: 'musteriler',
-        ),
-      );
-    }
-    if (allowedPages.contains('formlar')) {
-      favorites.add(
-        const _ExecutiveFavorite(
-          label: 'Başvuru',
-          path: '/formlar/basvuru',
-          icon: AppPhosphorIcons.clipboardText,
-          pageKey: 'formlar_basvuru',
-        ),
-      );
-    }
-    if (allowedPages.contains(kPageEInvoice)) {
-      favorites.add(
-        const _ExecutiveFavorite(
-          label: 'Satış Faturası',
-          path: '/e-fatura/satis',
-          icon: AppPhosphorIcons.receipt,
-          pageKey: 'e_fatura_satis',
-        ),
-      );
-    }
-    if (allowedPages.contains(kPageEInvoice) ||
-        allowedPages.contains(kPageQuotes)) {
-      favorites.add(
-        const _ExecutiveFavorite(
-          label: 'Teklif',
-          path: '/e-fatura/teklif',
-          icon: AppPhosphorIcons.fileText,
-          pageKey: 'teklif',
-        ),
-      );
-    }
-    return favorites;
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).matchedLocation;
@@ -165,13 +106,22 @@ class _DesktopShell extends ConsumerWidget {
       allowedPages: allowedPages,
       isBankUser: isBankUser,
     );
-    final favorites = _favorites(
-      allowedPages: allowedPages,
-      isBankUser: isBankUser,
+    final favoritePaths = ref.watch(navFavoritesProvider);
+    final favorites = resolveNavFavorites(
+      paths: favoritePaths,
+      catalog: _navFavoriteCatalog(
+        allowedPages: allowedPages,
+        isBankUser: isBankUser,
+      ),
     );
-    final favoriteKeys = favorites.map((f) => f.pageKey).toSet();
+    final favoritePathSet = favorites.map((item) => item.path).toSet();
     final mainItems = items
-        .where((item) => !favoriteKeys.contains(item.pageKey))
+        .where((item) {
+          final hasChildren = _mobileNavSubItems(item, allowedPages)
+              .any((sub) => sub.path != item.path);
+          if (hasChildren) return true;
+          return !favoritePathSet.contains(item.path);
+        })
         .toList(growable: false);
 
     final isFormsExpanded = ref.watch(formsNavExpandedProvider);
@@ -209,141 +159,258 @@ class _DesktopShell extends ConsumerWidget {
                       ),
                       const Gap(10),
                       const _ExecutiveSearchField(),
-                      if (favorites.isNotEmpty) ...[
-                        const Gap(14),
-                        const _ExecutiveSectionLabel(title: 'Favoriler'),
-                        const Gap(6),
-                        for (final favorite in favorites)
-                          _ExecutiveFavoriteItem(
-                            favorite: favorite,
-                            active: _isActive(location, favorite.path),
-                            onTap: () => context.go(favorite.path),
-                          ),
-                        const Gap(10),
-                        Divider(
-                          height: 1,
-                          color: AppTheme.border.withValues(alpha: 0.7),
-                        ),
-                        const Gap(8),
-                      ],
+                      const Gap(12),
                       Expanded(
-                        child: ListView(
-                          children: [
-                            for (final item in mainItems) ...[
-                              if (item.path == '/formlar' && !isBankUser)
-                                _FormsNavGroup(
-                                  label: item.label,
-                                  icon: item.icon,
-                                  active: _isActive(location, item.path),
-                                  accentColor: _navAccentColor(item.pageKey),
-                                  expanded: isFormsExpanded,
-                                  onHeaderTap: () {
-                                    ref
-                                        .read(formsNavExpandedProvider.notifier)
-                                        .toggle();
-                                    if (!isFormsExpanded) {
-                                      context.go(item.path);
-                                    }
-                                  },
-                                  subItems: _formsNavSubItems(isBankUser),
-                                  matchedLocation: location,
-                                )
-                              else if (item.pageKey == 'e_fatura')
-                                _FormsNavGroup(
-                                  label: 'Faturalar',
-                                  icon: item.icon,
-                                  active:
-                                      _isActive(location, item.path) ||
-                                      _isActive(location, '/e-fatura/teklif'),
-                                  accentColor: _navAccentColor(item.pageKey),
-                                  expanded: isEInvoiceExpanded,
-                                  onHeaderTap: () {
-                                    ref
-                                        .read(
-                                          eInvoiceNavExpandedProvider.notifier,
-                                        )
-                                        .toggle();
-                                    context.go('/e-fatura/satis');
-                                  },
-                                  subItems: _eInvoiceNavSubItems(allowedPages),
-                                  matchedLocation: location,
-                                )
-                              else if (item.pageKey == 'finans')
-                                _FormsNavGroup(
-                                  label: item.label,
-                                  icon: item.icon,
-                                  active: _isActive(location, item.path),
-                                  accentColor: _navAccentColor(item.pageKey),
-                                  expanded: isFinanceExpanded,
-                                  onHeaderTap: () {
-                                    ref
-                                        .read(
-                                          financeNavExpandedProvider.notifier,
-                                        )
-                                        .toggle();
-                                    context.go(item.path);
-                                  },
-                                  subItems: const [
-                                    _FormsNavSubItem(
-                                      label: 'CRM Finans',
-                                      path: '/finans',
-                                    ),
-                                    _FormsNavSubItem(
-                                      label: 'Bankalar / Hesaplar',
-                                      path: '/finans/akinsoft/bankalar',
-                                    ),
-                                    _FormsNavSubItem(
-                                      label: 'Kasa',
-                                      path: '/finans/akinsoft/kasa',
-                                    ),
-                                    _FormsNavSubItem(
-                                      label: 'Transferler',
-                                      path: '/finans/akinsoft/transferler',
-                                    ),
-                                    _FormsNavSubItem(
-                                      label: 'Masraf Faturaları',
-                                      path: '/finans/akinsoft/masraf',
-                                    ),
-                                  ],
-                                  matchedLocation: location,
-                                )
-                              else if (item.pageKey == 'mutakabat')
-                                _FormsNavGroup(
-                                  label: item.label,
-                                  icon: item.icon,
-                                  active: _isActive(location, item.path),
-                                  accentColor: _navAccentColor(item.pageKey),
-                                  expanded: isMutakabatExpanded,
-                                  onHeaderTap: () {
-                                    ref
-                                        .read(
-                                          mutakabatNavExpandedProvider.notifier,
-                                        )
-                                        .toggle();
-                                    context.go(item.path);
-                                  },
-                                  subItems: const [
-                                    _FormsNavSubItem(
-                                      label: 'Aylık Kayıtlar',
-                                      path: '/mutakabat',
-                                    ),
-                                    _FormsNavSubItem(
-                                      label: 'Birim Fiyatlar',
-                                      path: '/mutakabat/fiyatlar',
-                                    ),
-                                  ],
-                                  matchedLocation: location,
-                                )
-                              else
-                                _SidebarItem(
-                                  label: item.label,
-                                  icon: item.icon,
-                                  active: _isActive(location, item.path),
-                                  accentColor: _navAccentColor(item.pageKey),
-                                  onTap: () => context.go(item.path),
+                        child: CustomScrollView(
+                          slivers: [
+                            const SliverToBoxAdapter(
+                              child: _ExecutiveSectionLabel(title: 'Favoriler'),
+                            ),
+                            const SliverToBoxAdapter(child: Gap(6)),
+                            if (favorites.isEmpty)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    10,
+                                    2,
+                                    10,
+                                    8,
+                                  ),
+                                  child: Text(
+                                    'Menüdeki pin ile ekleyin, sürükleyerek sıralayın.',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          color: AppTheme.sidebarTextMuted,
+                                          height: 1.35,
+                                        ),
+                                  ),
                                 ),
-                              const Gap(4),
-                            ],
+                              )
+                            else
+                              SliverReorderableList(
+                                itemCount: favorites.length,
+                                onReorder: (oldIndex, newIndex) {
+                                  ref
+                                      .read(navFavoritesProvider.notifier)
+                                      .reorder(oldIndex, newIndex);
+                                },
+                                proxyDecorator: (child, index, animation) {
+                                  return AnimatedBuilder(
+                                    animation: animation,
+                                    builder: (context, _) {
+                                      final t = Curves.easeOut.transform(
+                                        animation.value,
+                                      );
+                                      return Material(
+                                        elevation: 1 + 5 * t,
+                                        color: AppTheme.sidebar,
+                                        shadowColor: Colors.black26,
+                                        borderRadius: BorderRadius.circular(
+                                          AppTheme.radiusXs,
+                                        ),
+                                        child: child,
+                                      );
+                                    },
+                                  );
+                                },
+                                itemBuilder: (context, index) {
+                                  final favorite = favorites[index];
+                                  return _ExecutiveFavoriteItem(
+                                    key: ValueKey(favorite.path),
+                                    favorite: favorite,
+                                    active: _isActive(
+                                      location,
+                                      favorite.path,
+                                    ),
+                                    dragIndex: index,
+                                    onTap: () => context.go(favorite.path),
+                                    onUnpin: () => ref
+                                        .read(navFavoritesProvider.notifier)
+                                        .toggle(favorite.path),
+                                  );
+                                },
+                              ),
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.only(
+                                  top: 8,
+                                  bottom: 8,
+                                ),
+                                child: Divider(
+                                  height: 1,
+                                  color: AppTheme.border.withValues(
+                                    alpha: 0.7,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SliverList(
+                              delegate: SliverChildListDelegate([
+                                for (final item in mainItems) ...[
+                                  if (item.path == '/formlar' && !isBankUser)
+                                    _FormsNavGroup(
+                                      label: item.label,
+                                      icon: item.icon,
+                                      path: item.path,
+                                      active: _isActive(location, item.path),
+                                      accentColor: _navAccentColor(
+                                        item.pageKey,
+                                      ),
+                                      expanded: isFormsExpanded,
+                                      favoritePaths: favoritePathSet,
+                                      onToggleFavorite: (path) => ref
+                                          .read(navFavoritesProvider.notifier)
+                                          .toggle(path),
+                                      onHeaderTap: () {
+                                        ref
+                                            .read(
+                                              formsNavExpandedProvider.notifier,
+                                            )
+                                            .toggle();
+                                        if (!isFormsExpanded) {
+                                          context.go(item.path);
+                                        }
+                                      },
+                                      subItems: _formsNavSubItems(isBankUser),
+                                      matchedLocation: location,
+                                    )
+                                  else if (item.pageKey == 'e_fatura')
+                                    _FormsNavGroup(
+                                      label: 'Faturalar',
+                                      icon: item.icon,
+                                      path: item.path,
+                                      active:
+                                          _isActive(location, item.path) ||
+                                          _isActive(
+                                            location,
+                                            '/e-fatura/teklif',
+                                          ),
+                                      accentColor: _navAccentColor(
+                                        item.pageKey,
+                                      ),
+                                      expanded: isEInvoiceExpanded,
+                                      favoritePaths: favoritePathSet,
+                                      onToggleFavorite: (path) => ref
+                                          .read(navFavoritesProvider.notifier)
+                                          .toggle(path),
+                                      onHeaderTap: () {
+                                        ref
+                                            .read(
+                                              eInvoiceNavExpandedProvider
+                                                  .notifier,
+                                            )
+                                            .toggle();
+                                        context.go('/e-fatura/satis');
+                                      },
+                                      subItems: _eInvoiceNavSubItems(
+                                        allowedPages,
+                                      ),
+                                      matchedLocation: location,
+                                    )
+                                  else if (item.pageKey == 'finans')
+                                    _FormsNavGroup(
+                                      label: item.label,
+                                      icon: item.icon,
+                                      path: item.path,
+                                      active: _isActive(location, item.path),
+                                      accentColor: _navAccentColor(
+                                        item.pageKey,
+                                      ),
+                                      expanded: isFinanceExpanded,
+                                      favoritePaths: favoritePathSet,
+                                      onToggleFavorite: (path) => ref
+                                          .read(navFavoritesProvider.notifier)
+                                          .toggle(path),
+                                      onHeaderTap: () {
+                                        ref
+                                            .read(
+                                              financeNavExpandedProvider
+                                                  .notifier,
+                                            )
+                                            .toggle();
+                                        context.go(item.path);
+                                      },
+                                      subItems: const [
+                                        _FormsNavSubItem(
+                                          label: 'CRM Finans',
+                                          path: '/finans',
+                                        ),
+                                        _FormsNavSubItem(
+                                          label: 'Bankalar / Hesaplar',
+                                          path: '/finans/akinsoft/bankalar',
+                                        ),
+                                        _FormsNavSubItem(
+                                          label: 'Kasa',
+                                          path: '/finans/akinsoft/kasa',
+                                        ),
+                                        _FormsNavSubItem(
+                                          label: 'Transferler',
+                                          path: '/finans/akinsoft/transferler',
+                                        ),
+                                        _FormsNavSubItem(
+                                          label: 'Masraf Faturaları',
+                                          path: '/finans/akinsoft/masraf',
+                                        ),
+                                      ],
+                                      matchedLocation: location,
+                                    )
+                                  else if (item.pageKey == 'mutakabat')
+                                    _FormsNavGroup(
+                                      label: item.label,
+                                      icon: item.icon,
+                                      path: item.path,
+                                      active: _isActive(location, item.path),
+                                      accentColor: _navAccentColor(
+                                        item.pageKey,
+                                      ),
+                                      expanded: isMutakabatExpanded,
+                                      favoritePaths: favoritePathSet,
+                                      onToggleFavorite: (path) => ref
+                                          .read(navFavoritesProvider.notifier)
+                                          .toggle(path),
+                                      onHeaderTap: () {
+                                        ref
+                                            .read(
+                                              mutakabatNavExpandedProvider
+                                                  .notifier,
+                                            )
+                                            .toggle();
+                                        context.go(item.path);
+                                      },
+                                      subItems: const [
+                                        _FormsNavSubItem(
+                                          label: 'Aylık Kayıtlar',
+                                          path: '/mutakabat',
+                                        ),
+                                        _FormsNavSubItem(
+                                          label: 'Birim Fiyatlar',
+                                          path: '/mutakabat/fiyatlar',
+                                        ),
+                                      ],
+                                      matchedLocation: location,
+                                    )
+                                  else
+                                    _SidebarItem(
+                                      label: item.label,
+                                      icon: item.icon,
+                                      active: _isActive(location, item.path),
+                                      accentColor: _navAccentColor(
+                                        item.pageKey,
+                                      ),
+                                      pinned: favoritePathSet.contains(
+                                        item.path,
+                                      ),
+                                      onTap: () => context.go(item.path),
+                                      onToggleFavorite: () => ref
+                                          .read(navFavoritesProvider.notifier)
+                                          .toggle(item.path),
+                                    ),
+                                  const Gap(4),
+                                ],
+                              ]),
+                            ),
                           ],
                         ),
                       ),
@@ -381,18 +448,98 @@ class _DesktopShell extends ConsumerWidget {
   }
 }
 
-class _ExecutiveFavorite {
-  const _ExecutiveFavorite({
-    required this.label,
-    required this.path,
-    required this.icon,
-    required this.pageKey,
+class _ExecutiveFavoriteItem extends StatelessWidget {
+  const _ExecutiveFavoriteItem({
+    super.key,
+    required this.favorite,
+    required this.active,
+    required this.dragIndex,
+    required this.onTap,
+    required this.onUnpin,
   });
 
-  final String label;
-  final String path;
-  final IconData icon;
-  final String pageKey;
+  final NavFavoriteTarget favorite;
+  final bool active;
+  final int dragIndex;
+  final VoidCallback onTap;
+  final VoidCallback onUnpin;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        height: 42,
+        decoration: BoxDecoration(
+          color: active ? AppTheme.sidebarActiveFill : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+          border: active
+              ? Border(
+                  left: BorderSide(color: AppTheme.primary, width: 3),
+                )
+              : null,
+        ),
+        padding: const EdgeInsets.fromLTRB(6, 0, 2, 0),
+        child: Row(
+          children: [
+            ReorderableDragStartListener(
+              index: dragIndex,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Icon(
+                  Icons.drag_indicator,
+                  size: 16,
+                  color: AppTheme.sidebarTextMuted,
+                ),
+              ),
+            ),
+            AppPhosphorIcon(
+              favorite.icon,
+              size: 18,
+              color: active ? AppTheme.primary : AppTheme.sidebarTextMuted,
+            ),
+            const Gap(8),
+            Expanded(
+              child: Text(
+                favorite.label,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  color: active ? AppTheme.primary : AppTheme.sidebarText,
+                  fontSize: 13.5,
+                ),
+              ),
+            ),
+            _NavPinButton(pinned: true, onPressed: onUnpin),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NavPinButton extends StatelessWidget {
+  const _NavPinButton({required this.pinned, required this.onPressed});
+
+  final bool pinned;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: pinned ? 'Favorilerden çıkar' : 'Favorilere ekle',
+      onPressed: onPressed,
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+      icon: Icon(
+        pinned ? Icons.push_pin : Icons.push_pin_outlined,
+        size: 15,
+        color: pinned ? AppTheme.primary : AppTheme.sidebarTextMuted,
+      ),
+    );
+  }
 }
 
 class _ExecutiveSectionLabel extends StatelessWidget {
@@ -450,66 +597,6 @@ class _ExecutiveSearchField extends StatelessWidget {
   }
 }
 
-class _ExecutiveFavoriteItem extends StatelessWidget {
-  const _ExecutiveFavoriteItem({
-    required this.favorite,
-    required this.active,
-    required this.onTap,
-  });
-
-  final _ExecutiveFavorite favorite;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = _navAccentColor(favorite.pageKey);
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppTheme.radiusXs),
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        height: 42,
-        decoration: BoxDecoration(
-          color: active ? AppTheme.sidebarActiveFill : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppTheme.radiusXs),
-          border: active
-              ? Border(
-                  left: BorderSide(color: AppTheme.primary, width: 3),
-                )
-              : null,
-        ),
-        padding: const EdgeInsets.fromLTRB(10, 0, 8, 0),
-        child: Row(
-          children: [
-            AppPhosphorIcon(
-              favorite.icon,
-              size: 18,
-              color: active ? AppTheme.primary : AppTheme.sidebarTextMuted,
-            ),
-            const Gap(10),
-            Expanded(
-              child: Text(
-                favorite.label,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                  color: active ? AppTheme.primary : AppTheme.sidebarText,
-                  fontSize: 13.5,
-                ),
-              ),
-            ),
-            Icon(
-              Icons.push_pin_outlined,
-              size: 15,
-              color: active ? accent : AppTheme.sidebarTextMuted,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _MobileShell extends ConsumerWidget {
   const _MobileShell({required this.child});
 
@@ -525,7 +612,17 @@ class _MobileShell extends ConsumerWidget {
       allowedPages: allowedPages,
       isBankUser: isBankUser,
     );
-    final pinnedItems = _mobilePinnedItems(allowedItems);
+    final favorites = resolveNavFavorites(
+      paths: ref.watch(navFavoritesProvider),
+      catalog: _navFavoriteCatalog(
+        allowedPages: allowedPages,
+        isBankUser: isBankUser,
+      ),
+    );
+    final pinnedItems = _mobilePinnedItems(
+      allowedItems,
+      favorites: favorites,
+    );
     final overflowActive = allowedItems.any(
       (item) =>
           _isActive(location, item.path) &&
@@ -599,16 +696,38 @@ class _MobileShell extends ConsumerWidget {
   }
 }
 
-List<_NavItem> _mobilePinnedItems(List<_NavItem> allowedItems) {
+List<_NavItem> _mobilePinnedItems(
+  List<_NavItem> allowedItems, {
+  List<NavFavoriteTarget> favorites = const [],
+}) {
+  final byPath = {for (final item in allowedItems) item.path: item};
+  final result = <_NavItem>[];
+  void addItem(_NavItem item) {
+    if (result.length >= 3) return;
+    if (result.any((pinned) => pinned.path == item.path)) return;
+    result.add(item);
+  }
+
+  for (final favorite in favorites) {
+    final existing = byPath[favorite.path];
+    addItem(
+      existing ??
+          _NavItem(
+            path: favorite.path,
+            label: favorite.label,
+            icon: favorite.icon,
+            pageKey: favorite.pageKey,
+          ),
+    );
+  }
   const preferred = ['panel', 'musteriler', 'is_emirleri'];
   final byPage = {for (final item in allowedItems) item.pageKey: item};
-  final result = <_NavItem>[
-    for (final key in preferred)
-      if (byPage[key] != null) byPage[key]!,
-  ];
+  for (final key in preferred) {
+    final item = byPage[key];
+    if (item != null) addItem(item);
+  }
   for (final item in allowedItems) {
-    if (result.length >= 3) break;
-    if (!result.any((pinned) => pinned.path == item.path)) result.add(item);
+    addItem(item);
   }
   return result;
 }
@@ -757,14 +876,29 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
               final item = visibleItems[index];
               final subItems = _mobileNavSubItems(item, widget.allowedPages);
               final active = _isActive(widget.matchedLocation, item.path);
-              return _MobileModuleTile(
-                item: item,
-                subItems: subItems,
-                matchedLocation: widget.matchedLocation,
-                active: active,
-                onTap: () {
-                  Navigator.of(context).pop();
-                  context.go(item.path);
+              return Consumer(
+                builder: (context, ref, _) {
+                  final favoritePaths = ref
+                      .watch(navFavoritesProvider)
+                      .toSet();
+                  return _MobileModuleTile(
+                    item: item,
+                    subItems: subItems,
+                    matchedLocation: widget.matchedLocation,
+                    active: active,
+                    pinned: favoritePaths.contains(item.path),
+                    favoritePaths: favoritePaths,
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.go(item.path);
+                    },
+                    onToggleFavorite: () => ref
+                        .read(navFavoritesProvider.notifier)
+                        .toggle(item.path),
+                    onToggleSubFavorite: (path) => ref
+                        .read(navFavoritesProvider.notifier)
+                        .toggle(path),
+                  );
                 },
               );
             },
@@ -873,20 +1007,73 @@ List<_NavItem> _visibleNavItems({
       .toList(growable: false);
 }
 
+List<NavFavoriteTarget> _navFavoriteCatalog({
+  required Set<String> allowedPages,
+  required bool isBankUser,
+}) {
+  final catalog = <NavFavoriteTarget>[];
+  final seen = <String>{};
+  void add({
+    required String path,
+    required String label,
+    required IconData icon,
+    required String pageKey,
+  }) {
+    if (!seen.add(path)) return;
+    catalog.add(
+      NavFavoriteTarget(
+        path: path,
+        label: label,
+        icon: icon,
+        pageKey: pageKey,
+      ),
+    );
+  }
+
+  for (final item in _visibleNavItems(
+    allowedPages: allowedPages,
+    isBankUser: isBankUser,
+  )) {
+    add(
+      path: item.path,
+      label: item.pageKey == 'e_fatura' ? 'Faturalar' : item.label,
+      icon: item.icon,
+      pageKey: item.pageKey,
+    );
+    for (final sub in _mobileNavSubItems(item, allowedPages)) {
+      add(
+        path: sub.path,
+        label: sub.label,
+        icon: item.icon,
+        pageKey: item.pageKey,
+      );
+    }
+  }
+  return catalog;
+}
+
 class _MobileModuleTile extends StatelessWidget {
   const _MobileModuleTile({
     required this.item,
     required this.subItems,
     required this.matchedLocation,
     required this.active,
+    required this.pinned,
+    required this.favoritePaths,
     required this.onTap,
+    required this.onToggleFavorite,
+    required this.onToggleSubFavorite,
   });
 
   final _NavItem item;
   final List<_FormsNavSubItem> subItems;
   final String matchedLocation;
   final bool active;
+  final bool pinned;
+  final Set<String> favoritePaths;
   final VoidCallback onTap;
+  final VoidCallback onToggleFavorite;
+  final ValueChanged<String> onToggleSubFavorite;
 
   @override
   Widget build(BuildContext context) {
@@ -946,6 +1133,10 @@ class _MobileModuleTile extends StatelessWidget {
                     size: active ? 20 : 22,
                     color: active ? accentColor : AppTheme.textMuted,
                   ),
+                  _NavPinButton(
+                    pinned: pinned,
+                    onPressed: onToggleFavorite,
+                  ),
                 ],
               ),
               if (subItems.isNotEmpty) ...[
@@ -960,11 +1151,14 @@ class _MobileModuleTile extends StatelessWidget {
                         _MobileSubModuleChip(
                           label: subItem.label,
                           active: _isActive(matchedLocation, subItem.path),
+                          pinned: favoritePaths.contains(subItem.path),
                           color: accentColor,
                           onTap: () {
                             Navigator.of(context).pop();
                             context.go(subItem.path);
                           },
+                          onLongPress: () =>
+                              onToggleSubFavorite(subItem.path),
                         ),
                     ],
                   ),
@@ -982,34 +1176,46 @@ class _MobileSubModuleChip extends StatelessWidget {
   const _MobileSubModuleChip({
     required this.label,
     required this.active,
+    required this.pinned,
     required this.color,
     required this.onTap,
+    required this.onLongPress,
   });
 
   final String label;
   final bool active;
+  final bool pinned;
   final Color color;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
-    return ActionChip(
-      visualDensity: VisualDensity.compact,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      side: BorderSide(
-        color: active ? color.withValues(alpha: 0.35) : AppTheme.border,
-      ),
-      backgroundColor: active
-          ? color.withValues(alpha: 0.11)
-          : AppTheme.surface,
-      label: Text(
-        label,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: active ? color : AppTheme.textSoft,
-          fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+    return GestureDetector(
+      onLongPress: onLongPress,
+      child: ActionChip(
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        side: BorderSide(
+          color: (active || pinned)
+              ? color.withValues(alpha: 0.35)
+              : AppTheme.border,
         ),
+        backgroundColor: active
+            ? color.withValues(alpha: 0.11)
+            : AppTheme.surface,
+        avatar: pinned
+            ? Icon(Icons.push_pin, size: 14, color: color)
+            : null,
+        label: Text(
+          label,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: active ? color : AppTheme.textSoft,
+            fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+          ),
+        ),
+        onPressed: onTap,
       ),
-      onPressed: onTap,
     );
   }
 }
@@ -1707,6 +1913,8 @@ class _SidebarItem extends StatelessWidget {
     required this.active,
     required this.accentColor,
     required this.onTap,
+    required this.pinned,
+    required this.onToggleFavorite,
   });
 
   final String label;
@@ -1714,6 +1922,8 @@ class _SidebarItem extends StatelessWidget {
   final bool active;
   final Color accentColor;
   final VoidCallback onTap;
+  final bool pinned;
+  final VoidCallback onToggleFavorite;
 
   @override
   Widget build(BuildContext context) {
@@ -1726,7 +1936,7 @@ class _SidebarItem extends StatelessWidget {
         curve: Curves.easeOut,
         height: 42,
         decoration: AppTheme.sidebarNavDecoration(active: active),
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        padding: const EdgeInsets.only(left: 10, right: 2),
         child: Row(
           children: [
             Container(
@@ -1753,6 +1963,7 @@ class _SidebarItem extends StatelessWidget {
                 ),
               ),
             ),
+            _NavPinButton(pinned: pinned, onPressed: onToggleFavorite),
           ],
         ),
       ),
@@ -1771,22 +1982,28 @@ class _FormsNavGroup extends StatelessWidget {
   const _FormsNavGroup({
     required this.label,
     required this.icon,
+    required this.path,
     required this.active,
     required this.accentColor,
     required this.expanded,
     required this.onHeaderTap,
     required this.subItems,
     required this.matchedLocation,
+    required this.favoritePaths,
+    required this.onToggleFavorite,
   });
 
   final String label;
   final IconData icon;
+  final String path;
   final bool active;
   final Color accentColor;
   final bool expanded;
   final VoidCallback onHeaderTap;
   final List<_FormsNavSubItem> subItems;
   final String matchedLocation;
+  final Set<String> favoritePaths;
+  final ValueChanged<String> onToggleFavorite;
 
   @override
   Widget build(BuildContext context) {
@@ -1807,7 +2024,7 @@ class _FormsNavGroup extends StatelessWidget {
             curve: Curves.easeOut,
             height: 42,
             decoration: AppTheme.sidebarNavDecoration(active: isActive),
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            padding: const EdgeInsets.only(left: 10, right: 2),
             child: Row(
               children: [
                 Container(
@@ -1834,6 +2051,10 @@ class _FormsNavGroup extends StatelessWidget {
                     ),
                   ),
                 ),
+                _NavPinButton(
+                  pinned: favoritePaths.contains(path),
+                  onPressed: () => onToggleFavorite(path),
+                ),
                 Icon(
                   expanded
                       ? AppPhosphorIcons.caretUp
@@ -1841,6 +2062,7 @@ class _FormsNavGroup extends StatelessWidget {
                   size: 18,
                   color: fg,
                 ),
+                const Gap(6),
               ],
             ),
           ),
@@ -1863,7 +2085,9 @@ class _FormsNavGroup extends StatelessWidget {
                       label: item.label,
                       active: _isActive(matchedLocation, item.path),
                       accentColor: accentColor,
+                      pinned: favoritePaths.contains(item.path),
                       onTap: () => context.go(item.path),
+                      onToggleFavorite: () => onToggleFavorite(item.path),
                     ),
                     if (item != subItems.last) const Gap(2),
                   ],
@@ -1887,6 +2111,8 @@ class _SidebarSubItem extends StatelessWidget {
     required this.active,
     required this.accentColor,
     required this.onTap,
+    required this.pinned,
+    required this.onToggleFavorite,
   });
 
   final String label;
@@ -1894,6 +2120,8 @@ class _SidebarSubItem extends StatelessWidget {
   // ignore: unused_field
   final Color accentColor;
   final VoidCallback onTap;
+  final bool pinned;
+  final VoidCallback onToggleFavorite;
 
   @override
   Widget build(BuildContext context) {
@@ -1907,7 +2135,7 @@ class _SidebarSubItem extends StatelessWidget {
         curve: Curves.easeOut,
         height: 36,
         margin: const EdgeInsets.only(left: 18),
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        padding: const EdgeInsets.only(left: 10, right: 2),
         decoration: AppTheme.sidebarNavDecoration(active: active),
         child: Row(
           children: [
@@ -1934,6 +2162,7 @@ class _SidebarSubItem extends StatelessWidget {
                 ),
               ),
             ),
+            _NavPinButton(pinned: pinned, onPressed: onToggleFavorite),
           ],
         ),
       ),
