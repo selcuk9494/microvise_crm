@@ -77,305 +77,265 @@ String _buildPrintableHtml(
     <style>
       @page {
         size: A4 portrait;
-        margin: 8mm 10mm;
+        margin: 10mm 12mm;
       }
+      * { box-sizing: border-box; }
       html, body {
-        height: 100%;
-      }
-      body {
         margin: 0;
+        padding: 0;
+        height: 100%;
         background: #fff;
         color: #000;
-        font-family: Arial, Helvetica, sans-serif;
+        font-family: Arial, Helvetica, "Segoe UI", sans-serif;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
       .sheet {
-        width: 740px;
-        min-height: 262mm;
+        width: 186mm;
+        height: 277mm;
+        min-height: 277mm;
         margin: 0 auto;
-        padding: 0;
         display: flex;
         flex-direction: column;
-        box-sizing: border-box;
+        justify-content: space-between;
       }
-      .sheet-main {
+      .blocks {
         flex: 1 1 auto;
         display: flex;
         flex-direction: column;
-        justify-content: space-between;
+        justify-content: space-evenly;
+        min-height: 0;
+      }
+      .block {
+        flex: 0 0 auto;
       }
       .top-code {
         text-align: right;
-        color: #000;
         font-size: 13px;
         font-weight: 700;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
       }
       .title {
-        color: #000;
         text-align: center;
         font-size: 17px;
         font-weight: 800;
-        letter-spacing: 0.3px;
-        line-height: 1.25;
+        letter-spacing: 0.2px;
+        line-height: 1.3;
         white-space: pre-line;
-        margin: 0 0 14px;
+        margin: 0 0 10px;
       }
       .top-meta {
-        width: 280px;
+        width: 70mm;
         margin-left: auto;
-        margin-bottom: 18px;
       }
-      .meta-row {
-        display: flex;
-        align-items: baseline;
-        gap: 8px;
-        margin: 8px 0;
-      }
-      .meta-label {
-        width: 90px;
-        color: #000;
-        font-size: 13px;
-        font-weight: 800;
-        text-align: right;
-      }
-      .line-fill {
-        flex: 1;
-        border-bottom: 1px dotted #111827;
-        min-height: 20px;
-        display: inline-flex;
-        align-items: center;
-        padding-left: 4px;
-      }
-      .section-heading {
-        color: #000;
-        font-size: 13px;
-        font-weight: 800;
-        margin: 16px 0 8px;
-      }
-      .section-subheading {
-        color: #000;
-        background: transparent;
-        font-size: 13px;
-        font-weight: 800;
-        display: inline-block;
-        padding: 0 2px;
-      }
-      .section-row {
-        display: flex;
-        align-items: baseline;
-        gap: 6px;
-        margin: 8px 0;
-      }
-      .section-label {
-        width: 300px;
-        color: #000;
-        font-size: 13px;
-        font-weight: 700;
-      }
-      .field-label {
-        width: 300px;
-        color: #000;
-        background: transparent;
-        font-size: 13px;
-        font-weight: 700;
-        padding: 0 2px;
-      }
-      .sub-label {
-        width: 300px;
-        color: #000;
-        background: transparent;
-        font-size: 13px;
-        font-weight: 700;
-        padding: 0 2px;
-        margin-left: 18px;
-      }
-      .colon {
-        width: 10px;
-        text-align: center;
-        color: #000;
-        font-size: 13px;
-        font-weight: 700;
-      }
-      .value-colon {
-        width: 10px;
-        text-align: center;
-        color: #000;
-        font-size: 13px;
-        font-weight: 700;
-        padding: 0 2px;
-      }
-      .value-text {
-        color: #000;
-        font-size: 13px;
-        font-weight: 700;
-      }
-      .constant-text {
-        color: #000;
-        font-size: 13px;
-        font-weight: 700;
-      }
-      .section-gap {
-        height: 14px;
-      }
-      .spacer-lines {
-        margin-top: 10px;
-        margin-bottom: 6px;
-      }
-      .spacer-line {
-        border-bottom: 1px dotted #111827;
-        height: 22px;
-        margin-bottom: 8px;
-      }
-      .signature-row {
-        display: flex;
-        justify-content: space-between;
-        margin-top: auto;
-        padding-top: 28px;
-      }
-      .signature-box {
-        width: 260px;
-        text-align: center;
-      }
-      .signature-title {
-        color: #000;
-        font-size: 13px;
-        font-weight: 800;
-        white-space: pre-line;
-        margin-bottom: 48px;
-      }
+      .meta-row,
+      .section-row,
       .section-line {
         display: flex;
         align-items: baseline;
         gap: 6px;
-        margin: 8px 0;
+        margin: 5px 0;
       }
-      .section-value {
+      .meta-label {
+        width: 22mm;
+        font-size: 13px;
+        font-weight: 800;
+        text-align: right;
+      }
+      .section-heading {
+        font-size: 13px;
+        font-weight: 800;
+        margin: 0 0 6px;
+      }
+      .section-label,
+      .field-label {
+        width: 78mm;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .sub-label {
+        width: 72mm;
+        margin-left: 6mm;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .colon,
+      .value-colon {
+        width: 3mm;
+        text-align: center;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .line-fill {
         flex: 1;
         border-bottom: 1px dotted #111827;
-        min-height: 20px;
+        min-height: 7mm;
         display: inline-flex;
-        align-items: center;
-        padding-left: 4px;
+        align-items: flex-end;
+        padding: 0 1mm 1.5mm;
+      }
+      .value-text,
+      .constant-text {
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .spacer-lines {
+        margin-top: 4px;
+      }
+      .spacer-line {
+        border-bottom: 1px dotted #111827;
+        height: 8mm;
+        margin-bottom: 2mm;
+      }
+      .signature-row {
+        display: flex;
+        justify-content: space-between;
+        padding-top: 8mm;
+        flex: 0 0 auto;
+      }
+      .signature-box {
+        width: 70mm;
+        text-align: center;
+      }
+      .signature-title {
+        font-size: 13px;
+        font-weight: 800;
+        white-space: pre-line;
+        margin-bottom: 22mm;
+      }
+      @media print {
+        html, body {
+          height: auto;
+        }
+        .sheet {
+          width: 100%;
+          height: 277mm;
+          min-height: 277mm;
+        }
       }
     </style>
   </head>
   <body>
     <div class="sheet">
-      <div class="sheet-main">
-      <div>
-      <div class="top-code">${escape(settings.formCode)}</div>
-      <div class="title">${escape(settings.title)}</div>
-
-      <div class="top-meta">
-        <div class="meta-row">
-          <div class="meta-label">${escape(settings.dateLabel)} :</div>
-          ${dottedLine(valueText(dateText))}
+      <div class="blocks">
+        <div class="block">
+          <div class="top-code">${escape(settings.formCode)}</div>
+          <div class="title">${escape(settings.title)}</div>
+          <div class="top-meta">
+            <div class="meta-row">
+              <div class="meta-label">${escape(settings.dateLabel)} :</div>
+              ${dottedLine(valueText(dateText))}
+            </div>
+            <div class="meta-row">
+              <div class="meta-label">${escape(settings.rowNumberLabel)} :</div>
+              ${dottedLine(valueText(record.rowNumber))}
+            </div>
+          </div>
         </div>
-        <div class="meta-row">
-          <div class="meta-label">${escape(settings.rowNumberLabel)} :</div>
-          ${dottedLine(valueText(record.rowNumber))}
+
+        <div class="block">
+          <div class="section-heading">${escape(settings.serviceSectionTitle)}</div>
+          <div class="section-row">
+            <div class="section-label">${escape(settings.serviceCompanyLabel)}</div>
+            <div class="colon">:</div>
+            ${dottedLine(constantText(settings.serviceCompanyValue))}
+          </div>
+          <div class="section-row">
+            <div class="section-label">${escape(settings.serviceIdentityLabel)}</div>
+            <div class="colon">:</div>
+            ${dottedLine(constantText(settings.serviceIdentityValue))}
+          </div>
+          <div class="section-row">
+            <div class="section-label">${escape(settings.serviceAddressLabel)}</div>
+            <div class="colon">:</div>
+            ${dottedLine(constantText(settings.serviceAddressValue))}
+          </div>
+          <div class="section-row">
+            <div class="section-label">${escape(settings.serviceTaxLabel)}</div>
+            <div class="colon">:</div>
+            ${dottedLine(constantText(settings.serviceTaxValue))}
+          </div>
         </div>
-      </div>
 
-      <div class="section-heading">${escape(settings.serviceSectionTitle)}</div>
-      <div class="section-row">
-        <div class="section-label">${escape(settings.serviceCompanyLabel)}</div>
-        <div class="colon">:</div>
-        ${dottedLine(constantText(settings.serviceCompanyValue))}
-      </div>
-      <div class="section-row">
-        <div class="section-label">${escape(settings.serviceIdentityLabel)}</div>
-        <div class="colon">:</div>
-        ${dottedLine(constantText(settings.serviceIdentityValue))}
-      </div>
-      <div class="section-row">
-        <div class="section-label">${escape(settings.serviceAddressLabel)}</div>
-        <div class="colon">:</div>
-        ${dottedLine(constantText(settings.serviceAddressValue))}
-      </div>
-      <div class="section-row">
-        <div class="section-label">${escape(settings.serviceTaxLabel)}</div>
-        <div class="colon">:</div>
-        ${dottedLine(constantText(settings.serviceTaxValue))}
-      </div>
+        <div class="block">
+          <div class="section-heading">${escape(settings.ownerSectionTitle)} :</div>
+          <div class="section-line">
+            <div class="sub-label">${escape(settings.ownerNameLabel)}</div>
+            <div class="value-colon">:</div>
+            ${dottedLine(valueText(record.customerName))}
+          </div>
+          <div class="section-line">
+            <div class="sub-label">${escape(settings.ownerAddressLabel)}</div>
+            <div class="value-colon">:</div>
+            ${dottedLine(valueText(record.customerAddress))}
+          </div>
+          <div class="section-line">
+            <div class="sub-label">${escape(settings.ownerTaxLabel)}</div>
+            <div class="value-colon">:</div>
+            ${dottedLine(valueText(record.customerTaxOfficeAndNumber))}
+          </div>
+        </div>
 
-      <div class="section-gap"></div>
-      <div class="section-heading">${escape(settings.ownerSectionTitle)} :</div>
-      <div class="section-line">
-        <div class="sub-label">${escape(settings.ownerNameLabel)}</div>
-        <div class="value-colon">:</div>
-        ${dottedLine(valueText(record.customerName))}
-      </div>
-      <div class="section-line">
-        <div class="sub-label">${escape(settings.ownerAddressLabel)}</div>
-        <div class="value-colon">:</div>
-        ${dottedLine(valueText(record.customerAddress))}
-      </div>
-      <div class="section-line">
-        <div class="sub-label">${escape(settings.ownerTaxLabel)}</div>
-        <div class="value-colon">:</div>
-        ${dottedLine(valueText(record.customerTaxOfficeAndNumber))}
-      </div>
+        <div class="block">
+          <div class="section-line">
+            <div class="field-label">${escape(settings.deviceSectionTitle)}</div>
+            <div class="value-colon">:</div>
+            ${dottedLine(valueText(record.deviceBrandModelRegistry))}
+          </div>
+          <div class="section-line">
+            <div class="field-label">${escape(settings.startDateLabel)}</div>
+            <div class="value-colon">:</div>
+            ${dottedLine(valueText(startDateText))}
+          </div>
+          <div class="section-line">
+            <div class="field-label">${escape(settings.lastUsedDateLabel)}</div>
+            <div class="value-colon">:</div>
+            ${dottedLine(valueText(lastUsedDateText))}
+          </div>
+        </div>
 
-      <div class="section-line">
-        <div class="field-label">${escape(settings.deviceSectionTitle)}</div>
-        <div class="value-colon">:</div>
-        ${dottedLine(valueText(record.deviceBrandModelRegistry))}
-      </div>
-      <div class="section-line">
-        <div class="field-label">${escape(settings.startDateLabel)}</div>
-        <div class="value-colon">:</div>
-        ${dottedLine(valueText(startDateText))}
-      </div>
-      <div class="section-line">
-        <div class="field-label">${escape(settings.lastUsedDateLabel)}</div>
-        <div class="value-colon">:</div>
-        ${dottedLine(valueText(lastUsedDateText))}
-      </div>
+        <div class="block">
+          <div class="section-line">
+            <div class="field-label">${escape(settings.summaryTitle)}</div>
+            <div class="value-colon">:</div>
+            ${dottedLine('')}
+          </div>
+          <div class="section-line">
+            <div class="sub-label">${escape(settings.zReportLabel)}</div>
+            <div class="value-colon">:</div>
+            ${dottedLine(valueText(record.zReportCount))}
+          </div>
+          <div class="section-line">
+            <div class="sub-label">${escape(settings.vatTotalLabel)}</div>
+            <div class="value-colon">:</div>
+            ${dottedLine(valueText(totalVatText))}
+          </div>
+          <div class="section-line">
+            <div class="sub-label">${escape(settings.grossTotalLabel)}</div>
+            <div class="value-colon">:</div>
+            ${dottedLine(valueText(totalCollectionText))}
+          </div>
+        </div>
 
-      <div class="section-line">
-        <div class="field-label">${escape(settings.summaryTitle)}</div>
-        <div class="value-colon">:</div>
-        ${dottedLine('')}
-      </div>
-      <div class="section-line">
-        <div class="sub-label">${escape(settings.zReportLabel)}</div>
-        <div class="value-colon">:</div>
-        ${dottedLine(valueText(record.zReportCount))}
-      </div>
-      <div class="section-line">
-        <div class="sub-label">${escape(settings.vatTotalLabel)}</div>
-        <div class="value-colon">:</div>
-        ${dottedLine(valueText(totalVatText))}
-      </div>
-      <div class="section-line">
-        <div class="sub-label">${escape(settings.grossTotalLabel)}</div>
-        <div class="value-colon">:</div>
-        ${dottedLine(valueText(totalCollectionText))}
-      </div>
-
-      <div class="section-line">
-        <div class="field-label">${escape(settings.purposeLabel)}</div>
-        <div class="value-colon">:</div>
-        ${dottedLine(valueText(record.interventionPurpose))}
-      </div>
-
-      <div class="spacer-lines">
-        <div class="spacer-line"></div>
-        <div class="spacer-line"></div>
-      </div>
-
-      <div class="section-row">
-        <div class="section-label">${escape(settings.otherFindingsLabel)}</div>
-        <div class="colon">:</div>
-        ${dottedLine(valueText(record.otherFindings))}
-      </div>
-      <div class="spacer-lines">
-        <div class="spacer-line"></div>
-        <div class="spacer-line"></div>
-      </div>
+        <div class="block">
+          <div class="section-line">
+            <div class="field-label">${escape(settings.purposeLabel)}</div>
+            <div class="value-colon">:</div>
+            ${dottedLine(valueText(record.interventionPurpose))}
+          </div>
+          <div class="spacer-lines">
+            <div class="spacer-line"></div>
+          </div>
+          <div class="section-row">
+            <div class="section-label">${escape(settings.otherFindingsLabel)}</div>
+            <div class="colon">:</div>
+            ${dottedLine(valueText(record.otherFindings))}
+          </div>
+          <div class="spacer-lines">
+            <div class="spacer-line"></div>
+            <div class="spacer-line"></div>
+          </div>
+        </div>
       </div>
 
       <div class="signature-row">
@@ -385,7 +345,6 @@ String _buildPrintableHtml(
         <div class="signature-box">
           <div class="signature-title">${escape(settings.serviceSignatureTitle)}</div>
         </div>
-      </div>
       </div>
     </div>
   </body>
