@@ -77,7 +77,10 @@ String _buildPrintableHtml(
     <style>
       @page {
         size: A4 portrait;
-        margin: 6mm;
+        margin: 8mm 10mm;
+      }
+      html, body {
+        height: 100%;
       }
       body {
         margin: 0;
@@ -89,62 +92,72 @@ String _buildPrintableHtml(
       }
       .sheet {
         width: 740px;
+        min-height: 262mm;
         margin: 0 auto;
         padding: 0;
+        display: flex;
+        flex-direction: column;
+        box-sizing: border-box;
+      }
+      .sheet-main {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
       }
       .top-code {
         text-align: right;
         color: #000;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 700;
-        margin-bottom: 2px;
+        margin-bottom: 6px;
       }
       .title {
         color: #000;
         text-align: center;
-        font-size: 18px;
+        font-size: 17px;
         font-weight: 800;
         letter-spacing: 0.3px;
-        line-height: 1.15;
+        line-height: 1.25;
         white-space: pre-line;
-        margin: 0 0 6px;
+        margin: 0 0 14px;
       }
       .top-meta {
-        width: 260px;
+        width: 280px;
         margin-left: auto;
-        margin-bottom: 10px;
+        margin-bottom: 18px;
       }
       .meta-row {
         display: flex;
         align-items: baseline;
         gap: 8px;
-        margin: 4px 0;
+        margin: 8px 0;
       }
       .meta-label {
         width: 90px;
         color: #000;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 800;
         text-align: right;
       }
       .line-fill {
         flex: 1;
         border-bottom: 1px dotted #111827;
-        min-height: 14px;
+        min-height: 20px;
         display: inline-flex;
         align-items: center;
         padding-left: 4px;
       }
       .section-heading {
         color: #000;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 800;
-        margin: 10px 0 6px;
+        margin: 16px 0 8px;
       }
       .section-subheading {
         color: #000;
         background: transparent;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 800;
         display: inline-block;
         padding: 0 2px;
@@ -153,27 +166,27 @@ String _buildPrintableHtml(
         display: flex;
         align-items: baseline;
         gap: 6px;
-        margin: 4px 0;
+        margin: 8px 0;
       }
       .section-label {
-        width: 290px;
+        width: 300px;
         color: #000;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 700;
       }
       .field-label {
-        width: 290px;
+        width: 300px;
         color: #000;
         background: transparent;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 700;
         padding: 0 2px;
       }
       .sub-label {
-        width: 290px;
+        width: 300px;
         color: #000;
         background: transparent;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 700;
         padding: 0 2px;
         margin-left: 18px;
@@ -182,64 +195,66 @@ String _buildPrintableHtml(
         width: 10px;
         text-align: center;
         color: #000;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 700;
       }
       .value-colon {
         width: 10px;
         text-align: center;
         color: #000;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 700;
         padding: 0 2px;
       }
       .value-text {
         color: #000;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 700;
       }
       .constant-text {
         color: #000;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 700;
       }
       .section-gap {
-        height: 6px;
+        height: 14px;
       }
       .spacer-lines {
-        margin-top: 4px;
+        margin-top: 10px;
+        margin-bottom: 6px;
       }
       .spacer-line {
         border-bottom: 1px dotted #111827;
-        height: 14px;
-        margin-bottom: 4px;
+        height: 22px;
+        margin-bottom: 8px;
       }
       .signature-row {
         display: flex;
         justify-content: space-between;
-        margin-top: 24px;
+        margin-top: auto;
+        padding-top: 28px;
       }
       .signature-box {
-        width: 240px;
+        width: 260px;
         text-align: center;
       }
       .signature-title {
         color: #000;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 800;
         white-space: pre-line;
-        margin-bottom: 24px;
+        margin-bottom: 48px;
       }
       .section-line {
         display: flex;
         align-items: baseline;
         gap: 6px;
-        margin: 4px 0;
+        margin: 8px 0;
       }
       .section-value {
         flex: 1;
         border-bottom: 1px dotted #111827;
-        min-height: 14px;
+        min-height: 20px;
         display: inline-flex;
         align-items: center;
         padding-left: 4px;
@@ -248,6 +263,8 @@ String _buildPrintableHtml(
   </head>
   <body>
     <div class="sheet">
+      <div class="sheet-main">
+      <div>
       <div class="top-code">${escape(settings.formCode)}</div>
       <div class="title">${escape(settings.title)}</div>
 
@@ -359,6 +376,7 @@ String _buildPrintableHtml(
         <div class="spacer-line"></div>
         <div class="spacer-line"></div>
       </div>
+      </div>
 
       <div class="signature-row">
         <div class="signature-box">
@@ -367,6 +385,7 @@ String _buildPrintableHtml(
         <div class="signature-box">
           <div class="signature-title">${escape(settings.serviceSignatureTitle)}</div>
         </div>
+      </div>
       </div>
     </div>
   </body>
