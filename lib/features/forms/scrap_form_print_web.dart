@@ -97,14 +97,14 @@ String _buildPrintableHtml(
         margin: 0 auto;
         display: flex;
         flex-direction: column;
-        justify-content: space-between;
+        justify-content: flex-start;
+        padding-top: 2mm;
       }
       .blocks {
-        flex: 1 1 auto;
+        flex: 0 0 auto;
         display: flex;
         flex-direction: column;
-        justify-content: space-evenly;
-        min-height: 0;
+        gap: 5mm;
       }
       .block {
         flex: 0 0 auto;
@@ -120,13 +120,14 @@ String _buildPrintableHtml(
         font-size: 17px;
         font-weight: 800;
         letter-spacing: 0.2px;
-        line-height: 1.3;
+        line-height: 1.25;
         white-space: pre-line;
-        margin: 0 0 10px;
+        margin: 0 0 8px;
       }
       .top-meta {
         width: 70mm;
         margin-left: auto;
+        margin-bottom: 2mm;
       }
       .meta-row,
       .section-row,
@@ -134,7 +135,7 @@ String _buildPrintableHtml(
         display: flex;
         align-items: baseline;
         gap: 6px;
-        margin: 5px 0;
+        margin: 3px 0;
       }
       .meta-label {
         width: 22mm;
@@ -145,7 +146,7 @@ String _buildPrintableHtml(
       .section-heading {
         font-size: 13px;
         font-weight: 800;
-        margin: 0 0 6px;
+        margin: 0 0 4px;
       }
       .section-label,
       .field-label {
@@ -169,10 +170,10 @@ String _buildPrintableHtml(
       .line-fill {
         flex: 1;
         border-bottom: 1px dotted #111827;
-        min-height: 7mm;
+        min-height: 5mm;
         display: inline-flex;
         align-items: flex-end;
-        padding: 0 1mm 1.5mm;
+        padding: 0 1mm 1mm;
       }
       .value-text,
       .constant-text {
@@ -180,17 +181,18 @@ String _buildPrintableHtml(
         font-weight: 700;
       }
       .spacer-lines {
-        margin-top: 4px;
+        margin-top: 2px;
       }
       .spacer-line {
         border-bottom: 1px dotted #111827;
-        height: 8mm;
-        margin-bottom: 2mm;
+        height: 5.5mm;
+        margin-bottom: 1.5mm;
       }
       .signature-row {
         display: flex;
         justify-content: space-between;
-        padding-top: 8mm;
+        margin-top: auto;
+        padding-top: 10mm;
         flex: 0 0 auto;
       }
       .signature-box {
@@ -201,7 +203,7 @@ String _buildPrintableHtml(
         font-size: 13px;
         font-weight: 800;
         white-space: pre-line;
-        margin-bottom: 22mm;
+        margin-bottom: 16mm;
       }
       @media print {
         html, body {
