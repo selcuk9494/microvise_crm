@@ -3,15 +3,11 @@
 import 'dart:html' as html;
 
 import 'fault_form_model.dart';
+import 'form_print_web.dart';
 
 Future<bool> printFaultForm(FaultFormRecord record) async {
   final htmlContent = _buildPrintableHtml(record);
-  final blob = html.Blob([htmlContent], 'text/html');
-  final url = html.Url.createObjectUrlFromBlob(blob);
-  html.window.open(url, '_blank');
-  Future<void>.delayed(const Duration(seconds: 10), () {
-    html.Url.revokeObjectUrl(url);
-  });
+  openFormPrintHtml(htmlContent, revokeAfter: const Duration(seconds: 10));
   return true;
 }
 

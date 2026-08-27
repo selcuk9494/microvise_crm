@@ -3,6 +3,7 @@
 import 'dart:html' as html;
 
 import 'application_form_model.dart';
+import '../forms/form_print_web.dart';
 
 enum ApplicationPrintKind { kdv, kdv4a }
 
@@ -56,18 +57,7 @@ Future<bool> printApplicationFormsBulk(
 }
 
 void _openInNewTab(String htmlContent, {required Duration revokeAfter}) {
-  final blob = html.Blob([htmlContent], 'text/html');
-  final url = html.Url.createObjectUrlFromBlob(blob);
-  try {
-    html.window.open(url, '_blank');
-  } catch (_) {
-    try {
-      html.window.location.assign(url);
-    } catch (_) {
-      html.window.location.href = url;
-    }
-  }
-  Future<void>.delayed(revokeAfter, () => html.Url.revokeObjectUrl(url));
+  openFormPrintHtml(htmlContent, revokeAfter: revokeAfter);
 }
 
 String _extractBody(String input) {

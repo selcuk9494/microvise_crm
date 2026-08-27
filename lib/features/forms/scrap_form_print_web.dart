@@ -3,6 +3,7 @@
 import 'dart:html' as html;
 
 import '../../core/format/currency_format.dart';
+import 'form_print_web.dart';
 import 'scrap_form_model.dart';
 
 Future<bool> printScrapForm(
@@ -13,20 +14,7 @@ Future<bool> printScrapForm(
     record,
     settings: settings ?? ScrapFormPrintSettings.defaults,
   );
-  final blob = html.Blob([htmlContent], 'text/html');
-  final url = html.Url.createObjectUrlFromBlob(blob);
-  try {
-    html.window.open(url, '_blank');
-  } catch (_) {
-    try {
-      html.window.location.assign(url);
-    } catch (_) {
-      html.window.location.href = url;
-    }
-  }
-  Future<void>.delayed(const Duration(seconds: 5), () {
-    html.Url.revokeObjectUrl(url);
-  });
+  openFormPrintHtml(htmlContent);
   return true;
 }
 
