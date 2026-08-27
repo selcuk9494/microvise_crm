@@ -7,9 +7,9 @@ import 'dart:html' as html;
 /// Blob URL kullanmaz; böylece yazdırma üst/alt bilgisinde CRM linki çıkmaz.
 void openFormPrintHtml(String htmlContent, {Duration? revokeAfter}) {
   try {
-    final win = html.window.open('', '_blank');
-    if (win != null) {
-      final doc = win.document;
+    final opened = html.window.open('', '_blank');
+    if (opened is html.Window) {
+      final doc = opened.document;
       doc.open();
       doc.write(htmlContent);
       doc.close();
