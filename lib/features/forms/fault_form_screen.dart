@@ -611,6 +611,13 @@ class _DeviceRegistryOption {
   }
 }
 
+String _registryOptionLabel(_DeviceRegistryOption option) {
+  return [
+    option.registryNumber.trim(),
+    if ((option.model ?? '').trim().isNotEmpty) option.model!.trim(),
+  ].join(' • ');
+}
+
 class _FaultFormDialog extends ConsumerStatefulWidget {
   const _FaultFormDialog({this.initialRecord, this.duplicateMode = false});
 
@@ -833,6 +840,41 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
     _totalRevenueController.dispose();
     _totalVatController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDeviceRegistry(List<_DeviceRegistryOption> items) async {
+    if (_saving) return;
+    final current = _companyCodeController.text.trim();
+    final picked = await showDialog<_DeviceRegistryOption?>(
+      context: context,
+      builder: (context) => _FaultRegistryPickerDialog(
+        registries: items,
+        initialSelectedNumber: current.isEmpty ? null : current,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _companyCodeController.text = picked.registryNumber.trim();
+      if (_deviceBrandModelController.text.trim().isEmpty) {
+        final model = (picked.model ?? '').trim();
+        if (model.isNotEmpty) {
+          _deviceBrandModelController.text = model;
+          _brandModelPreset = _brandModelOptions.contains(model) ? model : null;
+        }
+      }
+    });
+  }
+
+  String _registryDisplayLabel(
+    List<_DeviceRegistryOption> items,
+    String registryNumber,
+  ) {
+    for (final item in items) {
+      if (item.registryNumber.trim() == registryNumber.trim()) {
+        return _registryOptionLabel(item);
+      }
+    }
+    return registryNumber.trim();
   }
 
   Future<void> _pickLastZDate() async {
@@ -1082,47 +1124,34 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
                                 }
                                 final current = _companyCodeController.text
                                     .trim();
-                                final initialValue =
-                                    items.any(
-                                      (e) => e.registryNumber.trim() == current,
-                                    )
-                                    ? current
-                                    : null;
                                 return Column(
                                   children: [
-                                    DropdownButtonFormField<String?>(
-                                      initialValue: initialValue,
-                                      items: [
-                                        const DropdownMenuItem<String?>(
-                                          value: null,
-                                          child: Text('Sicil seç'),
-                                        ),
-                                        ...items.map(
-                                          (e) => DropdownMenuItem<String?>(
-                                            value: e.registryNumber.trim(),
-                                            child: Text(
-                                              [
-                                                e.registryNumber.trim(),
-                                                if ((e.model ?? '')
-                                                    .trim()
-                                                    .isNotEmpty)
-                                                  e.model!.trim(),
-                                              ].join(' • '),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                      onChanged: _saving
+                                    InkWell(
+                                      borderRadius: BorderRadius.circular(14),
+                                      onTap: _saving
                                           ? null
-                                          : (value) {
-                                              final v = (value ?? '').trim();
-                                              if (v.isEmpty) return;
-                                              setState(() {
-                                                _companyCodeController.text = v;
-                                              });
-                                            },
-                                      decoration: const InputDecoration(
-                                        labelText: 'Müşteri Sicilleri',
+                                          : () => _pickDeviceRegistry(items),
+                                      child: InputDecorator(
+                                        decoration: const InputDecoration(
+                                          labelText: 'Müşteri Sicilleri',
+                                          suffixIcon: Icon(LucideIcons.search),
+                                        ),
+                                        child: Text(
+                                          current.isEmpty
+                                              ? 'Sicil seç'
+                                              : _registryDisplayLabel(
+                                                  items,
+                                                  current,
+                                                ),
+                                          style: current.isEmpty
+                                              ? Theme.of(context)
+                                                    .textTheme
+                                                    .bodyLarge
+                                                    ?.copyWith(
+                                                      color: AppTheme.textMuted,
+                                                    )
+                                              : null,
+                                        ),
                                       ),
                                     ),
                                     const Gap(10),
@@ -1420,6 +1449,111 @@ class _FaultFormDialogState extends ConsumerState<_FaultFormDialog> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+}
+
+class _FaultRegistryPickerDialog extends StatefulWidget {
+  const _FaultRegistryPickerDialog({
+    required this.registries,
+    this.initialSelectedNumber,
+  });
+
+  final List<_DeviceRegistryOption> registries;
+  final String? initialSelectedNumber;
+
+  @override
+  State<_FaultRegistryPickerDialog> createState() =>
+      _FaultRegistryPickerDialogState();
+}
+
+class _FaultRegistryPickerDialogState extends State<_FaultRegistryPickerDialog> {
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _sortKey(_searchController.text);
+    final items = widget.registries
+        .where((item) {
+          if (query.isEmpty) return true;
+          final haystack = _sortKey(
+            '${item.registryNumber} ${item.model ?? ''}',
+          );
+          return haystack.contains(query);
+        })
+        .toList(growable: false);
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 680),
+        child: AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Sicil seç',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(LucideIcons.x),
+                  ),
+                ],
+              ),
+              const Gap(12),
+              TextField(
+                controller: _searchController,
+                autofocus: true,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  labelText: 'Ara',
+                  hintText: 'Sicil no veya model',
+                  prefixIcon: Icon(LucideIcons.search),
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: items.isEmpty
+                    ? const Center(child: Text('Eşleşen sicil bulunamadı.'))
+                    : ListView.separated(
+                        itemCount: items.length,
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = items[index];
+                          final selected =
+                              item.registryNumber.trim() ==
+                              (widget.initialSelectedNumber ?? '').trim();
+                          return ListTile(
+                            selected: selected,
+                            selectedTileColor: AppTheme.primary.withValues(
+                              alpha: 0.08,
+                            ),
+                            title: Text(_registryOptionLabel(item)),
+                            trailing: selected
+                                ? const Icon(LucideIcons.circleCheck)
+                                : null,
+                            onTap: () => Navigator.of(context).pop(item),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -77,7 +77,7 @@ String _buildPrintableHtml(
     <style>
       @page {
         size: A4 portrait;
-        margin: 5mm;
+        margin: 6mm;
       }
       body {
         margin: 0;
@@ -88,25 +88,26 @@ String _buildPrintableHtml(
         print-color-adjust: exact;
       }
       .sheet {
-        width: 720px;
+        width: 740px;
         margin: 0 auto;
-        padding: 2px 0 6px;
+        padding: 0;
       }
       .top-code {
         text-align: right;
         color: #000;
-        font-size: 15px;
+        font-size: 14px;
         font-weight: 700;
         margin-bottom: 2px;
       }
       .title {
         color: #000;
         text-align: center;
-        font-size: 22px;
-        font-weight: 700;
+        font-size: 18px;
+        font-weight: 800;
+        letter-spacing: 0.3px;
         line-height: 1.15;
         white-space: pre-line;
-        margin: 0 0 4px;
+        margin: 0 0 6px;
       }
       .top-meta {
         width: 260px;
@@ -117,84 +118,89 @@ String _buildPrintableHtml(
         display: flex;
         align-items: baseline;
         gap: 8px;
-        margin: 1px 0;
+        margin: 4px 0;
       }
       .meta-label {
-        width: 92px;
+        width: 90px;
         color: #000;
-        font-size: 18px;
-        font-weight: 700;
+        font-size: 12px;
+        font-weight: 800;
         text-align: right;
       }
       .line-fill {
         flex: 1;
-        border-bottom: 2px dotted #333;
-        min-height: 22px;
+        border-bottom: 1px dotted #111827;
+        min-height: 14px;
         display: inline-flex;
         align-items: center;
         padding-left: 4px;
       }
       .section-heading {
         color: #000;
-        font-size: 16px;
-        font-weight: 700;
+        font-size: 12px;
+        font-weight: 800;
+        margin: 10px 0 6px;
       }
       .section-subheading {
         color: #000;
         background: transparent;
-        font-size: 15px;
-        font-weight: 700;
+        font-size: 12px;
+        font-weight: 800;
         display: inline-block;
         padding: 0 2px;
       }
       .section-row {
         display: flex;
         align-items: baseline;
-        gap: 8px;
-        margin: 1px 0;
+        gap: 6px;
+        margin: 4px 0;
       }
       .section-label {
-        width: 300px;
+        width: 290px;
         color: #000;
-        font-size: 15px;
+        font-size: 12px;
         font-weight: 700;
       }
       .field-label {
-        width: 340px;
+        width: 290px;
         color: #000;
         background: transparent;
-        font-size: 15px;
+        font-size: 12px;
         font-weight: 700;
         padding: 0 2px;
       }
       .sub-label {
-        width: 390px;
+        width: 290px;
         color: #000;
         background: transparent;
-        font-size: 14px;
+        font-size: 12px;
         font-weight: 700;
         padding: 0 2px;
         margin-left: 18px;
       }
       .colon {
+        width: 10px;
+        text-align: center;
         color: #000;
-        font-size: 15px;
+        font-size: 12px;
         font-weight: 700;
       }
       .value-colon {
+        width: 10px;
+        text-align: center;
         color: #000;
-        font-size: 15px;
+        font-size: 12px;
         font-weight: 700;
         padding: 0 2px;
       }
       .value-text {
         color: #000;
-        font-size: 15px;
+        font-size: 12px;
         font-weight: 700;
       }
       .constant-text {
         color: #000;
-        font-size: 15px;
+        font-size: 12px;
         font-weight: 700;
       }
       .section-gap {
@@ -204,36 +210,36 @@ String _buildPrintableHtml(
         margin-top: 4px;
       }
       .spacer-line {
-        border-bottom: 2px dotted #333;
-        height: 18px;
+        border-bottom: 1px dotted #111827;
+        height: 14px;
         margin-bottom: 4px;
       }
       .signature-row {
         display: flex;
         justify-content: space-between;
-        margin-top: 36px;
+        margin-top: 24px;
       }
       .signature-box {
-        width: 260px;
+        width: 240px;
         text-align: center;
       }
       .signature-title {
         color: #000;
-        font-size: 15px;
-        font-weight: 700;
+        font-size: 12px;
+        font-weight: 800;
         white-space: pre-line;
-        margin-bottom: 28px;
+        margin-bottom: 24px;
       }
       .section-line {
         display: flex;
         align-items: baseline;
-        gap: 8px;
-        margin: 1px 0;
+        gap: 6px;
+        margin: 4px 0;
       }
       .section-value {
         flex: 1;
-        border-bottom: 2px dotted #333;
-        min-height: 22px;
+        border-bottom: 1px dotted #111827;
+        min-height: 14px;
         display: inline-flex;
         align-items: center;
         padding-left: 4px;

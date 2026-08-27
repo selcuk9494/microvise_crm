@@ -242,7 +242,7 @@ module.exports = async (req, res) => {
         ).trim(),
         director_name: body.director_name ? String(body.director_name).trim() : null,
         email: normalizeEmail(body.email),
-        vkn: normalizeDigits(body.vkn),
+        vkn: normalizeStoredVkn(body.vkn),
         tckn_ms: normalizeTcknMs(body.tckn_ms),
         phone_1_title: body.phone_1_title ? String(body.phone_1_title).trim() : null,
         phone_1: body.phone_1 ? String(body.phone_1).trim() : null,
@@ -348,7 +348,7 @@ module.exports = async (req, res) => {
             ? undefined
             : String(body.director_name || '').trim() || null,
         email: body.email == null ? undefined : normalizeEmail(body.email),
-        vkn: body.vkn == null ? undefined : normalizeDigits(body.vkn),
+        vkn: body.vkn == null ? undefined : normalizeStoredVkn(body.vkn),
         tckn_ms:
           body.tckn_ms == null ? undefined : normalizeTcknMs(body.tckn_ms),
         phone_1_title:
