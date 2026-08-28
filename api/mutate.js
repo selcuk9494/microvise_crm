@@ -23,6 +23,7 @@ const {
   ensureLicensesSoftwareCompanyColumn,
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,
+  ensureIssuedSourceInvoiceColumns,
   ensureLineStockTable,
   ensureWorkOrderSignaturesTable,
   ensureServiceFaultTypesTable,
@@ -2771,6 +2772,465 @@ function applicationFormIdFilter(filters) {
   return String(idFilter?.value || '').trim();
 }
 
+function idsFromFilters(filters, col = 'id') {
+  const list = Array.isArray(filters) ? filters : [];
+  const found = list.find((f) => f && String(f.col || '').trim() === col);
+  if (!found) return [];
+  if (found.op === 'eq') {
+    const id = String(found.value || '').trim();
+    return id ? [id] : [];
+  }
+  if (found.op === 'in') {
+    return (Array.isArray(found.value) ? found.value : [])
+      .map((v) => String(v || '').trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeIssuedKindText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/ı/g, 'i')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function issuedKindFromItemType(itemType) {
+  const t = String(itemType || '').trim();
+  if (t === 'line_sale') return 'line';
+  if (t === 'gmp3_sale') return 'gmp3';
+  return null;
+}
+
+function invoicePeriodDates(invoiceDate) {
+  const raw = String(invoiceDate || '').slice(0, 10);
+  const start = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? raw
+    : new Date().toISOString().slice(0, 10);
+  const year = Number(start.slice(0, 4));
+  const end = `${Number.isFinite(year) ? year : new Date().getFullYear()}-12-31`;
+  return { start, end };
+}
+
+function digitsOnly(value) {
+  return String(value || '').replace(/[^0-9]/g, '');
+}
+
+function unitCountFromQuantity(quantity) {
+  const n = Number(quantity);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return Math.max(1, Math.round(n));
+}
+
+async function matchSoftwareCompanyId(text) {
+  const hay = normalizeIssuedKindText(text);
+  if (!hay) return null;
+  try {
+    await ensureSoftwareCompaniesTable();
+    const result = await query(
+      `
+        select id, name
+        from public.software_companies
+        where coalesce(is_active, true) = true
+        order by name asc
+      `,
+    );
+    for (const row of result.rows) {
+      const name = normalizeIssuedKindText(row.name);
+      if (name && hay.includes(name)) return row.id;
+    }
+    const pax = result.rows.find((r) => /pax/.test(normalizeIssuedKindText(r.name)));
+    if (pax && /\bpax\b/.test(hay)) return pax.id;
+    const ingenico = result.rows.find((r) =>
+      /ingenico/.test(normalizeIssuedKindText(r.name)),
+    );
+    if (ingenico && /ingenico/.test(hay)) return ingenico.id;
+  } catch (_) {}
+  return null;
+}
+
+async function consumeMatchingLineStock({ customerId, lineId, number, user }) {
+  const digits = digitsOnly(number);
+  if (digits.length < 10 || !lineId) return;
+  try {
+    await ensureLineStockTable();
+    await query(
+      `
+        update public.line_stock
+        set
+          consumed_at = now(),
+          consumed_by = $3,
+          consumed_customer_id = $1::uuid,
+          consumed_line_id = $2::uuid
+        where consumed_at is null
+          and coalesce(is_active, true) = true
+          and regexp_replace(coalesce(line_number, ''), '[^0-9]', '', 'g') = $4
+      `,
+      [customerId, lineId, user?.auth_user_id || user?.id || null, digits],
+    );
+  } catch (_) {}
+}
+
+async function insertIssuedRow(table, values) {
+  const columns = await getColumns(table);
+  const picked = pickValues(values, columns);
+  if (!picked.id) picked.id = crypto.randomUUID();
+  const keys = Object.keys(picked);
+  if (!keys.length) return null;
+  const colSql = keys.map(quoteIdent).join(', ');
+  const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
+  const result = await query(
+    `
+      insert into public.${quoteIdent(table)} (${colSql})
+      values (${placeholders})
+      returning id
+    `,
+    keys.map((k) => picked[k]),
+  );
+  return result.rows[0]?.id || picked.id;
+}
+
+async function setIssuedHatGmp3ActiveForInvoices(invoiceIds, isActive) {
+  const ids = (invoiceIds || []).map((v) => String(v || '').trim()).filter(Boolean);
+  if (!ids.length) return;
+  await ensureIssuedSourceInvoiceColumns();
+  await query(
+    `
+      update public.lines
+      set is_active = $2
+      where source_invoice_id = any($1::uuid[])
+    `,
+    [ids, isActive === true],
+  );
+  await query(
+    `
+      update public.licenses
+      set is_active = $2
+      where source_invoice_id = any($1::uuid[])
+    `,
+    [ids, isActive === true],
+  );
+}
+
+async function deleteIssuedHatGmp3ForInvoices(invoiceIds) {
+  const ids = (invoiceIds || []).map((v) => String(v || '').trim()).filter(Boolean);
+  if (!ids.length) return;
+  await ensureIssuedSourceInvoiceColumns();
+  try {
+    await query(
+      `
+        delete from public.invoice_items
+        where source_table in ('lines', 'licenses')
+          and source_id in (
+            select id from public.lines where source_invoice_id = any($1::uuid[])
+            union all
+            select id from public.licenses where source_invoice_id = any($1::uuid[])
+          )
+      `,
+      [ids],
+    );
+  } catch (_) {}
+  await query(`delete from public.lines where source_invoice_id = any($1::uuid[])`, [
+    ids,
+  ]);
+  await query(`delete from public.licenses where source_invoice_id = any($1::uuid[])`, [
+    ids,
+  ]);
+}
+
+async function syncIssuedHatGmp3FromInvoice(invoiceId, user) {
+  const id = textOrEmpty(invoiceId);
+  if (!id) return { lines: 0, licenses: 0 };
+  await ensureInvoiceItemsTable();
+  await ensureIssuedSourceInvoiceColumns();
+  await ensureLicensesSoftwareCompanyColumn();
+  await ensureLicensesRegistryNumberColumn();
+  await ensureLinesOperatorColumn();
+  columnsCache.delete('lines');
+  columnsCache.delete('licenses');
+
+  const invoiceResult = await query(
+    `
+      select id, customer_id, invoice_type, invoice_date, is_active, status, invoice_number
+      from public.invoices
+      where id = $1
+      limit 1
+    `,
+    [id],
+  );
+  const invoice = invoiceResult.rows[0];
+  if (!invoice) return { lines: 0, licenses: 0 };
+  if (String(invoice.invoice_type || 'sales') !== 'sales') {
+    return { lines: 0, licenses: 0 };
+  }
+
+  const invoiceActive =
+    invoice.is_active !== false && String(invoice.status || '') !== 'cancelled';
+  if (!invoiceActive) {
+    await setIssuedHatGmp3ActiveForInvoices([id], false);
+    return { lines: 0, licenses: 0, deactivated: true };
+  }
+
+  const customerId = textOrEmpty(invoice.customer_id);
+  if (!customerId) return { lines: 0, licenses: 0 };
+
+  const itemsResult = await query(
+    `
+      select
+        ii.item_type,
+        ii.description,
+        ii.notes,
+        ii.quantity,
+        p.name as product_name,
+        p.code as product_code,
+        p.category as product_category
+      from public.invoice_items ii
+      left join public.products p on p.id = ii.product_id
+      where ii.invoice_id = $1
+      order by coalesce(ii.sort_order, 0) asc, ii.id asc
+    `,
+    [id],
+  );
+
+  const lineUnits = [];
+  const gmp3Units = [];
+  for (const item of itemsResult.rows) {
+    const kind = issuedKindFromItemType(item.item_type);
+    if (!kind) continue;
+    const qty = unitCountFromQuantity(item.quantity);
+    const description =
+      textOrEmpty(item.description) || textOrEmpty(item.product_name);
+    const notes = textOrEmpty(item.notes);
+    const hay = [
+      description,
+      notes,
+      item.product_name,
+      item.product_code,
+      item.product_category,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    for (let i = 0; i < qty; i += 1) {
+      const unit = { description, notes, hay };
+      if (kind === 'line') lineUnits.push(unit);
+      else gmp3Units.push(unit);
+    }
+  }
+
+  const { start, end } = invoicePeriodDates(invoice.invoice_date);
+  const createdBy = user?.auth_user_id || user?.id || null;
+
+  const existingLines = await query(
+    `
+      select id, number
+      from public.lines
+      where source_invoice_id = $1
+      order by created_at asc, id asc
+    `,
+    [id],
+  );
+  const existingLicenses = await query(
+    `
+      select id, registry_number
+      from public.licenses
+      where source_invoice_id = $1
+      order by created_at asc, id asc
+    `,
+    [id],
+  );
+
+  let linesCreated = 0;
+  for (let i = 0; i < lineUnits.length; i += 1) {
+    const unit = lineUnits[i];
+    const existing = existingLines.rows[i];
+    const noteDigits = digitsOnly(unit.notes);
+    const number =
+      noteDigits.length >= 10 && noteDigits.length <= 15 ? noteDigits : null;
+    const label = textOrEmpty(unit.description) || 'Hat Satışı';
+    if (existing?.id) {
+      await query(
+        `
+          update public.lines
+          set
+            is_active = true,
+            label = coalesce(nullif($2, ''), label),
+            number = coalesce(nullif($3, ''), number),
+            starts_at = $4::date,
+            ends_at = $5::date,
+            expires_at = $5::date
+          where id = $1
+        `,
+        [existing.id, label, number, start, end],
+      );
+      continue;
+    }
+    if (number) {
+      const dup = await query(
+        `
+          select id
+          from public.lines
+          where customer_id = $1
+            and regexp_replace(coalesce(number, ''), '[^0-9]', '', 'g') = $2
+            and coalesce($2, '') <> ''
+          limit 1
+        `,
+        [customerId, digitsOnly(number)],
+      );
+      if (dup.rows[0]?.id) {
+        await query(
+          `
+            update public.lines
+            set source_invoice_id = coalesce(source_invoice_id, $2::uuid), is_active = true
+            where id = $1
+          `,
+          [dup.rows[0].id, id],
+        );
+        continue;
+      }
+    }
+    const lineId = await insertIssuedRow('lines', {
+      customer_id: customerId,
+      label,
+      number,
+      sim_number: number && String(number).startsWith('89') ? number : null,
+      starts_at: start,
+      ends_at: end,
+      expires_at: end,
+      is_active: true,
+      created_by: createdBy,
+      source_invoice_id: id,
+    });
+    if (lineId) {
+      linesCreated += 1;
+      await consumeMatchingLineStock({
+        customerId,
+        lineId,
+        number,
+        user,
+      });
+    }
+  }
+  const extraLineIds = existingLines.rows.slice(lineUnits.length).map((r) => r.id);
+  if (extraLineIds.length) {
+    await query(
+      `update public.lines set is_active = false where id = any($1::uuid[])`,
+      [extraLineIds],
+    );
+  }
+  if (!lineUnits.length && existingLines.rows.length) {
+    await query(
+      `update public.lines set is_active = false where source_invoice_id = $1`,
+      [id],
+    );
+  }
+
+  let licensesCreated = 0;
+  for (let i = 0; i < gmp3Units.length; i += 1) {
+    const unit = gmp3Units[i];
+    const existing = existingLicenses.rows[i];
+    const name = textOrEmpty(unit.description) || 'GMP3 Lisansı';
+    const registryRaw = textOrEmpty(unit.notes);
+    const registry = registryRaw && registryRaw.length <= 40 ? registryRaw : null;
+    const companyId = await matchSoftwareCompanyId(unit.hay);
+    if (existing?.id) {
+      await query(
+        `
+          update public.licenses
+          set
+            is_active = true,
+            name = coalesce(nullif($2, ''), name),
+            registry_number = coalesce(nullif($3, ''), registry_number),
+            software_company_id = coalesce($4::uuid, software_company_id),
+            starts_at = $5::date,
+            ends_at = $6::date,
+            expires_at = $6::date
+          where id = $1
+        `,
+        [existing.id, name, registry, companyId, start, end],
+      );
+      continue;
+    }
+    if (registry) {
+      const dup = await query(
+        `
+          select id
+          from public.licenses
+          where customer_id = $1
+            and lower(coalesce(registry_number, '')) = lower($2)
+            and coalesce($2, '') <> ''
+          limit 1
+        `,
+        [customerId, registry],
+      );
+      if (dup.rows[0]?.id) {
+        await query(
+          `
+            update public.licenses
+            set source_invoice_id = coalesce(source_invoice_id, $2::uuid), is_active = true
+            where id = $1
+          `,
+          [dup.rows[0].id, id],
+        );
+        continue;
+      }
+    }
+    const licenseId = await insertIssuedRow('licenses', {
+      customer_id: customerId,
+      name,
+      license_type: 'gmp3',
+      software_company_id: companyId,
+      registry_number: registry,
+      starts_at: start,
+      ends_at: end,
+      expires_at: end,
+      is_active: true,
+      created_by: createdBy,
+      source_invoice_id: id,
+    });
+    if (licenseId) licensesCreated += 1;
+  }
+  const extraLicenseIds = existingLicenses.rows
+    .slice(gmp3Units.length)
+    .map((r) => r.id);
+  if (extraLicenseIds.length) {
+    await query(
+      `update public.licenses set is_active = false where id = any($1::uuid[])`,
+      [extraLicenseIds],
+    );
+  }
+  if (!gmp3Units.length && existingLicenses.rows.length) {
+    await query(
+      `update public.licenses set is_active = false where source_invoice_id = $1`,
+      [id],
+    );
+  }
+
+  return {
+    lines: lineUnits.length,
+    licenses: gmp3Units.length,
+    linesCreated,
+    licensesCreated,
+  };
+}
+
+async function syncIssuedHatGmp3FromInvoiceItems(rows, user) {
+  const ids = [
+    ...new Set(
+      (Array.isArray(rows) ? rows : [])
+        .map((row) => String(row?.invoice_id || '').trim())
+        .filter(Boolean),
+    ),
+  ];
+  const summary = { lines: 0, licenses: 0 };
+  for (const invoiceId of ids) {
+    const result = await syncIssuedHatGmp3FromInvoice(invoiceId, user);
+    summary.lines += Number(result.lines || 0);
+    summary.licenses += Number(result.licenses || 0);
+  }
+  return summary;
+}
+
 async function insertMany({ table, rows, user }) {
   if (!Array.isArray(rows) || rows.length === 0) return { inserted: 0 };
   const columns = await getColumns(table);
@@ -3248,6 +3708,12 @@ module.exports = async (req, res) => {
   }
     if (table === 'lines') {
       await ensureLinesOperatorColumn();
+      await ensureIssuedSourceInvoiceColumns();
+      columnsCache.delete('lines');
+    }
+    if (table === 'licenses') {
+      await ensureIssuedSourceInvoiceColumns();
+      columnsCache.delete('licenses');
     }
     if (table === 'work_order_signatures') {
       await ensureWorkOrderSignaturesTable();
@@ -3257,6 +3723,7 @@ module.exports = async (req, res) => {
     }
     if (table === 'invoices') {
       await ensureInvoicePricesIncludeVatColumn();
+      await ensureIssuedSourceInvoiceColumns();
       columnsCache.delete('invoices');
       columnsMetaCache.delete('invoices');
     }
@@ -3372,7 +3839,15 @@ module.exports = async (req, res) => {
     if (op === 'insertMany') {
       const rows = body.rows;
       const result = await insertMany({ table, rows, user });
-      return ok(req, res, { ok: true, ...result });
+      let issued = null;
+      if (table === 'invoice_items') {
+        try {
+          issued = await syncIssuedHatGmp3FromInvoiceItems(rows, user);
+        } catch (_) {
+          issued = null;
+        }
+      }
+      return ok(req, res, { ok: true, ...result, ...(issued ? { issued } : {}) });
     }
 
     if (op === 'updateWhere') {
@@ -3388,6 +3863,18 @@ module.exports = async (req, res) => {
         await assertApplicationFormsMutable({ op, values, filters });
       }
       await updateWhere({ table, values, filters, user });
+      if (table === 'invoices' && Object.prototype.hasOwnProperty.call(values || {}, 'is_active')) {
+        const invoiceIds = idsFromFilters(filters, 'id');
+        const nextActive = values.is_active === true || values.is_active === 'true';
+        try {
+          await setIssuedHatGmp3ActiveForInvoices(invoiceIds, nextActive);
+          if (nextActive) {
+            for (const invoiceId of invoiceIds) {
+              await syncIssuedHatGmp3FromInvoice(invoiceId, user);
+            }
+          }
+        } catch (_) {}
+      }
       let invoiceLink = null;
       if (table === 'application_forms' && formId) {
         const after = await selectApplicationFormAuditRow(formId);
@@ -3416,6 +3903,11 @@ module.exports = async (req, res) => {
 
     if (op === 'deleteWhere') {
       const filters = body.filters;
+      if (table === 'invoices') {
+        try {
+          await deleteIssuedHatGmp3ForInvoices(idsFromFilters(filters, 'id'));
+        } catch (_) {}
+      }
       await deleteWhere({ table, filters });
       return ok(req, res, { ok: true });
     }

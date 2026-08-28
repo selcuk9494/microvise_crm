@@ -369,6 +369,9 @@ class InvoiceItem {
   final String? taxExemptionCode;
   final String? taxExemptionDescription;
 
+  /// Satış kalemini Hat / GMP3 listesine yazmak için: `line_sale` / `gmp3_sale`.
+  final String? itemType;
+
   const InvoiceItem({
     required this.id,
     required this.invoiceId,
@@ -387,6 +390,7 @@ class InvoiceItem {
     this.specialMatrah = false,
     this.taxExemptionCode,
     this.taxExemptionDescription,
+    this.itemType,
   });
 
   factory InvoiceItem.fromJson(Map<String, dynamic> json) {
@@ -411,6 +415,10 @@ class InvoiceItem {
       specialMatrah: json['special_matrah'] as bool? ?? false,
       taxExemptionCode: json['tax_exemption_code']?.toString(),
       taxExemptionDescription: json['tax_exemption_description']?.toString(),
+      itemType: () {
+        final raw = json['item_type']?.toString().trim();
+        return (raw == null || raw.isEmpty) ? null : raw;
+      }(),
     );
   }
 
@@ -440,6 +448,7 @@ class InvoiceItem {
       'tax_exemption_description': specialMatrah
           ? (taxExemptionDescription ?? 'Özel Matrah')
           : null,
+      if (itemType != null && itemType!.isNotEmpty) 'item_type': itemType,
     };
   }
 
@@ -454,6 +463,7 @@ class InvoiceItem {
     double? unitPrice,
     double? taxRate,
     double? discountRate,
+    String? itemType,
   }) {
     final qty = quantity ?? this.quantity;
     final price = unitPrice ?? this.unitPrice;
@@ -484,6 +494,7 @@ class InvoiceItem {
       specialMatrah: specialMatrah,
       taxExemptionCode: taxExemptionCode,
       taxExemptionDescription: taxExemptionDescription,
+      itemType: itemType ?? this.itemType,
     );
   }
 }

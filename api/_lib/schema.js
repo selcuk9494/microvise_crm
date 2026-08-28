@@ -13,6 +13,7 @@ const ensured = {
   licenses_software_company: false,
   licenses_registry_number: false,
   lines_operator: false,
+  issued_source_invoice: false,
   line_stock: false,
   users_auth: false,
   region_colors: false,
@@ -1123,6 +1124,40 @@ async function ensureLinesOperatorColumn() {
   return true;
 }
 
+async function ensureIssuedSourceInvoiceColumns() {
+  if (ensured.issued_source_invoice) return true;
+  if (await tableExists('lines')) {
+    await query(
+      `
+        alter table public.lines
+          add column if not exists source_invoice_id uuid
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_lines_source_invoice_id
+        on public.lines (source_invoice_id)
+      `,
+    );
+  }
+  if (await tableExists('licenses')) {
+    await query(
+      `
+        alter table public.licenses
+          add column if not exists source_invoice_id uuid
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_licenses_source_invoice_id
+        on public.licenses (source_invoice_id)
+      `,
+    );
+  }
+  ensured.issued_source_invoice = true;
+  return true;
+}
+
 async function ensureWorkOrderSignaturesTable() {
   if (ensured.work_order_signatures) return true;
 
@@ -2158,6 +2193,7 @@ module.exports = {
   ensureLicensesSoftwareCompanyColumn,
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,
+  ensureIssuedSourceInvoiceColumns,
   ensureLineStockTable,
   ensureServiceFaultTypesTable,
   ensureServiceAccessoryTypesTable,

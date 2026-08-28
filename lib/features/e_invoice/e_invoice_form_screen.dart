@@ -16,8 +16,11 @@ import '../customers/customer_model.dart';
 import '../customers/customer_select_field.dart';
 import '../customers/customers_providers.dart';
 import '../definitions/definitions_screen.dart';
+import '../invoices/invoice_issue_kind.dart';
 import '../invoices/invoice_model.dart';
 import '../invoices/invoice_providers.dart';
+import '../products/products_screen.dart'
+    show issuedLinesProvider, issuedLicensesProvider;
 import '../work_orders/currency_service.dart';
 import 'e_invoice_screen.dart';
 
@@ -795,6 +798,9 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                 'special_matrah': false,
                 'tax_exemption_code': null,
                 'tax_exemption_description': null,
+                'item_type': invoiceItemTypeForIssueKind(
+                  validItems[i].issueKind,
+                ),
               },
           ],
         },
@@ -817,13 +823,30 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
       ref.invalidate(invoicesProvider);
       ref.invalidate(accountBalancesProvider);
       ref.invalidate(eInvoiceSettingsProvider);
+      ref.invalidate(issuedLinesProvider);
+      ref.invalidate(issuedLicensesProvider);
       if (!mounted) return;
+      final issuedHats = validItems
+          .where((item) => item.issueKind == 'line')
+          .fold<int>(0, (sum, item) => sum + item.quantity.round().clamp(1, 999));
+      final issuedGmp3 = validItems
+          .where((item) => item.issueKind == 'gmp3')
+          .fold<int>(0, (sum, item) => sum + item.quantity.round().clamp(1, 999));
+      final issuedNote = !_isSales || (issuedHats == 0 && issuedGmp3 == 0)
+          ? ''
+          : [
+              if (issuedHats > 0) '$issuedHats hat',
+              if (issuedGmp3 > 0) '$issuedGmp3 GMP3',
+            ].join(' ve ');
       _showMessage(
         _sendAfterSave && _isSales && status != 'draft'
             ? 'Fatura kaydedildi ve '
                   '${(ref.read(eInvoiceSettingsProvider).value?['environment'] ?? 'test') == 'production' ? 'canlı' : 'test'} '
                   'API’ye gönderildi.'
-            : 'Fatura kaydedildi.',
+                  '${issuedNote.isEmpty ? '' : ' $issuedNote listeye işlendi.'}'
+            : issuedNote.isEmpty
+            ? 'Fatura kaydedildi.'
+            : 'Fatura kaydedildi. $issuedNote listeye işlendi.',
       );
       Navigator.of(context).pop();
     } catch (error) {
@@ -1473,6 +1496,7 @@ class _InvoiceTableRow extends StatelessWidget {
                         onChanged: (value) {
                           item.productId = null;
                           item.descriptionController.text = value;
+                          item.detectIssueKindFromDescription();
                           onChanged();
                         },
                       );
@@ -1601,21 +1625,45 @@ class _InvoiceTableRow extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 2),
-            child: SizedBox(
-              width: 694,
-              child: TextFormField(
-                controller: item.notesController,
-                style: Theme.of(context).textTheme.bodySmall,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  hintText: 'Kalem açıklama (isteğe bağlı)',
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (isSales) ...[
+                  _IssueKindChips(
+                    kind: item.issueKind,
+                    onChanged: (kind) {
+                      item.setIssueKind(kind);
+                      onChanged();
+                    },
+                  ),
+                  const Gap(10),
+                ],
+                Expanded(
+                  child: SizedBox(
+                    width: 694,
+                    child: TextFormField(
+                      controller: item.notesController,
+                      style: Theme.of(context).textTheme.bodySmall,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: item.issueKind == 'line'
+                            ? 'Hat no / SIM (isteğe bağlı)'
+                            : item.issueKind == 'gmp3'
+                            ? 'Sicil no (isteğe bağlı)'
+                            : 'Kalem açıklama (isteğe bağlı)',
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                      ),
+                      onChanged: (_) {
+                        item.detectIssueKindFromDescription();
+                        onChanged();
+                      },
+                    ),
                   ),
                 ),
-                onChanged: (_) => onChanged(),
-              ),
+              ],
             ),
           ),
         ],
@@ -2002,6 +2050,7 @@ class _ItemEditor extends StatelessWidget {
               onChanged: (value) {
                 item.productId = null;
                 item.descriptionController.text = value;
+                item.detectIssueKindFromDescription();
                 onChanged();
               },
             );
@@ -2011,9 +2060,16 @@ class _ItemEditor extends StatelessWidget {
           controller: item.notesController,
           decoration: inputDecoration.copyWith(
             labelText: 'Kalem açıklama',
-            hintText: 'PDF / Maliye / SAP (isteğe bağlı)',
+            hintText: item.issueKind == 'line'
+                ? 'Hat no / SIM (isteğe bağlı)'
+                : item.issueKind == 'gmp3'
+                ? 'Sicil no (isteğe bağlı)'
+                : 'PDF / Maliye / SAP (isteğe bağlı)',
           ),
-          onChanged: (_) => onChanged(),
+          onChanged: (_) {
+            item.detectIssueKindFromDescription();
+            onChanged();
+          },
         );
         final quantityField = _SelectAllNumberField(
           controller: item.quantityController,
@@ -2107,6 +2163,16 @@ class _ItemEditor extends StatelessWidget {
                         ],
                       ),
                       Gap(fieldGap),
+                      if (isSales) ...[
+                        _IssueKindChips(
+                          kind: item.issueKind,
+                          onChanged: (kind) {
+                            item.setIssueKind(kind);
+                            onChanged();
+                          },
+                        ),
+                        Gap(fieldGap),
+                      ],
                       notesField,
                       Gap(fieldGap),
                       Row(
@@ -2162,6 +2228,19 @@ class _ItemEditor extends StatelessWidget {
                         ],
                       ),
                       Gap(fieldGap),
+                      if (isSales) ...[
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: _IssueKindChips(
+                            kind: item.issueKind,
+                            onChanged: (kind) {
+                              item.setIssueKind(kind);
+                              onChanged();
+                            },
+                          ),
+                        ),
+                        Gap(fieldGap),
+                      ],
                       notesField,
                       Gap(fieldGap),
                       Row(
@@ -2181,6 +2260,44 @@ class _ItemEditor extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _IssueKindChips extends StatelessWidget {
+  const _IssueKindChips({required this.kind, required this.onChanged});
+
+  final String? kind;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(
+          'Listeye ekle',
+          style: Theme.of(
+            context,
+          ).textTheme.labelMedium?.copyWith(color: AppTheme.textSoft),
+        ),
+        FilterChip(
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          label: const Text('Hat'),
+          selected: kind == 'line',
+          onSelected: (selected) => onChanged(selected ? 'line' : null),
+        ),
+        FilterChip(
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          label: const Text('GMP3'),
+          selected: kind == 'gmp3',
+          onSelected: (selected) => onChanged(selected ? 'gmp3' : null),
+        ),
+      ],
     );
   }
 }
@@ -2581,7 +2698,17 @@ class _EInvoiceItemDraft {
        ),
        productId = product.id,
        _unit = _coerceUnit(product.unit),
-       taxRate = product.taxRate;
+       taxRate = product.taxRate,
+       issueKind = detectInvoiceIssueKind(
+         description: product.name,
+         productName: product.name,
+         productCode: product.code,
+         productCategory: [
+           product.category,
+           product.akinsoftGroup,
+           product.akinsoftSubGroup,
+         ].whereType<String>().join(' '),
+       );
 
   _EInvoiceItemDraft.fromInvoiceItem(
     InvoiceItem item, {
@@ -2603,7 +2730,14 @@ class _EInvoiceItemDraft {
        productId = item.productId,
        _unit = _coerceUnit(item.unit),
        taxRate = item.taxRate,
-       discountRate = item.discountRate;
+       discountRate = item.discountRate,
+       issueKind =
+           issueKindFromInvoiceItemType(item.itemType) ??
+           detectInvoiceIssueKind(
+             description: item.description,
+             notes: item.notes,
+           ),
+       _issueKindManual = issueKindFromInvoiceItemType(item.itemType) != null;
 
   final TextEditingController descriptionController;
   final TextEditingController notesController;
@@ -2613,6 +2747,8 @@ class _EInvoiceItemDraft {
   String _unit = 'Adet';
   double taxRate = 20;
   double discountRate = 0;
+  String? issueKind;
+  bool _issueKindManual = false;
 
   String get unit => _coerceUnit(_unit);
   set unit(String value) => _unit = _coerceUnit(value);
@@ -2661,6 +2797,31 @@ class _EInvoiceItemDraft {
       taxRate: product.taxRate,
       pricesIncludeVat: pricesIncludeVat,
     ).toStringAsFixed(2);
+    if (!_issueKindManual) {
+      issueKind = detectInvoiceIssueKind(
+        description: product.name,
+        productName: product.name,
+        productCode: product.code,
+        productCategory: [
+          product.category,
+          product.akinsoftGroup,
+          product.akinsoftSubGroup,
+        ].whereType<String>().join(' '),
+      );
+    }
+  }
+
+  void detectIssueKindFromDescription() {
+    if (_issueKindManual) return;
+    issueKind = detectInvoiceIssueKind(
+      description: descriptionController.text,
+      notes: notesController.text,
+    );
+  }
+
+  void setIssueKind(String? kind) {
+    _issueKindManual = true;
+    issueKind = kind;
   }
 
   void convertPriceDisplay({
