@@ -175,6 +175,7 @@ class AppDenseListCard extends StatelessWidget {
     this.actions = const [],
     this.onTap,
     this.titleStruck = false,
+    this.selected = false,
   });
 
   final Widget leading;
@@ -185,6 +186,7 @@ class AppDenseListCard extends StatelessWidget {
   final List<Widget> actions;
   final VoidCallback? onTap;
   final bool titleStruck;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -199,9 +201,15 @@ class AppDenseListCard extends StatelessWidget {
               ? AppDenseList.cardPaddingMobile
               : AppDenseList.cardPadding,
           decoration: BoxDecoration(
-            color: AppTheme.surface,
+            color: selected
+                ? AppTheme.softTint(AppTheme.primary, alpha: 0.12)
+                : AppTheme.surface,
             borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-            border: Border.all(color: AppTheme.border.withValues(alpha: 0.88)),
+            border: Border.all(
+              color: selected
+                  ? AppTheme.primary.withValues(alpha: 0.45)
+                  : AppTheme.border.withValues(alpha: 0.88),
+            ),
             boxShadow: AppTheme.cardShadow,
           ),
           child: Column(

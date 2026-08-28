@@ -144,6 +144,7 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
   final _customerFilterController = TextEditingController();
   final _deviceFilterController = TextEditingController();
   final _dateFormat = DateFormat('dd.MM.yyyy', 'tr_TR');
+  final Set<String> _selectedRecordIds = <String>{};
   bool _showPassive = false;
   DateTime? _fromDate;
   DateTime? _toDate;
@@ -226,6 +227,35 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
               : ok
               ? 'Hurda formu çıktısı hazırlandı.'
               : 'Hurda formu çıktısı bu platformda açılamadı.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _printBulk(List<ScrapFormRecord> records) async {
+    if (records.isEmpty) return;
+    final settings = ref
+        .read(scrapFormPrintSettingsProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => ScrapFormPrintSettings.defaults,
+        );
+    bool ok = false;
+    Object? error;
+    try {
+      ok = await printScrapFormsBulk(records, settings: settings);
+    } catch (e) {
+      error = e;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error != null
+              ? 'Hurda formu toplu yazdırma hatası: $error'
+              : ok
+              ? '${records.length} hurda formu yazdırmaya hazır.'
+              : 'Hurda formu toplu çıktısı bu platformda açılamadı.',
         ),
       ),
     );
@@ -316,6 +346,7 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
       }
       ref.invalidate(scrapFormsProvider);
       if (!mounted) return;
+      setState(() => _selectedRecordIds.remove(record.id));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Hurda formu kalıcı olarak silindi.')),
       );
@@ -396,6 +427,12 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
           final filtered = _filter(records)
               .where((item) => _showPassive || item.isActive)
               .toList(growable: false);
+          final selectedRecords = filtered
+              .where((record) => _selectedRecordIds.contains(record.id))
+              .toList(growable: false);
+          final allFilteredSelected =
+              filtered.isNotEmpty &&
+              selectedRecords.length == filtered.length;
           final filterCard = AppCard(
             child: Wrap(
               spacing: 12,
@@ -482,6 +519,37 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                   label: const Text('Pasifleri Göster'),
                   visualDensity: VisualDensity.compact,
                 ),
+                if (filtered.isNotEmpty)
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        if (allFilteredSelected) {
+                          for (final record in filtered) {
+                            _selectedRecordIds.remove(record.id);
+                          }
+                        } else {
+                          for (final record in filtered) {
+                            _selectedRecordIds.add(record.id);
+                          }
+                        }
+                      });
+                    },
+                    icon: Icon(
+                      allFilteredSelected
+                          ? LucideIcons.squareDashed
+                          : LucideIcons.scan,
+                      size: 18,
+                    ),
+                    label: Text(
+                      allFilteredSelected ? 'Seçimi Temizle' : 'Tümünü Seç',
+                    ),
+                  ),
+                if (selectedRecords.isNotEmpty)
+                  FilledButton.icon(
+                    onPressed: () => _printBulk(selectedRecords),
+                    icon: const Icon(LucideIcons.printer, size: 18),
+                    label: Text('Yazdır (${selectedRecords.length})'),
+                  ),
               ],
             ),
           );
@@ -505,6 +573,11 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
                       'Bugün: ${records.where((item) => _isSameDay(item.formDate, DateTime.now())).length}',
                   tone: AppBadgeTone.success,
                 ),
+                if (selectedRecords.isNotEmpty)
+                  AppBadge(
+                    label: 'Seçilen: ${selectedRecords.length}',
+                    tone: AppBadgeTone.primary,
+                  ),
               ],
             ),
           );
@@ -526,6 +599,16 @@ class _ScrapFormScreenState extends ConsumerState<ScrapFormScreen> {
               final record = filtered[index - 2];
               return _ScrapRecordCard(
                 record: record,
+                selected: _selectedRecordIds.contains(record.id),
+                onSelectionChanged: (selected) {
+                  setState(() {
+                    if (selected) {
+                      _selectedRecordIds.add(record.id);
+                    } else {
+                      _selectedRecordIds.remove(record.id);
+                    }
+                  });
+                },
                 canEdit: canEdit,
                 canArchive: canArchive,
                 canDeletePermanently: canDeletePermanently,
@@ -615,6 +698,8 @@ class _ScrapFormDialog extends ConsumerStatefulWidget {
 class _ScrapRecordCard extends StatelessWidget {
   const _ScrapRecordCard({
     required this.record,
+    required this.selected,
+    required this.onSelectionChanged,
     required this.canEdit,
     required this.canArchive,
     required this.canDeletePermanently,
@@ -629,6 +714,8 @@ class _ScrapRecordCard extends StatelessWidget {
   });
 
   final ScrapFormRecord record;
+  final bool selected;
+  final ValueChanged<bool> onSelectionChanged;
   final bool canEdit;
   final bool canArchive;
   final bool canDeletePermanently;
@@ -650,10 +737,22 @@ class _ScrapRecordCard extends StatelessWidget {
         : AppBadgeTone.neutral;
 
     return AppDenseListCard(
-      leading: AppDenseLeadingIcon(
-        icon: LucideIcons.recycle,
-        color: AppTheme.primary,
-        active: record.isActive,
+      selected: selected,
+      leading: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Checkbox(
+            value: selected,
+            visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            onChanged: (value) => onSelectionChanged(value ?? false),
+          ),
+          AppDenseLeadingIcon(
+            icon: LucideIcons.recycle,
+            color: AppTheme.primary,
+            active: record.isActive,
+          ),
+        ],
       ),
       title: record.customerName,
       subtitle: (record.deviceBrandModelRegistry ?? '').trim().isEmpty

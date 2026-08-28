@@ -2278,9 +2278,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       final phone = _pickCustomerPhone(customer);
       final taxOffice = (record.taxOfficeCityName ?? '').trim();
       final vkn = (customer?['vkn'] ?? '').toString().trim();
-      final tcknMs = (customer?['tckn_ms'] ?? record.customerTcknMs ?? '')
-          .toString()
-          .trim();
+      final tcknMs = _stripTsmTcknPrefix(
+        (customer?['tckn_ms'] ?? record.customerTcknMs ?? '').toString(),
+      );
       final serialRaw = (record.stockRegistryNumber ?? '').trim().toUpperCase();
       final serialNumber = serialRaw;
       final modelCode = _resolveTsmModel(serialRaw);
@@ -2370,6 +2370,17 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     if (!text.startsWith('MŞ')) {
       text = text.replaceFirst(RegExp(r'^0+'), '');
       if (text.length == 5) return 'MŞ$text';
+    }
+    return text;
+  }
+
+  /// TSM Excel Musteri_TCKN: MŞ/MS önekini kaldırır (örn. MŞ9102 → 9102).
+  String _stripTsmTcknPrefix(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return '';
+    final upper = _toTurkishUpper(text);
+    if (upper.startsWith('MŞ') || upper.startsWith('MS')) {
+      return text.substring(2).trim();
     }
     return text;
   }

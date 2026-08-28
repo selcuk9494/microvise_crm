@@ -6,3 +6,10 @@ Future<bool> printScrapForm(
 }) async {
   return false;
 }
+
+Future<bool> printScrapFormsBulk(
+  List<ScrapFormRecord> records, {
+  ScrapFormPrintSettings? settings,
+}) async {
+  return false;
+}

@@ -14,70 +14,84 @@ Future<void> shareMobileFormPdf({
   required String filename,
   required List<(String, String)> rows,
 }) async {
+  await shareMobileFormPdfPages(
+    documentTitle: title,
+    filename: filename,
+    pages: [(title: title, rows: rows)],
+  );
+}
+
+Future<void> shareMobileFormPdfPages({
+  required String documentTitle,
+  required String filename,
+  required List<({String title, List<(String, String)> rows})> pages,
+}) async {
   final regularFont = pw.Font.ttf(
     await rootBundle.load('assets/fonts/noto_sans/NotoSans-Regular.ttf'),
   );
   final doc = pw.Document(
-    title: title,
+    title: documentTitle,
     author: 'Microvise CRM',
     creator: 'Microvise CRM',
   );
   final theme = pw.ThemeData.withFont(base: regularFont, bold: regularFont);
   final dateFormat = DateFormat('dd.MM.yyyy HH:mm', 'tr_TR');
 
-  doc.addPage(
-    pw.MultiPage(
-      pageTheme: pw.PageTheme(
-        margin: const pw.EdgeInsets.all(28),
-        theme: theme,
-      ),
-      build: (context) => [
-        pw.Text(
-          title,
-          style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+  for (final page in pages) {
+    doc.addPage(
+      pw.MultiPage(
+        pageTheme: pw.PageTheme(
+          margin: const pw.EdgeInsets.all(28),
+          theme: theme,
         ),
-        pw.SizedBox(height: 6),
-        pw.Text(
-          'Microvise CRM - ${dateFormat.format(DateTime.now())}',
-          style: const pw.TextStyle(fontSize: 8),
-        ),
-        pw.SizedBox(height: 14),
-        pw.Table(
-          border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-          columnWidths: const {
-            0: pw.FlexColumnWidth(1.4),
-            1: pw.FlexColumnWidth(2.8),
-          },
-          children: [
-            for (final row in rows)
-              if (row.$2.trim().isNotEmpty)
-                pw.TableRow(
-                  children: [
-                    pw.Container(
-                      padding: const pw.EdgeInsets.all(6),
-                      color: PdfColors.grey100,
-                      child: pw.Text(
-                        row.$1,
-                        style: pw.TextStyle(
-                          fontSize: 8,
-                          fontWeight: pw.FontWeight.bold,
+        build: (context) => [
+          pw.Text(
+            page.title,
+            style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            'Microvise CRM - ${dateFormat.format(DateTime.now())}',
+            style: const pw.TextStyle(fontSize: 8),
+          ),
+          pw.SizedBox(height: 14),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(1.4),
+              1: pw.FlexColumnWidth(2.8),
+            },
+            children: [
+              for (final row in page.rows)
+                if (row.$2.trim().isNotEmpty)
+                  pw.TableRow(
+                    children: [
+                      pw.Container(
+                        padding: const pw.EdgeInsets.all(6),
+                        color: PdfColors.grey100,
+                        child: pw.Text(
+                          row.$1,
+                          style: pw.TextStyle(
+                            fontSize: 8,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
                         ),
                       ),
-                    ),
-                    pw.Padding(
-                      padding: const pw.EdgeInsets.all(6),
-                      child: pw.Text(
-                        row.$2,
-                        style: const pw.TextStyle(fontSize: 8),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(6),
+                        child: pw.Text(
+                          row.$2,
+                          style: const pw.TextStyle(fontSize: 8),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-          ],
-        ),
-      ],
-    ),
-  );
+                    ],
+                  ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   final bytes = await doc.save();
   final dir = await getTemporaryDirectory();

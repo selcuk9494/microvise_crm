@@ -18,9 +18,78 @@ Future<bool> printScrapForm(
   return true;
 }
 
+Future<bool> printScrapFormsBulk(
+  List<ScrapFormRecord> records, {
+  ScrapFormPrintSettings? settings,
+}) async {
+  if (records.isEmpty) return false;
+  final resolved = settings ?? ScrapFormPrintSettings.defaults;
+  if (records.length == 1) {
+    return printScrapForm(records.first, settings: resolved);
+  }
+
+  final base = _buildPrintableHtml(
+    records.first,
+    settings: resolved,
+    printDelayMs: 600,
+  );
+  final (prefix, suffix) = _splitHtmlAroundBody(base);
+  final pages = records
+      .map(
+        (record) => _extractBody(
+          _buildPrintableHtml(record, settings: resolved),
+        ),
+      )
+      .map((body) => body.trim())
+      .where((body) => body.isNotEmpty)
+      .map((body) => '<div class="print-page">$body</div>')
+      .toList(growable: false);
+
+  openFormPrintHtml(
+    prefix + pages.join('') + suffix,
+    revokeAfter: const Duration(seconds: 90),
+  );
+  return true;
+}
+
+String _extractBody(String input) {
+  final openMatch = RegExp(
+    r'<body[^>]*>',
+    caseSensitive: false,
+  ).firstMatch(input);
+  if (openMatch == null) return '';
+  final closeMatches = RegExp(
+    r'</body\s*>',
+    caseSensitive: false,
+  ).allMatches(input);
+  if (closeMatches.isEmpty) return '';
+  final closeIndex = closeMatches.last.start;
+  final start = openMatch.end;
+  if (closeIndex <= start) return '';
+  return input.substring(start, closeIndex);
+}
+
+(String, String) _splitHtmlAroundBody(String input) {
+  final openMatch = RegExp(
+    r'<body[^>]*>',
+    caseSensitive: false,
+  ).firstMatch(input);
+  if (openMatch == null) return (input, '');
+  final closeMatches = RegExp(
+    r'</body\s*>',
+    caseSensitive: false,
+  ).allMatches(input);
+  if (closeMatches.isEmpty) return (input, '');
+  final closeIndex = closeMatches.last.start;
+  final start = openMatch.end;
+  if (closeIndex <= start) return (input, '');
+  return (input.substring(0, start), input.substring(closeIndex));
+}
+
 String _buildPrintableHtml(
   ScrapFormRecord record, {
   required ScrapFormPrintSettings settings,
+  int printDelayMs = 250,
 }) {
   String escape(String? value) {
     return (html.DivElement()..text = (value ?? '').trim()).innerHtml ?? '';
@@ -59,7 +128,7 @@ String _buildPrintableHtml(
     <title></title>
     <script>
       window.onload = function() {
-        setTimeout(function() { window.print(); }, 250);
+        setTimeout(function() { window.print(); }, $printDelayMs);
       };
     </script>
     <style>
@@ -77,6 +146,18 @@ String _buildPrintableHtml(
         font-family: Arial, Helvetica, "Segoe UI", sans-serif;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
+      }
+      .print-page {
+        break-after: page;
+        page-break-after: always;
+      }
+      .print-page:last-child {
+        break-after: auto;
+        page-break-after: auto;
+      }
+      html:has(.print-page),
+      body:has(.print-page) {
+        height: auto;
       }
       .sheet {
         width: 186mm;
