@@ -18,6 +18,7 @@ import '../customers/web_download_helper.dart'
     if (dart.library.io) '../customers/io_download_helper.dart';
 import '../definitions/definitions_screen.dart';
 import 'line_stock_tab.dart';
+import 'lines_gmp3_excel.dart';
 
 final productSearchProvider = NotifierProvider<ProductSearchNotifier, String>(
   ProductSearchNotifier.new,
@@ -182,7 +183,7 @@ final issuedLinesProvider = FutureProvider<List<IssuedLine>>((ref) async {
   var q = client
       .from('lines')
       .select(
-        'id,label,number,sim_number,operator,starts_at,ends_at,expires_at,is_active,customer_id,branch_id,customers(name),branches(name)',
+        'id,label,number,sim_number,operator,starts_at,ends_at,expires_at,is_active,customer_id,branch_id,customers(name,vkn),branches(name)',
       );
 
   if (!(isAdmin && showPassive)) {
@@ -223,6 +224,7 @@ final issuedLinesProvider = FutureProvider<List<IssuedLine>>((ref) async {
         return IssuedLine.fromJson({
           ...map,
           'customer_name': customer?['name'],
+          'customer_vkn': customer?['vkn'],
           'branch_name': branch?['name'],
         });
       })
@@ -269,7 +271,7 @@ final issuedLicensesProvider = FutureProvider<List<IssuedLicense>>((ref) async {
   var q = client
       .from('licenses')
       .select(
-        'id,name,license_type,software_company_id,registry_number,starts_at,ends_at,is_active,customer_id,customers(name),software_companies(name)',
+        'id,name,license_type,software_company_id,registry_number,starts_at,ends_at,is_active,customer_id,customers(name,vkn),software_companies(name)',
       );
 
   if (!(isAdmin && showPassive)) {
@@ -310,6 +312,7 @@ final issuedLicensesProvider = FutureProvider<List<IssuedLicense>>((ref) async {
         return IssuedLicense.fromJson({
           ...map,
           'customer_name': customer?['name'],
+          'customer_vkn': customer?['vkn'],
           'software_company_name': company?['name'],
         });
       })
@@ -479,19 +482,33 @@ class ProductsScreen extends ConsumerWidget {
     final gmp3 = book['GMP3'];
 
     hats.appendRow([
+      _cell('customer_vkn'),
       _cell('customer_name'),
       _cell('line_number'),
       _cell('operator'),
-      _cell('sim_number'),
+      _cell('line_label'),
+      _cell('sim_no'),
+      _cell('starts_at'),
       _cell('ends_at'),
+      _cell('expires_at'),
       _cell('is_active'),
     ]);
     for (final l in lines) {
       hats.appendRow([
+        _cell(l.customerVkn ?? ''),
         _cell(l.customerName ?? ''),
         _cell(l.number ?? ''),
         _cell(_operatorLabel(l.operator)),
+        _cell(l.label ?? ''),
         _cell(l.simNumber ?? ''),
+        _cell(
+          l.startsAt == null
+              ? ''
+              : l.startsAt!.toIso8601String().substring(0, 10),
+        ),
+        _cell(
+          l.endsAt == null ? '' : l.endsAt!.toIso8601String().substring(0, 10),
+        ),
         _cell(
           l.endsAt == null ? '' : l.endsAt!.toIso8601String().substring(0, 10),
         ),
@@ -500,19 +517,33 @@ class ProductsScreen extends ConsumerWidget {
     }
 
     gmp3.appendRow([
+      _cell('customer_vkn'),
       _cell('customer_name'),
       _cell('license_name'),
       _cell('software_company'),
       _cell('registry_number'),
+      _cell('starts_at'),
       _cell('ends_at'),
+      _cell('expires_at'),
       _cell('is_active'),
     ]);
     for (final lic in licenses) {
       gmp3.appendRow([
+        _cell(lic.customerVkn ?? ''),
         _cell(lic.customerName ?? ''),
         _cell(lic.name),
         _cell(lic.softwareCompanyName ?? ''),
         _cell(lic.registryNumber ?? ''),
+        _cell(
+          lic.startsAt == null
+              ? ''
+              : lic.startsAt!.toIso8601String().substring(0, 10),
+        ),
+        _cell(
+          lic.endsAt == null
+              ? ''
+              : lic.endsAt!.toIso8601String().substring(0, 10),
+        ),
         _cell(
           lic.endsAt == null
               ? ''
@@ -525,6 +556,94 @@ class ProductsScreen extends ConsumerWidget {
     final bytes = book.encode();
     if (bytes == null) return;
     downloadExcelFile(bytes, 'hat_lisanslar.xlsx');
+  }
+
+  Future<void> _clearIssuedLists({
+    required BuildContext context,
+    required WidgetRef ref,
+  }) async {
+    final confirmController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Eski listeyi temizle'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Tüm verilen hat ve GMP3 kayıtları silinecek. '
+                'Depodaki hat stok silinmez. Bu işlem geri alınamaz.',
+              ),
+              const Gap(12),
+              const Text('Onay için SİL yazın.'),
+              const Gap(8),
+              TextField(
+                controller: confirmController,
+                decoration: const InputDecoration(
+                  labelText: 'Onay',
+                  hintText: 'SİL',
+                ),
+                textCapitalization: TextCapitalization.characters,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Vazgeç'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (confirmController.text.trim() != 'SİL') return;
+                Navigator.of(context).pop(true);
+              },
+              child: const Text('Temizle'),
+            ),
+          ],
+        );
+      },
+    );
+    confirmController.dispose();
+    if (confirmed != true) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    final client = ref.read(supabaseClientProvider);
+    try {
+      if (apiClient != null) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {'op': 'clearIssuedLinesAndLicenses', 'confirm': 'SİL'},
+        );
+      } else {
+        if (client == null) return;
+        await client.from('invoice_items').delete().inFilter('source_table', [
+          'lines',
+          'licenses',
+        ]);
+        await client.from('line_transfers').delete().neq('id', '');
+        await client.from('lines').delete().neq('id', '');
+        await client.from('licenses').delete().neq('id', '');
+      }
+      ref.invalidate(issuedLinesProvider);
+      ref.invalidate(issuedLicensesProvider);
+      ref.invalidate(issuedLicensesStatsProvider);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Eski hat ve GMP3 listesi temizlendi. Excel ile yeniden yükleyebilirsiniz.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Liste temizlenemedi: $e')));
+    }
   }
 
   @override
@@ -685,26 +804,60 @@ class ProductsScreen extends ConsumerWidget {
                   ],
                 ],
                 PopupMenuButton<String>(
-                  tooltip: 'Dışarı Aktar',
+                  tooltip: 'Aktar',
                   onSelected: (value) async {
-                    if (value == 'export') {
-                      await _exportExcel(
-                        context: context,
-                        lines: lines,
-                        licenses: licenses,
-                      );
+                    switch (value) {
+                      case 'export':
+                        await _exportExcel(
+                          context: context,
+                          lines: lines,
+                          licenses: licenses,
+                        );
+                        break;
+                      case 'template':
+                        await downloadLinesGmp3Template(context);
+                        break;
+                      case 'import':
+                        await importLinesAndGmp3Excel(
+                          context: context,
+                          ref: ref,
+                          onImported: () {
+                            ref.invalidate(issuedLinesProvider);
+                            ref.invalidate(issuedLicensesProvider);
+                            ref.invalidate(issuedLicensesStatsProvider);
+                          },
+                        );
+                        break;
+                      case 'clear':
+                        await _clearIssuedLists(context: context, ref: ref);
+                        break;
                     }
                   },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
                       value: 'export',
                       child: Text('Dışarı Aktar (Excel)'),
                     ),
+                    const PopupMenuItem(
+                      value: 'template',
+                      child: Text('Şablon İndir'),
+                    ),
+                    const PopupMenuItem(
+                      value: 'import',
+                      child: Text('Excel Yükle'),
+                    ),
+                    if (isAdmin) ...[
+                      const PopupMenuDivider(),
+                      const PopupMenuItem(
+                        value: 'clear',
+                        child: Text('Eski listeyi temizle'),
+                      ),
+                    ],
                   ],
                   child: const SizedBox(
                     width: 36,
                     height: 34,
-                    child: Icon(LucideIcons.download),
+                    child: Icon(LucideIcons.arrowUpDown),
                   ),
                 ),
               ],
@@ -2877,6 +3030,7 @@ class IssuedLine {
     required this.id,
     required this.customerId,
     required this.customerName,
+    required this.customerVkn,
     required this.branchId,
     required this.branchName,
     required this.label,
@@ -2891,6 +3045,7 @@ class IssuedLine {
   final String id;
   final String customerId;
   final String? customerName;
+  final String? customerVkn;
   final String? branchId;
   final String? branchName;
   final String? label;
@@ -2906,6 +3061,7 @@ class IssuedLine {
       id: json['id'].toString(),
       customerId: json['customer_id'].toString(),
       customerName: json['customer_name']?.toString(),
+      customerVkn: json['customer_vkn']?.toString(),
       branchId: json['branch_id']?.toString(),
       branchName: json['branch_name']?.toString(),
       label: json['label']?.toString(),
@@ -2926,6 +3082,7 @@ class IssuedLicense {
     required this.id,
     required this.customerId,
     required this.customerName,
+    required this.customerVkn,
     required this.name,
     required this.licenseType,
     required this.softwareCompanyId,
@@ -2939,6 +3096,7 @@ class IssuedLicense {
   final String id;
   final String customerId;
   final String? customerName;
+  final String? customerVkn;
   final String name;
   final String licenseType;
   final String? softwareCompanyId;
@@ -2953,6 +3111,7 @@ class IssuedLicense {
       id: json['id'].toString(),
       customerId: json['customer_id'].toString(),
       customerName: json['customer_name']?.toString(),
+      customerVkn: json['customer_vkn']?.toString(),
       name: (json['name'] ?? '').toString(),
       licenseType: (json['license_type'] ?? 'gmp3').toString(),
       softwareCompanyId: json['software_company_id']?.toString(),

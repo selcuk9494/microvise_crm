@@ -2929,6 +2929,38 @@ module.exports = async (req, res) => {
     const table = String(body.table || '').trim();
 
     if (!op) return badRequest(req, res, 'op zorunludur.');
+    if (op === 'clearIssuedLinesAndLicenses') {
+      if (user.role !== 'admin') {
+        return forbidden(req, res, 'Yalnızca yönetici hat ve GMP3 listesini temizleyebilir.');
+      }
+      if (!hasPageAccess(user, 'urunler') && !hasPageAccess(user, 'musteriler')) {
+        return forbidden(req, res);
+      }
+      const confirm = String(body.confirm || '').trim();
+      if (confirm !== 'SİL') {
+        return badRequest(req, res, 'Onay metni hatalı. SİL yazın.');
+      }
+
+      try {
+        const okTable = await ensureInvoiceItemsTable();
+        if (okTable) {
+          await query(
+            `
+              delete from public.invoice_items
+              where source_table in ('lines', 'licenses')
+            `,
+          );
+        }
+      } catch (_) {}
+
+      try {
+        await query(`delete from public.line_transfers`);
+      } catch (_) {}
+      await query(`delete from public.lines`);
+      await query(`delete from public.licenses`);
+      return ok(req, res, { ok: true });
+    }
+
     if (op === 'parseTsmLog') {
       if (!hasPageAccess(user, 'tsm_log') && !hasPageAccess(user, 'formlar')) {
         return forbidden(req, res, 'TSM Log için yetkiniz yok.');

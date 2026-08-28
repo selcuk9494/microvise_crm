@@ -2737,6 +2737,7 @@ module.exports = async (req, res) => {
               l.customer_id,
               l.branch_id,
               c.name as customer_name,
+              c.vkn as customer_vkn,
               b.name as branch_name
             from public.lines l
             left join public.customers c on c.id = l.customer_id
@@ -2884,7 +2885,8 @@ module.exports = async (req, res) => {
               lic.expires_at,
               lic.is_active,
               lic.customer_id,
-              c.name as customer_name
+              c.name as customer_name,
+              c.vkn as customer_vkn
             from public.licenses lic
             left join public.customers c on c.id = lic.customer_id
             left join public.software_companies sc on sc.id = lic.software_company_id
