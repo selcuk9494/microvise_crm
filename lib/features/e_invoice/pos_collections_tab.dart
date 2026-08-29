@@ -37,7 +37,8 @@ String posCurrencySymbol(String? currency) {
 String resolvePosCurrency(String? linkCurrency, String? invoiceCurrency) {
   final link = posCurrencyCode(linkCurrency);
   final invoice = posCurrencyCode(invoiceCurrency);
-  if (invoice != 'TRY' && (linkCurrency == null || linkCurrency.trim().isEmpty || link == 'TRY')) {
+  if (invoice != 'TRY' &&
+      (linkCurrency == null || linkCurrency.trim().isEmpty || link == 'TRY')) {
     return invoice;
   }
   return link;
@@ -111,8 +112,7 @@ class PosCollectionsFilter {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(startDate, endDate, includeRefunded, status);
+  int get hashCode => Object.hash(startDate, endDate, includeRefunded, status);
 }
 
 class PosCollectionRow {
@@ -186,9 +186,11 @@ class PosCollectionRow {
       id: json['id'].toString(),
       customerId: json['customer_id']?.toString() ?? '',
       customerName: customers is Map ? customers['name']?.toString() : null,
-      invoiceId: json['invoice_id']?.toString() ??
+      invoiceId:
+          json['invoice_id']?.toString() ??
           (invoices is Map ? invoices['id']?.toString() : null),
-      invoiceNumber: json['invoice_number']?.toString() ??
+      invoiceNumber:
+          json['invoice_number']?.toString() ??
           (invoices is Map ? invoices['invoice_number']?.toString() : null),
       invoiceStatus: invoices is Map ? invoices['status']?.toString() : null,
       amount: _toDouble(json['amount']),
@@ -203,17 +205,20 @@ class PosCollectionRow {
           appNow(),
       createdAt: parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
       description: json['description']?.toString(),
-      isActive: (json['list_status']?.toString() ?? json['status']?.toString()) !=
+      isActive:
+          (json['list_status']?.toString() ?? json['status']?.toString()) !=
           'refunded',
       providerOrderId: json['provider_order_id']?.toString(),
-      paymentLinkStatus: json['payment_link_status']?.toString() ??
-          json['status']?.toString(),
+      paymentLinkStatus:
+          json['payment_link_status']?.toString() ?? json['status']?.toString(),
       listStatus: json['list_status']?.toString() ?? 'pending',
       emailedAt: parseAppDateTime(json['emailed_at']?.toString()),
       settledAt: parseAppDateTime(json['settled_at']?.toString()),
       emailedTo: json['emailed_to']?.toString(),
       valorDays: _toInt(json['valor_days'], fallback: 1),
-      expectedSettleOn: parseAppDateTime(json['expected_settle_on']?.toString()),
+      expectedSettleOn: parseAppDateTime(
+        json['expected_settle_on']?.toString(),
+      ),
       daysUntilValor: json['days_until_valor'] == null
           ? null
           : _toInt(json['days_until_valor']),
@@ -437,8 +442,8 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
         content: Text(
           settled
               ? '${formatInvoiceNumberForDisplay(row.invoiceNumber)} · '
-                  '${row.customerName ?? 'Cari'}\n'
-                  'Banka hesabınıza geçtiyse bu tahsilatı “Hesaba yattı” olarak işaretleyin.'
+                    '${row.customerName ?? 'Cari'}\n'
+                    'Banka hesabınıza geçtiyse bu tahsilatı “Hesaba yattı” olarak işaretleyin.'
               : 'Hesaba yattı işareti kaldırılacak.',
         ),
         actions: [
@@ -474,15 +479,15 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
         SnackBar(
           content: Text(
             response['message']?.toString() ??
-                (settled ? 'Hesaba yattı olarak işaretlendi.' : 'İşaret kaldırıldı.'),
+                (settled
+                    ? 'Hesaba yattı olarak işaretlendi.'
+                    : 'İşaret kaldırıldı.'),
           ),
         ),
       );
     } catch (error) {
       if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(content: Text('İşaretlenemedi: $error')),
-      );
+      messenger.showSnackBar(SnackBar(content: Text('İşaretlenemedi: $error')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -519,10 +524,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
       if (apiClient == null) return;
       final response = await apiClient.postJson(
         '/mutate',
-        body: {
-          'op': 'dismissPosCollection',
-          'linkId': row.id,
-        },
+        body: {'op': 'dismissPosCollection', 'linkId': row.id},
       );
       if (!mounted) return;
       ref.invalidate(posCollectionsProvider(_filter));
@@ -553,10 +555,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
       if (apiClient == null) return;
       final response = await apiClient.postJson(
         '/e-invoice',
-        body: {
-          'action': 'save_pos_valor_days',
-          'days': next,
-        },
+        body: {'action': 'save_pos_valor_days', 'days': next},
       );
       if (!mounted) return;
       ref.invalidate(posCollectionsProvider(_filter));
@@ -589,12 +588,12 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
         content: Text(
           crmOnly
               ? '${formatInvoiceNumberForDisplay(row.invoiceNumber)} · '
-                  '${row.customerName ?? 'Cari'}\n'
-                  'Banka paneli üzerinden iade yaptıysanız CRM tahsilatı geri alınır. '
-                  'Karttan otomatik iade yapılmaz.'
+                    '${row.customerName ?? 'Cari'}\n'
+                    'Banka paneli üzerinden iade yaptıysanız CRM tahsilatı geri alınır. '
+                    'Karttan otomatik iade yapılmaz.'
               : '${formatInvoiceNumberForDisplay(row.invoiceNumber)} · '
-                  '${row.customerName ?? 'Cari'}\n'
-                  '${formatPosMoney(row.amount, row.currency)} bankaya iade edilecek.',
+                    '${row.customerName ?? 'Cari'}\n'
+                    '${formatPosMoney(row.amount, row.currency)} bankaya iade edilecek.',
         ),
         actions: [
           TextButton(
@@ -639,7 +638,8 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
     } catch (error) {
       if (!mounted) return;
       final text = error.toString();
-      final bankDenied = text.toLowerCase().contains('insufficient') ||
+      final bankDenied =
+          text.toLowerCase().contains('insufficient') ||
           text.contains('iade yetkisi');
       if (!crmOnly && bankDenied) {
         messenger.showSnackBar(
@@ -648,9 +648,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
         await _refund(row, crmOnly: true);
         return;
       }
-      messenger.showSnackBar(
-        SnackBar(content: Text('İade başarısız: $error')),
-      );
+      messenger.showSnackBar(SnackBar(content: Text('İade başarısız: $error')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -664,422 +662,413 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
         ? DateFormat('d MMM yyyy', 'tr_TR').format(_start)
         : '${DateFormat('d MMM', 'tr_TR').format(_start)} – ${DateFormat('d MMM yyyy', 'tr_TR').format(_end)}';
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AppCard(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Sanal POS ödemeleri',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: AppCard(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Sanal POS ödemeleri',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
-              ),
-              const Gap(4),
-              Text(
-                'Ödeme linki veya mail atılan tahsilatlar. '
-                'Valör, ödemenin hesaba kaç gün sonra yatacağını belirtir; '
-                'yeni anlaşmada buradan güncellenir.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppTheme.textMuted,
+                const Gap(4),
+                Text(
+                  'Ödeme linki veya mail atılan tahsilatlar. '
+                  'Valör, ödemenin hesaba kaç gün sonra yatacağını belirtir; '
+                  'yeni anlaşmada buradan güncellenir.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
-              ),
-              const Gap(10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  FilledButton.tonalIcon(
-                    onPressed: _setToday,
-                    icon: const Icon(AppPhosphorIcons.calendarBlank, size: 16),
-                    label: const Text('Bugün'),
-                  ),
-                  OutlinedButton(
-                    onPressed: _setMonth,
-                    child: const Text('Bu ay'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _pickRange,
-                    icon: const Icon(Icons.date_range, size: 16),
-                    label: Text(dateLabel),
-                  ),
-                  FilterChip(
-                    label: const Text('İadeler dahil'),
-                    selected: _includeRefunded,
-                    onSelected: (value) {
-                      setState(() => _includeRefunded = value);
-                    },
-                  ),
-                  IconButton(
-                    tooltip: 'Yenile',
-                    onPressed: () =>
-                        ref.invalidate(posCollectionsProvider(_filter)),
-                    icon: const Icon(AppPhosphorIcons.arrowsCounterClockwise),
-                  ),
-                ],
-              ),
-              const Gap(8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final entry in const [
-                    ('all', 'Tümü'),
-                    ('pending', 'Ödeme bekleniyor'),
-                    ('paid', 'Ödendi'),
-                    ('settled', 'Hesaba yattı'),
-                  ])
-                    FilterChip(
-                      label: Text(entry.$2),
-                      selected: _status == entry.$1,
-                      onSelected: (_) {
-                        setState(() => _status = entry.$1);
-                      },
-                    ),
-                ],
-              ),
-              const Gap(8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(
-                    'Valör',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  for (final entry in const [
-                    ('all', 'Tümü'),
-                    ('overdue', 'Gecikti'),
-                    ('today', 'Bugün yatmalı'),
-                    ('tomorrow', 'Yarın'),
-                    ('remaining', 'Kalan'),
-                  ])
-                    FilterChip(
-                      label: Text(entry.$2),
-                      selected: _valorFilter == entry.$1,
-                      onSelected: (_) {
-                        setState(() {
-                          _valorFilter = entry.$1;
-                          if (entry.$1 != 'all' && _status == 'all') {
-                            _status = 'paid';
-                          }
-                        });
-                      },
-                    ),
-                  const Gap(8),
-                  Text(
-                    'Sıra',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  for (final entry in const [
-                    ('valor_soon', 'Yakın valör'),
-                    ('valor_late', 'Uzak valör'),
-                    ('paid_on', 'Ödeme tarihi'),
-                  ])
-                    FilterChip(
-                      label: Text(entry.$2),
-                      selected: _valorSort == entry.$1,
-                      onSelected: (_) {
-                        setState(() => _valorSort = entry.$1);
-                      },
-                    ),
-                ],
-              ),
-              const Gap(10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceMuted,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                  border: Border.all(color: AppTheme.border),
-                ),
-                child: Row(
+                const Gap(10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    const Icon(AppPhosphorIcons.calendarBlank, size: 16),
-                    const Gap(8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Valör',
-                            style: Theme.of(context).textTheme.labelLarge
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          Text(
-                            valorDays == 0
-                                ? 'Ödeme aynı gün hesaba yatar (T+0).'
-                                : 'Ödeme $valorDays gün sonra hesaba yatar. Yeni anlaşmada buradan değiştirin.',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: AppTheme.textMuted),
-                          ),
-                        ],
+                    FilledButton.tonalIcon(
+                      onPressed: _setToday,
+                      icon: const Icon(
+                        AppPhosphorIcons.calendarBlank,
+                        size: 16,
                       ),
+                      label: const Text('Bugün'),
+                    ),
+                    OutlinedButton(
+                      onPressed: _setMonth,
+                      child: const Text('Bu ay'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _pickRange,
+                      icon: const Icon(Icons.date_range, size: 16),
+                      label: Text(dateLabel),
+                    ),
+                    FilterChip(
+                      label: const Text('İadeler dahil'),
+                      selected: _includeRefunded,
+                      onSelected: (value) {
+                        setState(() => _includeRefunded = value);
+                      },
                     ),
                     IconButton(
-                      tooltip: 'Azalt',
-                      onPressed: _savingValor || valorDays <= 0
-                          ? null
-                          : () => _saveValorDays(valorDays - 1),
-                      icon: const Icon(Icons.remove),
-                    ),
-                    Text(
-                      '$valorDays gün',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Artır',
-                      onPressed: _savingValor || valorDays >= 30
-                          ? null
-                          : () => _saveValorDays(valorDays + 1),
-                      icon: const Icon(Icons.add),
+                      tooltip: 'Yenile',
+                      onPressed: () =>
+                          ref.invalidate(posCollectionsProvider(_filter)),
+                      icon: const Icon(AppPhosphorIcons.arrowsCounterClockwise),
                     ),
                   ],
                 ),
-              ),
-            ],
+                const Gap(8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final entry in const [
+                      ('all', 'Tümü'),
+                      ('pending', 'Ödeme bekleniyor'),
+                      ('paid', 'Ödendi'),
+                      ('settled', 'Hesaba yattı'),
+                    ])
+                      FilterChip(
+                        label: Text(entry.$2),
+                        selected: _status == entry.$1,
+                        onSelected: (_) {
+                          setState(() => _status = entry.$1);
+                        },
+                      ),
+                  ],
+                ),
+                const Gap(8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      'Valör',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    for (final entry in const [
+                      ('all', 'Tümü'),
+                      ('overdue', 'Gecikti'),
+                      ('today', 'Bugün yatmalı'),
+                      ('tomorrow', 'Yarın'),
+                      ('remaining', 'Kalan'),
+                    ])
+                      FilterChip(
+                        label: Text(entry.$2),
+                        selected: _valorFilter == entry.$1,
+                        onSelected: (_) {
+                          setState(() {
+                            _valorFilter = entry.$1;
+                            if (entry.$1 != 'all' && _status == 'all') {
+                              _status = 'paid';
+                            }
+                          });
+                        },
+                      ),
+                    const Gap(8),
+                    Text(
+                      'Sıra',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    for (final entry in const [
+                      ('valor_soon', 'Yakın valör'),
+                      ('valor_late', 'Uzak valör'),
+                      ('paid_on', 'Ödeme tarihi'),
+                    ])
+                      FilterChip(
+                        label: Text(entry.$2),
+                        selected: _valorSort == entry.$1,
+                        onSelected: (_) {
+                          setState(() => _valorSort = entry.$1);
+                        },
+                      ),
+                  ],
+                ),
+                const Gap(10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceMuted,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(AppPhosphorIcons.calendarBlank, size: 16),
+                      const Gap(8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Valör',
+                              style: Theme.of(context).textTheme.labelLarge
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            Text(
+                              valorDays == 0
+                                  ? 'Ödeme aynı gün hesaba yatar (T+0).'
+                                  : 'Ödeme $valorDays gün sonra hesaba yatar. Yeni anlaşmada buradan değiştirin.',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: AppTheme.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Azalt',
+                        onPressed: _savingValor || valorDays <= 0
+                            ? null
+                            : () => _saveValorDays(valorDays - 1),
+                        icon: const Icon(Icons.remove),
+                      ),
+                      Text(
+                        '$valorDays gün',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Artır',
+                        onPressed: _savingValor || valorDays >= 30
+                            ? null
+                            : () => _saveValorDays(valorDays + 1),
+                        icon: const Icon(Icons.add),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        const Gap(10),
-        Expanded(
-          child: async.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => EmptyStateCard(
-              icon: AppPhosphorIcons.warningCircle,
-              title: 'Liste alınamadı',
-              message: '$error',
+        const SliverToBoxAdapter(child: SizedBox(height: 10)),
+        ...async.when(
+          loading: () => const [
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: CircularProgressIndicator()),
             ),
-            data: (result) {
-              final items = result.items
-                  .where((row) => _matchesValorFilter(row, _valorFilter))
-                  .toList()
-                ..sort((a, b) => _compareValorSort(a, b, _valorSort));
-              if (items.isEmpty) {
-                return EmptyStateCard(
-                  icon: AppPhosphorIcons.calendarBlank,
-                  title: _valorFilter == 'all'
-                      ? 'Sanal POS kaydı yok'
-                      : 'Bu valör filtresinde kayıt yok',
-                  message: _valorFilter == 'all'
-                      ? 'Ödeme linki veya ödeme maili olan kayıtlar burada görünür. '
-                          'Nakit kapanmış faturalar listeden düşer.'
-                      : 'Başka bir valör filtresi veya tarih aralığı seçin.',
-                );
-              }
-              return Column(
-                children: [
-                  AppCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    child: Wrap(
-                      spacing: 12,
-                      runSpacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          '${result.pendingCount} bekliyor · ${result.paidCount} ödendi · ${result.settledCount} hesaba yattı',
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w800),
+          ],
+          error: (error, _) => [
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: EmptyStateCard(
+                icon: AppPhosphorIcons.warningCircle,
+                title: 'Liste alınamadı',
+                message: '$error',
+              ),
+            ),
+          ],
+          data: (result) {
+            final items =
+                result.items
+                    .where((row) => _matchesValorFilter(row, _valorFilter))
+                    .toList()
+                  ..sort((a, b) => _compareValorSort(a, b, _valorSort));
+            if (items.isEmpty) {
+              return [
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: EmptyStateCard(
+                    icon: AppPhosphorIcons.calendarBlank,
+                    title: _valorFilter == 'all'
+                        ? 'Sanal POS kaydı yok'
+                        : 'Bu valör filtresinde kayıt yok',
+                    message: _valorFilter == 'all'
+                        ? 'Ödeme linki veya ödeme maili olan kayıtlar burada görünür. '
+                              'Nakit kapanmış faturalar listeden düşer.'
+                        : 'Başka bir valör filtresi veya tarih aralığı seçin.',
+                  ),
+                ),
+              ];
+            }
+            return [
+              SliverToBoxAdapter(
+                child: AppCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        '${result.pendingCount} bekliyor · ${result.paidCount} ödendi · ${result.settledCount} hesaba yattı',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
                         ),
-                        Text(
-                          paidTotalsByCurrency(items),
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: AppTheme.textMuted),
+                      ),
+                      Text(
+                        paidTotalsByCurrency(items),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              SliverList.separated(
+                itemCount: items.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final row = items[index];
+                  final invoiceLabel = formatInvoiceNumberForDisplay(
+                    row.invoiceNumber,
+                  );
+                  final (statusLabel, statusTone) = _statusBadge(row);
+                  final (valorLabel, valorTone) = _valorBadge(row);
+                  return AppCard(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                invoiceLabel.isEmpty ? 'Fatura' : invoiceLabel,
+                                style: Theme.of(context).textTheme.titleSmall
+                                    ?.copyWith(fontWeight: FontWeight.w800),
+                              ),
+                              const Gap(2),
+                              Text(
+                                row.customerName ?? 'Cari',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(color: AppTheme.textMuted),
+                              ),
+                              const Gap(6),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: [
+                                  AppBadge(
+                                    dense: true,
+                                    label: statusLabel,
+                                    tone: statusTone,
+                                  ),
+                                  const AppBadge(
+                                    dense: true,
+                                    label: 'Sanal POS',
+                                    tone: AppBadgeTone.primary,
+                                  ),
+                                  if (posCurrencyCode(row.currency) != 'TRY')
+                                    AppBadge(
+                                      dense: true,
+                                      label: posCurrencyCode(row.currency),
+                                      tone: AppBadgeTone.neutral,
+                                    ),
+                                  if (row.emailedAt != null &&
+                                      row.listStatus == 'pending')
+                                    const AppBadge(
+                                      dense: true,
+                                      label: 'Link gönderildi',
+                                      tone: AppBadgeTone.warning,
+                                    ),
+                                  Text(
+                                    DateFormat(
+                                      'd MMM yyyy HH:mm',
+                                      'tr_TR',
+                                    ).format((row.paidOn).toLocal()),
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(color: AppTheme.textMuted),
+                                  ),
+                                ],
+                              ),
+                              if ((row.providerOrderId ?? '').isNotEmpty) ...[
+                                const Gap(4),
+                                Text(
+                                  'Sipariş: ${row.providerOrderId}',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        fontFamily: 'monospace',
+                                        fontSize: 11,
+                                        color: AppTheme.textSoft,
+                                      ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const Gap(8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              formatPosMoney(row.amount, row.currency),
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            if (row.listStatus == 'paid' &&
+                                row.daysUntilValor != null &&
+                                valorLabel.isNotEmpty) ...[
+                              const Gap(8),
+                              _ValorCountdown(
+                                days: row.daysUntilValor!,
+                                expectedSettleOn: row.expectedSettleOn,
+                                tone: valorTone,
+                              ),
+                            ],
+                            if (row.listStatus == 'paid') ...[
+                              const Gap(4),
+                              TextButton(
+                                onPressed: _busy
+                                    ? null
+                                    : () => _markSettled(row),
+                                child: const Text('Hesaba yattı'),
+                              ),
+                            ],
+                            if (row.listStatus == 'settled') ...[
+                              const Gap(4),
+                              TextButton(
+                                onPressed: _busy
+                                    ? null
+                                    : () => _markSettled(row, settled: false),
+                                child: const Text('Geri al'),
+                              ),
+                            ],
+                            if ((row.listStatus == 'paid' ||
+                                    row.listStatus == 'settled') &&
+                                (row.invoiceId ?? '').isNotEmpty)
+                              TextButton(
+                                onPressed: _busy ? null : () => _refund(row),
+                                child: const Text('İade'),
+                              ),
+                            if (row.listStatus == 'pending')
+                              TextButton(
+                                onPressed: _busy ? null : () => _dismiss(row),
+                                child: const Text('Listeden çıkar'),
+                              ),
+                          ],
                         ),
                       ],
                     ),
-                  ),
-                  const Gap(8),
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: items.length,
-                      separatorBuilder: (_, _) => const Gap(8),
-                      itemBuilder: (context, index) {
-                        final row = items[index];
-                        final invoiceLabel = formatInvoiceNumberForDisplay(
-                          row.invoiceNumber,
-                        );
-                        final (statusLabel, statusTone) = _statusBadge(row);
-                        final (valorLabel, valorTone) = _valorBadge(row);
-                        return AppCard(
-                          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      invoiceLabel.isEmpty
-                                          ? 'Fatura'
-                                          : invoiceLabel,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleSmall
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                    ),
-                                    const Gap(2),
-                                    Text(
-                                      row.customerName ?? 'Cari',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyMedium
-                                          ?.copyWith(
-                                            color: AppTheme.textMuted,
-                                          ),
-                                    ),
-                                    const Gap(6),
-                                    Wrap(
-                                      spacing: 6,
-                                      runSpacing: 6,
-                                      children: [
-                                        AppBadge(
-                                          dense: true,
-                                          label: statusLabel,
-                                          tone: statusTone,
-                                        ),
-                                        const AppBadge(
-                                          dense: true,
-                                          label: 'Sanal POS',
-                                          tone: AppBadgeTone.primary,
-                                        ),
-                                        if (posCurrencyCode(row.currency) !=
-                                            'TRY')
-                                          AppBadge(
-                                            dense: true,
-                                            label: posCurrencyCode(
-                                              row.currency,
-                                            ),
-                                            tone: AppBadgeTone.neutral,
-                                          ),
-                                        if (row.emailedAt != null &&
-                                            row.listStatus == 'pending')
-                                          const AppBadge(
-                                            dense: true,
-                                            label: 'Link gönderildi',
-                                            tone: AppBadgeTone.warning,
-                                          ),
-                                        Text(
-                                          DateFormat(
-                                            'd MMM yyyy HH:mm',
-                                            'tr_TR',
-                                          ).format(
-                                            (row.paidOn).toLocal(),
-                                          ),
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                color: AppTheme.textMuted,
-                                              ),
-                                        ),
-                                      ],
-                                    ),
-                                    if ((row.providerOrderId ?? '')
-                                        .isNotEmpty) ...[
-                                      const Gap(4),
-                                      Text(
-                                        'Sipariş: ${row.providerOrderId}',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.copyWith(
-                                              fontFamily: 'monospace',
-                                              fontSize: 11,
-                                              color: AppTheme.textSoft,
-                                            ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              const Gap(8),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    formatPosMoney(row.amount, row.currency),
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleSmall
-                                        ?.copyWith(fontWeight: FontWeight.w800),
-                                  ),
-                                  if (row.listStatus == 'paid' &&
-                                      valorLabel.isNotEmpty) ...[
-                                    const Gap(8),
-                                    _ValorCountdown(
-                                      days: row.daysUntilValor!,
-                                      expectedSettleOn: row.expectedSettleOn,
-                                      tone: valorTone,
-                                    ),
-                                  ],
-                                  if (row.listStatus == 'paid') ...[
-                                    const Gap(4),
-                                    TextButton(
-                                      onPressed: _busy
-                                          ? null
-                                          : () => _markSettled(row),
-                                      child: const Text('Hesaba yattı'),
-                                    ),
-                                  ],
-                                  if (row.listStatus == 'settled') ...[
-                                    const Gap(4),
-                                    TextButton(
-                                      onPressed: _busy
-                                          ? null
-                                          : () => _markSettled(
-                                                row,
-                                                settled: false,
-                                              ),
-                                      child: const Text('Geri al'),
-                                    ),
-                                  ],
-                                  if ((row.listStatus == 'paid' ||
-                                          row.listStatus == 'settled') &&
-                                      (row.invoiceId ?? '').isNotEmpty)
-                                    TextButton(
-                                      onPressed: _busy
-                                          ? null
-                                          : () => _refund(row),
-                                      child: const Text('İade'),
-                                    ),
-                                  if (row.listStatus == 'pending')
-                                    TextButton(
-                                      onPressed: _busy
-                                          ? null
-                                          : () => _dismiss(row),
-                                      child: const Text('Listeden çıkar'),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
+                  );
+                },
+              ),
+            ];
+          },
         ),
       ],
     );
@@ -1107,15 +1096,15 @@ class _ValorCountdown extends StatelessWidget {
     final headline = days < 0
         ? '${days.abs()}'
         : days == 0
-            ? 'BUGÜN'
-            : days == 1
-                ? 'YARIN'
-                : '$days';
+        ? 'BUGÜN'
+        : days == 1
+        ? 'YARIN'
+        : '$days';
     final caption = days < 0
         ? 'gün gecikti'
         : days == 0 || days == 1
-            ? 'yatmalı'
-            : 'gün kaldı';
+        ? 'yatmalı'
+        : 'gün kaldı';
     final dateLabel = expectedSettleOn == null
         ? null
         : DateFormat('d MMM yyyy', 'tr_TR').format(expectedSettleOn!);
@@ -1143,8 +1132,7 @@ class _ValorCountdown extends StatelessWidget {
           ),
           Row(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
                 headline,
@@ -1155,13 +1143,16 @@ class _ValorCountdown extends StatelessWidget {
                   color: color,
                 ),
               ),
-              const Gap(4),
-              Text(
-                caption,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: color,
+              const SizedBox(width: 4),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(
+                  caption,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                  ),
                 ),
               ),
             ],
