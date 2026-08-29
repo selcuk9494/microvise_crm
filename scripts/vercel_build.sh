@@ -7,7 +7,8 @@ COMMIT_SHA="${VERCEL_GIT_COMMIT_SHA:-local}"
 BUILD_MARKER="$CACHE_DIR/flutter_web_built_${COMMIT_SHA}"
 PUBLIC_DIR="$PWD/public"
 
-# Vercel may invoke vercel-build once per serverless function. Build Flutter web only once.
+# Project buildCommand runs this script once. Do not name the npm script
+# `vercel-build` or `build`: @vercel/node would re-run it for every API file.
 if [ -f "$BUILD_MARKER" ] && [ -f "$PUBLIC_DIR/index.html" ] && [ -f "$PUBLIC_DIR/main.dart.js" ]; then
   echo "Flutter web already built for ${COMMIT_SHA}; skipping duplicate build."
   exit 0

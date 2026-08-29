@@ -2,7 +2,7 @@
   "version": 2,
   "framework": null,
   "installCommand": "npm install --omit=dev --ignore-scripts",
-  "buildCommand": "npm run vercel-build",
+  "buildCommand": "bash ./scripts/vercel_build.sh",
   "outputDirectory": "public",
   "functions": {
     "api/*.js": {
@@ -35,7 +35,7 @@
   ],
   "crons": [
     {
-      "path": "/api/cron-pos-reminders",
+      "path": "/api/me",
       "schedule": "0 7 * * *"
     }
   ]

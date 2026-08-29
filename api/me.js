@@ -7,6 +7,8 @@ const {
   serverError,
 } = require('./_lib/http');
 const { query } = require('./_lib/db');
+const { ensureInvoicePaymentLinksTable } = require('./_lib/invoice_payment');
+const { sendPosPaymentReminders } = require('./_lib/invoice_mail');
 
 function wantsHealth(req) {
   try {
@@ -19,6 +21,32 @@ function wantsHealth(req) {
   }
 }
 
+function wantsPosReminderCron(req) {
+  if (req.headers['x-vercel-cron']) return true;
+  try {
+    const url = new URL(req.url || '/', 'http://localhost');
+    return url.searchParams.get('cron') === 'pos-reminders';
+  } catch {
+    return false;
+  }
+}
+
+function isCronAuthorized(req) {
+  const secret = String(process.env.CRON_SECRET || '').trim();
+  const auth = String(req.headers.authorization || '');
+  let querySecret = '';
+  try {
+    querySecret =
+      new URL(req.url || '/', 'http://localhost').searchParams.get('secret') ||
+      '';
+  } catch (_) {}
+  if (secret) {
+    return auth === `Bearer ${secret}` || querySecret === secret;
+  }
+  if (req.headers['x-vercel-cron']) return true;
+  return process.env.VERCEL !== '1';
+}
+
 module.exports = async (req, res) => {
   if (handleCors(req, res, 'GET,OPTIONS')) return;
   if (req.method !== 'GET') {
@@ -26,6 +54,19 @@ module.exports = async (req, res) => {
   }
 
   try {
+    if (wantsPosReminderCron(req)) {
+      if (!isCronAuthorized(req)) {
+        return unauthorized(req, res, 'Cron yetkisi yok.');
+      }
+      await ensureInvoicePaymentLinksTable();
+      const result = await sendPosPaymentReminders({
+        req,
+        onlyOverdue: true,
+        skipAlreadyReminded: true,
+      });
+      return ok(req, res, result);
+    }
+
     if (wantsHealth(req)) {
       const result = await query('select now() as now');
       return ok(req, res, {
