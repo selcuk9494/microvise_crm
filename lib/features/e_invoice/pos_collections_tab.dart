@@ -384,6 +384,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
   String _valorSort = 'valor_soon';
   bool _busy = false;
   bool _savingValor = false;
+  final Set<String> _selectedIds = {};
 
   @override
   void initState() {
@@ -493,16 +494,31 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
     }
   }
 
-  Future<void> _dismiss(PosCollectionRow row) async {
-    if (row.listStatus != 'pending') return;
+  Future<void> _dismiss(PosCollectionRow row) => _dismissMany([row]);
+
+  Future<void> _dismissSelected(List<PosCollectionRow> items) {
+    return _dismissMany(
+      items.where((row) => _selectedIds.contains(row.id)).toList(),
+    );
+  }
+
+  Future<void> _dismissMany(List<PosCollectionRow> rows) async {
+    final pending = rows
+        .where((row) => row.listStatus == 'pending')
+        .toList(growable: false);
+    if (pending.isEmpty) return;
+    final single = pending.length == 1;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Listeden çıkar'),
         content: Text(
-          '${formatInvoiceNumberForDisplay(row.invoiceNumber)} · '
-          '${row.customerName ?? 'Cari'}\n\n'
-          'Bu kayıt sanal POS listesinden kalkar. Fatura veya tahsilat silinmez.',
+          single
+              ? '${formatInvoiceNumberForDisplay(pending.first.invoiceNumber)} · '
+                    '${pending.first.customerName ?? 'Cari'}\n\n'
+                    'Bu kayıt sanal POS listesinden kalkar. Fatura veya tahsilat silinmez.'
+              : '${pending.length} kayıt sanal POS listesinden kalkar. '
+                    'Fatura veya tahsilat silinmez.',
         ),
         actions: [
           TextButton(
@@ -511,7 +527,11 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Listeden çıkar'),
+            child: Text(
+              single
+                  ? 'Listeden çıkar'
+                  : '${pending.length} kaydı çıkar',
+            ),
           ),
         ],
       ),
@@ -522,17 +542,27 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
     try {
       final apiClient = ref.read(apiClientProvider);
       if (apiClient == null) return;
+      final ids = pending.map((row) => row.id).toList(growable: false);
       final response = await apiClient.postJson(
         '/mutate',
-        body: {'op': 'dismissPosCollection', 'linkId': row.id},
+        body: {
+          'op': 'dismissPosCollection',
+          'linkId': ids.first,
+          'linkIds': ids,
+        },
       );
       if (!mounted) return;
+      setState(() {
+        _selectedIds.removeAll(ids);
+      });
       ref.invalidate(posCollectionsProvider(_filter));
       messenger.showSnackBar(
         SnackBar(
           content: Text(
             response['message']?.toString() ??
-                'Kayıt sanal POS listesinden çıkarıldı.',
+                (single
+                    ? 'Kayıt sanal POS listesinden çıkarıldı.'
+                    : '${ids.length} kayıt sanal POS listesinden çıkarıldı.'),
           ),
         ),
       );
@@ -880,6 +910,14 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                     .where((row) => _matchesValorFilter(row, _valorFilter))
                     .toList()
                   ..sort((a, b) => _compareValorSort(a, b, _valorSort));
+            final pendingIds = items
+                .where((row) => row.listStatus == 'pending')
+                .map((row) => row.id)
+                .toSet();
+            _selectedIds.removeWhere((id) => !pendingIds.contains(id));
+            final selectedCount = _selectedIds.length;
+            final allPendingSelected =
+                pendingIds.isNotEmpty && selectedCount == pendingIds.length;
             if (items.isEmpty) {
               return [
                 SliverFillRemaining(
@@ -901,26 +939,86 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
               SliverToBoxAdapter(
                 child: AppCard(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
+                    horizontal: 10,
+                    vertical: 8,
                   ),
-                  child: Wrap(
-                    spacing: 12,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '${result.pendingCount} bekliyor · ${result.paidCount} ödendi · ${result.settledCount} hesaba yattı',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            '${result.pendingCount} bekliyor · ${result.paidCount} ödendi · ${result.settledCount} hesaba yattı',
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          Text(
+                            paidTotalsByCurrency(items),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppTheme.textMuted),
+                          ),
+                        ],
                       ),
-                      Text(
-                        paidTotalsByCurrency(items),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.textMuted,
+                      if (pendingIds.isNotEmpty) ...[
+                        const Gap(8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Checkbox(
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              tristate: true,
+                              value: selectedCount == 0
+                                  ? false
+                                  : allPendingSelected
+                                  ? true
+                                  : null,
+                              onChanged: _busy
+                                  ? null
+                                  : (value) {
+                                      setState(() {
+                                        if (value == true) {
+                                          _selectedIds
+                                            ..clear()
+                                            ..addAll(pendingIds);
+                                        } else {
+                                          _selectedIds.clear();
+                                        }
+                                      });
+                                    },
+                            ),
+                            Text(
+                              selectedCount == 0
+                                  ? '${pendingIds.length} bekleyen kayıt'
+                                  : '$selectedCount seçili',
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                            if (selectedCount > 0)
+                              TextButton(
+                                onPressed: _busy
+                                    ? null
+                                    : () => setState(_selectedIds.clear),
+                                child: const Text('Temizle'),
+                              ),
+                            FilledButton.tonal(
+                              onPressed: selectedCount == 0 || _busy
+                                  ? null
+                                  : () => _dismissSelected(items),
+                              child: Text(
+                                selectedCount <= 1
+                                    ? 'Listeden çıkar'
+                                    : 'Listeden çıkar ($selectedCount)',
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -936,11 +1034,41 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                   );
                   final (statusLabel, statusTone) = _statusBadge(row);
                   final (valorLabel, valorTone) = _valorBadge(row);
+                  final canSelect = row.listStatus == 'pending';
+                  final selected = _selectedIds.contains(row.id);
                   return AppCard(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+                    padding: const EdgeInsets.fromLTRB(6, 12, 10, 12),
+                    color: selected
+                        ? AppTheme.primary.withValues(alpha: 0.06)
+                        : null,
+                    borderColor: selected
+                        ? AppTheme.primary.withValues(alpha: 0.35)
+                        : null,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        SizedBox(
+                          width: 40,
+                          child: canSelect
+                              ? Checkbox(
+                                  visualDensity: VisualDensity.compact,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  value: selected,
+                                  onChanged: _busy
+                                      ? null
+                                      : (value) {
+                                          setState(() {
+                                            if (value == true) {
+                                              _selectedIds.add(row.id);
+                                            } else {
+                                              _selectedIds.remove(row.id);
+                                            }
+                                          });
+                                        },
+                                )
+                              : const SizedBox.shrink(),
+                        ),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,

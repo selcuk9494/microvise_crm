@@ -3644,6 +3644,7 @@ module.exports = async (req, res) => {
           res,
           await dismissPosCollection({
             linkId: body.linkId || body.id,
+            linkIds: body.linkIds,
             dismissed: body.dismissed !== false && body.dismissed !== 'false',
             createdBy: user?.auth_user_id || user?.id || null,
           }),

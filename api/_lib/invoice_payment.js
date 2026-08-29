@@ -2303,14 +2303,39 @@ async function markPosPaymentSettled({
   };
 }
 
+function uniqueLinkIds(...values) {
+  const ids = [];
+  const seen = new Set();
+  const push = (value) => {
+    const id = asUuidOrNull(value);
+    if (!id) return;
+    const key = id.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    ids.push(id);
+  };
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      for (const item of value) push(item);
+      continue;
+    }
+    if (value && typeof value === 'object') continue;
+    const text = String(value || '').trim();
+    if (!text) continue;
+    for (const part of text.split(',')) push(part);
+  }
+  return ids;
+}
+
 async function dismissPosCollection({
   linkId,
+  linkIds,
   dismissed = true,
   createdBy,
 }) {
   await ensureInvoicePaymentLinksTable();
-  const id = String(linkId || '').trim();
-  if (!id) {
+  const ids = uniqueLinkIds(linkId, linkIds);
+  if (ids.length === 0) {
     const error = new Error('Ödeme kaydı seçilmelidir.');
     error.statusCode = 400;
     throw error;
@@ -2319,42 +2344,55 @@ async function dismissPosCollection({
     `
       select id, status, dismissed_at
       from public.invoice_payment_links
-      where id = $1::uuid
-      limit 1
+      where id = any($1::uuid[])
     `,
-    [id],
+    [ids],
   );
-  const row = current.rows[0];
-  if (!row) {
+  if (current.rows.length === 0) {
     const error = new Error('Sanal POS kaydı bulunamadı.');
     error.statusCode = 400;
     throw error;
   }
-  if (dismissed === true && !canDismissPosCollection(row)) {
+  const eligible =
+    dismissed === true
+      ? current.rows.filter((row) => canDismissPosCollection(row))
+      : current.rows;
+  if (eligible.length === 0) {
     const error = new Error('Ödenen sanal POS kaydı listeden çıkarılamaz.');
     error.statusCode = 400;
     throw error;
   }
+  const eligibleIds = eligible.map((row) => row.id);
   const updated = await query(
     `
       update public.invoice_payment_links
       set dismissed_at = case when $2 then now() else null end,
           dismissed_by = case when $2 then $3::uuid else null end,
           updated_at = now()
-      where id = $1::uuid
+      where id = any($1::uuid[])
       returning id, status, dismissed_at
     `,
-    [id, dismissed === true, asUuidOrNull(createdBy)],
+    [eligibleIds, dismissed === true, asUuidOrNull(createdBy)],
   );
   const next = updated.rows[0];
+  const count = updated.rows.length;
+  const skipped = ids.length - count;
   return {
     ok: true,
-    id: next.id,
-    status: next.status,
-    dismissedAt: next.dismissed_at,
-    message: dismissed
-      ? 'Kayıt sanal POS listesinden çıkarıldı.'
-      : 'Kayıt tekrar listeye alındı.',
+    id: next?.id || eligibleIds[0],
+    ids: updated.rows.map((row) => row.id),
+    count,
+    skipped,
+    status: next?.status,
+    dismissedAt: next?.dismissed_at,
+    message:
+      dismissed === true
+        ? count === 1
+          ? 'Kayıt sanal POS listesinden çıkarıldı.'
+          : `${count} kayıt sanal POS listesinden çıkarıldı.`
+        : count === 1
+          ? 'Kayıt tekrar listeye alındı.'
+          : `${count} kayıt tekrar listeye alındı.`,
   };
 }
 
