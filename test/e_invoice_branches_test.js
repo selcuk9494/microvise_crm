@@ -58,6 +58,22 @@ test('seçilen şubenin adresini tedarikçi adresine yazar', () => {
   assert.equal(settings.seller_address_line1, 'ODTÜ TEKNOPARK');
 });
 
+test('canlı 2. şube adresi testte yazılmışsa oradan alınır', () => {
+  const settings = applyBranchToSettings(
+    {
+      environment: 'production',
+      seller_address_line1: 'ATATÜRK CAD YENİŞEHİR EMEK 2 APT. DIŞ KAPI NO:1',
+      seller_address_line2: 'LEFKOŞA',
+      prod_branch_code: '1',
+      prod_branch_code_2: 'ODT',
+      test_branch_address_2: 'ODTU TEKNOPARK KALKANLI',
+    },
+    { code: 'ODT', name: 'ODTU' },
+  );
+  assert.equal(settings.seller_address_line1, 'ODTU TEKNOPARK KALKANLI');
+  assert.equal(settings.seller_address_line2, '');
+});
+
 test('zorunlu seçimde şube yoksa hata verir', () => {
   assert.throws(
     () =>

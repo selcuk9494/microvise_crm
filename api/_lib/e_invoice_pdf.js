@@ -5,6 +5,11 @@ const path = require('path');
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
 
+const {
+  applyBranchToSettings,
+  resolveSelectedBranch,
+} = require('./e_invoice_branches');
+
 const MODULE_ROOT = path.resolve(__dirname, '../..');
 
 /** process.cwd() throws uv_cwd ENOENT when the launch directory was deleted. */
@@ -377,6 +382,51 @@ function partyLines(party) {
   return lines.filter(Boolean).join('\n');
 }
 
+function resolveArchiveSupplier({ invoice, settings, officialData }) {
+  const payloadInvoice = invoice?.e_invoice_payload?.faturalar?.[0] || {};
+  const source = sourceInvoice(officialData, payloadInvoice);
+  const outgoingSales =
+    invoice?.invoice_type !== 'purchase' &&
+    invoice?.e_invoice_status !== 'received';
+  const branchCode = source.subeKod || payloadInvoice.subeKod;
+  let branchSettings = settings;
+  if (outgoingSales && branchCode) {
+    try {
+      branchSettings = applyBranchToSettings(
+        settings,
+        resolveSelectedBranch(settings, branchCode, { required: false }),
+      );
+    } catch (_) {
+      branchSettings = settings;
+    }
+    const branchAddress = String(branchSettings.seller_address_line1 || '').trim();
+    if (branchAddress) {
+      source.tedarikci = {
+        ...(source.tedarikci || {}),
+        unvan: source.tedarikci?.unvan || branchSettings.seller_title,
+        adresSatir1: branchAddress,
+        adresSatir2: String(branchSettings.seller_address_line2 || '').trim(),
+        sehir: source.tedarikci?.sehir || branchSettings.seller_city,
+        ulke: source.tedarikci?.ulke || branchSettings.seller_country,
+      };
+    }
+  }
+  const supplier = source.tedarikci || {
+    unvan: branchSettings.seller_title,
+    adresSatir1: branchSettings.seller_address_line1,
+    adresSatir2: branchSettings.seller_address_line2,
+    sehir: branchSettings.seller_city,
+    ulke: branchSettings.seller_country,
+    telefon: settings.seller_phone,
+    email: settings.seller_email,
+    webSitesi: settings.seller_website,
+    vkn: settings.seller_vkn,
+    belgeNo: settings.seller_vkn,
+    belgeTipi: 'VERGI_SICILNO',
+  };
+  return { source, supplier, payloadInvoice, branchSettings };
+}
+
 function sourceInvoice(officialData, payloadInvoice) {
   const official =
     officialData?.fatura ||
@@ -387,7 +437,19 @@ function sourceInvoice(officialData, payloadInvoice) {
     officialData ||
     {};
   const normalized = Array.isArray(official) ? official[0] || {} : official;
-  return { ...payloadInvoice, ...normalized };
+  const merged = { ...payloadInvoice, ...normalized };
+  const sent = payloadInvoice?.tedarikci;
+  const sentAddress = String(sent?.adresSatir1 || '').trim();
+  if (sentAddress && merged.tedarikci) {
+    merged.tedarikci = {
+      ...merged.tedarikci,
+      adresSatir1: sentAddress,
+      adresSatir2: String(sent.adresSatir2 || '').trim(),
+      sehir: String(sent.sehir || '').trim() || merged.tedarikci.sehir,
+      ulke: String(sent.ulke || '').trim() || merged.tedarikci.ulke,
+    };
+  }
+  return merged;
 }
 
 const COMPANY_LOGO_MAX = { width: 132, height: 46 };
@@ -785,21 +847,11 @@ async function buildEInvoiceArchivePdf({
   }
   doc.rect(0, 0, PAGE.width, PAGE.height).fill('#ffffff');
 
-  const payloadInvoice = invoice.e_invoice_payload?.faturalar?.[0] || {};
-  const source = sourceInvoice(officialData, payloadInvoice);
-  const supplier = source.tedarikci || {
-    unvan: settings.seller_title,
-    adresSatir1: settings.seller_address_line1,
-    adresSatir2: settings.seller_address_line2,
-    sehir: settings.seller_city,
-    ulke: settings.seller_country,
-    telefon: settings.seller_phone,
-    email: settings.seller_email,
-    webSitesi: settings.seller_website,
-    vkn: settings.seller_vkn,
-    belgeNo: settings.seller_vkn,
-    belgeTipi: 'VERGI_SICILNO',
-  };
+  const { source, supplier, payloadInvoice } = resolveArchiveSupplier({
+    invoice,
+    settings,
+    officialData,
+  });
   const customer = source.musteri || invoice.customer || {};
   const payloadItems = Array.isArray(payloadInvoice.malHizmetler)
     ? payloadInvoice.malHizmetler
@@ -1229,4 +1281,5 @@ module.exports = {
   distinctLineAciklama,
   parseAmount,
   firstPositiveAmount,
+  resolveArchiveSupplier,
 };

@@ -29,8 +29,11 @@ const {
   maliyeErrorMessage,
   nextSerialForBranch,
   isPrimaryBranch,
+  applyBranchToSettings,
+  resolveSelectedBranch,
+  applySelectedBranchAddressToPayload,
 } = require('../api/e-invoice').testUtils;
-const { buildEInvoiceArchivePdf } = require('../api/_lib/e_invoice_pdf');
+const { buildEInvoiceArchivePdf, resolveArchiveSupplier } = require('../api/_lib/e_invoice_pdf');
 
 test('10 haneli VKN değerinden yalnızca ilk sıfırı kaldırır', () => {
   assert.equal(normalizeApiVkn('0007033259'), '007033259');
@@ -400,6 +403,38 @@ test('özel matrah ve irsaliye alanlarını Maliye payloadına ekler', () => {
     vergiMuafiyetKodu: '101',
     vergiMuafiyetAciklamasi: 'Özel Matrah',
   });
+});
+
+test('ODT gönderiminde tedarikçi adresi şube 2 adresidir', () => {
+  const settings = applyBranchToSettings(
+    {
+      ...validSettings(),
+      environment: 'production',
+      seller_address_line2: 'LEFKOŞA',
+      prod_branch_code: '1',
+      prod_branch_code_2: 'ODT',
+      test_branch_address_2: 'ODTU TEKNOPARK KALKANLI',
+    },
+    resolveSelectedBranch(
+      {
+        environment: 'production',
+        prod_branch_code: '1',
+        prod_branch_code_2: 'ODT',
+        test_branch_address_2: 'ODTU TEKNOPARK KALKANLI',
+      },
+      'ODT',
+      { required: true },
+    ),
+  );
+  const built = buildPayload({ settings, invoice: validInvoice() });
+  built.payload.faturalar[0].tedarikci.adresSatir1 = 'ATATÜRK CAD YENİŞEHİR';
+  applySelectedBranchAddressToPayload(settings, built.payload);
+  assert.equal(
+    built.payload.faturalar[0].tedarikci.adresSatir1,
+    'ODTU TEKNOPARK KALKANLI',
+  );
+  assert.ok(!built.payload.faturalar[0].tedarikci.adresSatir2);
+  assert.equal(built.payload.faturalar[0].subeKod, 'ODT');
 });
 
 test('satır KDV yuvarlaması ile özet toplamını tutarlı üretir', () => {
@@ -886,6 +921,46 @@ test('Maliye arşiv verisinden Türkçe karakterli tek sayfa A4 PDF üretir', as
     /NotoSans|Inter/.test(asLatin),
     'PDF içinde NotoSans veya Inter fontu gömülü olmalı',
   );
+});
+
+test('PDF tedarikçi adresinde seçilen şube adresini basar', async () => {
+  const invoice = validInvoice();
+  invoice.e_invoice_number = '620009058-2026-ODT-00000000001';
+  invoice.e_invoice_payload = {
+    faturalar: [
+      {
+        subeKod: 'ODT',
+        tedarikci: {
+          unvan: 'MICROVISE INNOVATION LTD',
+          adresSatir1: 'ATATÜRK CAD YENİŞEHİR',
+          sehir: 'LEFKOŞA',
+          ulke: 'Kuzey Kıbrıs Türk Cumhuriyeti',
+          vkn: '620009058',
+        },
+      },
+    ],
+  };
+  const settings = {
+    ...validSettings(),
+    environment: 'production',
+    prod_branch_code: '1',
+    prod_branch_code_2: 'ODT',
+    prod_branch_address_2: 'ODTU TEKNOPARK KALKANLI',
+  };
+  const { supplier } = resolveArchiveSupplier({
+    invoice,
+    settings,
+    officialData: officialDataWithItems([]),
+  });
+  assert.equal(supplier.adresSatir1, 'ODTU TEKNOPARK KALKANLI');
+  const pdf = await buildEInvoiceArchivePdf({
+    invoice,
+    settings,
+    officialData: officialDataWithItems([]),
+    verificationCode: '019faa9a-a367-74d5-a443-77eb762bca98',
+    environment: 'production',
+  });
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
 });
 
 test('test ortamında gönderim sonrası otomatik PDF arşivini atlar', async () => {

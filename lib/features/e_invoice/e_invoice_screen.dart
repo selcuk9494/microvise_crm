@@ -7812,6 +7812,12 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
     if (_c('prod_branch_address').text.trim().isEmpty) {
       _c('prod_branch_address').text = hqAddress;
     }
+    if (_c('test_branch_address_2').text.trim().isEmpty) {
+      _c('test_branch_address_2').text = _c('prod_branch_address_2').text.trim();
+    }
+    if (_c('prod_branch_address_2').text.trim().isEmpty) {
+      _c('prod_branch_address_2').text = _c('test_branch_address_2').text.trim();
+    }
   }
 
   void _fillMissingCredentials() {
@@ -8011,7 +8017,8 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                   const Gap(4),
                   Text(
                     'Maliye’ye gönderirken hangi şubeden kesileceği sorulur. '
-                    'Tedarikçi adresi seçilen şubenin adresidir; 2. şube adresini ayrı yazın.',
+                    'Tedarikçi adresi seçilen şubenin adresidir. '
+                    '2. şube adresini bir kez yazmanız yeter; test ve canlı aynı adresi kullanır.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: AppTheme.textSoft,
                     ),
@@ -8078,7 +8085,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                     'test_branch_address_2',
                     'Şube 2 adres',
                     dense: true,
-                    hintText: 'Boşsa 1. şube adresi gider',
+                    hintText: 'Test ve canlıda aynı adres kullanılır',
                   ),
                   const Gap(12),
                   Text(
@@ -8141,7 +8148,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                     'prod_branch_address_2',
                     'Şube 2 adres',
                     dense: true,
-                    hintText: 'Boşsa 1. şube adresi gider',
+                    hintText: 'Test ve canlıda aynı adres kullanılır',
                   ),
                   const Gap(10),
                   _field('seller_title', 'Satıcı Ünvanı'),
@@ -8716,6 +8723,17 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
     settings['seller_branch_name'] = settings['${activePrefix}_branch_name'];
     settings['username'] = settings['${activePrefix}_username'];
     settings['password'] = settings['${activePrefix}_password'];
+    void copyAddress(String target, String source) {
+      final current = (settings[target] ?? '').toString().trim();
+      final other = (settings[source] ?? '').toString().trim();
+      if (current.isEmpty && other.isNotEmpty) {
+        settings[target] = other;
+      }
+    }
+    copyAddress('test_branch_address_2', 'prod_branch_address_2');
+    copyAddress('prod_branch_address_2', 'test_branch_address_2');
+    copyAddress('test_branch_address', 'prod_branch_address');
+    copyAddress('prod_branch_address', 'test_branch_address');
 
     try {
       await _saveLocalEInvoiceSettings(settings);

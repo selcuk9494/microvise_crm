@@ -2,6 +2,14 @@ function cleanText(value) {
   return String(value ?? '').trim();
 }
 
+function firstAddress(...values) {
+  for (const value of values) {
+    const text = cleanText(value);
+    if (text) return text;
+  }
+  return '';
+}
+
 function branchEntry(code, name, address) {
   const normalizedCode = cleanText(code);
   if (!normalizedCode) return null;
@@ -13,6 +21,18 @@ function branchEntry(code, name, address) {
   };
 }
 
+function fillSharedBranchAddresses(row) {
+  for (const slot of ['', '_2']) {
+    const testKey = `test_branch_address${slot}`;
+    const prodKey = `prod_branch_address${slot}`;
+    const testAddr = cleanText(row[testKey]);
+    const prodAddr = cleanText(row[prodKey]);
+    if (!testAddr && prodAddr) row[testKey] = prodAddr;
+    if (!prodAddr && testAddr) row[prodKey] = testAddr;
+  }
+  return row;
+}
+
 function environmentKey(environment) {
   return environment === 'production' ? 'production' : 'test';
 }
@@ -20,11 +40,16 @@ function environmentKey(environment) {
 function configuredBranches(settings, environment) {
   const env = environmentKey(environment || settings?.environment);
   const prefix = env === 'production' ? 'prod' : 'test';
+  const other = prefix === 'prod' ? 'test' : 'prod';
   const first =
     branchEntry(
       settings?.[`${prefix}_branch_code`] || settings?.seller_branch_code,
       settings?.[`${prefix}_branch_name`],
-      settings?.[`${prefix}_branch_address`] || settings?.seller_address_line1,
+      firstAddress(
+        settings?.[`${prefix}_branch_address`],
+        settings?.[`${other}_branch_address`],
+        settings?.seller_address_line1,
+      ),
     ) ||
     branchEntry(
       settings?.seller_branch_code,
@@ -34,7 +59,10 @@ function configuredBranches(settings, environment) {
   const second = branchEntry(
     settings?.[`${prefix}_branch_code_2`],
     settings?.[`${prefix}_branch_name_2`],
-    settings?.[`${prefix}_branch_address_2`],
+    firstAddress(
+      settings?.[`${prefix}_branch_address_2`],
+      settings?.[`${other}_branch_address_2`],
+    ),
   );
   const list = [];
   if (first) list.push(first);
@@ -65,15 +93,23 @@ function hydrateBranchSettings(settings) {
   if (!cleanText(row.prod_branch_address) && hqAddress) {
     row.prod_branch_address = hqAddress;
   }
-  return row;
+  return fillSharedBranchAddresses(row);
 }
 
 function applyBranchToSettings(settings, branch) {
   const next = hydrateBranchSettings(settings);
   if (!branch?.code) return next;
-  next.seller_branch_code = branch.code;
-  next.seller_branch_name = branch.name || branch.code;
-  if (branch.address) next.seller_address_line1 = branch.address;
+  const resolved =
+    configuredBranches(next, next.environment).find(
+      (item) => item.code.toUpperCase() === cleanText(branch.code).toUpperCase(),
+    ) || branch;
+  next.seller_branch_code = resolved.code || branch.code;
+  next.seller_branch_name = resolved.name || branch.name || branch.code;
+  const address = firstAddress(resolved.address, branch.address);
+  if (address) {
+    next.seller_address_line1 = address;
+    next.seller_address_line2 = '';
+  }
   return next;
 }
 

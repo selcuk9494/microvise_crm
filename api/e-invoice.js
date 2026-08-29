@@ -1962,6 +1962,25 @@ async function applyRegisteredSupplierIdentity({ settings, payload, token }) {
   }
 }
 
+function applySelectedBranchAddressToPayload(settings, payload) {
+  const address = cleanText(settings.seller_address_line1);
+  if (!address) return payload;
+  const line2 = cleanText(settings.seller_address_line2);
+  const city = cleanText(settings.seller_city);
+  const country = cleanText(settings.seller_country);
+  const countryCode = cleanText(settings.seller_country_code);
+  for (const invoice of payload?.faturalar || []) {
+    const supplier = invoice?.tedarikci;
+    if (!supplier) continue;
+    supplier.adresSatir1 = address;
+    supplier.adresSatir2 = line2;
+    if (city) supplier.sehir = city;
+    if (country) supplier.ulke = country;
+    if (countryCode) supplier.ulkeKodu = countryCode;
+  }
+  return payload;
+}
+
 function assertSuccessfulMaliyeResponse(response) {
   const failedCount = Number(response?.ozet?.basarisizKayit || 0);
   const failedItems = Array.isArray(response?.sonuclar)
@@ -1986,6 +2005,7 @@ async function sendToMaliye({ settings, payload }) {
   const vkn = encodeURIComponent(requireApiVkn(settings.seller_vkn, 'Satıcı VKN'));
   const base = urlsForEnvironment(settings.environment).apiBaseUrl;
   await applyRegisteredSupplierIdentity({ settings, payload, token });
+  applySelectedBranchAddressToPayload(settings, payload);
   await validatePayloadAgainstApi({ settings, payload, token });
   const response = await fetch(`${base}/mukellefler/${vkn}/faturalar`, {
     method: 'POST',
@@ -2985,6 +3005,10 @@ async function handler(req, res) {
       const syncedCreds = syncActiveCredentialsFromEnvironment(synced);
       picked.seller_branch_code = synced.seller_branch_code;
       picked.seller_branch_name = synced.seller_branch_name;
+      picked.test_branch_address = synced.test_branch_address;
+      picked.test_branch_address_2 = synced.test_branch_address_2;
+      picked.prod_branch_address = synced.prod_branch_address;
+      picked.prod_branch_address_2 = synced.prod_branch_address_2;
       picked.username = syncedCreds.username;
       picked.password = syncedCreds.password;
       if (Object.prototype.hasOwnProperty.call(picked, 'pos_valor_days')) {
@@ -3268,6 +3292,7 @@ module.exports.testUtils = {
   hydrateBranchSettings,
   resolveSelectedBranch,
   applyBranchToSettings,
+  applySelectedBranchAddressToPayload,
   urlsForEnvironment,
   applyRegisteredSupplierIdentity,
   archiveAfterSuccessfulSend,
