@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const { query, withTransaction } = require('./db');
 const { ensureInvoicePaidCloseRule } = require('./invoice_paid_status');
-const { normalizeValorDays } = require('./pos_status');
+const { canDismissPosCollection, normalizeValorDays } = require('./pos_status');
 
 const HALKBANK_PROD_GATEWAY_URL = 'https://sanalpos.halkbank.com.tr/fim/est3Dgate';
 const HALKBANK_TEST_GATEWAY_URL = 'https://entegrasyon.asseco-see.com.tr/fim/est3Dgate';
@@ -2327,6 +2327,11 @@ async function dismissPosCollection({
   const row = current.rows[0];
   if (!row) {
     const error = new Error('Sanal POS kaydı bulunamadı.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (dismissed === true && !canDismissPosCollection(row)) {
+    const error = new Error('Ödenen sanal POS kaydı listeden çıkarılamaz.');
     error.statusCode = 400;
     throw error;
   }

@@ -13,6 +13,67 @@ import '../../core/ui/empty_state_card.dart';
 import '../invoices/invoice_model.dart';
 import '../invoices/invoice_providers.dart';
 
+String posCurrencyCode(String? currency) {
+  final code = (currency ?? 'TRY').trim().toUpperCase();
+  return switch (code) {
+    '840' || 'USD' => 'USD',
+    '978' || 'EUR' => 'EUR',
+    '826' || 'GBP' => 'GBP',
+    '949' || 'TRY' || 'TL' => 'TRY',
+    _ => code.isEmpty ? 'TRY' : code,
+  };
+}
+
+String posCurrencySymbol(String? currency) {
+  return switch (posCurrencyCode(currency)) {
+    'TRY' => '₺',
+    'USD' => '\$',
+    'EUR' => '€',
+    'GBP' => '£',
+    final code => '$code ',
+  };
+}
+
+String resolvePosCurrency(String? linkCurrency, String? invoiceCurrency) {
+  final link = posCurrencyCode(linkCurrency);
+  final invoice = posCurrencyCode(invoiceCurrency);
+  if (invoice != 'TRY' && (linkCurrency == null || linkCurrency.trim().isEmpty || link == 'TRY')) {
+    return invoice;
+  }
+  return link;
+}
+
+String formatPosMoney(double amount, String? currency) {
+  return NumberFormat.currency(
+    locale: 'tr_TR',
+    symbol: posCurrencySymbol(currency),
+    decimalDigits: 2,
+  ).format(amount);
+}
+
+String paidTotalsByCurrency(Iterable<PosCollectionRow> items) {
+  final totals = <String, double>{};
+  for (final row in items) {
+    if (row.listStatus != 'paid' && row.listStatus != 'settled') continue;
+    final code = posCurrencyCode(row.currency);
+    totals[code] = (totals[code] ?? 0) + row.amount;
+  }
+  if (totals.isEmpty) return formatPosMoney(0, 'TRY');
+  const order = ['TRY', 'USD', 'EUR', 'GBP'];
+  final parts = <String>[];
+  for (final code in order) {
+    if (totals.containsKey(code)) {
+      parts.add(formatPosMoney(totals[code]!, code));
+    }
+  }
+  for (final entry in totals.entries) {
+    if (!order.contains(entry.key)) {
+      parts.add(formatPosMoney(entry.value, entry.key));
+    }
+  }
+  return parts.join(' · ');
+}
+
 class PosCollectionsFilter {
   final DateTime startDate;
   final DateTime endDate;
@@ -131,7 +192,10 @@ class PosCollectionRow {
           (invoices is Map ? invoices['invoice_number']?.toString() : null),
       invoiceStatus: invoices is Map ? invoices['status']?.toString() : null,
       amount: _toDouble(json['amount']),
-      currency: json['currency']?.toString() ?? 'TRY',
+      currency: resolvePosCurrency(
+        json['currency']?.toString(),
+        invoices is Map ? invoices['currency']?.toString() : null,
+      ),
       paidOn:
           parseAppDateTime(json['paid_on']?.toString()) ??
           parseAppDateTime(json['paid_at']?.toString()) ??
@@ -392,6 +456,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
   }
 
   Future<void> _dismiss(PosCollectionRow row) async {
+    if (row.listStatus != 'pending') return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -496,7 +561,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                   'Karttan otomatik iade yapılmaz.'
               : '${formatInvoiceNumberForDisplay(row.invoiceNumber)} · '
                   '${row.customerName ?? 'Cari'}\n'
-                  '${widget.moneyTry.format(row.amount)} bankaya iade edilecek.',
+                  '${formatPosMoney(row.amount, row.currency)} bankaya iade edilecek.',
         ),
         actions: [
           TextButton(
@@ -738,7 +803,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                               ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                         Text(
-                          widget.moneyTry.format(result.totalAmount),
+                          paidTotalsByCurrency(result.items),
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: AppTheme.textMuted),
                         ),
@@ -804,6 +869,15 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                                           label: 'Sanal POS',
                                           tone: AppBadgeTone.primary,
                                         ),
+                                        if (posCurrencyCode(row.currency) !=
+                                            'TRY')
+                                          AppBadge(
+                                            dense: true,
+                                            label: posCurrencyCode(
+                                              row.currency,
+                                            ),
+                                            tone: AppBadgeTone.neutral,
+                                          ),
                                         if (row.emailedAt != null &&
                                             row.listStatus == 'pending')
                                           const AppBadge(
@@ -857,7 +931,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   Text(
-                                    widget.moneyTry.format(row.amount),
+                                    formatPosMoney(row.amount, row.currency),
                                     style: Theme.of(context)
                                         .textTheme
                                         .titleSmall
@@ -893,12 +967,13 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                                           : () => _refund(row),
                                       child: const Text('İade'),
                                     ),
-                                  TextButton(
-                                    onPressed: _busy
-                                        ? null
-                                        : () => _dismiss(row),
-                                    child: const Text('Listeden çıkar'),
-                                  ),
+                                  if (row.listStatus == 'pending')
+                                    TextButton(
+                                      onPressed: _busy
+                                          ? null
+                                          : () => _dismiss(row),
+                                      child: const Text('Listeden çıkar'),
+                                    ),
                                 ],
                               ),
                             ],

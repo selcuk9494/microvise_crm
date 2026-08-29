@@ -10,6 +10,10 @@ function posListStatus(row) {
   return 'pending';
 }
 
+function canDismissPosCollection(row) {
+  return posListStatus(row) === 'pending';
+}
+
 function posCollectionVisible(row) {
   if (row?.dismissed_at) return false;
   const status = textOrEmpty(row?.status).toLowerCase();
@@ -194,6 +198,7 @@ function posValorInfo(row, { now = new Date(), fallbackValorDays = 1 } = {}) {
 module.exports = {
   posListStatus,
   posListStatusLabel,
+  canDismissPosCollection,
   posCollectionVisible,
   invoicePaymentAwaiting,
   periodKeyForDate,

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   posListStatus,
   posListStatusLabel,
+  canDismissPosCollection,
   posCollectionVisible,
   invoicePaymentAwaiting,
   periodKeyForDate,
@@ -27,6 +28,16 @@ test('posListStatus maps paid / settled / pending', () => {
   assert.equal(posListStatusLabel('pending'), 'Ödeme bekleniyor');
   assert.equal(posListStatusLabel('paid'), 'Ödendi');
   assert.equal(posListStatusLabel('settled'), 'Hesaba yattı');
+});
+
+test('ödenen sanal POS kaydı listeden çıkarılamaz', () => {
+  assert.equal(canDismissPosCollection({ status: 'pending' }), true);
+  assert.equal(canDismissPosCollection({ status: 'paid' }), false);
+  assert.equal(
+    canDismissPosCollection({ status: 'paid', settled_at: '2026-08-29' }),
+    false,
+  );
+  assert.equal(canDismissPosCollection({ status: 'refunded' }), false);
 });
 
 test('bekleyen POS kaydı nakit kapanınca listeden düşer', () => {
