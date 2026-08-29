@@ -922,6 +922,10 @@ List<_FormsNavSubItem> _eInvoiceNavSubItems(Set<String> allowedPages) {
         label: 'Sanal POS ile ödenenler',
         path: '/e-fatura/sanal-pos',
       ),
+      _FormsNavSubItem(
+        label: 'Tekrarlayan ödemeler',
+        path: '/e-fatura/tekrarlayan',
+      ),
       _FormsNavSubItem(label: 'E-Fatura Ayarları', path: '/e-fatura/ayarlar'),
     ]);
   } else if (allowedPages.contains(kPageQuotes)) {

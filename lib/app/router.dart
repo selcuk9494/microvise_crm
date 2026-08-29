@@ -223,6 +223,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               ),
             ),
             GoRoute(
+              path: 'tekrarlayan',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: EInvoiceScreen(section: 'tekrarlayan'),
+              ),
+            ),
+            GoRoute(
               path: 'teklif',
               pageBuilder: (context, state) => const NoTransitionPage(
                 child: EInvoiceScreen(section: 'teklif'),

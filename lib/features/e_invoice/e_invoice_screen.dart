@@ -38,6 +38,7 @@ import 'e_invoice_pdf_share.dart';
 import 'e_invoice_print.dart';
 import 'e_invoice_whatsapp_share.dart';
 import 'pos_collections_tab.dart';
+import 'recurring_billing_tab.dart';
 import '../quotes/quote_providers.dart';
 import '../quotes/quotes_screen.dart';
 
@@ -237,6 +238,143 @@ Future<void> _createInvoicePaymentLinkFlow({
   }
 }
 
+Future<void> _sendInvoicePaymentLinkEmailFlow({
+  required BuildContext context,
+  required WidgetRef ref,
+  required List<Invoice> invoices,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final payable = invoices
+      .where(
+        (invoice) =>
+            invoice.isActive &&
+            invoice.isOpen &&
+            invoice.remainingAmount > 0 &&
+            invoice.invoiceType == 'sales',
+      )
+      .toList(growable: false);
+  if (payable.isEmpty) {
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Mail için açık satış faturası seçin.'),
+      ),
+    );
+    return;
+  }
+
+  final customerIds = payable.map((e) => e.customerId).toSet();
+  if (customerIds.length > 1) {
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Mail aynı cari için gönderilebilir.'),
+      ),
+    );
+    return;
+  }
+
+  final currencies = payable.map((e) => e.currency).toSet();
+  if (currencies.length > 1) {
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Seçilen faturaların para birimi aynı olmalıdır.'),
+      ),
+    );
+    return;
+  }
+
+  final total = payable.fold<double>(
+    0,
+    (sum, inv) => sum + inv.remainingAmount,
+  );
+  final currency = (currencies.first).toString().trim().toUpperCase();
+  final money = NumberFormat.currency(
+    locale: 'tr_TR',
+    symbol: _currencySymbol(currency),
+    decimalDigits: 2,
+  );
+  final initialEmail = payable
+      .map((invoice) => (invoice.customerEmail ?? '').trim())
+      .firstWhere((email) => email.contains('@'), orElse: () => '');
+
+  final emailController = TextEditingController(text: initialEmail);
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Fatura ve ödeme linkini mail at'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${payable.length} fatura · ${money.format(total)}\n'
+            'PDF ve sanal POS ödeme linki müşteriye gönderilir. '
+            'Sonrasında “Link gönderildi · ödeme bekliyor” görünür.',
+          ),
+          const Gap(12),
+          TextField(
+            controller: emailController,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            decoration: const InputDecoration(
+              labelText: 'E-posta',
+              hintText: 'musteri@ornek.com',
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Vazgeç'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Gönder'),
+        ),
+      ],
+    ),
+  );
+  final email = emailController.text.trim();
+  emailController.dispose();
+  if (confirmed != true || !context.mounted) return;
+  if (!email.contains('@')) {
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Geçerli bir e-posta yazın.')),
+    );
+    return;
+  }
+
+  final apiClient = ref.read(apiClientProvider);
+  if (apiClient == null) return;
+
+  try {
+    final response = await apiClient.postJson(
+      '/mutate',
+      body: {
+        'op': 'sendInvoicePaymentLinkEmail',
+        'invoiceIds': payable.map((e) => e.id).toList(),
+        'email': email,
+      },
+    );
+    if (!context.mounted) return;
+    ref.invalidate(invoicesProvider);
+    ref.invalidate(accountBalancesProvider);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          response['message']?.toString() ??
+              'Fatura ve ödeme linki gönderildi. Link gönderildi · ödeme bekliyor.',
+        ),
+      ),
+    );
+  } catch (error) {
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text('Mail gönderilemedi: $error')),
+    );
+  }
+}
+
 String _formatJobElapsed(Duration value) {
   final minutes = value.inMinutes.remainder(60).toString().padLeft(2, '0');
   final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -280,6 +418,7 @@ const _secretSettingKeys = {
   'password',
   'akinsoft_vpn_password',
   'akinsoft_mssql_password',
+  'smtp_pass',
 };
 
 Map<String, dynamic> _mergeEInvoiceSettings(
@@ -368,6 +507,11 @@ const _defaultSettings = <String, dynamic>{
   'akinsoft_mssql_port': '1433',
   'akinsoft_database_year': '2026',
   'akinsoft_database_pattern': 'WOLVOX8_MICO_{year}_WOLVOX',
+  'smtp_host': 'smtp.gmail.com',
+  'smtp_port': '587',
+  'smtp_secure': 'false',
+  'smtp_user': 'microvisefood@gmail.com',
+  'smtp_from': 'Microvise Innovation <microvisefood@gmail.com>',
 };
 
 const _environmentEndpoints = <String, Map<String, String>>{
@@ -413,6 +557,7 @@ class EInvoiceScreen extends ConsumerWidget {
       'stok' => _ProductsTab(moneyTry: _moneyTry),
       'cari' => _AccountsTab(moneyTry: _moneyTry),
       'sanal_pos' => PosCollectionsTab(moneyTry: _moneyTry),
+      'tekrarlayan' => RecurringBillingTab(moneyTry: _moneyTry),
       'ayarlar' => const _SettingsTab(),
       _ => _InvoicesTab(
         key: ValueKey('invoices-${invoiceType ?? 'all'}'),
@@ -424,7 +569,9 @@ class EInvoiceScreen extends ConsumerWidget {
       'stok' => 'Stok ve hizmet tanımları, SAP grup/alt grup ayrımı.',
       'cari' => 'Cari borç, tahsilat ve ödeme takibi.',
       'sanal_pos' =>
-        'Ödeme linki ile sanal POS’tan tahsil edilen faturalar (tarih filtreli).',
+        'Ödeme linki ile sanal POS tahsilatları: ödendi, ödeme bekleniyor, hesaba yattı.',
+      'tekrarlayan' =>
+        'Kayıtlı firmalara fatura gününde fatura kesip ödeme linkini mail gönderin.',
       'ayarlar' => 'Maliye ve SAP entegrasyon ayarları.',
       _ => switch (invoiceType) {
         'purchase' => 'Alış faturaları ve KKTC e-fatura takibi.',
@@ -975,6 +1122,22 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                             _bulkDeleting ||
                                             _bulkProcessing
                                         ? null
+                                        : () => _emailPaymentLinkSelected(
+                                            items,
+                                          ),
+                                    icon: const Icon(
+                                      AppPhosphorIcons.paperPlaneTilt,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Fatura + link mail'),
+                                  ),
+                                  const Gap(8),
+                                  OutlinedButton.icon(
+                                    onPressed:
+                                        _selectedInvoiceIds.isEmpty ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing
+                                        ? null
                                         : () => _exportSelectedStatement(items),
                                     icon: const Icon(
                                       AppPhosphorIcons.receipt,
@@ -1173,6 +1336,20 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                     size: 18,
                                   ),
                                   label: const Text('Toplu Ödeme Linki'),
+                                ),
+                                OutlinedButton.icon(
+                                  onPressed:
+                                      _selectedInvoiceIds.isEmpty ||
+                                          _bulkDeleting ||
+                                          _bulkProcessing
+                                      ? null
+                                      : () =>
+                                            _emailPaymentLinkSelected(items),
+                                  icon: const Icon(
+                                    AppPhosphorIcons.paperPlaneTilt,
+                                    size: 18,
+                                  ),
+                                  label: const Text('Fatura + link mail'),
                                 ),
                                 OutlinedButton.icon(
                                   onPressed:
@@ -2194,6 +2371,17 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
         .toList(growable: false);
     await _createInvoicePaymentLinkFlow(
+      context: context,
+      ref: ref,
+      invoices: selected,
+    );
+  }
+
+  Future<void> _emailPaymentLinkSelected(List<Invoice> visibleInvoices) async {
+    final selected = visibleInvoices
+        .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
+        .toList(growable: false);
+    await _sendInvoicePaymentLinkEmailFlow(
       context: context,
       ref: ref,
       invoices: selected,
@@ -3594,8 +3782,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     final isManual = invoice.isEInvoiceManual;
     final isManualSent = invoice.eInvoiceStatus == 'manual_sent';
     final canMarkManualSent =
-        isManualSent ||
-        (invoice.eInvoiceStatus == 'sent' &&
+        invoice.invoiceType == 'sales' &&
+        !invoice.isEInvoiceReceived &&
+        (isManualSent ||
+            invoice.eInvoiceStatus != 'sent' ||
             invoice.eInvoiceEnvironment == 'test');
 
     // Compact rows scroll horizontally, so actions can keep clear labels.
@@ -3610,10 +3800,17 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       final actions = <Widget>[
         if (canPaymentLink)
           _InvoiceIconAction(
-            tooltip: 'Ödeme linki gönder',
+            tooltip: 'Ödeme linki oluştur',
             icon: AppPhosphorIcons.link,
             tone: _InvoiceActionTone.primary,
             onPressed: _busy ? null : _sendPaymentLink,
+          ),
+        if (canPaymentLink)
+          _InvoiceIconAction(
+            tooltip: 'Fatura ve ödeme linkini mail at',
+            icon: AppPhosphorIcons.paperPlaneTilt,
+            tone: _InvoiceActionTone.primary,
+            onPressed: _busy ? null : _emailPaymentLink,
           ),
         if (canPosRefund)
           _InvoiceIconAction(
@@ -3684,6 +3881,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             switch (value) {
               case 'payment_link':
                 _sendPaymentLink();
+              case 'payment_link_email':
+                _emailPaymentLink();
               case 'pos_refund':
                 _refundPosPayment();
               case 'manual':
@@ -3704,11 +3903,16 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             if (invoice.invoiceType == 'sales' &&
                 invoice.isActive &&
                 invoice.isOpen &&
-                invoice.remainingAmount > 0)
+                invoice.remainingAmount > 0) ...[
               const PopupMenuItem(
                 value: 'payment_link',
                 child: Text('Tekil ödeme linki'),
               ),
+              const PopupMenuItem(
+                value: 'payment_link_email',
+                child: Text('Fatura + link mail'),
+              ),
+            ],
             if (invoice.invoiceType == 'sales' &&
                 invoice.isActive &&
                 invoice.isPaidViaPos)
@@ -3835,6 +4039,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           switch (value) {
             case 'payment_link':
               _sendPaymentLink();
+            case 'payment_link_email':
+              _emailPaymentLink();
             case 'pos_refund':
               _refundPosPayment();
             case 'manual':
@@ -3855,11 +4061,16 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           if (invoice.invoiceType == 'sales' &&
               invoice.isActive &&
               invoice.isOpen &&
-              invoice.remainingAmount > 0)
+              invoice.remainingAmount > 0) ...[
             const PopupMenuItem(
               value: 'payment_link',
               child: Text('Tekil ödeme linki'),
             ),
+            const PopupMenuItem(
+              value: 'payment_link_email',
+              child: Text('Fatura + link mail'),
+            ),
+          ],
           if (invoice.invoiceType == 'sales' &&
               invoice.isActive &&
               invoice.isPaidViaPos)
@@ -4074,12 +4285,18 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                     AppBadge(
                       dense: true,
                       label: invoice.isActive
-                          ? _statusLabel(invoice.status)
+                          ? _invoicePaymentStatusLabel(invoice)
                           : 'Pasif',
                       tone: invoice.isActive
-                          ? _statusTone(invoice.status)
+                          ? _invoicePaymentStatusTone(invoice)
                           : AppBadgeTone.neutral,
                     ),
+                    if (invoice.isPaymentLinkAwaiting)
+                      const AppBadge(
+                        dense: true,
+                        label: 'Link gönderildi · ödeme bekliyor',
+                        tone: AppBadgeTone.warning,
+                      ),
                     if (invoice.isPaidViaPos)
                       AppBadge(
                         dense: true,
@@ -4261,7 +4478,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                       if (invoice.paidAmount > 0) ...[
                         const Gap(2),
                         Text(
-                          invoice.isPaid
+                          invoice.isPaid || invoice.isPaidPendingEInvoice
                               ? 'Tahsil: ${money.format(invoice.paidAmount)}'
                               : 'Tahsil: ${money.format(invoice.paidAmount)} · Kalan ${money.format(invoice.remainingAmount)}',
                           maxLines: 1,
@@ -4269,7 +4486,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w600,
-                            color: invoice.isPaid
+                            color: invoice.isPaid || invoice.isPaidPendingEInvoice
                                 ? const Color(0xFF15803D)
                                 : AppTheme.textMuted,
                           ),
@@ -4287,12 +4504,18 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                       AppBadge(
                         dense: true,
                         label: invoice.isActive
-                            ? _statusLabel(invoice.status)
+                            ? _invoicePaymentStatusLabel(invoice)
                             : 'Pasif',
                         tone: invoice.isActive
-                            ? _statusTone(invoice.status)
+                            ? _invoicePaymentStatusTone(invoice)
                             : AppBadgeTone.neutral,
                       ),
+                      if (invoice.isPaymentLinkAwaiting)
+                        const AppBadge(
+                          dense: true,
+                          label: 'Link gönderildi · ödeme bekliyor',
+                          tone: AppBadgeTone.warning,
+                        ),
                       if (invoice.isPaidViaPos)
                         AppBadge(
                           dense: true,
@@ -4344,6 +4567,19 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     setState(() => _busy = true);
     try {
       await _createInvoicePaymentLinkFlow(
+        context: context,
+        ref: ref,
+        invoices: [widget.invoice],
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _emailPaymentLink() async {
+    setState(() => _busy = true);
+    try {
+      await _sendInvoicePaymentLinkEmailFlow(
         context: context,
         ref: ref,
         invoices: [widget.invoice],
@@ -4660,11 +4896,16 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     final invoice = widget.invoice;
     final isMarked = invoice.eInvoiceStatus == 'manual_sent';
     final canMark =
-        isMarked ||
-        (invoice.eInvoiceStatus == 'sent' &&
+        invoice.invoiceType == 'sales' &&
+        !invoice.isEInvoiceReceived &&
+        (isMarked ||
+            invoice.eInvoiceStatus != 'sent' ||
             invoice.eInvoiceEnvironment == 'test');
     if (!canMark) return;
 
+    final hadMaliyeSend =
+        (invoice.eInvoiceUuid?.trim().isNotEmpty ?? false) ||
+        (invoice.eInvoiceNumber?.trim().isNotEmpty ?? false);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -4675,8 +4916,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         ),
         content: Text(
           isMarked
-              ? '${invoice.invoiceNumber} numaralı faturanın manuel gönderildi işareti geri alınsın mı? Fatura tekrar canlı API’ye gönderilebilir hale gelir.'
-              : '${invoice.invoiceNumber} numaralı fatura test API sonrası manuel gönderildi olarak işaretlensin mi? Canlı API gönderimi kapanır; test gönderim kaydı korunur.',
+              ? '${invoice.invoiceNumber} numaralı faturanın manuel gönderildi işareti geri alınsın mı? Fatura tekrar API’ye gönderilebilir hale gelir.'
+              : '${invoice.invoiceNumber} numaralı fatura Maliye API’sine gönderilmeden manuel gönderildi olarak işaretlensin mi?\n\nÖdemesi tamamlanmışsa fatura bu işlemden sonra kapanır.',
         ),
         actions: [
           TextButton(
@@ -4705,8 +4946,9 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             {'col': 'id', 'op': 'eq', 'value': invoice.id},
           ],
           'values': {
-            'e_invoice_status': isMarked ? 'sent' : 'manual_sent',
-            if (!isMarked) 'e_invoice_environment': 'test',
+            'e_invoice_status': isMarked
+                ? (hadMaliyeSend ? 'sent' : 'not_sent')
+                : 'manual_sent',
           },
         },
       );
@@ -5311,6 +5553,11 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     };
   }
 
+  String _invoicePaymentStatusLabel(Invoice invoice) {
+    if (invoice.isPaidPendingEInvoice) return 'Ödendi · Maliye bekliyor';
+    return _statusLabel(invoice.status);
+  }
+
   AppBadgeTone _statusTone(String status) {
     return switch (status) {
       'paid' => AppBadgeTone.success,
@@ -5318,6 +5565,11 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       'cancelled' => AppBadgeTone.error,
       _ => AppBadgeTone.primary,
     };
+  }
+
+  AppBadgeTone _invoicePaymentStatusTone(Invoice invoice) {
+    if (invoice.isPaidPendingEInvoice) return AppBadgeTone.warning;
+    return _statusTone(invoice.status);
   }
 
   String _eInvoiceStatusLabel(Invoice invoice) {
@@ -7047,6 +7299,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
   bool _pullingAkinsoft = false;
   bool _bulkMatchingCustomers = false;
   bool _cleaningCustomers = false;
+  bool _testingMail = false;
 
   @override
   void dispose() {
@@ -9838,6 +10091,12 @@ const _settingKeys = [
   'akinsoft_mssql_username',
   'akinsoft_mssql_password',
   'akinsoft_sync_notes',
+  'smtp_host',
+  'smtp_port',
+  'smtp_secure',
+  'smtp_user',
+  'smtp_pass',
+  'smtp_from',
 ];
 
 class _TypeTile extends StatelessWidget {

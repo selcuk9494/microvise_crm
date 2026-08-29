@@ -42,6 +42,12 @@ const {
   ensureProductImageUrlColumn,
 } = require('./_lib/schema');
 const { ensureBrandIntegrations } = require('./_lib/mutakabat_processor');
+const { ensureInvoicePaymentLinksTable } = require('./_lib/invoice_payment');
+const { posListStatus } = require('./_lib/pos_status');
+const {
+  ensureRecurringBillingTables,
+  listRecurringBillingPlans,
+} = require('./_lib/recurring_billing');
 const {
   handleCors,
   ok,
@@ -1781,7 +1787,8 @@ module.exports = async (req, res) => {
       }
 
       case 'invoices_list': {
-        if (!requireAnyPage(req, user, ['faturalama'], res)) return;
+        if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) return;
+        await ensureInvoicePaymentLinksTable();
         await ensureAkinsoftInvoiceSyncColumns();
         await query(`
           create table if not exists public.akinsoft_sync_map (
@@ -1965,13 +1972,16 @@ module.exports = async (req, res) => {
                   then 'open'
                 else fi.status
               end as effective_status,
-              json_build_object('name', c.name) as customers,
+              json_build_object('name', c.name, 'email', c.email) as customers,
               fi.erp_invoice_number,
               asm.source_id as akinsoft_source_id,
               asm.source_code as akinsoft_source_code,
               last_pay.payment_method as last_payment_method,
               last_pay.description as last_payment_description,
-              last_pay.paid_at as last_payment_at
+              last_pay.paid_at as last_payment_at,
+              pl.status as payment_link_status,
+              pl.emailed_at as payment_link_emailed_at,
+              pl.settled_at as payment_link_settled_at
             from filtered_invoices fi
             left join public.customers c on c.id = fi.customer_id
             left join item_totals on item_totals.invoice_id = fi.id
@@ -1991,6 +2001,13 @@ module.exports = async (req, res) => {
               order by coalesce(t.created_at, t.transaction_date::timestamptz) desc nulls last
               limit 1
             ) last_pay on true
+            left join lateral (
+              select l.status, l.emailed_at, l.settled_at
+              from public.invoice_payment_links l
+              where fi.id = any(l.invoice_ids)
+              order by l.created_at desc
+              limit 1
+            ) pl on true
             order by
               fi.invoice_date desc,
               nullif(
@@ -2156,113 +2173,129 @@ module.exports = async (req, res) => {
 
       case 'pos_collections_list': {
         if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) return;
-        await query(`
-          create table if not exists public.invoice_payment_links (
-            id uuid primary key default gen_random_uuid(),
-            token text not null unique,
-            customer_id uuid not null references public.customers(id) on delete cascade,
-            invoice_ids uuid[] not null,
-            amount numeric(14,2) not null,
-            currency text not null default 'TRY',
-            description text,
-            status text not null default 'pending',
-            provider text not null default 'halkbank',
-            provider_order_id text,
-            provider_payload jsonb not null default '{}'::jsonb,
-            paid_at timestamptz,
-            created_by uuid,
-            created_at timestamptz not null default now(),
-            updated_at timestamptz not null default now(),
-            expires_at timestamptz
-          )
-        `);
+        await ensureInvoicePaymentLinksTable();
         const startDate = String(req.query.startDate || '').trim();
         const endDate = String(req.query.endDate || '').trim();
         const includeRefunded = parseBoolean(req.query.includeRefunded, false);
+        const statusFilter = String(req.query.status || 'all')
+          .trim()
+          .toLowerCase();
 
         const values = [];
-        let whereSql = `
-          where t.transaction_type = 'collection'
-            and (
-              lower(coalesce(t.payment_method, '')) = 'pos'
-              or lower(coalesce(t.description, '')) like '%sanal pos%'
-              or lower(coalesce(t.description, '')) like '%odeme linki%'
-              or lower(coalesce(t.description, '')) like '%ödeme linki%'
-            )
-        `;
+        let whereSql = 'where true';
         if (!includeRefunded) {
-          values.push(true);
-          whereSql += ` and t.is_active = $${values.length}`;
+          whereSql += ` and coalesce(l.status, 'pending') <> 'refunded'`;
         }
-        if (startDate) {
+        if (startDate && endDate) {
+          values.push(startDate, endDate);
+          whereSql += `
+            and (
+              (
+                coalesce(l.paid_at::date, l.created_at::date)
+                  between $${values.length - 1}::date and $${values.length}::date
+              )
+              or (
+                coalesce(l.status, 'pending') = 'pending'
+                and (l.expires_at is null or l.expires_at >= now())
+              )
+            )
+          `;
+        } else if (startDate) {
           values.push(startDate);
-          whereSql += ` and coalesce(t.created_at::date, t.transaction_date) >= $${values.length}::date`;
-        }
-        if (endDate) {
-          values.push(endDate);
-          whereSql += ` and coalesce(t.created_at::date, t.transaction_date) <= $${values.length}::date`;
+          whereSql += `
+            and (
+              coalesce(l.paid_at::date, l.created_at::date) >= $${values.length}::date
+              or (
+                coalesce(l.status, 'pending') = 'pending'
+                and (l.expires_at is null or l.expires_at >= now())
+              )
+            )
+          `;
         }
 
         const result = await query(
           `
             select
-              t.id,
-              t.customer_id,
-              t.invoice_id,
-              t.amount,
-              t.currency,
-              t.exchange_rate,
-              t.payment_method,
-              t.transaction_date,
-              t.description,
-              t.is_active,
-              t.created_at,
-              coalesce(t.created_at::date, t.transaction_date) as paid_on,
-              json_build_object('name', c.name) as customers,
-              json_build_object(
-                'invoice_number', i.invoice_number,
-                'status', i.status,
-                'grand_total', i.grand_total,
-                'paid_amount', i.paid_amount,
-                'currency', i.currency
-              ) as invoices,
-              pl.token as payment_link_token,
-              pl.provider_order_id,
-              pl.status as payment_link_status,
-              pl.paid_at as payment_link_paid_at
-            from public.transactions t
-            left join public.customers c on c.id = t.customer_id
-            left join public.invoices i on i.id = t.invoice_id
-            left join lateral (
-              select l.token, l.provider_order_id, l.status, l.paid_at
-              from public.invoice_payment_links l
-              where t.invoice_id is not null
-                and t.invoice_id = any(l.invoice_ids)
-              order by
-                case when l.status = 'paid' then 0 when l.status = 'refunded' then 1 else 2 end,
-                l.paid_at desc nulls last,
-                l.created_at desc
-              limit 1
-            ) pl on true
+              l.id,
+              l.customer_id,
+              l.invoice_ids,
+              l.amount,
+              l.currency,
+              l.status,
+              l.provider_order_id,
+              l.paid_at,
+              l.emailed_at,
+              l.emailed_to,
+              l.settled_at,
+              l.created_at,
+              l.expires_at,
+              json_build_object('name', c.name, 'email', c.email) as customers,
+              (
+                select coalesce(json_agg(inv order by inv.invoice_number), '[]'::json)
+                from (
+                  select
+                    i.id,
+                    i.invoice_number,
+                    i.status,
+                    i.grand_total,
+                    i.paid_amount,
+                    i.currency
+                  from public.invoices i
+                  where i.id = any(l.invoice_ids)
+                ) inv
+              ) as invoices
+            from public.invoice_payment_links l
+            left join public.customers c on c.id = l.customer_id
             ${whereSql}
-            order by coalesce(t.created_at, t.transaction_date::timestamptz) desc
+            order by coalesce(l.paid_at, l.created_at) desc
             limit 1000
           `,
           values,
         );
 
-        const items = result.rows;
-        const totalAmount = items
-          .filter((row) => row.is_active !== false)
+        const mapped = result.rows.map((row) => {
+          const listStatus = posListStatus(row);
+          const invoiceList = Array.isArray(row.invoices) ? row.invoices : [];
+          const firstInvoice = invoiceList[0] || null;
+          return {
+            ...row,
+            list_status: listStatus,
+            invoice_id: firstInvoice?.id || null,
+            invoice_number: firstInvoice?.invoice_number || null,
+            invoices: firstInvoice,
+            invoice_list: invoiceList,
+            is_active: row.status !== 'refunded',
+            payment_link_status: row.status,
+            payment_link_paid_at: row.paid_at,
+            paid_on: row.paid_at || row.created_at,
+          };
+        });
+        const items = mapped.filter((row) => {
+          if (statusFilter === 'all' || !statusFilter) return true;
+          return row.list_status === statusFilter;
+        });
+        const visible = items.filter((row) => row.list_status !== 'refunded');
+        const totalAmount = visible
+          .filter((row) => row.list_status === 'paid' || row.list_status === 'settled')
           .reduce((sum, row) => sum + Number(row.amount || 0), 0);
         return ok(req, res, {
           items,
           summary: {
             count: items.length,
-            activeCount: items.filter((row) => row.is_active !== false).length,
+            pendingCount: items.filter((row) => row.list_status === 'pending').length,
+            paidCount: items.filter((row) => row.list_status === 'paid').length,
+            settledCount: items.filter((row) => row.list_status === 'settled').length,
+            activeCount: visible.length,
             totalAmount,
           },
         });
+      }
+
+      case 'recurring_billing_list': {
+        if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) return;
+        await ensureRecurringBillingTables();
+        const items = await listRecurringBillingPlans();
+        return ok(req, res, { items });
       }
 
       case 'finance_accounts': {

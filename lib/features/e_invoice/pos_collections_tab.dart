@@ -17,22 +17,26 @@ class PosCollectionsFilter {
   final DateTime startDate;
   final DateTime endDate;
   final bool includeRefunded;
+  final String status;
 
   const PosCollectionsFilter({
     required this.startDate,
     required this.endDate,
     this.includeRefunded = false,
+    this.status = 'all',
   });
 
   PosCollectionsFilter copyWith({
     DateTime? startDate,
     DateTime? endDate,
     bool? includeRefunded,
+    String? status,
   }) {
     return PosCollectionsFilter(
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,
       includeRefunded: includeRefunded ?? this.includeRefunded,
+      status: status ?? this.status,
     );
   }
 
@@ -41,11 +45,13 @@ class PosCollectionsFilter {
     return other is PosCollectionsFilter &&
         other.startDate == startDate &&
         other.endDate == endDate &&
-        other.includeRefunded == includeRefunded;
+        other.includeRefunded == includeRefunded &&
+        other.status == status;
   }
 
   @override
-  int get hashCode => Object.hash(startDate, endDate, includeRefunded);
+  int get hashCode =>
+      Object.hash(startDate, endDate, includeRefunded, status);
 }
 
 class PosCollectionRow {
@@ -63,6 +69,10 @@ class PosCollectionRow {
   final bool isActive;
   final String? providerOrderId;
   final String? paymentLinkStatus;
+  final String listStatus;
+  final DateTime? emailedAt;
+  final DateTime? settledAt;
+  final String? emailedTo;
 
   const PosCollectionRow({
     required this.id,
@@ -79,6 +89,10 @@ class PosCollectionRow {
     this.isActive = true,
     this.providerOrderId,
     this.paymentLinkStatus,
+    this.listStatus = 'pending',
+    this.emailedAt,
+    this.settledAt,
+    this.emailedTo,
   });
 
   static double _toDouble(dynamic value, {double fallback = 0}) {
@@ -103,23 +117,29 @@ class PosCollectionRow {
       id: json['id'].toString(),
       customerId: json['customer_id']?.toString() ?? '',
       customerName: customers is Map ? customers['name']?.toString() : null,
-      invoiceId: json['invoice_id']?.toString(),
-      invoiceNumber: invoices is Map
-          ? invoices['invoice_number']?.toString()
-          : null,
+      invoiceId: json['invoice_id']?.toString() ??
+          (invoices is Map ? invoices['id']?.toString() : null),
+      invoiceNumber: json['invoice_number']?.toString() ??
+          (invoices is Map ? invoices['invoice_number']?.toString() : null),
       invoiceStatus: invoices is Map ? invoices['status']?.toString() : null,
       amount: _toDouble(json['amount']),
       currency: json['currency']?.toString() ?? 'TRY',
       paidOn:
           parseAppDateTime(json['paid_on']?.toString()) ??
-          parseAppDateTime(json['transaction_date']?.toString()) ??
+          parseAppDateTime(json['paid_at']?.toString()) ??
+          parseAppDateTime(json['created_at']?.toString()) ??
           appNow(),
       createdAt: parseAppDateTime(json['created_at']?.toString()) ?? appNow(),
       description: json['description']?.toString(),
-      isActive: json['is_active'] == true ||
-          json['is_active']?.toString().toLowerCase() == 'true',
+      isActive: (json['list_status']?.toString() ?? json['status']?.toString()) !=
+          'refunded',
       providerOrderId: json['provider_order_id']?.toString(),
-      paymentLinkStatus: json['payment_link_status']?.toString(),
+      paymentLinkStatus: json['payment_link_status']?.toString() ??
+          json['status']?.toString(),
+      listStatus: json['list_status']?.toString() ?? 'pending',
+      emailedAt: parseAppDateTime(json['emailed_at']?.toString()),
+      settledAt: parseAppDateTime(json['settled_at']?.toString()),
+      emailedTo: json['emailed_to']?.toString(),
     );
   }
 }
@@ -128,12 +148,18 @@ class PosCollectionsResult {
   final List<PosCollectionRow> items;
   final int count;
   final int activeCount;
+  final int pendingCount;
+  final int paidCount;
+  final int settledCount;
   final double totalAmount;
 
   const PosCollectionsResult({
     required this.items,
     required this.count,
     required this.activeCount,
+    this.pendingCount = 0,
+    this.paidCount = 0,
+    this.settledCount = 0,
     required this.totalAmount,
   });
 }
@@ -156,6 +182,7 @@ final posCollectionsProvider = FutureProvider.autoDispose
           'startDate': filter.startDate.toIso8601String().substring(0, 10),
           'endDate': filter.endDate.toIso8601String().substring(0, 10),
           'includeRefunded': filter.includeRefunded.toString(),
+          'status': filter.status,
         },
       );
       final items = ((response['items'] as List?) ?? const [])
@@ -163,7 +190,9 @@ final posCollectionsProvider = FutureProvider.autoDispose
           .map(PosCollectionRow.fromJson)
           .toList(growable: false);
       final summary = response['summary'];
-      final summaryMap = summary is Map ? Map<String, dynamic>.from(summary) : null;
+      final summaryMap = summary is Map
+          ? Map<String, dynamic>.from(summary)
+          : null;
       return PosCollectionsResult(
         items: items,
         count: PosCollectionRow._toInt(
@@ -174,10 +203,22 @@ final posCollectionsProvider = FutureProvider.autoDispose
           summaryMap?['activeCount'],
           fallback: items.where((e) => e.isActive).length,
         ),
+        pendingCount: PosCollectionRow._toInt(
+          summaryMap?['pendingCount'],
+          fallback: items.where((e) => e.listStatus == 'pending').length,
+        ),
+        paidCount: PosCollectionRow._toInt(
+          summaryMap?['paidCount'],
+          fallback: items.where((e) => e.listStatus == 'paid').length,
+        ),
+        settledCount: PosCollectionRow._toInt(
+          summaryMap?['settledCount'],
+          fallback: items.where((e) => e.listStatus == 'settled').length,
+        ),
         totalAmount: PosCollectionRow._toDouble(
           summaryMap?['totalAmount'],
           fallback: items
-              .where((e) => e.isActive)
+              .where((e) => e.listStatus == 'paid' || e.listStatus == 'settled')
               .fold<double>(0, (sum, e) => sum + e.amount),
         ),
       );
@@ -185,6 +226,15 @@ final posCollectionsProvider = FutureProvider.autoDispose
 
 DateTime _dateOnly(DateTime value) =>
     DateTime(value.year, value.month, value.day);
+
+(String, AppBadgeTone) _statusBadge(PosCollectionRow row) {
+  return switch (row.listStatus) {
+    'paid' => ('Ödendi', AppBadgeTone.success),
+    'settled' => ('Hesaba yattı', AppBadgeTone.primary),
+    'refunded' => ('İade edildi', AppBadgeTone.warning),
+    _ => ('Ödeme bekleniyor', AppBadgeTone.warning),
+  };
+}
 
 class PosCollectionsTab extends ConsumerStatefulWidget {
   const PosCollectionsTab({super.key, required this.moneyTry});
@@ -199,13 +249,14 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
   late DateTime _start;
   late DateTime _end;
   bool _includeRefunded = false;
-  bool _refundingId = false;
+  String _status = 'all';
+  bool _busy = false;
 
   @override
   void initState() {
     super.initState();
     final today = _dateOnly(DateTime.now());
-    _start = today;
+    _start = DateTime(today.year, today.month, 1);
     _end = today;
   }
 
@@ -213,6 +264,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
     startDate: _start,
     endDate: _end,
     includeRefunded: _includeRefunded,
+    status: _status,
   );
 
   Future<void> _pickRange() async {
@@ -240,12 +292,72 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
     });
   }
 
-  void _setYesterday() {
-    final day = _dateOnly(DateTime.now().subtract(const Duration(days: 1)));
+  void _setMonth() {
+    final today = _dateOnly(DateTime.now());
     setState(() {
-      _start = day;
-      _end = day;
+      _start = DateTime(today.year, today.month, 1);
+      _end = today;
     });
+  }
+
+  Future<void> _markSettled(PosCollectionRow row, {bool settled = true}) async {
+    if (row.listStatus != 'paid' && settled) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(settled ? 'Hesaba yattı' : 'İşareti geri al'),
+        content: Text(
+          settled
+              ? '${formatInvoiceNumberForDisplay(row.invoiceNumber)} · '
+                  '${row.customerName ?? 'Cari'}\n'
+                  'Banka hesabınıza geçtiyse bu tahsilatı “Hesaba yattı” olarak işaretleyin.'
+              : 'Hesaba yattı işareti kaldırılacak.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(settled ? 'Hesaba yattı' : 'Geri al'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      if (apiClient == null) return;
+      final response = await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'markPosPaymentSettled',
+          'linkId': row.id,
+          'settled': settled,
+        },
+      );
+      if (!mounted) return;
+      ref.invalidate(posCollectionsProvider(_filter));
+      ref.invalidate(invoicesProvider);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            response['message']?.toString() ??
+                (settled ? 'Hesaba yattı olarak işaretlendi.' : 'İşaret kaldırıldı.'),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('İşaretlenemedi: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _refund(PosCollectionRow row, {bool crmOnly = false}) async {
@@ -279,7 +391,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    setState(() => _refundingId = true);
+    setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
       final apiClient = ref.read(apiClientProvider);
@@ -289,7 +401,6 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
         body: {
           'op': 'refundInvoicePosPayment',
           'invoiceId': row.invoiceId,
-          'transactionId': row.id,
           if (crmOnly) 'crmOnly': true,
         },
       );
@@ -323,7 +434,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
         SnackBar(content: Text('İade başarısız: $error')),
       );
     } finally {
-      if (mounted) setState(() => _refundingId = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -343,14 +454,15 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Ödeme linki ile otomatik kapanan tahsilatlar',
+                'Sanal POS ödemeleri',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
               ),
               const Gap(4),
               Text(
-                'Gözden kaçırmamak için tarih seçerek listeleyin.',
+                'Ödeme bekleyen, ödenen ve hesaba yatan tahsilatlar. '
+                'Banka hesabınıza geçince “Hesaba yattı” işaretleyin.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: AppTheme.textMuted,
                 ),
@@ -367,8 +479,8 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                     label: const Text('Bugün'),
                   ),
                   OutlinedButton(
-                    onPressed: _setYesterday,
-                    child: const Text('Dün'),
+                    onPressed: _setMonth,
+                    child: const Text('Bu ay'),
                   ),
                   OutlinedButton.icon(
                     onPressed: _pickRange,
@@ -390,6 +502,26 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                   ),
                 ],
               ),
+              const Gap(8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final entry in const [
+                    ('all', 'Tümü'),
+                    ('pending', 'Ödeme bekleniyor'),
+                    ('paid', 'Ödendi'),
+                    ('settled', 'Hesaba yattı'),
+                  ])
+                    FilterChip(
+                      label: Text(entry.$2),
+                      selected: _status == entry.$1,
+                      onSelected: (_) {
+                        setState(() => _status = entry.$1);
+                      },
+                    ),
+                ],
+              ),
             ],
           ),
         ),
@@ -406,9 +538,9 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
               if (result.items.isEmpty) {
                 return const EmptyStateCard(
                   icon: AppPhosphorIcons.money,
-                  title: 'Sanal POS tahsilatı yok',
+                  title: 'Sanal POS kaydı yok',
                   message:
-                      'Seçilen tarihte kayıt yok. Bugün / dün veya farklı tarih deneyin.',
+                      'Seçilen filtrede kayıt yok. Bu ay veya farklı tarih deneyin.',
                 );
               }
               return Column(
@@ -418,21 +550,21 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                       horizontal: 14,
                       vertical: 12,
                     ),
-                    child: Row(
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Expanded(
-                          child: Text(
-                            '${result.activeCount} tahsilat · ${widget.moneyTry.format(result.totalAmount)}',
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w800),
-                          ),
+                        Text(
+                          '${result.pendingCount} bekliyor · ${result.paidCount} ödendi · ${result.settledCount} hesaba yattı',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
-                        if (result.count != result.activeCount)
-                          Text(
-                            '${result.count - result.activeCount} iade',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: AppTheme.textMuted),
-                          ),
+                        Text(
+                          widget.moneyTry.format(result.totalAmount),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: AppTheme.textMuted),
+                        ),
                       ],
                     ),
                   ),
@@ -440,12 +572,13 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                   Expanded(
                     child: ListView.separated(
                       itemCount: result.items.length,
-                      separatorBuilder: (_, __) => const Gap(8),
+                      separatorBuilder: (_, _) => const Gap(8),
                       itemBuilder: (context, index) {
                         final row = result.items[index];
                         final invoiceLabel = formatInvoiceNumberForDisplay(
                           row.invoiceNumber,
                         );
+                        final (statusLabel, statusTone) = _statusBadge(row);
                         return AppCard(
                           padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
                           child: Row(
@@ -485,29 +618,28 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                                       children: [
                                         AppBadge(
                                           dense: true,
-                                          label: row.isActive
-                                              ? 'Ödendi'
-                                              : 'İade edildi',
-                                          tone: row.isActive
-                                              ? AppBadgeTone.success
-                                              : AppBadgeTone.warning,
+                                          label: statusLabel,
+                                          tone: statusTone,
                                         ),
-                                        AppBadge(
+                                        const AppBadge(
                                           dense: true,
                                           label: 'Sanal POS',
                                           tone: AppBadgeTone.primary,
                                         ),
-                                        if ((row.invoiceStatus ?? '') == 'paid')
+                                        if (row.emailedAt != null &&
+                                            row.listStatus == 'pending')
                                           const AppBadge(
                                             dense: true,
-                                            label: 'Fatura kapalı',
-                                            tone: AppBadgeTone.success,
+                                            label: 'Link gönderildi',
+                                            tone: AppBadgeTone.warning,
                                           ),
                                         Text(
                                           DateFormat(
                                             'd MMM yyyy HH:mm',
                                             'tr_TR',
-                                          ).format(row.createdAt.toLocal()),
+                                          ).format(
+                                            (row.paidOn).toLocal(),
+                                          ),
                                           style: Theme.of(context)
                                               .textTheme
                                               .bodySmall
@@ -546,16 +678,36 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                                         .titleSmall
                                         ?.copyWith(fontWeight: FontWeight.w800),
                                   ),
-                                  if (row.isActive &&
-                                      (row.invoiceId ?? '').isNotEmpty) ...[
-                                    const Gap(8),
+                                  if (row.listStatus == 'paid') ...[
+                                    const Gap(4),
                                     TextButton(
-                                      onPressed: _refundingId
+                                      onPressed: _busy
+                                          ? null
+                                          : () => _markSettled(row),
+                                      child: const Text('Hesaba yattı'),
+                                    ),
+                                  ],
+                                  if (row.listStatus == 'settled') ...[
+                                    const Gap(4),
+                                    TextButton(
+                                      onPressed: _busy
+                                          ? null
+                                          : () => _markSettled(
+                                                row,
+                                                settled: false,
+                                              ),
+                                      child: const Text('Geri al'),
+                                    ),
+                                  ],
+                                  if ((row.listStatus == 'paid' ||
+                                          row.listStatus == 'settled') &&
+                                      (row.invoiceId ?? '').isNotEmpty)
+                                    TextButton(
+                                      onPressed: _busy
                                           ? null
                                           : () => _refund(row),
                                       child: const Text('İade'),
                                     ),
-                                  ],
                                 ],
                               ),
                             ],

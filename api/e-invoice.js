@@ -94,7 +94,26 @@ async function ensureEInvoiceSchema() {
       add column if not exists akinsoft_database_pattern text,
       add column if not exists akinsoft_mssql_username text,
       add column if not exists akinsoft_mssql_password text,
-      add column if not exists akinsoft_sync_notes text
+      add column if not exists akinsoft_sync_notes text,
+      add column if not exists smtp_host text,
+      add column if not exists smtp_port text default '587',
+      add column if not exists smtp_secure text default 'false',
+      add column if not exists smtp_user text,
+      add column if not exists smtp_pass text,
+      add column if not exists smtp_from text
+  `);
+  await query(`
+    update public.e_invoice_settings
+    set
+      smtp_host = coalesce(nullif(btrim(smtp_host), ''), 'smtp.gmail.com'),
+      smtp_port = coalesce(nullif(btrim(smtp_port), ''), '587'),
+      smtp_secure = coalesce(nullif(btrim(smtp_secure), ''), 'false'),
+      smtp_user = coalesce(nullif(btrim(smtp_user), ''), 'microvisefood@gmail.com'),
+      smtp_from = coalesce(
+        nullif(btrim(smtp_from), ''),
+        'Microvise Innovation <microvisefood@gmail.com>'
+      )
+    where is_active = true
   `);
   await query(`
     insert into public.e_invoice_settings (
@@ -193,6 +212,8 @@ async function ensureEInvoiceSchema() {
     updated_at = now()
     where nullif(trim(seller_bank_details), '') is null
   `);
+  const { ensureInvoicePaidCloseRule } = require('./_lib/invoice_paid_status');
+  await ensureInvoicePaidCloseRule();
 }
 
 function cleanText(value) {
@@ -2366,6 +2387,12 @@ async function handler(req, res) {
         'akinsoft_sync_notes',
         'next_sales_number',
         'next_purchase_number',
+        'smtp_host',
+        'smtp_port',
+        'smtp_secure',
+        'smtp_user',
+        'smtp_pass',
+        'smtp_from',
       ];
       const current = await getSettings();
       const picked = {};
@@ -2385,6 +2412,13 @@ async function handler(req, res) {
       picked.environment = selectedEnvironment;
       picked.api_base_url = selectedUrls.apiBaseUrl;
       picked.token_url = selectedUrls.tokenUrl;
+      if (
+        Object.prototype.hasOwnProperty.call(picked, 'smtp_pass') &&
+        !cleanText(picked.smtp_pass) &&
+        cleanText(current.smtp_pass)
+      ) {
+        delete picked.smtp_pass;
+      }
       picked.updated_at = new Date().toISOString();
       if (user.auth_user_id) picked.created_by = user.auth_user_id;
 
@@ -2396,6 +2430,46 @@ async function handler(req, res) {
         [current.id, ...keys.map((key) => picked[key])],
       );
       return ok(req, res, { settings: result.rows[0] });
+    }
+
+    if (action === 'test_mail') {
+      const settings = await getSettings();
+      const { sendEmail, isValidEmail } = require('./_lib/mail');
+      const requested = String(body.to || '').trim();
+      const to =
+        (isValidEmail(requested) && requested) ||
+        String(settings.smtp_user || '').trim() ||
+        String(settings.seller_email || '').trim();
+      if (!isValidEmail(to)) {
+        return badRequest(
+          req,
+          res,
+          'Test için geçerli bir e-posta yazın veya SMTP kullanıcı alanını doldurun.',
+        );
+      }
+      try {
+        await sendEmail({
+          to,
+          subject: 'Microvise SMTP test',
+          html: `
+            <p style="font-family:Arial,sans-serif;color:#0f172a;">
+              SMTP ayarlarınız çalışıyor. Fatura ve ödeme linki mailleri bu hesap üzerinden gidecek.
+            </p>
+          `,
+          text: 'SMTP ayarlarınız çalışıyor. Fatura ve ödeme linki mailleri bu hesap üzerinden gidecek.',
+        });
+        return ok(req, res, {
+          ok: true,
+          to,
+          message: `Test e-postası ${to} adresine gönderildi.`,
+        });
+      } catch (error) {
+        return badRequest(
+          req,
+          res,
+          error.message || 'Test e-postası gönderilemedi.',
+        );
+      }
     }
 
     if (action === 'archive') {

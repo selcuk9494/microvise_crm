@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { query, withTransaction } = require('./db');
+const { ensureInvoicePaidCloseRule } = require('./invoice_paid_status');
 
 const HALKBANK_PROD_GATEWAY_URL = 'https://sanalpos.halkbank.com.tr/fim/est3Dgate';
 const HALKBANK_TEST_GATEWAY_URL = 'https://entegrasyon.asseco-see.com.tr/fim/est3Dgate';
@@ -993,6 +994,14 @@ async function ensureInvoicePaymentLinksTable() {
     create index if not exists idx_invoice_payment_links_customer
     on public.invoice_payment_links (customer_id, created_at desc)
   `);
+  await query(`
+    alter table public.invoice_payment_links
+      add column if not exists emailed_at timestamptz,
+      add column if not exists emailed_to text,
+      add column if not exists settled_at timestamptz,
+      add column if not exists settled_by uuid
+  `);
+  await ensureInvoicePaidCloseRule();
   tableReady = true;
 }
 
@@ -1892,6 +1901,7 @@ async function completeInvoicePayment(link, { success, providerPayload, provider
 
   if (link.status === 'paid') return { ok: true, alreadyPaid: true };
 
+  await ensureInvoicePaidCloseRule();
   await withTransaction(async (txQuery) => {
     const locked = await txQuery(
       `
@@ -2188,6 +2198,63 @@ async function startHostedPayment({ sessionToken, token, req, card }) {
   };
 }
 
+async function markPosPaymentSettled({
+  linkId,
+  settled = true,
+  createdBy,
+}) {
+  await ensureInvoicePaymentLinksTable();
+  const id = String(linkId || '').trim();
+  if (!id) {
+    const error = new Error('Ödeme kaydı seçilmelidir.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const current = await query(
+    `
+      select id, status, settled_at
+      from public.invoice_payment_links
+      where id = $1::uuid
+      limit 1
+    `,
+    [id],
+  );
+  const row = current.rows[0];
+  if (!row) {
+    const error = new Error('Sanal POS kaydı bulunamadı.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (settled && String(row.status || '') !== 'paid') {
+    const error = new Error(
+      'Hesaba yattı işareti yalnızca ödenmiş kayıtlar için kullanılabilir.',
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+  const updated = await query(
+    `
+      update public.invoice_payment_links
+      set settled_at = case when $2 then now() else null end,
+          settled_by = case when $2 then $3 else null end,
+          updated_at = now()
+      where id = $1::uuid
+      returning id, status, settled_at
+    `,
+    [id, settled === true, createdBy || null],
+  );
+  const next = updated.rows[0];
+  return {
+    ok: true,
+    id: next.id,
+    status: next.status,
+    settledAt: next.settled_at,
+    message: settled
+      ? 'Ödeme hesaba yattı olarak işaretlendi.'
+      : 'Hesaba yattı işareti geri alındı.',
+  };
+}
+
 module.exports = {
   ensureInvoicePaymentLinksTable,
   createInvoicePaymentLink,
@@ -2197,6 +2264,7 @@ module.exports = {
   startPaymentRedirect,
   handlePaymentCallback,
   refundInvoicePosPayment,
+  markPosPaymentSettled,
   verifyPosRefundTicket,
   getPosConfigFromEnv,
   validatePosConfig,

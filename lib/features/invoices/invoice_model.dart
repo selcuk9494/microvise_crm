@@ -92,6 +92,10 @@ class Invoice {
   final String? lastPaymentMethod;
   final String? lastPaymentDescription;
   final DateTime? lastPaymentAt;
+  final String? customerEmail;
+  final String? paymentLinkStatus;
+  final DateTime? paymentLinkEmailedAt;
+  final DateTime? paymentLinkSettledAt;
 
   const Invoice({
     required this.id,
@@ -135,6 +139,10 @@ class Invoice {
     this.lastPaymentMethod,
     this.lastPaymentDescription,
     this.lastPaymentAt,
+    this.customerEmail,
+    this.paymentLinkStatus,
+    this.paymentLinkEmailedAt,
+    this.paymentLinkSettledAt,
   });
 
   double get remainingAmount => grandTotal - paidAmount;
@@ -143,8 +151,23 @@ class Invoice {
   bool get isPaidViaPos {
     final method = (lastPaymentMethod ?? '').trim().toLowerCase();
     if (method == 'pos') return true;
+    if ((paymentLinkStatus ?? '').toLowerCase() == 'paid') return true;
     final desc = (lastPaymentDescription ?? '').toLowerCase();
     return desc.contains('sanal pos') || desc.contains('ödeme linki');
+  }
+
+  bool get isPaymentLinkAwaiting {
+    final status = (paymentLinkStatus ?? '').trim().toLowerCase();
+    if (status == 'paid' || status == 'refunded') return false;
+    return paymentLinkEmailedAt != null;
+  }
+
+  /// POS tahsilatı geldi ama Maliye / manuel kapanış henüz yok.
+  bool get isPaidPendingEInvoice {
+    if (invoiceType == 'purchase' || isEInvoiceReceived) return false;
+    if (!isActive || status == 'cancelled' || status == 'draft') return false;
+    if (isPaid || isEInvoiceClosed) return false;
+    return remainingAmount <= 0.009 && grandTotal > 0;
   }
   bool get isEInvoiceSent => eInvoiceStatus == 'sent';
   bool get isEInvoiceManual => eInvoiceStatus == 'manual';
@@ -245,14 +268,20 @@ class Invoice {
   }
 
   factory Invoice.fromJson(Map<String, dynamic> json) {
+    final customers = json['customers'];
     return Invoice(
       id: json['id'].toString(),
       invoiceNumber: _localInvoiceNumber(json['invoice_number']),
       invoiceType: json['invoice_type']?.toString() ?? 'sales',
       customerId: json['customer_id'].toString(),
       customerName:
-          json['customers']?['name']?.toString() ??
-          json['customer_name']?.toString(),
+          customers is Map
+              ? customers['name']?.toString()
+              : json['customer_name']?.toString(),
+      customerEmail:
+          customers is Map
+              ? customers['email']?.toString()
+              : json['customer_email']?.toString(),
       invoiceDate:
           parseAppDateTime(json['invoice_date']?.toString()) ?? appNow(),
       dueDate: json['due_date'] != null
@@ -324,6 +353,13 @@ class Invoice {
       lastPaymentDescription: json['last_payment_description']?.toString(),
       lastPaymentAt: json['last_payment_at'] != null
           ? parseAppDateTime(json['last_payment_at'].toString())
+          : null,
+      paymentLinkStatus: json['payment_link_status']?.toString(),
+      paymentLinkEmailedAt: json['payment_link_emailed_at'] != null
+          ? parseAppDateTime(json['payment_link_emailed_at'].toString())
+          : null,
+      paymentLinkSettledAt: json['payment_link_settled_at'] != null
+          ? parseAppDateTime(json['payment_link_settled_at'].toString())
           : null,
     );
   }

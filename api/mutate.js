@@ -48,7 +48,17 @@ const {
   exportMutakabatExcel,
   decodeBase64File,
 } = require('./_lib/mutakabat_processor');
-const { createInvoicePaymentLink, refundInvoicePosPayment } = require('./_lib/invoice_payment');
+const {
+  createInvoicePaymentLink,
+  refundInvoicePosPayment,
+  markPosPaymentSettled,
+} = require('./_lib/invoice_payment');
+const { sendInvoicePaymentLinkEmail } = require('./_lib/invoice_mail');
+const {
+  upsertRecurringBillingPlan,
+  setRecurringBillingPlanActive,
+  runRecurringBilling,
+} = require('./_lib/recurring_billing');
 const { parseTsmLogRequestBody } = require('./_lib/tsm_log');
 const {
   handleCors,
@@ -3565,6 +3575,108 @@ module.exports = async (req, res) => {
           res,
           await createInvoicePaymentLink({
             invoiceIds,
+            createdBy: user?.id || null,
+            req,
+          }),
+        );
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'sendInvoicePaymentLinkEmail') {
+      if (
+        !hasPageAccess(user, 'faturalama') &&
+        !hasPageAccess(user, 'e_fatura')
+      ) {
+        return forbidden(req, res);
+      }
+      try {
+        const invoiceIds = Array.isArray(body.invoiceIds)
+          ? body.invoiceIds
+          : body.invoiceId
+            ? [body.invoiceId]
+            : [];
+        return ok(
+          req,
+          res,
+          await sendInvoicePaymentLinkEmail({
+            invoiceIds,
+            email: body.email,
+            createdBy: user?.id || null,
+            req,
+          }),
+        );
+      } catch (error) {
+        if (error?.statusCode === 400 || error?.statusCode === 502) {
+          return badRequest(req, res, error.message);
+        }
+        throw error;
+      }
+    }
+    if (op === 'markPosPaymentSettled') {
+      if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) {
+        return;
+      }
+      try {
+        return ok(
+          req,
+          res,
+          await markPosPaymentSettled({
+            linkId: body.linkId || body.id,
+            settled: body.settled !== false && body.settled !== 'false',
+            createdBy: user?.id || null,
+          }),
+        );
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'upsertRecurringBillingPlan') {
+      if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) {
+        return;
+      }
+      try {
+        return ok(
+          req,
+          res,
+          await upsertRecurringBillingPlan(body, user),
+        );
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'setRecurringBillingPlanActive') {
+      if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) {
+        return;
+      }
+      try {
+        return ok(
+          req,
+          res,
+          await setRecurringBillingPlanActive({
+            id: body.id,
+            isActive: body.isActive !== false && body.isActive !== 'false',
+          }),
+        );
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'runRecurringBilling') {
+      if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) {
+        return;
+      }
+      try {
+        return ok(
+          req,
+          res,
+          await runRecurringBilling({
+            planId: body.planId || body.id || null,
+            force: body.force === true || body.force === 'true',
             createdBy: user?.id || null,
             req,
           }),
