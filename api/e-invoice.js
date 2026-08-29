@@ -125,6 +125,10 @@ async function ensureEInvoiceSchema() {
       add column if not exists prod_branch_name text,
       add column if not exists prod_branch_code_2 text,
       add column if not exists prod_branch_name_2 text,
+      add column if not exists test_branch_address text,
+      add column if not exists test_branch_address_2 text,
+      add column if not exists prod_branch_address text,
+      add column if not exists prod_branch_address_2 text,
       add column if not exists test_username text,
       add column if not exists test_password text,
       add column if not exists prod_username text,
@@ -139,6 +143,8 @@ async function ensureEInvoiceSchema() {
       test_branch_name = coalesce(nullif(btrim(test_branch_name), ''), 'Merkez'),
       prod_branch_code = coalesce(nullif(btrim(prod_branch_code), ''), seller_branch_code, '1'),
       prod_branch_name = coalesce(nullif(btrim(prod_branch_name), ''), 'Merkez'),
+      test_branch_address = coalesce(nullif(btrim(test_branch_address), ''), seller_address_line1),
+      prod_branch_address = coalesce(nullif(btrim(prod_branch_address), ''), seller_address_line1),
       test_username = coalesce(nullif(btrim(test_username), ''), username),
       test_password = coalesce(nullif(btrim(test_password), ''), password),
       prod_username = coalesce(nullif(btrim(prod_username), ''), username),
@@ -640,8 +646,9 @@ function invoiceNumber(settings, invoice, serial) {
     const parts = String(invoice.e_invoice_number).split('-');
     if (parts.length === 4) {
       parts[0] = requireApiVkn(parts[0], 'Fatura numarasındaki VKN');
-      parts[2] = branch;
-      return parts.join('-');
+      if (parts[2].toUpperCase() === branch.toUpperCase()) {
+        return parts.join('-');
+      }
     }
   }
   return `${vkn}-${year}-${branch}-${String(serial).padStart(11, '0')}`;
@@ -802,6 +809,28 @@ function serialFromNumber(number, prefix) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function maxSerialInSet(taken, prefix) {
+  let max = 0;
+  for (const number of taken || []) {
+    const serial = serialFromNumber(number, prefix);
+    if (serial && serial > max) max = serial;
+  }
+  return max;
+}
+
+function isPrimaryBranch(settings) {
+  const current = cleanText(settings?.seller_branch_code);
+  const branches = configuredBranches(settings, settings?.environment);
+  if (!current || !branches.length) return true;
+  return branches[0].code.toUpperCase() === current.toUpperCase();
+}
+
+function nextSerialForBranch({ taken, prefix, floor = 1 }) {
+  const fromTaken = maxSerialInSet(taken, prefix) + 1;
+  const min = Number.isFinite(floor) && floor > 0 ? floor : 1;
+  return Math.max(fromTaken, min);
+}
+
 async function resolveInvoiceNumber({ settings, invoice, invoiceId, skip }) {
   const prefix = invoiceNumberPrefix(settings, invoice);
   const taken = await reservedInvoiceNumbers(prefix, invoiceId);
@@ -813,12 +842,16 @@ async function resolveInvoiceNumber({ settings, invoice, invoiceId, skip }) {
   const stored = cleanText(invoice.e_invoice_number);
   if (stored) {
     const normalized = invoiceNumber(settings, invoice, 0);
-    if (normalized.startsWith(prefix) && !taken.has(normalized)) {
-      return { number: normalized, serial: serialFromNumber(normalized, prefix) };
+    const storedSerial = serialFromNumber(normalized, prefix);
+    if (storedSerial && normalized.startsWith(prefix) && !taken.has(normalized)) {
+      return { number: normalized, serial: storedSerial };
     }
   }
 
-  let serial = nextNumber(settings, invoice.invoice_type);
+  const floor = isPrimaryBranch(settings)
+    ? nextNumber(settings, invoice.invoice_type)
+    : 1;
+  let serial = nextSerialForBranch({ taken, prefix, floor });
   let candidate = `${prefix}${String(serial).padStart(11, '0')}`;
   while (taken.has(candidate)) {
     serial += 1;
@@ -2639,10 +2672,17 @@ async function prepareOrSendInvoice({
       officialNumber,
       invoiceNumberPrefix(settings, payloadInvoice),
     );
-    await query(
-      `update public.e_invoice_settings set ${nextColumn} = greatest(${nextColumn} + 1, $2::bigint), last_sync_at = now(), updated_at = now() where id = $1`,
-      [settings.id, usedSerial ? usedSerial + 1 : 1],
-    );
+    if (isPrimaryBranch(settings)) {
+      await query(
+        `update public.e_invoice_settings set ${nextColumn} = greatest(${nextColumn} + 1, $2::bigint), last_sync_at = now(), updated_at = now() where id = $1`,
+        [settings.id, usedSerial ? usedSerial + 1 : 1],
+      );
+    } else {
+      await query(
+        `update public.e_invoice_settings set last_sync_at = now(), updated_at = now() where id = $1`,
+        [settings.id],
+      );
+    }
     const archive = await archiveAfterSuccessfulSend({
       invoiceId,
       settings,
@@ -2857,12 +2897,16 @@ async function handler(req, res) {
         'seller_branch_name',
         'test_branch_code',
         'test_branch_name',
+        'test_branch_address',
         'test_branch_code_2',
         'test_branch_name_2',
+        'test_branch_address_2',
         'prod_branch_code',
         'prod_branch_name',
+        'prod_branch_address',
         'prod_branch_code_2',
         'prod_branch_name_2',
+        'prod_branch_address_2',
         'seller_tax_office',
         'seller_city',
         'seller_country_code',
@@ -3223,6 +3267,8 @@ module.exports.testUtils = {
   archiveAfterSuccessfulSend,
   isNumberAlreadyUsedError,
   serialFromNumber,
+  nextSerialForBranch,
+  isPrimaryBranch,
   invoiceNumberPrefix,
   officialNumberFromResponse,
   localInvoiceNumber,

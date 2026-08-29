@@ -883,12 +883,16 @@ const _defaultSettings = <String, dynamic>{
   'seller_branch_name': 'Merkez',
   'test_branch_code': '1',
   'test_branch_name': 'Merkez',
+  'test_branch_address': '',
   'test_branch_code_2': '',
   'test_branch_name_2': '',
+  'test_branch_address_2': '',
   'prod_branch_code': '1',
   'prod_branch_name': 'Merkez',
+  'prod_branch_address': '',
   'prod_branch_code_2': '',
   'prod_branch_name_2': '',
+  'prod_branch_address_2': '',
   'seller_tax_office': 'Lefkoşa',
   'seller_city': 'LEFKOŞA',
   'seller_country_code': 'XCT',
@@ -7801,6 +7805,13 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
     if (_c('prod_branch_name').text.trim().isEmpty) {
       _c('prod_branch_name').text = sellerName.isEmpty ? 'Merkez' : sellerName;
     }
+    final hqAddress = _c('seller_address_line1').text.trim();
+    if (_c('test_branch_address').text.trim().isEmpty) {
+      _c('test_branch_address').text = hqAddress;
+    }
+    if (_c('prod_branch_address').text.trim().isEmpty) {
+      _c('prod_branch_address').text = hqAddress;
+    }
   }
 
   void _fillMissingCredentials() {
@@ -7999,7 +8010,8 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                   ),
                   const Gap(4),
                   Text(
-                    'Maliye’ye gönderirken hangi şubeden kesileceği sorulur. İkinci şube boş bırakılabilir.',
+                    'Maliye’ye gönderirken hangi şubeden kesileceği sorulur. '
+                    'Tedarikçi adresi seçilen şubenin adresidir; 2. şube adresini ayrı yazın.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: AppTheme.textSoft,
                     ),
@@ -8034,6 +8046,13 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                     ],
                   ),
                   const Gap(8),
+                  _field(
+                    'test_branch_address',
+                    'Şube 1 adres',
+                    dense: true,
+                    hintText: 'Tedarikçi kutusunda görünen adres',
+                  ),
+                  const Gap(8),
                   Row(
                     children: [
                       Expanded(
@@ -8053,6 +8072,13 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                         ),
                       ),
                     ],
+                  ),
+                  const Gap(8),
+                  _field(
+                    'test_branch_address_2',
+                    'Şube 2 adres',
+                    dense: true,
+                    hintText: 'Boşsa 1. şube adresi gider',
                   ),
                   const Gap(12),
                   Text(
@@ -8084,6 +8110,12 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                     ],
                   ),
                   const Gap(8),
+                  _field(
+                    'prod_branch_address',
+                    'Şube 1 adres',
+                    dense: true,
+                  ),
+                  const Gap(8),
                   Row(
                     children: [
                       Expanded(
@@ -8103,6 +8135,13 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                         ),
                       ),
                     ],
+                  ),
+                  const Gap(8),
+                  _field(
+                    'prod_branch_address_2',
+                    'Şube 2 adres',
+                    dense: true,
+                    hintText: 'Boşsa 1. şube adresi gider',
                   ),
                   const Gap(10),
                   _field('seller_title', 'Satıcı Ünvanı'),
@@ -10990,12 +11029,16 @@ const _settingKeys = [
   'seller_branch_name',
   'test_branch_code',
   'test_branch_name',
+  'test_branch_address',
   'test_branch_code_2',
   'test_branch_name_2',
+  'test_branch_address_2',
   'prod_branch_code',
   'prod_branch_name',
+  'prod_branch_address',
   'prod_branch_code_2',
   'prod_branch_name_2',
+  'prod_branch_address_2',
   'seller_tax_office',
   'seller_city',
   'seller_country_code',

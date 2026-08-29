@@ -2,13 +2,14 @@ function cleanText(value) {
   return String(value ?? '').trim();
 }
 
-function branchEntry(code, name) {
+function branchEntry(code, name, address) {
   const normalizedCode = cleanText(code);
   if (!normalizedCode) return null;
   const label = cleanText(name);
   return {
     code: normalizedCode,
     name: label || normalizedCode,
+    address: cleanText(address),
   };
 }
 
@@ -23,10 +24,17 @@ function configuredBranches(settings, environment) {
     branchEntry(
       settings?.[`${prefix}_branch_code`] || settings?.seller_branch_code,
       settings?.[`${prefix}_branch_name`],
-    ) || branchEntry(settings?.seller_branch_code, settings?.seller_branch_name);
+      settings?.[`${prefix}_branch_address`] || settings?.seller_address_line1,
+    ) ||
+    branchEntry(
+      settings?.seller_branch_code,
+      settings?.seller_branch_name,
+      settings?.seller_address_line1,
+    );
   const second = branchEntry(
     settings?.[`${prefix}_branch_code_2`],
     settings?.[`${prefix}_branch_name_2`],
+    settings?.[`${prefix}_branch_address_2`],
   );
   const list = [];
   if (first) list.push(first);
@@ -50,6 +58,13 @@ function hydrateBranchSettings(settings) {
   if (!cleanText(row.prod_branch_name)) {
     row.prod_branch_name = cleanText(row.seller_branch_name) || 'Merkez';
   }
+  const hqAddress = cleanText(row.seller_address_line1);
+  if (!cleanText(row.test_branch_address) && hqAddress) {
+    row.test_branch_address = hqAddress;
+  }
+  if (!cleanText(row.prod_branch_address) && hqAddress) {
+    row.prod_branch_address = hqAddress;
+  }
   return row;
 }
 
@@ -58,6 +73,7 @@ function applyBranchToSettings(settings, branch) {
   if (!branch?.code) return next;
   next.seller_branch_code = branch.code;
   next.seller_branch_name = branch.name || branch.code;
+  if (branch.address) next.seller_address_line1 = branch.address;
   return next;
 }
 

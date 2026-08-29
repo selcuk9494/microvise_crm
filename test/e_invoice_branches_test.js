@@ -27,11 +27,11 @@ test('ortama göre iki şube listeler', () => {
     prod_branch_name: 'Canlı Merkez',
   };
   assert.deepEqual(configuredBranches(settings, 'test'), [
-    { code: '1', name: 'Lefkoşa' },
-    { code: '2', name: 'Girne' },
+    { code: '1', name: 'Lefkoşa', address: '' },
+    { code: '2', name: 'Girne', address: '' },
   ]);
   assert.deepEqual(configuredBranches(settings, 'production'), [
-    { code: 'A', name: 'Canlı Merkez' },
+    { code: 'A', name: 'Canlı Merkez', address: '' },
   ]);
 });
 
@@ -42,6 +42,20 @@ test('gönderimde seçilen şubeyi ayarlara yazar', () => {
   );
   assert.equal(settings.seller_branch_code, '2');
   assert.equal(settings.seller_branch_name, 'Girne');
+});
+
+test('seçilen şubenin adresini tedarikçi adresine yazar', () => {
+  const settings = applyBranchToSettings(
+    {
+      seller_branch_code: '1',
+      seller_address_line1: 'ATATÜRK CAD YENİŞEHİR EMEK 2 APT. DIŞ KAPI NO:1',
+      test_branch_code: '1',
+      test_branch_address_2: 'ODTÜ TEKNOPARK',
+    },
+    { code: 'ODT', name: 'ODTÜ', address: 'ODTÜ TEKNOPARK' },
+  );
+  assert.equal(settings.seller_branch_code, 'ODT');
+  assert.equal(settings.seller_address_line1, 'ODTÜ TEKNOPARK');
 });
 
 test('zorunlu seçimde şube yoksa hata verir', () => {

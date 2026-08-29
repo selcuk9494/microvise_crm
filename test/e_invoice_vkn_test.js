@@ -27,6 +27,8 @@ const {
   isIncomingOfficialInvoice,
   buildOfficialMaliyePortalUrl,
   maliyeErrorMessage,
+  nextSerialForBranch,
+  isPrimaryBranch,
 } = require('../api/e-invoice').testUtils;
 const { buildEInvoiceArchivePdf } = require('../api/_lib/e_invoice_pdf');
 
@@ -92,17 +94,30 @@ test('önceden hazırlanmış 10 haneli VKN içeren fatura numarasını düzelti
   assert.equal(number, '007033259-2026-1-00000000001');
 });
 
-test('seçilen şube kodunu hazırlanmış fatura numarasına yazar', () => {
+test('aynı şubedeki hazırlanmış fatura numarasını korur', () => {
   const number = invoiceNumber(
-    { seller_vkn: '620009058', seller_branch_code: '2' },
+    { seller_vkn: '620009058', seller_branch_code: '1' },
     {
       e_invoice_number: '620009058-2026-1-00000000067',
       invoice_date: '2026-08-29',
       invoice_type: 'sales',
     },
-    67,
+    1,
   );
-  assert.equal(number, '620009058-2026-2-00000000067');
+  assert.equal(number, '620009058-2026-1-00000000067');
+});
+
+test('farklı şubede merkez sırasını taşımaz, yeni sıra kullanır', () => {
+  const number = invoiceNumber(
+    { seller_vkn: '620009058', seller_branch_code: 'ODT' },
+    {
+      e_invoice_number: '620009058-2026-1-00000000067',
+      invoice_date: '2026-08-29',
+      invoice_type: 'sales',
+    },
+    1,
+  );
+  assert.equal(number, '620009058-2026-ODT-00000000001');
 });
 
 test('Maliye fatura no hata mesajını düz metin olarak çıkarır', () => {
@@ -187,6 +202,34 @@ test('fatura numarasından sıra numarasını çözer', () => {
   assert.equal(serialFromNumber('620009058-2026-1-00000000010', prefix), 10);
   assert.equal(serialFromNumber('620009058-2025-1-00000000010', prefix), null);
   assert.equal(serialFromNumber(null, prefix), null);
+});
+
+test('her şube kendi fatura sırasını tutar', () => {
+  const hqPrefix = '620009058-2026-1-';
+  const odtPrefix = '620009058-2026-ODT-';
+  const taken = new Set(['620009058-2026-1-00000000067']);
+  assert.equal(
+    nextSerialForBranch({ taken, prefix: hqPrefix, floor: 68 }),
+    68,
+  );
+  assert.equal(nextSerialForBranch({ taken, prefix: odtPrefix, floor: 1 }), 1);
+  assert.equal(
+    nextSerialForBranch({
+      taken: new Set(['620009058-2026-ODT-00000000003']),
+      prefix: odtPrefix,
+      floor: 1,
+    }),
+    4,
+  );
+  assert.equal(
+    isPrimaryBranch({
+      environment: 'test',
+      seller_branch_code: 'ODT',
+      test_branch_code: '1',
+      test_branch_code_2: 'ODT',
+    }),
+    false,
+  );
 });
 
 test('doğrulama kodu UUIDv7 üretir', () => {
