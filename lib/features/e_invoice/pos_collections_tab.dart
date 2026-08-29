@@ -986,6 +986,11 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                                       label: 'Link gönderildi',
                                       tone: AppBadgeTone.warning,
                                     ),
+                                  if (valorLabel.isNotEmpty)
+                                    _ValorBadge(
+                                      label: valorLabel,
+                                      tone: valorTone,
+                                    ),
                                   Text(
                                     DateFormat(
                                       'd MMM yyyy HH:mm',
@@ -1020,16 +1025,6 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                               style: Theme.of(context).textTheme.titleSmall
                                   ?.copyWith(fontWeight: FontWeight.w800),
                             ),
-                            if (row.listStatus == 'paid' &&
-                                row.daysUntilValor != null &&
-                                valorLabel.isNotEmpty) ...[
-                              const Gap(8),
-                              _ValorCountdown(
-                                days: row.daysUntilValor!,
-                                expectedSettleOn: row.expectedSettleOn,
-                                tone: valorTone,
-                              ),
-                            ],
                             if (row.listStatus == 'paid') ...[
                               const Gap(4),
                               TextButton(
@@ -1075,16 +1070,11 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
   }
 }
 
-class _ValorCountdown extends StatelessWidget {
-  const _ValorCountdown({
-    required this.days,
-    required this.tone,
-    this.expectedSettleOn,
-  });
+class _ValorBadge extends StatelessWidget {
+  const _ValorBadge({required this.label, required this.tone});
 
-  final int days;
+  final String label;
   final AppBadgeTone tone;
-  final DateTime? expectedSettleOn;
 
   @override
   Widget build(BuildContext context) {
@@ -1093,80 +1083,21 @@ class _ValorCountdown extends StatelessWidget {
       AppBadgeTone.primary => AppTheme.primary,
       _ => AppTheme.warning,
     };
-    final headline = days < 0
-        ? '${days.abs()}'
-        : days == 0
-        ? 'BUGÜN'
-        : days == 1
-        ? 'YARIN'
-        : '$days';
-    final caption = days < 0
-        ? 'gün gecikti'
-        : days == 0 || days == 1
-        ? 'yatmalı'
-        : 'gün kaldı';
-    final dateLabel = expectedSettleOn == null
-        ? null
-        : DateFormat('d MMM yyyy', 'tr_TR').format(expectedSettleOn!);
-    final largeNumber = days < 0 || days > 1;
-
     return Container(
-      constraints: const BoxConstraints(minWidth: 112),
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        border: Border.all(color: color, width: 1.5),
+        borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+        border: Border.all(color: color, width: 1.2),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            'VALÖR',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.1,
-              color: color,
-            ),
-          ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                headline,
-                style: TextStyle(
-                  fontSize: largeNumber ? 26 : 18,
-                  fontWeight: FontWeight.w900,
-                  height: 1.05,
-                  color: color,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Text(
-                  caption,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: color,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (dateLabel != null)
-            Text(
-              dateLabel,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: color,
-              ),
-            ),
-        ],
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          height: 1.15,
+          color: color,
+        ),
       ),
     );
   }
