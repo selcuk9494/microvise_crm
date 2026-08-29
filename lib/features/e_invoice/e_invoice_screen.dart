@@ -808,7 +808,7 @@ class EInvoiceScreen extends ConsumerWidget {
         'Ödeme linki ile sanal POS tahsilatları: ödendi, ödeme bekleniyor, hesaba yattı.',
       'tekrarlayan' =>
         'Kayıtlı firmalara fatura gününde fatura kesip ödeme linkini mail gönderin.',
-      'ayarlar' => 'Maliye ve SAP entegrasyon ayarları.',
+      'ayarlar' => 'Maliye, SMTP mail ve SAP entegrasyon ayarları.',
       _ => switch (invoiceType) {
         'purchase' => 'Alış faturaları ve KKTC e-fatura takibi.',
         'sales' => 'Satış faturaları ve KKTC e-fatura gönderimi.',
@@ -7536,6 +7536,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
   bool _bulkMatchingCustomers = false;
   bool _cleaningCustomers = false;
   bool _testingMail = false;
+  bool _smtpPassSet = false;
 
   @override
   void dispose() {
@@ -7570,6 +7571,19 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
             _c(key).text = (settings[key] ?? '').toString();
           }
           _hydrateBankFields(_c('seller_bank_details').text);
+          _smtpPassSet =
+              settings['smtp_pass_set'] == true ||
+              settings['smtp_pass_set']?.toString() == 'true' ||
+              _c('smtp_pass').text.trim().isNotEmpty;
+          if (_c('smtp_host').text.trim().isEmpty) {
+            _c('smtp_host').text = 'smtp.gmail.com';
+          }
+          if (_c('smtp_port').text.trim().isEmpty) {
+            _c('smtp_port').text = '587';
+          }
+          if (_c('smtp_secure').text.trim().isEmpty) {
+            _c('smtp_secure').text = 'false';
+          }
           _hydrated = true;
         }
 
@@ -7784,6 +7798,157 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                         ),
                       ),
                     ],
+                  ),
+                  const Gap(16),
+                  const Divider(height: 24),
+                  Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.radiusMd,
+                          ),
+                        ),
+                        child: Icon(
+                          AppPhosphorIcons.paperPlaneTilt,
+                          color: AppTheme.primary,
+                          size: 20,
+                        ),
+                      ),
+                      const Gap(10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Fatura ve ödeme maili (SMTP)',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            Text(
+                              'Ödeme linki ve teşekkür mailleri bu hesaptan gider. '
+                              'Gmail’de hesap şifresi değil, uygulama şifresi kullanın.',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Gap(12),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final host = _field(
+                        'smtp_host',
+                        'SMTP sunucu',
+                        hintText: 'smtp.gmail.com',
+                      );
+                      final port = _field('smtp_port', 'Port', hintText: '587');
+                      final secure = SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(
+                            value: 'false',
+                            label: Text('STARTTLS'),
+                          ),
+                          ButtonSegment(value: 'true', label: Text('SSL')),
+                        ],
+                        selected: {
+                          _c('smtp_secure').text.trim() == 'true'
+                              ? 'true'
+                              : 'false',
+                        },
+                        onSelectionChanged: (selected) {
+                          final value = selected.first;
+                          setState(() {
+                            _c('smtp_secure').text = value;
+                            final portText = _c('smtp_port').text.trim();
+                            if (value == 'true' &&
+                                (portText.isEmpty || portText == '587')) {
+                              _c('smtp_port').text = '465';
+                            } else if (value == 'false' &&
+                                (portText.isEmpty || portText == '465')) {
+                              _c('smtp_port').text = '587';
+                            }
+                          });
+                        },
+                      );
+                      if (constraints.maxWidth >= 760) {
+                        return Row(
+                          children: [
+                            Expanded(flex: 3, child: host),
+                            const Gap(10),
+                            SizedBox(width: 110, child: port),
+                            const Gap(10),
+                            secure,
+                          ],
+                        );
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          host,
+                          const Gap(10),
+                          Row(
+                            children: [
+                              Expanded(child: port),
+                              const Gap(10),
+                              secure,
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const Gap(10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _field(
+                          'smtp_user',
+                          'SMTP kullanıcı / e-posta',
+                          hintText: 'ornek@gmail.com',
+                        ),
+                      ),
+                      const Gap(10),
+                      Expanded(
+                        child: _field(
+                          'smtp_pass',
+                          _smtpPassSet
+                              ? 'Uygulama şifresi (kayıtlı)'
+                              : 'Uygulama şifresi',
+                          obscureText: true,
+                          hintText: _smtpPassSet
+                              ? 'Boş bırakırsanız kayıtlı şifre kalır'
+                              : 'Gmail uygulama şifresi',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Gap(10),
+                  _field(
+                    'smtp_from',
+                    'Gönderen adı',
+                    hintText: 'Microvise Innovation <ornek@gmail.com>',
+                  ),
+                  const Gap(10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: OutlinedButton.icon(
+                      onPressed: _testingMail ? null : _testMail,
+                      icon: _testingMail
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(
+                              AppPhosphorIcons.paperPlaneTilt,
+                              size: 18,
+                            ),
+                      label: const Text('Test maili gönder'),
+                    ),
                   ),
                   const Gap(16),
                   const Divider(height: 24),
@@ -8101,6 +8266,10 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('E-fatura ayarları kaydedildi.')),
       );
+      if (_c('smtp_pass').text.trim().isNotEmpty) {
+        _c('smtp_pass').clear();
+        setState(() => _smtpPassSet = true);
+      }
     } catch (error) {
       await _saveLocalEInvoiceSettings(settings);
       ref.invalidate(eInvoiceSettingsProvider);
@@ -8201,6 +8370,71 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
       'environment': _environment,
       for (final key in _settingKeys) key: _c(key).text.trim(),
     };
+  }
+
+  Map<String, String> _smtpOverlay() {
+    final overlay = <String, String>{
+      'smtp_host': _c('smtp_host').text.trim(),
+      'smtp_port': _c('smtp_port').text.trim(),
+      'smtp_secure': _c('smtp_secure').text.trim(),
+      'smtp_user': _c('smtp_user').text.trim(),
+      'smtp_from': _c('smtp_from').text.trim(),
+    };
+    final pass = _c('smtp_pass').text.trim();
+    if (pass.isNotEmpty) overlay['smtp_pass'] = pass;
+    return overlay;
+  }
+
+  Future<void> _testMail() async {
+    final apiClient = ref.read(apiClientProvider);
+    final to = _c('smtp_user').text.trim();
+    if (apiClient == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Test maili için backend gerekir. Önce ayarları kaydedin.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (!to.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('SMTP kullanıcı alanına test edilecek e-postayı yazın.'),
+        ),
+      );
+      return;
+    }
+    setState(() => _testingMail = true);
+    try {
+      final response = await apiClient
+          .postJson(
+            '/e-invoice',
+            body: {
+              'action': 'test_mail',
+              'to': to,
+              'smtp': _smtpOverlay(),
+            },
+          )
+          .timeout(const Duration(seconds: 25));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            response['message']?.toString() ??
+                'Test e-postası $to adresine gönderildi.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Test maili gönderilemedi: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _testingMail = false);
+    }
   }
 
   Future<void> _testAkinsoftConnection() async {
