@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   posListStatus,
   posListStatusLabel,
+  posCollectionVisible,
   invoicePaymentAwaiting,
   periodKeyForDate,
   dueDayInMonth,
@@ -21,6 +22,49 @@ test('posListStatus maps paid / settled / pending', () => {
   assert.equal(posListStatusLabel('pending'), 'Ödeme bekleniyor');
   assert.equal(posListStatusLabel('paid'), 'Ödendi');
   assert.equal(posListStatusLabel('settled'), 'Hesaba yattı');
+});
+
+test('bekleyen POS kaydı nakit kapanınca listeden düşer', () => {
+  assert.equal(
+    posCollectionVisible({
+      status: 'pending',
+      invoices: [
+        { status: 'open', grand_total: 100, paid_amount: 0 },
+      ],
+    }),
+    true,
+  );
+  assert.equal(
+    posCollectionVisible({
+      status: 'pending',
+      invoices: [
+        { status: 'open', grand_total: 100, paid_amount: 100 },
+      ],
+    }),
+    false,
+  );
+  assert.equal(
+    posCollectionVisible({
+      status: 'pending',
+      invoices: [{ status: 'paid', grand_total: 100, paid_amount: 100 }],
+    }),
+    false,
+  );
+  assert.equal(
+    posCollectionVisible({
+      status: 'paid',
+      invoices: [{ status: 'paid', grand_total: 100, paid_amount: 100 }],
+    }),
+    true,
+  );
+  assert.equal(
+    posCollectionVisible({
+      status: 'pending',
+      dismissed_at: '2026-08-29T10:00:00Z',
+      invoices: [{ status: 'open', grand_total: 100, paid_amount: 0 }],
+    }),
+    false,
+  );
 });
 
 test('invoicePaymentAwaiting is true after mail until paid', () => {

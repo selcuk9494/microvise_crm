@@ -176,6 +176,8 @@ async function loadInvoicesForMail(invoiceIds) {
         i.grand_total,
         coalesce(i.paid_amount, 0) as paid_amount,
         i.status,
+        i.e_invoice_pdf_bucket,
+        i.e_invoice_pdf_path,
         c.name as customer_name,
         c.email as customer_email
       from public.invoices i
@@ -215,6 +217,24 @@ async function loadInvoicesForMail(invoiceIds) {
     ...row,
     items: itemsByInvoice.get(row.id) || [],
   }));
+}
+
+function officialPdfAttachment(invoice) {
+  const objectPath = String(invoice?.e_invoice_pdf_path || '').trim();
+  if (!objectPath) return null;
+  try {
+    if (!fs.existsSync(objectPath) || !fs.statSync(objectPath).isFile()) {
+      return null;
+    }
+    const label = localInvoiceNumber(invoice.invoice_number) || 'efatura';
+    return {
+      filename: `e-fatura-${label.replace(/[^\w.-]+/g, '_').slice(0, 60)}.pdf`,
+      content: fs.readFileSync(objectPath).toString('base64'),
+      contentType: 'application/pdf',
+    };
+  } catch (_) {
+    return null;
+  }
 }
 
 function invoiceNumbersPhrase(invoices) {
@@ -844,6 +864,19 @@ async function sendInvoicePaymentLinkEmail({
     seller,
   };
   const named = invoiceNumbersPhrase(invoices);
+  const crmAttachment = {
+    filename: `fatura-${(invoiceLabel || 'microvise')
+      .replace(/[^\w.-]+/g, '_')
+      .slice(0, 60)}.pdf`,
+    content: pdf.toString('base64'),
+    contentType: 'application/pdf',
+  };
+  const officialAttachments = awaitingPayment
+    ? []
+    : invoices.map(officialPdfAttachment).filter(Boolean);
+  const attachments = officialAttachments.length
+    ? officialAttachments
+    : [crmAttachment];
 
   await sendEmail({
     to,
@@ -856,15 +889,7 @@ async function sendInvoicePaymentLinkEmail({
         : 'Ödemeniz için teşekkürler',
     html: buildPaymentEmailHtml(mailPayload),
     text: buildPaymentEmailText(mailPayload),
-    attachments: [
-      {
-        filename: `fatura-${(invoiceLabel || 'microvise')
-          .replace(/[^\w.-]+/g, '_')
-          .slice(0, 60)}.pdf`,
-        content: pdf.toString('base64'),
-        contentType: 'application/pdf',
-      },
-    ],
+    attachments,
   });
 
   if (link) {

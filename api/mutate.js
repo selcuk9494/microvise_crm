@@ -52,6 +52,7 @@ const {
   createInvoicePaymentLink,
   refundInvoicePosPayment,
   markPosPaymentSettled,
+  dismissPosCollection,
 } = require('./_lib/invoice_payment');
 const { sendInvoicePaymentLinkEmail } = require('./_lib/invoice_mail');
 const {
@@ -3625,6 +3626,25 @@ module.exports = async (req, res) => {
           await markPosPaymentSettled({
             linkId: body.linkId || body.id,
             settled: body.settled !== false && body.settled !== 'false',
+            createdBy: user?.id || null,
+          }),
+        );
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'dismissPosCollection') {
+      if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) {
+        return;
+      }
+      try {
+        return ok(
+          req,
+          res,
+          await dismissPosCollection({
+            linkId: body.linkId || body.id,
+            dismissed: body.dismissed !== false && body.dismissed !== 'false',
             createdBy: user?.id || null,
           }),
         );

@@ -43,7 +43,7 @@ const {
 } = require('./_lib/schema');
 const { ensureBrandIntegrations } = require('./_lib/mutakabat_processor');
 const { ensureInvoicePaymentLinksTable } = require('./_lib/invoice_payment');
-const { posListStatus } = require('./_lib/pos_status');
+const { posListStatus, posCollectionVisible } = require('./_lib/pos_status');
 const {
   ensureRecurringBillingTables,
   listRecurringBillingPlans,
@@ -2186,6 +2186,7 @@ module.exports = async (req, res) => {
         if (!includeRefunded) {
           whereSql += ` and coalesce(l.status, 'pending') <> 'refunded'`;
         }
+        whereSql += ` and l.dismissed_at is null`;
         if (startDate && endDate) {
           values.push(startDate, endDate);
           whereSql += `
@@ -2227,6 +2228,7 @@ module.exports = async (req, res) => {
               l.emailed_at,
               l.emailed_to,
               l.settled_at,
+              l.dismissed_at,
               l.created_at,
               l.expires_at,
               json_build_object('name', c.name, 'email', c.email) as customers,
@@ -2269,7 +2271,12 @@ module.exports = async (req, res) => {
             payment_link_paid_at: row.paid_at,
             paid_on: row.paid_at || row.created_at,
           };
-        });
+        }).filter((row) =>
+          posCollectionVisible({
+            ...row,
+            invoices: row.invoice_list,
+          }),
+        );
         const items = mapped.filter((row) => {
           if (statusFilter === 'all' || !statusFilter) return true;
           return row.list_status === statusFilter;

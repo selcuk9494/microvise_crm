@@ -214,7 +214,7 @@ async function sendViaResend({ apiKey, from }, { to, subject, html, text, attach
   return data;
 }
 
-async function sendEmail({ to, subject, html, text, attachments }) {
+async function sendEmail({ to, subject, html, text, attachments, smtpOverride }) {
   const recipients = (Array.isArray(to) ? to : [to])
     .map((item) => String(item || '').trim())
     .filter(isValidEmail);
@@ -225,6 +225,11 @@ async function sendEmail({ to, subject, html, text, attachments }) {
   }
 
   const config = await resolveMailConfig();
+  if (smtpOverride && typeof smtpOverride === 'object') {
+    const overlay = smtpFromRow(smtpOverride);
+    config.smtp = mergeSmtp(overlay, config.smtp);
+    if (config.smtp) config.from = formatFrom(config.smtp);
+  }
   const mail = {
     to: recipients,
     subject: String(subject || 'Microvise').trim() || 'Microvise',

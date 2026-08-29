@@ -16,6 +16,13 @@ const {
   methodNotAllowed,
   serverError,
 } = require('./_lib/http');
+const {
+  applyBranchToSettings,
+  configuredBranches,
+  hydrateBranchSettings,
+  resolveSelectedBranch,
+  syncActiveBranchFromEnvironment,
+} = require('./_lib/e_invoice_branches');
 
 async function readJson(req) {
   const chunks = [];
@@ -100,7 +107,26 @@ async function ensureEInvoiceSchema() {
       add column if not exists smtp_secure text default 'false',
       add column if not exists smtp_user text,
       add column if not exists smtp_pass text,
-      add column if not exists smtp_from text
+      add column if not exists smtp_from text,
+      add column if not exists seller_branch_name text,
+      add column if not exists test_branch_code text,
+      add column if not exists test_branch_name text,
+      add column if not exists test_branch_code_2 text,
+      add column if not exists test_branch_name_2 text,
+      add column if not exists prod_branch_code text,
+      add column if not exists prod_branch_name text,
+      add column if not exists prod_branch_code_2 text,
+      add column if not exists prod_branch_name_2 text
+  `);
+  await query(`
+    update public.e_invoice_settings
+    set
+      seller_branch_name = coalesce(nullif(btrim(seller_branch_name), ''), 'Merkez'),
+      test_branch_code = coalesce(nullif(btrim(test_branch_code), ''), seller_branch_code, '1'),
+      test_branch_name = coalesce(nullif(btrim(test_branch_name), ''), 'Merkez'),
+      prod_branch_code = coalesce(nullif(btrim(prod_branch_code), ''), seller_branch_code, '1'),
+      prod_branch_name = coalesce(nullif(btrim(prod_branch_name), ''), 'Merkez')
+    where is_active = true
   `);
   await query(`
     update public.e_invoice_settings
@@ -789,7 +815,7 @@ async function getSettings() {
   const result = await query(
     `select * from public.e_invoice_settings where is_active = true order by created_at asc limit 1`,
   );
-  return result.rows[0] || null;
+  return hydrateBranchSettings(result.rows[0] || {});
 }
 
 async function fetchInvoice(invoiceId) {
@@ -2309,6 +2335,403 @@ async function syncIncomingFromMaliye({ settings, token, user }) {
 }
 
 
+function clientError(message) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  throw error;
+}
+
+async function prepareOrSendInvoice({
+  action,
+  invoiceId: rawInvoiceId,
+  branchCode,
+  requireBranch = false,
+}) {
+  const invoiceId = String(rawInvoiceId || '').trim();
+  if (!invoiceId) clientError('invoiceId zorunludur.');
+  const current = await getSettings();
+  const settings = applyBranchToSettings(
+    current,
+    resolveSelectedBranch(current, branchCode, {
+      required: requireBranch && action === 'send',
+    }),
+  );
+  const invoice = await fetchInvoice(invoiceId);
+  if (!invoice) clientError('Fatura bulunamadı.');
+  const testToProduction =
+    invoice.e_invoice_status === 'sent' &&
+    invoice.e_invoice_environment === 'test' &&
+    settings.environment === 'production';
+  if (!canSendInvoiceToEnvironment(invoice, settings.environment)) {
+    if (
+      invoice.invoice_type === 'purchase' ||
+      invoice.e_invoice_status === 'received'
+    ) {
+      clientError('Alış veya Maliye’den gelen faturalar API’ye gönderilemez.');
+    }
+    if (
+      invoice.e_invoice_status === 'manual' ||
+      invoice.e_invoice_status === 'manual_sent'
+    ) {
+      clientError(
+        invoice.e_invoice_status === 'manual_sent'
+          ? 'Bu fatura manuel gönderildi olarak işaretli. API’ye gönderilmez.'
+          : 'Bu fatura manuel kesildi olarak işaretli. API’ye gönderilmez.',
+      );
+    }
+    clientError(
+      `Bu fatura daha önce başarıyla gönderildi${
+        invoice.e_invoice_number ? `: ${invoice.e_invoice_number}` : '.'
+      } Tekrar gönderilemez.`,
+    );
+  }
+  if (!Array.isArray(invoice.items) || invoice.items.length === 0) {
+    clientError('E-fatura için en az bir kalem olmalıdır.');
+  }
+  const validationErrors = validateInvoiceForEInvoice(settings, invoice);
+  if (validationErrors.length) clientError(validationErrors.join(' '));
+  const payloadInvoice = testToProduction
+    ? { ...invoice, e_invoice_number: null, e_invoice_uuid: null }
+    : invoice;
+  const reserved = await resolveInvoiceNumber({
+    settings,
+    invoice: payloadInvoice,
+    invoiceId,
+  });
+  let built = buildPayload({
+    settings,
+    invoice: payloadInvoice,
+    number: reserved.number,
+  });
+
+  if (action === 'prepare') {
+    if (testToProduction) {
+      return {
+        ok: true,
+        mode: 'prepare',
+        promotion: 'test_to_production',
+        invoiceNumber: built.number,
+        uuid: built.uuid,
+        payload: built.payload,
+        branchCode: settings.seller_branch_code,
+        branchName: settings.seller_branch_name,
+      };
+    }
+    const prepared = await query(
+      `
+        update public.invoices
+        set e_invoice_number = $2,
+            e_invoice_uuid = $3,
+            e_invoice_status = 'prepared',
+            e_invoice_environment = $4,
+            e_invoice_payload = $5::jsonb,
+            e_invoice_error = null,
+            updated_at = now()
+        where id = $1
+          and e_invoice_status is distinct from 'sent'
+        returning id
+      `,
+      [
+        invoiceId,
+        built.number,
+        built.uuid,
+        settings.environment,
+        JSON.stringify(built.payload),
+      ],
+    );
+    if (!prepared.rows.length) {
+      clientError('Başarıyla gönderilmiş fatura değiştirilemez.');
+    }
+    return {
+      ok: true,
+      mode: 'prepare',
+      invoiceNumber: built.number,
+      uuid: built.uuid,
+      payload: built.payload,
+      branchCode: settings.seller_branch_code,
+      branchName: settings.seller_branch_name,
+    };
+  }
+
+  if (testToProduction) await preserveTransmission(invoice);
+  const claimed = await query(
+    `
+      update public.invoices
+      set e_invoice_number = $2,
+          e_invoice_uuid = $3,
+          e_invoice_status = 'prepared',
+          e_invoice_environment = $4,
+          e_invoice_payload = $5::jsonb,
+          e_invoice_official_data = case
+            when e_invoice_environment = 'test' and $4 = 'production' then null
+            else e_invoice_official_data
+          end,
+          e_invoice_official_ubl = case
+            when e_invoice_environment = 'test' and $4 = 'production' then null
+            else e_invoice_official_ubl
+          end,
+          e_invoice_pdf_bucket = case
+            when e_invoice_environment = 'test' and $4 = 'production' then null
+            else e_invoice_pdf_bucket
+          end,
+          e_invoice_pdf_path = case
+            when e_invoice_environment = 'test' and $4 = 'production' then null
+            else e_invoice_pdf_path
+          end,
+          e_invoice_pdf_sha256 = case
+            when e_invoice_environment = 'test' and $4 = 'production' then null
+            else e_invoice_pdf_sha256
+          end,
+          e_invoice_pdf_created_at = case
+            when e_invoice_environment = 'test' and $4 = 'production' then null
+            else e_invoice_pdf_created_at
+          end,
+          e_invoice_archived_at = case
+            when e_invoice_environment = 'test' and $4 = 'production' then null
+            else e_invoice_archived_at
+          end,
+          e_invoice_archive_error = null,
+          e_invoice_error = null,
+          e_invoice_sending_at = now(),
+          updated_at = now()
+      where id = $1
+        and (
+          e_invoice_status is distinct from 'sent'
+          or (
+            e_invoice_status = 'sent'
+            and e_invoice_environment = 'test'
+            and $4 = 'production'
+          )
+        )
+        and (
+          e_invoice_sending_at is null
+          or e_invoice_sending_at < now() - interval '10 minutes'
+        )
+      returning id
+    `,
+    [
+      invoiceId,
+      built.number,
+      built.uuid,
+      settings.environment,
+      JSON.stringify(built.payload),
+    ],
+  );
+  if (!claimed.rows.length) {
+    clientError(
+      'Bu fatura daha önce gönderildi veya gönderim işlemi halen devam ediyor.',
+    );
+  }
+
+  try {
+    const collided = [];
+    let sent = null;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        sent = await sendToMaliye({ settings, payload: built.payload });
+        break;
+      } catch (sendError) {
+        if (attempt >= 4 || !isNumberAlreadyUsedError(sendError)) throw sendError;
+        collided.push(built.number);
+        const retry = await resolveInvoiceNumber({
+          settings,
+          invoice: payloadInvoice,
+          invoiceId,
+          skip: collided,
+        });
+        if (retry.number === built.number) throw sendError;
+        built = buildPayload({
+          settings,
+          invoice: { ...payloadInvoice, e_invoice_number: null },
+          number: retry.number,
+        });
+        built.uuid = payloadInvoice.e_invoice_uuid || built.uuid;
+        await query(
+          `
+            update public.invoices
+            set e_invoice_number = $2,
+                e_invoice_payload = $3::jsonb,
+                updated_at = now()
+            where id = $1
+          `,
+          [invoiceId, built.number, JSON.stringify(built.payload)],
+        );
+      }
+    }
+    const response = sent.response;
+    const officialNumber = officialNumberFromResponse(response, built.number);
+    await query(
+      `
+        update public.invoices
+        set e_invoice_status = 'sent',
+            e_invoice_number = $2,
+            e_invoice_response = $3::jsonb,
+            e_invoice_error = null,
+            e_invoice_sent_at = now(),
+            e_invoice_sending_at = null,
+            updated_at = now()
+        where id = $1
+      `,
+      [invoiceId, officialNumber, JSON.stringify(response)],
+    );
+    const renamed = await applyOfficialInvoiceNumber({
+      invoiceId,
+      officialNumber,
+      currentInvoiceNumber: invoice.invoice_number,
+      erpInvoiceNumber: invoice.erp_invoice_number,
+      environment: settings.environment,
+    });
+    const nextColumn =
+      invoice.invoice_type === 'purchase'
+        ? 'next_purchase_number'
+        : 'next_sales_number';
+    const usedSerial = serialFromNumber(
+      officialNumber,
+      invoiceNumberPrefix(settings, payloadInvoice),
+    );
+    await query(
+      `update public.e_invoice_settings set ${nextColumn} = greatest(${nextColumn} + 1, $2::bigint), last_sync_at = now(), updated_at = now() where id = $1`,
+      [settings.id, usedSerial ? usedSerial + 1 : 1],
+    );
+    const archive = await archiveAfterSuccessfulSend({
+      invoiceId,
+      settings,
+      verificationCode: built.uuid,
+      token: sent.token,
+    });
+    return {
+      ok: true,
+      mode: 'send',
+      invoiceNumber: officialNumber,
+      localInvoiceNumber: renamed.invoiceNumber || invoice.invoice_number,
+      erpInvoiceNumber: renamed.erpInvoiceNumber || invoice.erp_invoice_number,
+      renamed,
+      uuid: built.uuid,
+      response,
+      archive,
+      branchCode: settings.seller_branch_code,
+      branchName: settings.seller_branch_name,
+    };
+  } catch (error) {
+    if (testToProduction) {
+      await query(
+        `
+          update public.invoices
+          set e_invoice_number = $2,
+              e_invoice_uuid = $3,
+              e_invoice_status = 'sent',
+              e_invoice_environment = 'test',
+              e_invoice_payload = $4::jsonb,
+              e_invoice_response = $5::jsonb,
+              e_invoice_official_data = $6::jsonb,
+              e_invoice_official_ubl = $7,
+              e_invoice_archived_at = $8,
+              e_invoice_sent_at = $9,
+              e_invoice_error = $10,
+              e_invoice_sending_at = null,
+              updated_at = now()
+          where id = $1
+        `,
+        [
+          invoiceId,
+          invoice.e_invoice_number,
+          invoice.e_invoice_uuid,
+          JSON.stringify(invoice.e_invoice_payload || null),
+          JSON.stringify(invoice.e_invoice_response || null),
+          JSON.stringify(invoice.e_invoice_official_data || null),
+          invoice.e_invoice_official_ubl,
+          invoice.e_invoice_archived_at,
+          invoice.e_invoice_sent_at,
+          `Canlı gönderim başarısız: ${error.message}`,
+        ],
+      );
+    } else {
+      await query(
+        `
+          update public.invoices
+          set e_invoice_status = 'failed',
+              e_invoice_response = $2::jsonb,
+              e_invoice_error = $3,
+              e_invoice_sending_at = null,
+              updated_at = now()
+          where id = $1
+        `,
+        [
+          invoiceId,
+          JSON.stringify(error.response || { error: error.message }),
+          error.message,
+        ],
+      );
+    }
+    throw error;
+  }
+}
+
+async function sendPaidInvoicesAfterPos(invoiceIds) {
+  const ids = Array.from(
+    new Set(
+      (invoiceIds || [])
+        .map((id) => String(id || '').trim())
+        .filter(Boolean),
+    ),
+  );
+  const results = [];
+  const { isValidEmail } = require('./_lib/mail');
+  for (const invoiceId of ids) {
+    const invoice = await fetchInvoice(invoiceId);
+    if (!invoice || invoice.invoice_type === 'purchase') {
+      results.push({ invoiceId, skipped: true, reason: 'not_sales' });
+      continue;
+    }
+    let sent = null;
+    try {
+      const current = await getSettings();
+      if (canSendInvoiceToEnvironment(invoice, current.environment)) {
+        sent = await prepareOrSendInvoice({
+          action: 'send',
+          invoiceId,
+          requireBranch: false,
+        });
+      } else {
+        sent = { skipped: true, reason: 'already_sent' };
+      }
+    } catch (error) {
+      results.push({
+        invoiceId,
+        ok: false,
+        error: error.message || 'Maliye gönderimi başarısız.',
+      });
+      continue;
+    }
+
+    const email = String(invoice.customer?.email || '').trim();
+    let mailed = false;
+    let mailError = null;
+    if (isValidEmail(email)) {
+      try {
+        const { sendInvoicePaymentLinkEmail } = require('./_lib/invoice_mail');
+        await sendInvoicePaymentLinkEmail({
+          invoiceIds: [invoiceId],
+          email,
+        });
+        mailed = true;
+      } catch (error) {
+        mailError = error.message;
+      }
+    }
+    results.push({
+      invoiceId,
+      ok: sent?.ok !== false,
+      mailed,
+      mailError,
+      hasEmail: isValidEmail(email),
+      invoiceNumber: sent?.invoiceNumber || invoice.invoice_number,
+      skipped: sent?.skipped || false,
+    });
+  }
+  return results;
+}
+
 async function handler(req, res) {
   if (handleCors(req, res, 'GET,POST,OPTIONS')) return;
 
@@ -2323,7 +2746,16 @@ async function handler(req, res) {
 
     if (req.method === 'GET') {
       const settings = await getSettings();
-      return ok(req, res, { settings });
+      const publicSettings = { ...settings };
+      publicSettings.smtp_pass_set = Boolean(cleanText(publicSettings.smtp_pass));
+      publicSettings.smtp_pass = '';
+      return ok(req, res, {
+        settings: publicSettings,
+        branches: {
+          test: configuredBranches(settings, 'test'),
+          production: configuredBranches(settings, 'production'),
+        },
+      });
     }
 
     if (req.method !== 'POST') return methodNotAllowed(req, res, 'GET,POST');
@@ -2362,6 +2794,15 @@ async function handler(req, res) {
         'seller_vkn',
         'seller_title',
         'seller_branch_code',
+        'seller_branch_name',
+        'test_branch_code',
+        'test_branch_name',
+        'test_branch_code_2',
+        'test_branch_name_2',
+        'prod_branch_code',
+        'prod_branch_name',
+        'prod_branch_code_2',
+        'prod_branch_name_2',
         'seller_tax_office',
         'seller_city',
         'seller_country_code',
@@ -2419,6 +2860,9 @@ async function handler(req, res) {
       ) {
         delete picked.smtp_pass;
       }
+      const synced = syncActiveBranchFromEnvironment({ ...current, ...picked });
+      picked.seller_branch_code = synced.seller_branch_code;
+      picked.seller_branch_name = synced.seller_branch_name;
       picked.updated_at = new Date().toISOString();
       if (user.auth_user_id) picked.created_by = user.auth_user_id;
 
@@ -2435,10 +2879,11 @@ async function handler(req, res) {
     if (action === 'test_mail') {
       const settings = await getSettings();
       const { sendEmail, isValidEmail } = require('./_lib/mail');
+      const overlay = body.smtp && typeof body.smtp === 'object' ? body.smtp : {};
       const requested = String(body.to || '').trim();
       const to =
         (isValidEmail(requested) && requested) ||
-        String(settings.smtp_user || '').trim() ||
+        String(overlay.smtp_user || settings.smtp_user || '').trim() ||
         String(settings.seller_email || '').trim();
       if (!isValidEmail(to)) {
         return badRequest(
@@ -2450,6 +2895,7 @@ async function handler(req, res) {
       try {
         await sendEmail({
           to,
+          smtpOverride: overlay,
           subject: 'Microvise SMTP test',
           html: `
             <p style="font-family:Arial,sans-serif;color:#0f172a;">
@@ -2625,323 +3071,16 @@ async function handler(req, res) {
     }
 
     if (action === 'prepare' || action === 'send') {
-      const invoiceId = String(body.invoiceId || '').trim();
-      if (!invoiceId) return badRequest(req, res, 'invoiceId zorunludur.');
-      const settings = await getSettings();
-      const invoice = await fetchInvoice(invoiceId);
-      if (!invoice) return badRequest(req, res, 'Fatura bulunamadı.');
-      const testToProduction =
-        invoice.e_invoice_status === 'sent' &&
-        invoice.e_invoice_environment === 'test' &&
-        settings.environment === 'production';
-      if (!canSendInvoiceToEnvironment(invoice, settings.environment)) {
-        if (
-          invoice.invoice_type === 'purchase' ||
-          invoice.e_invoice_status === 'received'
-        ) {
-          return badRequest(
-            req,
-            res,
-            'Alış veya Maliye’den gelen faturalar API’ye gönderilemez.',
-          );
-        }
-        if (
-          invoice.e_invoice_status === 'manual' ||
-          invoice.e_invoice_status === 'manual_sent'
-        ) {
-          return badRequest(
-            req,
-            res,
-            invoice.e_invoice_status === 'manual_sent'
-              ? 'Bu fatura manuel gönderildi olarak işaretli. API’ye gönderilmez.'
-              : 'Bu fatura manuel kesildi olarak işaretli. API’ye gönderilmez.',
-          );
-        }
-        return badRequest(
-          req,
-          res,
-          `Bu fatura daha önce başarıyla gönderildi${
-            invoice.e_invoice_number ? `: ${invoice.e_invoice_number}` : '.'
-          } Tekrar gönderilemez.`,
-        );
-      }
-      if (!Array.isArray(invoice.items) || invoice.items.length === 0) {
-        return badRequest(req, res, 'E-fatura için en az bir kalem olmalıdır.');
-      }
-      const validationErrors = validateInvoiceForEInvoice(settings, invoice);
-      if (validationErrors.length) {
-        return badRequest(req, res, validationErrors.join(' '));
-      }
-      const payloadInvoice = testToProduction
-        ? { ...invoice, e_invoice_number: null, e_invoice_uuid: null }
-        : invoice;
-      const reserved = await resolveInvoiceNumber({
-        settings,
-        invoice: payloadInvoice,
-        invoiceId,
-      });
-      let built = buildPayload({
-        settings,
-        invoice: payloadInvoice,
-        number: reserved.number,
-      });
-
-      if (action === 'prepare') {
-        if (testToProduction) {
-          return ok(req, res, {
-            ok: true,
-            mode: 'prepare',
-            promotion: 'test_to_production',
-            invoiceNumber: built.number,
-            uuid: built.uuid,
-            payload: built.payload,
-          });
-        }
-        const prepared = await query(
-          `
-            update public.invoices
-            set e_invoice_number = $2,
-                e_invoice_uuid = $3,
-                e_invoice_status = 'prepared',
-                e_invoice_environment = $4,
-                e_invoice_payload = $5::jsonb,
-                e_invoice_error = null,
-                updated_at = now()
-            where id = $1
-              and e_invoice_status is distinct from 'sent'
-            returning id
-          `,
-          [
-            invoiceId,
-            built.number,
-            built.uuid,
-            settings.environment,
-            JSON.stringify(built.payload),
-          ],
-        );
-        if (!prepared.rows.length) {
-          return badRequest(req, res, 'Başarıyla gönderilmiş fatura değiştirilemez.');
-        }
-        return ok(req, res, {
-          ok: true,
-          mode: 'prepare',
-          invoiceNumber: built.number,
-          uuid: built.uuid,
-          payload: built.payload,
-        });
-      }
-
-      if (testToProduction) await preserveTransmission(invoice);
-      const claimed = await query(
-        `
-          update public.invoices
-          set e_invoice_number = $2,
-              e_invoice_uuid = $3,
-              e_invoice_status = 'prepared',
-              e_invoice_environment = $4,
-              e_invoice_payload = $5::jsonb,
-              e_invoice_official_data = case
-                when e_invoice_environment = 'test' and $4 = 'production' then null
-                else e_invoice_official_data
-              end,
-              e_invoice_official_ubl = case
-                when e_invoice_environment = 'test' and $4 = 'production' then null
-                else e_invoice_official_ubl
-              end,
-              e_invoice_pdf_bucket = case
-                when e_invoice_environment = 'test' and $4 = 'production' then null
-                else e_invoice_pdf_bucket
-              end,
-              e_invoice_pdf_path = case
-                when e_invoice_environment = 'test' and $4 = 'production' then null
-                else e_invoice_pdf_path
-              end,
-              e_invoice_pdf_sha256 = case
-                when e_invoice_environment = 'test' and $4 = 'production' then null
-                else e_invoice_pdf_sha256
-              end,
-              e_invoice_pdf_created_at = case
-                when e_invoice_environment = 'test' and $4 = 'production' then null
-                else e_invoice_pdf_created_at
-              end,
-              e_invoice_archived_at = case
-                when e_invoice_environment = 'test' and $4 = 'production' then null
-                else e_invoice_archived_at
-              end,
-              e_invoice_archive_error = null,
-              e_invoice_error = null,
-              e_invoice_sending_at = now(),
-              updated_at = now()
-          where id = $1
-            and (
-              e_invoice_status is distinct from 'sent'
-              or (
-                e_invoice_status = 'sent'
-                and e_invoice_environment = 'test'
-                and $4 = 'production'
-              )
-            )
-            and (
-              e_invoice_sending_at is null
-              or e_invoice_sending_at < now() - interval '10 minutes'
-            )
-          returning id
-        `,
-        [
-          invoiceId,
-          built.number,
-          built.uuid,
-          settings.environment,
-          JSON.stringify(built.payload),
-        ],
-      );
-      if (!claimed.rows.length) {
-        return badRequest(
-          req,
-          res,
-          'Bu fatura daha önce gönderildi veya gönderim işlemi halen devam ediyor.',
-        );
-      }
-
       try {
-        // Maliye numarayı kullanılmış sayarsa bir sonraki boş numarayla yeniden dener.
-        const collided = [];
-        let sent = null;
-        for (let attempt = 0; ; attempt += 1) {
-          try {
-            sent = await sendToMaliye({ settings, payload: built.payload });
-            break;
-          } catch (sendError) {
-            if (attempt >= 4 || !isNumberAlreadyUsedError(sendError)) throw sendError;
-            collided.push(built.number);
-            const retry = await resolveInvoiceNumber({
-              settings,
-              invoice: payloadInvoice,
-              invoiceId,
-              skip: collided,
-            });
-            if (retry.number === built.number) throw sendError;
-            built = buildPayload({
-              settings,
-              invoice: { ...payloadInvoice, e_invoice_number: null },
-              number: retry.number,
-            });
-            built.uuid = payloadInvoice.e_invoice_uuid || built.uuid;
-            await query(
-              `
-                update public.invoices
-                set e_invoice_number = $2,
-                    e_invoice_payload = $3::jsonb,
-                    updated_at = now()
-                where id = $1
-              `,
-              [invoiceId, built.number, JSON.stringify(built.payload)],
-            );
-          }
-        }
-        const response = sent.response;
-        const officialNumber = officialNumberFromResponse(response, built.number);
-        await query(
-          `
-            update public.invoices
-            set e_invoice_status = 'sent',
-                e_invoice_number = $2,
-                e_invoice_response = $3::jsonb,
-                e_invoice_error = null,
-                e_invoice_sent_at = now(),
-                e_invoice_sending_at = null,
-                updated_at = now()
-            where id = $1
-          `,
-          [invoiceId, officialNumber, JSON.stringify(response)],
-        );
-        const renamed = await applyOfficialInvoiceNumber({
-          invoiceId,
-          officialNumber,
-          currentInvoiceNumber: invoice.invoice_number,
-          erpInvoiceNumber: invoice.erp_invoice_number,
-          environment: settings.environment,
+        const result = await prepareOrSendInvoice({
+          action,
+          invoiceId: body.invoiceId,
+          branchCode: body.branchCode,
+          requireBranch: body.requireBranch === true && action === 'send',
         });
-        const nextColumn =
-          invoice.invoice_type === 'purchase'
-            ? 'next_purchase_number'
-            : 'next_sales_number';
-        const usedSerial = serialFromNumber(
-          officialNumber,
-          invoiceNumberPrefix(settings, payloadInvoice),
-        );
-        await query(
-          `update public.e_invoice_settings set ${nextColumn} = greatest(${nextColumn} + 1, $2::bigint), last_sync_at = now(), updated_at = now() where id = $1`,
-          [settings.id, usedSerial ? usedSerial + 1 : 1],
-        );
-        const archive = await archiveAfterSuccessfulSend({
-          invoiceId,
-          settings,
-          verificationCode: built.uuid,
-          token: sent.token,
-        });
-        return ok(req, res, {
-          ok: true,
-          mode: 'send',
-          invoiceNumber: officialNumber,
-          localInvoiceNumber: renamed.invoiceNumber || invoice.invoice_number,
-          erpInvoiceNumber: renamed.erpInvoiceNumber || invoice.erp_invoice_number,
-          renamed,
-          uuid: built.uuid,
-          response,
-          archive,
-        });
+        return ok(req, res, result);
       } catch (error) {
-        if (testToProduction) {
-          await query(
-            `
-              update public.invoices
-              set e_invoice_number = $2,
-                  e_invoice_uuid = $3,
-                  e_invoice_status = 'sent',
-                  e_invoice_environment = 'test',
-                  e_invoice_payload = $4::jsonb,
-                  e_invoice_response = $5::jsonb,
-                  e_invoice_official_data = $6::jsonb,
-                  e_invoice_official_ubl = $7,
-                  e_invoice_archived_at = $8,
-                  e_invoice_sent_at = $9,
-                  e_invoice_error = $10,
-                  e_invoice_sending_at = null,
-                  updated_at = now()
-              where id = $1
-            `,
-            [
-              invoiceId,
-              invoice.e_invoice_number,
-              invoice.e_invoice_uuid,
-              JSON.stringify(invoice.e_invoice_payload || null),
-              JSON.stringify(invoice.e_invoice_response || null),
-              JSON.stringify(invoice.e_invoice_official_data || null),
-              invoice.e_invoice_official_ubl,
-              invoice.e_invoice_archived_at,
-              invoice.e_invoice_sent_at,
-              `Canlı gönderim başarısız: ${error.message}`,
-            ],
-          );
-        } else {
-          await query(
-            `
-              update public.invoices
-              set e_invoice_status = 'failed',
-                  e_invoice_response = $2::jsonb,
-                  e_invoice_error = $3,
-                  e_invoice_sending_at = null,
-                  updated_at = now()
-              where id = $1
-            `,
-            [
-              invoiceId,
-              JSON.stringify(error.response || { error: error.message }),
-              error.message,
-            ],
-          );
-        }
+        if (error.statusCode === 400) return badRequest(req, res, error.message);
         throw error;
       }
     }
@@ -2953,6 +3092,8 @@ async function handler(req, res) {
 }
 
 module.exports = handler;
+module.exports.sendPaidInvoicesAfterPos = sendPaidInvoicesAfterPos;
+module.exports.prepareOrSendInvoice = prepareOrSendInvoice;
 module.exports.testUtils = {
   syncIncomingFromMaliye,
   mapIncomingLines,
@@ -2969,6 +3110,10 @@ module.exports.testUtils = {
   assertSuccessfulMaliyeResponse,
   validatePayloadAgainstApi,
   validateRegisteredBranch,
+  configuredBranches,
+  hydrateBranchSettings,
+  resolveSelectedBranch,
+  applyBranchToSettings,
   urlsForEnvironment,
   applyRegisteredSupplierIdentity,
   archiveAfterSuccessfulSend,

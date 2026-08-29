@@ -965,44 +965,47 @@ function randomToken() {
 }
 
 async function ensureInvoicePaymentLinksTable() {
-  if (tableReady) return;
-  await query(`
-    create table if not exists public.invoice_payment_links (
-      id uuid primary key default gen_random_uuid(),
-      token text not null unique,
-      customer_id uuid not null references public.customers(id) on delete cascade,
-      invoice_ids uuid[] not null,
-      amount numeric(14,2) not null,
-      currency text not null default 'TRY',
-      description text,
-      status text not null default 'pending',
-      provider text not null default 'halkbank',
-      provider_order_id text,
-      provider_payload jsonb not null default '{}'::jsonb,
-      paid_at timestamptz,
-      created_by uuid,
-      created_at timestamptz not null default now(),
-      updated_at timestamptz not null default now(),
-      expires_at timestamptz
-    )
-  `);
-  await query(`
-    create index if not exists idx_invoice_payment_links_token
-    on public.invoice_payment_links (token)
-  `);
-  await query(`
-    create index if not exists idx_invoice_payment_links_customer
-    on public.invoice_payment_links (customer_id, created_at desc)
-  `);
+  if (!tableReady) {
+    await query(`
+      create table if not exists public.invoice_payment_links (
+        id uuid primary key default gen_random_uuid(),
+        token text not null unique,
+        customer_id uuid not null references public.customers(id) on delete cascade,
+        invoice_ids uuid[] not null,
+        amount numeric(14,2) not null,
+        currency text not null default 'TRY',
+        description text,
+        status text not null default 'pending',
+        provider text not null default 'halkbank',
+        provider_order_id text,
+        provider_payload jsonb not null default '{}'::jsonb,
+        paid_at timestamptz,
+        created_by uuid,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        expires_at timestamptz
+      )
+    `);
+    await query(`
+      create index if not exists idx_invoice_payment_links_token
+      on public.invoice_payment_links (token)
+    `);
+    await query(`
+      create index if not exists idx_invoice_payment_links_customer
+      on public.invoice_payment_links (customer_id, created_at desc)
+    `);
+    await ensureInvoicePaidCloseRule();
+    tableReady = true;
+  }
   await query(`
     alter table public.invoice_payment_links
       add column if not exists emailed_at timestamptz,
       add column if not exists emailed_to text,
       add column if not exists settled_at timestamptz,
-      add column if not exists settled_by uuid
+      add column if not exists settled_by uuid,
+      add column if not exists dismissed_at timestamptz,
+      add column if not exists dismissed_by uuid
   `);
-  await ensureInvoicePaidCloseRule();
-  tableReady = true;
 }
 
 async function loadOpenInvoices(invoiceIds) {
@@ -2041,12 +2044,20 @@ async function handlePaymentCallback(token, body) {
     }
   }
 
-  await completeInvoicePayment(link, {
+  const paidResult = await completeInvoicePayment(link, {
     success,
     providerPayload,
     providerOrderId:
       body?.oid || body?.OrderId || body?.orderid || link.provider_order_id,
   });
+  if (success && paidResult?.ok && !paidResult.alreadyPaid) {
+    try {
+      const { sendPaidInvoicesAfterPos } = require('../e-invoice');
+      await sendPaidInvoicesAfterPos(link.invoice_ids || []);
+    } catch (error) {
+      console.error('POS sonrası e-fatura/mail:', error);
+    }
+  }
 
   if (useHostedPaymentPage(config)) {
     const resultUrl = getHostedPageUrl();
@@ -2255,6 +2266,56 @@ async function markPosPaymentSettled({
   };
 }
 
+async function dismissPosCollection({
+  linkId,
+  dismissed = true,
+  createdBy,
+}) {
+  await ensureInvoicePaymentLinksTable();
+  const id = String(linkId || '').trim();
+  if (!id) {
+    const error = new Error('Ödeme kaydı seçilmelidir.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const current = await query(
+    `
+      select id, status, dismissed_at
+      from public.invoice_payment_links
+      where id = $1::uuid
+      limit 1
+    `,
+    [id],
+  );
+  const row = current.rows[0];
+  if (!row) {
+    const error = new Error('Sanal POS kaydı bulunamadı.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const updated = await query(
+    `
+      update public.invoice_payment_links
+      set dismissed_at = case when $2 then now() else null end,
+          dismissed_by = case when $2 then $3 else null end,
+          updated_at = now()
+      where id = $1::uuid
+      returning id, status, dismissed_at
+    `,
+    [id, dismissed === true, createdBy || null],
+  );
+  const next = updated.rows[0];
+  return {
+    ok: true,
+    id: next.id,
+    status: next.status,
+    dismissedAt: next.dismissed_at,
+    message: dismissed
+      ? 'Kayıt sanal POS listesinden çıkarıldı.'
+      : 'Kayıt tekrar listeye alındı.',
+  };
+}
+
 module.exports = {
   ensureInvoicePaymentLinksTable,
   createInvoicePaymentLink,
@@ -2265,6 +2326,7 @@ module.exports = {
   handlePaymentCallback,
   refundInvoicePosPayment,
   markPosPaymentSettled,
+  dismissPosCollection,
   verifyPosRefundTicket,
   getPosConfigFromEnv,
   validatePosConfig,

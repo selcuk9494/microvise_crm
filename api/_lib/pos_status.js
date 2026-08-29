@@ -10,6 +10,38 @@ function posListStatus(row) {
   return 'pending';
 }
 
+function posCollectionVisible(row) {
+  if (row?.dismissed_at) return false;
+  const status = textOrEmpty(row?.status).toLowerCase();
+  if (status === 'paid' || status === 'refunded') return true;
+  if (status && status !== 'pending' && status !== 'failed') return false;
+
+  const invoices = Array.isArray(row?.invoices)
+    ? row.invoices
+    : Array.isArray(row?.invoice_list)
+      ? row.invoice_list
+      : row?.invoices && typeof row.invoices === 'object'
+        ? [row.invoices]
+        : [];
+  if (!invoices.length) return true;
+
+  return invoices.some((invoice) => {
+    const invoiceStatus = textOrEmpty(invoice?.status).toLowerCase();
+    if (
+      invoiceStatus === 'paid' ||
+      invoiceStatus === 'cancelled' ||
+      invoiceStatus === 'canceled' ||
+      invoiceStatus === 'void' ||
+      invoiceStatus === 'refunded'
+    ) {
+      return false;
+    }
+    const remaining =
+      Number(invoice?.grand_total || 0) - Number(invoice?.paid_amount || 0);
+    return remaining > 0.009;
+  });
+}
+
 function posListStatusLabel(status) {
   switch (textOrEmpty(status).toLowerCase()) {
     case 'paid':
@@ -62,6 +94,7 @@ function localToday() {
 module.exports = {
   posListStatus,
   posListStatusLabel,
+  posCollectionVisible,
   invoicePaymentAwaiting,
   periodKeyForDate,
   dueDayInMonth,

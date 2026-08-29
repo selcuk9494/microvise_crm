@@ -375,6 +375,233 @@ Future<void> _sendInvoicePaymentLinkEmailFlow({
   }
 }
 
+class _EInvoiceBranchOption {
+  const _EInvoiceBranchOption({required this.code, required this.name});
+  final String code;
+  final String name;
+  String get label {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty || trimmed == code) return code;
+    return '$trimmed ($code)';
+  }
+}
+
+List<_EInvoiceBranchOption> _eInvoiceBranches(
+  Map<String, dynamic> settings, {
+  required bool production,
+}) {
+  final prefix = production ? 'prod' : 'test';
+  String read(String key, [String fallback = '']) {
+    final value = (settings[key] ?? '').toString().trim();
+    if (value.isNotEmpty) return value;
+    return fallback;
+  }
+
+  final firstCode = read(
+    '${prefix}_branch_code',
+    read('seller_branch_code'),
+  );
+  final firstName = read('${prefix}_branch_name');
+  final secondCode = read('${prefix}_branch_code_2');
+  final secondName = read('${prefix}_branch_name_2');
+  final list = <_EInvoiceBranchOption>[];
+  if (firstCode.isNotEmpty) {
+    list.add(
+      _EInvoiceBranchOption(
+        code: firstCode,
+        name: firstName.isEmpty ? 'Şube 1' : firstName,
+      ),
+    );
+  }
+  if (secondCode.isNotEmpty &&
+      secondCode.toUpperCase() != firstCode.toUpperCase()) {
+    list.add(
+      _EInvoiceBranchOption(
+        code: secondCode,
+        name: secondName.isEmpty ? 'Şube 2' : secondName,
+      ),
+    );
+  }
+  return list;
+}
+
+Future<String?> _pickEInvoiceBranch({
+  required BuildContext context,
+  required Map<String, dynamic> settings,
+  required bool production,
+}) async {
+  final branches = _eInvoiceBranches(settings, production: production);
+  if (branches.isEmpty) {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Şube tanımlı değil'),
+        content: const Text(
+          'E-Fatura > Ayarlar bölümüne test ve canlı için şube kodu ile şube ismi girin.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Tamam'),
+          ),
+        ],
+      ),
+    );
+    return null;
+  }
+
+  var selected = branches.first.code;
+  return showDialog<String>(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: Text(production ? 'Canlı e-fatura şubesi' : 'E-fatura şubesi'),
+        content: StatefulBuilder(
+          builder: (context, setLocal) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  production
+                      ? 'Fatura canlı Maliye sistemine seçtiğiniz şubeden kesilecek. Bu işlem geri alınamaz.'
+                      : 'Fatura hangi şubeden kesilsin?',
+                ),
+                const Gap(12),
+                for (final branch in branches)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    selected: selected == branch.code,
+                    leading: Icon(
+                      selected == branch.code
+                          ? Icons.check_circle
+                          : Icons.circle_outlined,
+                    ),
+                    title: Text(branch.label),
+                    onTap: () => setLocal(() => selected = branch.code),
+                  ),
+              ],
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(selected),
+            child: Text(production ? 'Bu şubeden kes' : 'Onayla'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+Future<void> _offerIssuedInvoiceEmail({
+  required BuildContext context,
+  required WidgetRef ref,
+  required List<Invoice> invoices,
+}) async {
+  final sales = invoices
+      .where((invoice) => invoice.invoiceType == 'sales' && invoice.isActive)
+      .toList(growable: false);
+  if (sales.isEmpty || !context.mounted) return;
+
+  final withEmail = <Invoice>[];
+  final withoutEmail = <Invoice>[];
+  for (final invoice in sales) {
+    final email = (invoice.customerEmail ?? '').trim();
+    if (email.contains('@')) {
+      withEmail.add(invoice);
+    } else {
+      withoutEmail.add(invoice);
+    }
+  }
+
+  if (withEmail.isEmpty) {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Mail yok'),
+        content: Text(
+          sales.length == 1
+              ? 'Bu carinin kayıtlı e-postası yok. Teşekkür maili gönderilemedi.'
+              : 'Seçilen faturaların carilerinde e-posta yok. Teşekkür maili gönderilemedi.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Tamam'),
+          ),
+        ],
+      ),
+    );
+    return;
+  }
+
+  final uniqueEmails = withEmail
+      .map((invoice) => (invoice.customerEmail ?? '').trim())
+      .toSet()
+      .join(', ');
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Mail gönderilsin mi?'),
+      content: Text(
+        [
+          '${withEmail.length} fatura için teşekkür maili $uniqueEmails adresine gidecek.',
+          if (withoutEmail.isNotEmpty)
+            '${withoutEmail.length} faturada mail yok; bunlar atlanacak.',
+        ].join('\n\n'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Gönderme'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Mail gönder'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+
+  final apiClient = ref.read(apiClientProvider);
+  if (apiClient == null) return;
+  try {
+    final byEmail = <String, List<Invoice>>{};
+    for (final invoice in withEmail) {
+      final email = (invoice.customerEmail ?? '').trim();
+      byEmail.putIfAbsent(email, () => []).add(invoice);
+    }
+    for (final entry in byEmail.entries) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'sendInvoicePaymentLinkEmail',
+          'invoiceIds': entry.value.map((e) => e.id).toList(),
+          'email': entry.key,
+        },
+      );
+    }
+    if (!context.mounted) return;
+    ref.invalidate(invoicesProvider);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Teşekkür maili gönderildi.')),
+    );
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Mail gönderilemedi: $error')),
+    );
+  }
+}
+
 String _formatJobElapsed(Duration value) {
   final minutes = value.inMinutes.remainder(60).toString().padLeft(2, '0');
   final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -494,6 +721,15 @@ const _defaultSettings = <String, dynamic>{
   'seller_vkn': '0620009058',
   'seller_title': 'MICROVISE INNOVATION LTD',
   'seller_branch_code': '1',
+  'seller_branch_name': 'Merkez',
+  'test_branch_code': '1',
+  'test_branch_name': 'Merkez',
+  'test_branch_code_2': '',
+  'test_branch_name_2': '',
+  'prod_branch_code': '1',
+  'prod_branch_name': 'Merkez',
+  'prod_branch_code_2': '',
+  'prod_branch_name_2': '',
   'seller_tax_office': 'Lefkoşa',
   'seller_city': 'LEFKOŞA',
   'seller_country_code': 'XCT',

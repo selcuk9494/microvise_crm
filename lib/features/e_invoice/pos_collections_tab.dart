@@ -360,6 +360,61 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
     }
   }
 
+  Future<void> _dismiss(PosCollectionRow row) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Listeden çıkar'),
+        content: Text(
+          '${formatInvoiceNumberForDisplay(row.invoiceNumber)} · '
+          '${row.customerName ?? 'Cari'}\n\n'
+          'Bu kayıt sanal POS listesinden kalkar. Fatura veya tahsilat silinmez.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Listeden çıkar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      if (apiClient == null) return;
+      final response = await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'dismissPosCollection',
+          'linkId': row.id,
+        },
+      );
+      if (!mounted) return;
+      ref.invalidate(posCollectionsProvider(_filter));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            response['message']?.toString() ??
+                'Kayıt sanal POS listesinden çıkarıldı.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Listeden çıkarılamadı: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _refund(PosCollectionRow row, {bool crmOnly = false}) async {
     if (row.invoiceId == null || row.invoiceId!.isEmpty || !row.isActive) {
       return;
@@ -461,8 +516,9 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
               ),
               const Gap(4),
               Text(
-                'Ödeme bekleyen, ödenen ve hesaba yatan tahsilatlar. '
-                'Banka hesabınıza geçince “Hesaba yattı” işaretleyin.',
+                'Yalnızca ödeme linki oluşturulan veya mail atılan kayıtlar. '
+                'Nakit tahsil edilip fatura kapanınca bekleyen link düşer; '
+                'isterseniz “Listeden çıkar” ile de kaldırabilirsiniz.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: AppTheme.textMuted,
                 ),
@@ -540,7 +596,8 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                   icon: AppPhosphorIcons.money,
                   title: 'Sanal POS kaydı yok',
                   message:
-                      'Seçilen filtrede kayıt yok. Bu ay veya farklı tarih deneyin.',
+                      'Ödeme linki veya ödeme maili olan kayıtlar burada görünür. '
+                      'Nakit kapanmış faturalar listeden düşer.',
                 );
               }
               return Column(
@@ -708,6 +765,12 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                                           : () => _refund(row),
                                       child: const Text('İade'),
                                     ),
+                                  TextButton(
+                                    onPressed: _busy
+                                        ? null
+                                        : () => _dismiss(row),
+                                    child: const Text('Listeden çıkar'),
+                                  ),
                                 ],
                               ),
                             ],
