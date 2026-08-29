@@ -71,10 +71,56 @@ class AppShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(currentUserProfileProvider);
-    if (profileAsync.isLoading || profileAsync.value == null) {
+    if (profileAsync.isLoading) {
       return Scaffold(
         backgroundColor: AppTheme.background,
         body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (profileAsync.hasError || profileAsync.value == null) {
+      final message = profileAsync.hasError
+          ? profileAsync.error.toString().replaceFirst(
+              RegExp(r'^Exception:\s*'),
+              '',
+            )
+          : 'Profil yüklenemedi.';
+      return Scaffold(
+        backgroundColor: AppTheme.background,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Oturum açılamadı',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Gap(8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppTheme.textMuted,
+                  ),
+                ),
+                const Gap(16),
+                FilledButton(
+                  onPressed: () =>
+                      ref.invalidate(currentUserProfileProvider),
+                  child: const Text('Tekrar dene'),
+                ),
+                TextButton(
+                  onPressed: () =>
+                      ref.read(apiAccessTokenProvider.notifier).clear(),
+                  child: const Text('Çıkış'),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
 

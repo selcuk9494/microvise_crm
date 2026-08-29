@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -109,7 +110,17 @@ class ApiClient {
       request.body = jsonEncode(body);
     }
 
-    final streamed = await request.send();
+    late final http.StreamedResponse streamed;
+    try {
+      streamed = await request.send().timeout(const Duration(seconds: 25));
+    } on TimeoutException {
+      throw Exception(
+        'Sunucuya bağlanılamadı (zaman aşımı). İnterneti kontrol edin.',
+      );
+    } on http.ClientException {
+      throw Exception('İnternet bağlantısı yok veya sunucuya ulaşılamıyor.');
+    }
+
     final response = await http.Response.fromStream(streamed);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
