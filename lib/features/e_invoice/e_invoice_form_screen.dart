@@ -699,6 +699,16 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
       return;
     }
 
+    String? sendBranchCode;
+    if (_sendAfterSave && _isSales && status != 'draft') {
+      final settings = ref.read(eInvoiceSettingsProvider).value ?? const {};
+      sendBranchCode = await pickEInvoiceBranchForSend(
+        context: context,
+        settings: settings,
+      );
+      if (sendBranchCode == null || !mounted) return;
+    }
+
     setState(() => _saving = true);
     try {
       await _ensureCurrentExchangeRate();
@@ -816,7 +826,12 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
       if (_sendAfterSave && _isSales && status != 'draft') {
         await apiClient.postJson(
           '/e-invoice',
-          body: {'action': 'send', 'invoiceId': invoiceId},
+          body: {
+            'action': 'send',
+            'invoiceId': invoiceId,
+            'branchCode': sendBranchCode,
+            'requireBranch': true,
+          },
         );
       }
 

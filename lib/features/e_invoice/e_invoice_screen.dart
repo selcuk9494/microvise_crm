@@ -644,6 +644,19 @@ Future<String?> _pickEInvoiceBranch({
   );
 }
 
+Future<String?> pickEInvoiceBranchForSend({
+  required BuildContext context,
+  required Map<String, dynamic> settings,
+}) {
+  final production =
+      (settings['environment'] ?? 'test').toString() == 'production';
+  return _pickEInvoiceBranch(
+    context: context,
+    settings: settings,
+    production: production,
+  );
+}
+
 Future<void> _offerIssuedInvoiceEmail({
   required BuildContext context,
   required WidgetRef ref,
@@ -2980,6 +2993,15 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         : true;
     if (confirmed != true) return;
 
+    String? branchCode;
+    if (send) {
+      branchCode = await pickEInvoiceBranchForSend(
+        context: context,
+        settings: settings,
+      );
+      if (branchCode == null || !mounted) return;
+    }
+
     final apiClient = ref.read(apiClientProvider);
     if (apiClient == null) return;
     setState(() => _bulkProcessing = true);
@@ -2992,6 +3014,10 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             body: {
               'action': send ? 'send' : 'prepare',
               'invoiceId': invoice.id,
+              if (send && branchCode != null) ...{
+                'branchCode': branchCode,
+                'requireBranch': true,
+              },
             },
           );
           results.add({
@@ -5811,34 +5837,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       return;
     }
 
+    String? branchCode;
     if (send) {
       final settings = ref.read(eInvoiceSettingsProvider).value ?? const {};
-      final isProduction =
-          (settings['environment'] ?? 'test').toString() == 'production';
-      if (isProduction) {
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Canlı API’ye gönder'),
-            content: Text(
-              '${widget.invoice.invoiceNumber} numaralı fatura '
-              'canlı (production) Maliye API’sine gönderilecek.\n\n'
-              'Bu işlem geri alınamaz. Devam edilsin mi?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Vazgeç'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Canlıya Gönder'),
-              ),
-            ],
-          ),
-        );
-        if (confirmed != true) return;
-      }
+      branchCode = await pickEInvoiceBranchForSend(
+        context: context,
+        settings: settings,
+      );
+      if (branchCode == null || !mounted) return;
     }
 
     setState(() => _busy = true);
@@ -5848,6 +5854,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         body: {
           'action': send ? 'send' : 'prepare',
           'invoiceId': widget.invoice.id,
+          if (send && branchCode != null) ...{
+            'branchCode': branchCode,
+            'requireBranch': true,
+          },
         },
       );
       if (!mounted) return;
@@ -7766,6 +7776,23 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
   TextEditingController _c(String key) =>
       _controllers.putIfAbsent(key, TextEditingController.new);
 
+  void _fillMissingBranchFromSeller() {
+    final sellerCode = _c('seller_branch_code').text.trim();
+    final sellerName = _c('seller_branch_name').text.trim();
+    if (_c('test_branch_code').text.trim().isEmpty) {
+      _c('test_branch_code').text = sellerCode;
+    }
+    if (_c('test_branch_name').text.trim().isEmpty) {
+      _c('test_branch_name').text = sellerName.isEmpty ? 'Merkez' : sellerName;
+    }
+    if (_c('prod_branch_code').text.trim().isEmpty) {
+      _c('prod_branch_code').text = sellerCode;
+    }
+    if (_c('prod_branch_name').text.trim().isEmpty) {
+      _c('prod_branch_name').text = sellerName.isEmpty ? 'Merkez' : sellerName;
+    }
+  }
+
   void _selectEnvironment(String value) {
     final environment = value == 'production' ? 'production' : 'test';
     final endpoints = _environmentEndpoints[environment]!;
@@ -7787,6 +7814,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
           for (final key in _settingKeys) {
             _c(key).text = (settings[key] ?? '').toString();
           }
+          _fillMissingBranchFromSeller();
           _hydrateBankFields(_c('seller_bank_details').text);
           _smtpPassSet =
               settings['smtp_pass_set'] == true ||
@@ -7868,13 +7896,116 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                       ),
                       const Gap(10),
                       Expanded(child: _field('seller_vkn', 'Satıcı VKN')),
+                    ],
+                  ),
+                  const Gap(14),
+                  Text(
+                    'Şubeler',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const Gap(4),
+                  Text(
+                    'Maliye’ye gönderirken hangi şubeden kesileceği sorulur. İkinci şube boş bırakılabilir.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.textSoft,
+                    ),
+                  ),
+                  const Gap(10),
+                  Text(
+                    'Test ortamı',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: AppTheme.textSoft,
+                    ),
+                  ),
+                  const Gap(6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _field(
+                          'test_branch_code',
+                          'Şube 1 kod',
+                          dense: true,
+                          hintText: '1',
+                        ),
+                      ),
                       const Gap(10),
                       Expanded(
                         child: _field(
-                          'seller_branch_code',
-                          'Şube Kod',
-                          hintText:
-                              'Maliye ortamında kayıtlı kod (örn. MERKEZ)',
+                          'test_branch_name',
+                          'Şube 1 isim',
+                          dense: true,
+                          hintText: 'Merkez',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Gap(8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _field(
+                          'test_branch_code_2',
+                          'Şube 2 kod',
+                          dense: true,
+                          hintText: 'Boş bırakılabilir',
+                        ),
+                      ),
+                      const Gap(10),
+                      Expanded(
+                        child: _field(
+                          'test_branch_name_2',
+                          'Şube 2 isim',
+                          dense: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Gap(12),
+                  Text(
+                    'Canlı ortam',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: AppTheme.textSoft,
+                    ),
+                  ),
+                  const Gap(6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _field(
+                          'prod_branch_code',
+                          'Şube 1 kod',
+                          dense: true,
+                          hintText: '1',
+                        ),
+                      ),
+                      const Gap(10),
+                      Expanded(
+                        child: _field(
+                          'prod_branch_name',
+                          'Şube 1 isim',
+                          dense: true,
+                          hintText: 'Merkez',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Gap(8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _field(
+                          'prod_branch_code_2',
+                          'Şube 2 kod',
+                          dense: true,
+                          hintText: 'Boş bırakılabilir',
+                        ),
+                      ),
+                      const Gap(10),
+                      Expanded(
+                        child: _field(
+                          'prod_branch_name_2',
+                          'Şube 2 isim',
+                          dense: true,
                         ),
                       ),
                     ],
@@ -8457,6 +8588,9 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
         int.tryParse(_c('next_sales_number').text.trim()) ?? 1;
     settings['next_purchase_number'] =
         int.tryParse(_c('next_purchase_number').text.trim()) ?? 1;
+    final activePrefix = _environment == 'production' ? 'prod' : 'test';
+    settings['seller_branch_code'] = settings['${activePrefix}_branch_code'];
+    settings['seller_branch_name'] = settings['${activePrefix}_branch_name'];
 
     try {
       await _saveLocalEInvoiceSettings(settings);
@@ -10753,6 +10887,15 @@ const _settingKeys = [
   'seller_vkn',
   'seller_title',
   'seller_branch_code',
+  'seller_branch_name',
+  'test_branch_code',
+  'test_branch_name',
+  'test_branch_code_2',
+  'test_branch_name_2',
+  'prod_branch_code',
+  'prod_branch_name',
+  'prod_branch_code_2',
+  'prod_branch_name_2',
   'seller_tax_office',
   'seller_city',
   'seller_country_code',
