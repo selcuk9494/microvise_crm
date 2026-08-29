@@ -800,6 +800,8 @@ final eInvoiceSettingsProvider =
 const _localSettingsKey = 'microvise.e_invoice.settings.local';
 const _secretSettingKeys = {
   'password',
+  'test_password',
+  'prod_password',
   'akinsoft_vpn_password',
   'akinsoft_mssql_password',
   'smtp_pass',
@@ -1112,7 +1114,9 @@ class _StatusStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = settingsAsync.value ?? const {};
     final env = (settings['environment'] ?? 'test').toString();
-    final username = (settings['username'] ?? '').toString();
+    final username = env == 'production'
+        ? (settings['prod_username'] ?? settings['username'] ?? '').toString()
+        : (settings['test_username'] ?? settings['username'] ?? '').toString();
     final sellerVkn = (settings['seller_vkn'] ?? '').toString();
     final offline = (settings['_offline_error'] ?? '').toString().isNotEmpty;
 
@@ -1142,8 +1146,12 @@ class _StatusStrip extends StatelessWidget {
             label: offline
                 ? 'Backend bekleniyor'
                 : username.isEmpty
-                ? 'Test kullanıcısı yok'
-                : 'Kullanıcı hazır',
+                ? (env == 'production'
+                      ? 'Canlı kullanıcısı yok'
+                      : 'Test kullanıcısı yok')
+                : (env == 'production'
+                      ? 'Canlı kullanıcı hazır'
+                      : 'Test kullanıcı hazır'),
             color: offline
                 ? AppTheme.error
                 : username.isEmpty
@@ -7764,6 +7772,8 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
   bool _cleaningCustomers = false;
   bool _testingMail = false;
   bool _smtpPassSet = false;
+  bool _testPassSet = false;
+  bool _prodPassSet = false;
 
   @override
   void dispose() {
@@ -7793,6 +7803,15 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
     }
   }
 
+  void _fillMissingCredentials() {
+    if (_c('test_username').text.trim().isEmpty) {
+      _c('test_username').text = _c('username').text;
+    }
+    if (_c('prod_username').text.trim().isEmpty) {
+      _c('prod_username').text = _c('username').text;
+    }
+  }
+
   void _selectEnvironment(String value) {
     final environment = value == 'production' ? 'production' : 'test';
     final endpoints = _environmentEndpoints[environment]!;
@@ -7815,11 +7834,22 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
             _c(key).text = (settings[key] ?? '').toString();
           }
           _fillMissingBranchFromSeller();
+          _fillMissingCredentials();
           _hydrateBankFields(_c('seller_bank_details').text);
           _smtpPassSet =
               settings['smtp_pass_set'] == true ||
               settings['smtp_pass_set']?.toString() == 'true' ||
               _c('smtp_pass').text.trim().isNotEmpty;
+          _testPassSet =
+              settings['test_password_set'] == true ||
+              settings['test_password_set']?.toString() == 'true' ||
+              settings['password_set'] == true ||
+              _c('test_password').text.trim().isNotEmpty ||
+              _c('password').text.trim().isNotEmpty;
+          _prodPassSet =
+              settings['prod_password_set'] == true ||
+              settings['prod_password_set']?.toString() == 'true' ||
+              _c('prod_password').text.trim().isNotEmpty;
           if (_c('smtp_host').text.trim().isEmpty) {
             _c('smtp_host').text = 'smtp.gmail.com';
           }
@@ -7896,6 +7926,70 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                       ),
                       const Gap(10),
                       Expanded(child: _field('seller_vkn', 'Satıcı VKN')),
+                    ],
+                  ),
+                  const Gap(14),
+                  Text(
+                    'Maliye girişi',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const Gap(4),
+                  Text(
+                    'Test ve canlı şifreleri ayrıdır. Ortam değiştirince diğeri silinmez.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.textSoft,
+                    ),
+                  ),
+                  const Gap(10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _field(
+                          'test_username',
+                          'Test kullanıcı',
+                          dense: true,
+                        ),
+                      ),
+                      const Gap(10),
+                      Expanded(
+                        child: _field(
+                          'test_password',
+                          _testPassSet
+                              ? 'Test şifre (kayıtlı)'
+                              : 'Test şifre',
+                          obscureText: true,
+                          dense: true,
+                          hintText: _testPassSet
+                              ? 'Boş bırakırsanız kayıtlı şifre kalır'
+                              : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Gap(8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _field(
+                          'prod_username',
+                          'Canlı kullanıcı',
+                          dense: true,
+                        ),
+                      ),
+                      const Gap(10),
+                      Expanded(
+                        child: _field(
+                          'prod_password',
+                          _prodPassSet
+                              ? 'Canlı şifre (kayıtlı)'
+                              : 'Canlı şifre',
+                          obscureText: true,
+                          dense: true,
+                          hintText: _prodPassSet
+                              ? 'Boş bırakırsanız kayıtlı şifre kalır'
+                              : null,
+                        ),
+                      ),
                     ],
                   ),
                   const Gap(14),
@@ -8115,16 +8209,6 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                       const Gap(10),
                       Expanded(
                         child: _field('seller_tax_office', 'Vergi Dairesi'),
-                      ),
-                    ],
-                  ),
-                  const Gap(10),
-                  Row(
-                    children: [
-                      Expanded(child: _field('username', 'Test Kullanıcı')),
-                      const Gap(10),
-                      Expanded(
-                        child: _field('password', 'Şifre', obscureText: true),
                       ),
                     ],
                   ),
@@ -8591,6 +8675,8 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
     final activePrefix = _environment == 'production' ? 'prod' : 'test';
     settings['seller_branch_code'] = settings['${activePrefix}_branch_code'];
     settings['seller_branch_name'] = settings['${activePrefix}_branch_name'];
+    settings['username'] = settings['${activePrefix}_username'];
+    settings['password'] = settings['${activePrefix}_password'];
 
     try {
       await _saveLocalEInvoiceSettings(settings);
@@ -8617,10 +8703,20 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('E-fatura ayarları kaydedildi.')),
       );
-      if (_c('smtp_pass').text.trim().isNotEmpty) {
-        _c('smtp_pass').clear();
-        setState(() => _smtpPassSet = true);
-      }
+      setState(() {
+        if (_c('smtp_pass').text.trim().isNotEmpty) {
+          _c('smtp_pass').clear();
+          _smtpPassSet = true;
+        }
+        if (_c('test_password').text.trim().isNotEmpty) {
+          _c('test_password').clear();
+          _testPassSet = true;
+        }
+        if (_c('prod_password').text.trim().isNotEmpty) {
+          _c('prod_password').clear();
+          _prodPassSet = true;
+        }
+      });
     } catch (error) {
       await _saveLocalEInvoiceSettings(settings);
       ref.invalidate(eInvoiceSettingsProvider);
@@ -10884,6 +10980,10 @@ const _settingKeys = [
   'client_id',
   'username',
   'password',
+  'test_username',
+  'test_password',
+  'prod_username',
+  'prod_password',
   'seller_vkn',
   'seller_title',
   'seller_branch_code',

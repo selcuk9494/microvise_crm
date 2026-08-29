@@ -23,6 +23,13 @@ const {
   resolveSelectedBranch,
   syncActiveBranchFromEnvironment,
 } = require('./_lib/e_invoice_branches');
+const {
+  credentialsForEnvironment,
+  humanizeTokenError,
+  hydrateCredentialSettings,
+  redactCredentialSettings,
+  syncActiveCredentialsFromEnvironment,
+} = require('./_lib/e_invoice_credentials');
 const { normalizeValorDays } = require('./_lib/pos_status');
 
 async function readJson(req) {
@@ -118,6 +125,10 @@ async function ensureEInvoiceSchema() {
       add column if not exists prod_branch_name text,
       add column if not exists prod_branch_code_2 text,
       add column if not exists prod_branch_name_2 text,
+      add column if not exists test_username text,
+      add column if not exists test_password text,
+      add column if not exists prod_username text,
+      add column if not exists prod_password text,
       add column if not exists pos_valor_days integer not null default 1
   `);
   await query(`
@@ -127,7 +138,11 @@ async function ensureEInvoiceSchema() {
       test_branch_code = coalesce(nullif(btrim(test_branch_code), ''), seller_branch_code, '1'),
       test_branch_name = coalesce(nullif(btrim(test_branch_name), ''), 'Merkez'),
       prod_branch_code = coalesce(nullif(btrim(prod_branch_code), ''), seller_branch_code, '1'),
-      prod_branch_name = coalesce(nullif(btrim(prod_branch_name), ''), 'Merkez')
+      prod_branch_name = coalesce(nullif(btrim(prod_branch_name), ''), 'Merkez'),
+      test_username = coalesce(nullif(btrim(test_username), ''), username),
+      test_password = coalesce(nullif(btrim(test_password), ''), password),
+      prod_username = coalesce(nullif(btrim(prod_username), ''), username),
+      prod_password = coalesce(nullif(btrim(prod_password), ''), password)
     where is_active = true
   `);
   await query(`
@@ -817,7 +832,9 @@ async function getSettings() {
   const result = await query(
     `select * from public.e_invoice_settings where is_active = true order by created_at asc limit 1`,
   );
-  return hydrateBranchSettings(result.rows[0] || {});
+  return hydrateCredentialSettings(
+    hydrateBranchSettings(result.rows[0] || {}),
+  );
 }
 
 async function fetchInvoice(invoiceId) {
@@ -1024,15 +1041,20 @@ async function preserveTransmission(invoice) {
 }
 
 async function tokenFor(settings) {
-  if (!settings.username || !settings.password) {
-    throw new Error('E-fatura test kullanıcısı ve şifresi girilmemiş.');
+  const creds = credentialsForEnvironment(settings);
+  if (!creds.username || !creds.password) {
+    const label = creds.environment === 'production' ? 'canlı' : 'test';
+    throw new Error(
+      `E-fatura ${label} kullanıcısı ve şifresi girilmemiş. ` +
+        'E-Fatura > Ayarlar’da test ve canlı girişlerini ayrı girin.',
+    );
   }
 
   const params = new URLSearchParams();
   params.set('grant_type', 'password');
   params.set('client_id', settings.client_id || 'efatura-frontend');
-  params.set('username', settings.username);
-  params.set('password', settings.password);
+  params.set('username', creds.username);
+  params.set('password', creds.password);
 
   const urls = urlsForEnvironment(settings.environment);
   const response = await fetch(urls.tokenUrl, {
@@ -1042,7 +1064,12 @@ async function tokenFor(settings) {
   });
   const json = await response.json().catch(() => ({}));
   if (!response.ok || !json.access_token) {
-    throw new Error(json.error_description || json.error || 'Token alınamadı.');
+    throw new Error(
+      humanizeTokenError(
+        json.error_description || json.error,
+        creds.environment,
+      ),
+    );
   }
   await query(
     `update public.e_invoice_settings set last_token_at = now(), updated_at = now() where id = $1`,
@@ -2748,8 +2775,8 @@ async function handler(req, res) {
 
     if (req.method === 'GET') {
       const settings = await getSettings();
-      const publicSettings = { ...settings };
-      publicSettings.smtp_pass_set = Boolean(cleanText(publicSettings.smtp_pass));
+      const publicSettings = redactCredentialSettings(settings);
+      publicSettings.smtp_pass_set = Boolean(cleanText(settings.smtp_pass));
       publicSettings.smtp_pass = '';
       return ok(req, res, {
         settings: publicSettings,
@@ -2767,8 +2794,14 @@ async function handler(req, res) {
 
     if (action === 'sync_incoming') {
       const settings = await getSettings();
-      if (!cleanText(settings.username) || !cleanText(settings.password)) {
-        return badRequest(req, res, 'Maliye kullanıcı adı/şifresi E-Fatura ayarlarında tanımlı olmalı.');
+      const creds = credentialsForEnvironment(settings);
+      if (!creds.username || !creds.password) {
+        const label = creds.environment === 'production' ? 'canlı' : 'test';
+        return badRequest(
+          req,
+          res,
+          `Maliye ${label} kullanıcı adı/şifresi E-Fatura ayarlarında tanımlı olmalı.`,
+        );
       }
       try {
         requireApiVkn(settings.seller_vkn, 'Satıcı VKN');
@@ -2793,6 +2826,10 @@ async function handler(req, res) {
         'client_id',
         'username',
         'password',
+        'test_username',
+        'test_password',
+        'prod_username',
+        'prod_password',
         'seller_vkn',
         'seller_title',
         'seller_branch_code',
@@ -2856,16 +2893,29 @@ async function handler(req, res) {
       picked.environment = selectedEnvironment;
       picked.api_base_url = selectedUrls.apiBaseUrl;
       picked.token_url = selectedUrls.tokenUrl;
-      if (
-        Object.prototype.hasOwnProperty.call(picked, 'smtp_pass') &&
-        !cleanText(picked.smtp_pass) &&
-        cleanText(current.smtp_pass)
-      ) {
-        delete picked.smtp_pass;
+      for (const key of [
+        'password',
+        'test_password',
+        'prod_password',
+        'smtp_pass',
+        'akinsoft_vpn_password',
+        'akinsoft_mssql_password',
+      ]) {
+        if (
+          Object.prototype.hasOwnProperty.call(picked, key) &&
+          !cleanText(picked[key]) &&
+          cleanText(current[key])
+        ) {
+          delete picked[key];
+        }
       }
-      const synced = syncActiveBranchFromEnvironment({ ...current, ...picked });
+      const merged = { ...current, ...picked };
+      const synced = syncActiveBranchFromEnvironment(merged);
+      const syncedCreds = syncActiveCredentialsFromEnvironment(synced);
       picked.seller_branch_code = synced.seller_branch_code;
       picked.seller_branch_name = synced.seller_branch_name;
+      picked.username = syncedCreds.username;
+      picked.password = syncedCreds.password;
       if (Object.prototype.hasOwnProperty.call(picked, 'pos_valor_days')) {
         picked.pos_valor_days = normalizeValorDays(picked.pos_valor_days);
       }
@@ -2879,7 +2929,10 @@ async function handler(req, res) {
         `update public.e_invoice_settings set ${setSql} where id = $1 returning *`,
         [current.id, ...keys.map((key) => picked[key])],
       );
-      return ok(req, res, { settings: result.rows[0] });
+      const saved = redactCredentialSettings(result.rows[0] || {});
+      saved.smtp_pass_set = Boolean(cleanText(result.rows[0]?.smtp_pass));
+      saved.smtp_pass = '';
+      return ok(req, res, { settings: saved });
     }
 
     if (action === 'save_pos_valor_days') {
