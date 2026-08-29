@@ -56,10 +56,10 @@ String _buildInvoiceHtml(Invoice invoice) {
     h1 { margin: 0 0 8px; font-size: 24px; }
     .muted { color: #64748b; }
     .box { border: 1px solid #dbe4ef; border-radius: 8px; padding: 14px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 18px; table-layout: fixed; }
     th { background: #eef4fb; text-align: left; color: #334155; }
-    th, td { border-bottom: 1px solid #e2e8f0; padding: 10px; font-size: 13px; }
-    .num { text-align: right; white-space: nowrap; }
+    th, td { border-bottom: 1px solid #e2e8f0; padding: 10px; font-size: 13px; word-break: break-word; overflow-wrap: anywhere; }
+    .num { text-align: right; white-space: nowrap; width: 18%; }
     .summary { margin-left: auto; margin-top: 18px; width: 320px; }
     .line { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
     .total { font-size: 18px; font-weight: 700; }

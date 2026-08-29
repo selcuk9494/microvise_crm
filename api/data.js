@@ -47,6 +47,8 @@ const {
   posListStatus,
   posCollectionVisible,
   posValorInfo,
+  posPaymentOverdue,
+  posDaysSinceSent,
 } = require('./_lib/pos_status');
 const {
   ensureRecurringBillingTables,
@@ -2202,7 +2204,6 @@ module.exports = async (req, res) => {
               )
               or (
                 coalesce(l.status, 'pending') = 'pending'
-                and (l.expires_at is null or l.expires_at >= now())
               )
             )
           `;
@@ -2213,7 +2214,6 @@ module.exports = async (req, res) => {
               coalesce(l.paid_at::date, l.created_at::date) >= $${values.length}::date
               or (
                 coalesce(l.status, 'pending') = 'pending'
-                and (l.expires_at is null or l.expires_at >= now())
               )
             )
           `;
@@ -2235,6 +2235,8 @@ module.exports = async (req, res) => {
               l.settled_at,
               l.dismissed_at,
               l.valor_days,
+              l.reminded_at,
+              l.reminded_count,
               l.created_at,
               l.expires_at,
               json_build_object('name', c.name, 'email', c.email) as customers,
@@ -2280,6 +2282,10 @@ module.exports = async (req, res) => {
             payment_link_status: row.status,
             payment_link_paid_at: row.paid_at,
             paid_on: row.paid_at || row.created_at,
+            reminded_at: row.reminded_at,
+            reminded_count: Number(row.reminded_count || 0),
+            days_overdue: posDaysSinceSent(row),
+            payment_overdue: posPaymentOverdue(row),
             valor_days: valor.valorDays,
             expected_settle_on: valor.expectedSettleOn,
             days_until_valor: valor.daysRemaining,

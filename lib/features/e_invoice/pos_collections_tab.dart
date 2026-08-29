@@ -132,8 +132,13 @@ class PosCollectionRow {
   final String? paymentLinkStatus;
   final String listStatus;
   final DateTime? emailedAt;
+  final DateTime? remindedAt;
+  final int remindedCount;
+  final int? daysOverdue;
+  final bool paymentOverdue;
   final DateTime? settledAt;
   final String? emailedTo;
+  final String? customerEmail;
   final int valorDays;
   final DateTime? expectedSettleOn;
   final int? daysUntilValor;
@@ -156,13 +161,22 @@ class PosCollectionRow {
     this.paymentLinkStatus,
     this.listStatus = 'pending',
     this.emailedAt,
+    this.remindedAt,
+    this.remindedCount = 0,
+    this.daysOverdue,
+    this.paymentOverdue = false,
     this.settledAt,
     this.emailedTo,
+    this.customerEmail,
     this.valorDays = 1,
     this.expectedSettleOn,
     this.daysUntilValor,
     this.valorLabel = '',
   });
+
+  bool get isPaymentOverdue =>
+      listStatus == 'pending' &&
+      (paymentOverdue || (daysOverdue ?? 0) >= 7);
 
   static double _toDouble(dynamic value, {double fallback = 0}) {
     if (value == null) return fallback;
@@ -186,6 +200,7 @@ class PosCollectionRow {
       id: json['id'].toString(),
       customerId: json['customer_id']?.toString() ?? '',
       customerName: customers is Map ? customers['name']?.toString() : null,
+      customerEmail: customers is Map ? customers['email']?.toString() : null,
       invoiceId:
           json['invoice_id']?.toString() ??
           (invoices is Map ? invoices['id']?.toString() : null),
@@ -213,6 +228,12 @@ class PosCollectionRow {
           json['payment_link_status']?.toString() ?? json['status']?.toString(),
       listStatus: json['list_status']?.toString() ?? 'pending',
       emailedAt: parseAppDateTime(json['emailed_at']?.toString()),
+      remindedAt: parseAppDateTime(json['reminded_at']?.toString()),
+      remindedCount: _toInt(json['reminded_count']),
+      daysOverdue: json['days_overdue'] == null
+          ? null
+          : _toInt(json['days_overdue']),
+      paymentOverdue: json['payment_overdue'] == true,
       settledAt: parseAppDateTime(json['settled_at']?.toString()),
       emailedTo: json['emailed_to']?.toString(),
       valorDays: _toInt(json['valor_days'], fallback: 1),
@@ -331,7 +352,10 @@ DateTime _dateOnly(DateTime value) =>
     'paid' => ('Ödendi', AppBadgeTone.success),
     'settled' => ('Hesaba yattı', AppBadgeTone.primary),
     'refunded' => ('İade edildi', AppBadgeTone.warning),
-    _ => ('Ödeme bekleniyor', AppBadgeTone.warning),
+    _ => (
+      'Ödeme bekleniyor',
+      row.isPaymentOverdue ? AppBadgeTone.error : AppBadgeTone.warning,
+    ),
   };
 }
 
@@ -351,6 +375,13 @@ int _compareValorSort(
   PosCollectionRow b,
   String valorSort,
 ) {
+  final aOverdue = a.isPaymentOverdue;
+  final bOverdue = b.isPaymentOverdue;
+  if (aOverdue != bOverdue) return aOverdue ? -1 : 1;
+  if (aOverdue && bOverdue) {
+    final overdueCmp = (b.daysOverdue ?? 0).compareTo(a.daysOverdue ?? 0);
+    if (overdueCmp != 0) return overdueCmp;
+  }
   if (valorSort == 'paid_on') {
     return b.paidOn.compareTo(a.paidOn);
   }
@@ -570,6 +601,84 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(content: Text('Listeden çıkarılamadı: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _remind(PosCollectionRow row) => _remindMany([row]);
+
+  Future<void> _remindSelected(List<PosCollectionRow> items) {
+    return _remindMany(
+      items.where((row) => _selectedIds.contains(row.id)).toList(),
+    );
+  }
+
+  Future<void> _remindMany(List<PosCollectionRow> rows) async {
+    final pending = rows
+        .where((row) => row.listStatus == 'pending')
+        .toList(growable: false);
+    if (pending.isEmpty) return;
+    final missingEmail = pending
+        .where((row) => (row.customerEmail ?? '').trim().isEmpty)
+        .length;
+    final single = pending.length == 1;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hatırlatma gönder'),
+        content: Text(
+          single
+              ? '${formatInvoiceNumberForDisplay(pending.first.invoiceNumber)} · '
+                    '${pending.first.customerName ?? 'Cari'}\n\n'
+                    'Ödeme linki ve fatura özeti tekrar mail atılır.'
+              : '${pending.length} kayıt için ödeme hatırlatması gönderilecek.'
+                    '${missingEmail > 0 ? '\n$missingEmail kayıtta e-posta yok; onlar atlanır.' : ''}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(
+              single ? 'Hatırlat' : '${pending.length} hatırlatma gönder',
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      if (apiClient == null) return;
+      final ids = pending.map((row) => row.id).toList(growable: false);
+      final response = await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'remindPosCollection',
+          'linkId': ids.first,
+          'linkIds': ids,
+        },
+      );
+      if (!mounted) return;
+      setState(_selectedIds.clear);
+      ref.invalidate(posCollectionsProvider(_filter));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            response['message']?.toString() ?? 'Hatırlatma gönderildi.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Hatırlatma gönderilemedi: $error')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1009,6 +1118,16 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                             FilledButton.tonal(
                               onPressed: selectedCount == 0 || _busy
                                   ? null
+                                  : () => _remindSelected(items),
+                              child: Text(
+                                selectedCount <= 1
+                                    ? 'Hatırlatma gönder'
+                                    : 'Hatırlat ($selectedCount)',
+                              ),
+                            ),
+                            FilledButton.tonal(
+                              onPressed: selectedCount == 0 || _busy
+                                  ? null
                                   : () => _dismissSelected(items),
                               child: Text(
                                 selectedCount <= 1
@@ -1036,13 +1155,19 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                   final (valorLabel, valorTone) = _valorBadge(row);
                   final canSelect = row.listStatus == 'pending';
                   final selected = _selectedIds.contains(row.id);
+                  final overdue = row.isPaymentOverdue;
+                  final accent = overdue ? AppTheme.error : null;
                   return AppCard(
                     padding: const EdgeInsets.fromLTRB(6, 12, 10, 12),
                     color: selected
                         ? AppTheme.primary.withValues(alpha: 0.06)
+                        : overdue
+                        ? AppTheme.error.withValues(alpha: 0.07)
                         : null,
                     borderColor: selected
                         ? AppTheme.primary.withValues(alpha: 0.35)
+                        : overdue
+                        ? AppTheme.error.withValues(alpha: 0.55)
                         : null,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1076,7 +1201,10 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                               Text(
                                 invoiceLabel.isEmpty ? 'Fatura' : invoiceLabel,
                                 style: Theme.of(context).textTheme.titleSmall
-                                    ?.copyWith(fontWeight: FontWeight.w800),
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                      color: accent,
+                                    ),
                               ),
                               const Gap(2),
                               Text(
@@ -1084,7 +1212,12 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(color: AppTheme.textMuted),
+                                    ?.copyWith(
+                                      color: accent ?? AppTheme.textMuted,
+                                      fontWeight: overdue
+                                          ? FontWeight.w700
+                                          : null,
+                                    ),
                               ),
                               const Gap(6),
                               Wrap(
@@ -1108,11 +1241,27 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                                       tone: AppBadgeTone.neutral,
                                     ),
                                   if (row.emailedAt != null &&
-                                      row.listStatus == 'pending')
+                                      row.listStatus == 'pending' &&
+                                      row.remindedAt == null)
                                     const AppBadge(
                                       dense: true,
                                       label: 'Link gönderildi',
                                       tone: AppBadgeTone.warning,
+                                    ),
+                                  if (row.remindedAt != null &&
+                                      row.listStatus == 'pending')
+                                    const AppBadge(
+                                      dense: true,
+                                      label: 'Hatırlatma gönderildi',
+                                      tone: AppBadgeTone.error,
+                                    ),
+                                  if (overdue)
+                                    AppBadge(
+                                      dense: true,
+                                      label: row.daysOverdue != null
+                                          ? '${row.daysOverdue} gün gecikti'
+                                          : 'Ödeme gecikti',
+                                      tone: AppBadgeTone.error,
                                     ),
                                   if (valorLabel.isNotEmpty)
                                     _ValorBadge(
@@ -1125,7 +1274,12 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                                       'tr_TR',
                                     ).format((row.paidOn).toLocal()),
                                     style: Theme.of(context).textTheme.bodySmall
-                                        ?.copyWith(color: AppTheme.textMuted),
+                                        ?.copyWith(
+                                          color: accent ?? AppTheme.textMuted,
+                                          fontWeight: overdue
+                                              ? FontWeight.w700
+                                              : null,
+                                        ),
                                   ),
                                 ],
                               ),
@@ -1151,7 +1305,10 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                             Text(
                               formatPosMoney(row.amount, row.currency),
                               style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.w800),
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: accent,
+                                  ),
                             ),
                             if (row.listStatus == 'paid') ...[
                               const Gap(4),
@@ -1178,11 +1335,22 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                                 onPressed: _busy ? null : () => _refund(row),
                                 child: const Text('İade'),
                               ),
-                            if (row.listStatus == 'pending')
+                            if (row.listStatus == 'pending') ...[
+                              TextButton(
+                                onPressed: _busy ? null : () => _remind(row),
+                                child: Text(
+                                  'Hatırlat',
+                                  style: TextStyle(
+                                    color: overdue ? AppTheme.error : null,
+                                    fontWeight: overdue ? FontWeight.w800 : null,
+                                  ),
+                                ),
+                              ),
                               TextButton(
                                 onPressed: _busy ? null : () => _dismiss(row),
                                 child: const Text('Listeden çıkar'),
                               ),
+                            ],
                           ],
                         ),
                       ],

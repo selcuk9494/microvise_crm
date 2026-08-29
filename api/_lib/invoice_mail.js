@@ -9,7 +9,10 @@ const { escapeHtml, isValidEmail, sendEmail } = require('./mail');
 const {
   createInvoicePaymentLink,
   ensureInvoicePaymentLinksTable,
+  uniqueLinkIds,
+  buildHostedPaymentUrl,
 } = require('./invoice_payment');
+const { posPaymentOverdue } = require('./pos_status');
 
 const MODULE_ROOT = path.resolve(__dirname, '../..');
 
@@ -103,6 +106,73 @@ function remainingAmount(invoice) {
   );
 }
 
+const DEFAULT_BANK_TRANSFER = {
+  intro:
+    'İsterseniz Türkiye İş Bankası hesabımıza havale veya EFT ile de ödeme yapabilirsiniz.',
+  bank: 'Türkiye İş Bankası',
+  accountName: 'Microvise Innovation Ltd',
+  ibanTl: 'TR57 0006 4000 0016 8010 3409 94',
+  ibanUsd: 'TR41 0006 4000 0026 8010 4107 29',
+  note: 'Havale açıklamasına fatura numaranızı yazın.',
+};
+
+function numberOrZero(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function invoiceVatParts(invoice) {
+  let subtotal = numberOrZero(invoice?.subtotal);
+  let tax = numberOrZero(invoice?.tax_total);
+  const total = numberOrZero(invoice?.grand_total);
+  if (subtotal <= 0 && Array.isArray(invoice?.items) && invoice.items.length) {
+    subtotal = invoice.items.reduce((sum, item) => {
+      return sum + numberOrZero(item.unit_price) * numberOrZero(item.quantity || 1);
+    }, 0);
+    tax = invoice.items.reduce((sum, item) => {
+      const net = numberOrZero(item.unit_price) * numberOrZero(item.quantity || 1);
+      const line = numberOrZero(item.line_total);
+      const fromLine = line > net + 0.009 ? line - net : 0;
+      const fromRate = net * (numberOrZero(item.tax_rate) / 100);
+      return sum + (fromLine || fromRate);
+    }, 0);
+  }
+  if (subtotal <= 0 && total > 0 && tax > 0) subtotal = Math.max(0, total - tax);
+  if (subtotal <= 0 && total > 0) subtotal = total;
+  if (tax <= 0 && total > subtotal + 0.009) tax = total - subtotal;
+  return {
+    subtotal,
+    tax,
+    total: total || subtotal + tax,
+  };
+}
+
+function combinedVatParts(invoices) {
+  const list = Array.isArray(invoices) ? invoices : [];
+  return list.reduce(
+    (acc, invoice) => {
+      const parts = invoiceVatParts(invoice);
+      acc.subtotal += parts.subtotal;
+      acc.tax += parts.tax;
+      acc.total += parts.total;
+      return acc;
+    },
+    { subtotal: 0, tax: 0, total: 0 },
+  );
+}
+
+function bankTransferLines() {
+  const bank = DEFAULT_BANK_TRANSFER;
+  return [
+    bank.intro,
+    bank.accountName,
+    bank.bank,
+    `TL IBAN: ${bank.ibanTl}`,
+    `USD IBAN: ${bank.ibanUsd}`,
+    bank.note,
+  ];
+}
+
 const DEFAULT_SELLER = {
   title: 'Microvise Innovation Ltd',
   address: 'Atatürk Cad. Yenişehir Emek 2 Apt. Dış Kapı No: 1, Lefkoşa',
@@ -173,6 +243,8 @@ async function loadInvoicesForMail(invoiceIds) {
         i.customer_id,
         i.invoice_date,
         i.currency,
+        i.subtotal,
+        i.tax_total,
         i.grand_total,
         coalesce(i.paid_amount, 0) as paid_amount,
         i.status,
@@ -250,10 +322,23 @@ function invoiceNumbersPhrase(invoices) {
   return `${numbers.slice(0, -1).join(', ')} ve ${last} nolu faturalarınız`;
 }
 
-function invoiceMailCopy({ invoices, awaitingPayment }) {
+function invoiceMailCopy({ invoices, awaitingPayment, isReminder = false }) {
   const list = Array.isArray(invoices) ? invoices : [];
   const named = invoiceNumbersPhrase(list);
   const many = list.length > 1;
+  if (isReminder && awaitingPayment) {
+    return {
+      preheader: named
+        ? `${named} için ödeme hatırlatması.`
+        : 'Faturanız için ödeme hatırlatması.',
+      headerLabel: 'Ödeme hatırlatması',
+      amountLabel: 'Ödenecek tutar',
+      body: named
+        ? `${named} için 1 haftadır ödeme beklenmektedir. Belge özeti yeniden ektedir. Tahsilatı aşağıdaki güvenli bağlantı üzerinden tamamlayabilirsiniz. Ödeme alındıktan sonra resmi faturanız tarafınıza iletilecektir.`
+        : 'Faturanız için 1 haftadır ödeme beklenmektedir. Belge özeti yeniden ektedir. Tahsilatı aşağıdaki güvenli bağlantı üzerinden tamamlayabilirsiniz.',
+      thanks: '',
+    };
+  }
   if (awaitingPayment) {
     return {
       preheader: named
@@ -289,12 +374,17 @@ function buildPaymentEmailHtml({
   currency,
   paymentUrl,
   seller,
+  isReminder = false,
 }) {
   const awaitingPayment = Boolean(String(paymentUrl || '').trim());
-  const copy = invoiceMailCopy({ invoices, awaitingPayment });
+  const copy = invoiceMailCopy({ invoices, awaitingPayment, isReminder });
   const company = normalizeSeller(seller);
   const greeting = escapeHtml(customerName || 'Yetkili');
-  const total = escapeHtml(formatMoney(amount, currency));
+  const vat = combinedVatParts(invoices);
+  const payAmount = numberOrZero(amount) || vat.total;
+  const total = escapeHtml(formatMoney(payAmount, currency));
+  const subtotalText = escapeHtml(formatMoney(vat.subtotal, currency));
+  const taxText = escapeHtml(formatMoney(vat.tax, currency));
   const safeUrl = escapeHtml(paymentUrl || '');
   const invoiceCount = invoices.length;
   const rows = invoices
@@ -303,7 +393,7 @@ function buildPaymentEmailHtml({
       const bg = index % 2 === 0 ? '#ffffff' : '#f8fafc';
       return `
         <tr>
-          <td style="padding:12px 14px;border-bottom:1px solid #e8edf3;background:${bg};font-size:14px;color:#1e293b;">
+          <td style="padding:12px 14px;border-bottom:1px solid #e8edf3;background:${bg};font-size:14px;color:#1e293b;word-break:break-word;overflow-wrap:anywhere;">
             ${escapeHtml(localInvoiceNumber(invoice.invoice_number) || 'Fatura')}
           </td>
           <td style="padding:12px 14px;border-bottom:1px solid #e8edf3;background:${bg};font-size:13px;color:#64748b;white-space:nowrap;">
@@ -324,10 +414,10 @@ function buildPaymentEmailHtml({
             const qty = Number(item.quantity || 1);
             return `
               <tr>
-                <td style="padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#334155;">
+                <td style="padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#334155;word-break:break-word;overflow-wrap:anywhere;">
                   ${escapeHtml(desc)}
                 </td>
-                <td style="padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#64748b;text-align:right;white-space:nowrap;">
+                <td style="padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#64748b;text-align:right;white-space:nowrap;width:88px;">
                   ${escapeHtml(String(qty))} ${escapeHtml(item.unit || 'Adet')}
                 </td>
               </tr>`;
@@ -361,7 +451,7 @@ function buildPaymentEmailHtml({
   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#eef2f7;">
     <tr>
       <td align="center" style="padding:28px 16px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #dbe4f0;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #dbe4f0;">
           <tr>
             <td style="background:#1e3a5f;padding:22px 32px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -396,15 +486,15 @@ function buildPaymentEmailHtml({
               <p style="margin:0 0 22px 0;font-size:15px;line-height:1.65;color:#334155;">
                 ${escapeHtml(copy.body)}
               </p>
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e8edf3;border-radius:12px;overflow:hidden;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e8edf3;border-radius:12px;overflow:hidden;table-layout:fixed;">
                 <tr>
-                  <td style="padding:10px 14px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;">
+                  <td style="padding:10px 14px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;width:46%;">
                     Fatura no
                   </td>
-                  <td style="padding:10px 14px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;">
+                  <td style="padding:10px 14px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;width:24%;">
                     Tarih
                   </td>
-                  <td style="padding:10px 14px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;text-align:right;">
+                  <td style="padding:10px 14px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;text-align:right;width:30%;">
                     Tutar
                   </td>
                 </tr>
@@ -426,10 +516,26 @@ function buildPaymentEmailHtml({
                   <td style="background:#f8fafc;border:1px solid #e8edf3;border-radius:12px;padding:16px 18px;">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                       <tr>
-                        <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#64748b;">
+                        <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#64748b;padding:0 0 8px 0;">
+                          KDV hariç tutar
+                        </td>
+                        <td align="right" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#0f172a;padding:0 0 8px 0;white-space:nowrap;">
+                          ${subtotalText}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#64748b;padding:0 0 10px 0;">
+                          KDV
+                        </td>
+                        <td align="right" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#0f172a;padding:0 0 10px 0;white-space:nowrap;">
+                          ${taxText}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#64748b;border-top:1px solid #e2e8f0;padding-top:10px;">
                           ${escapeHtml(copy.amountLabel)}
                         </td>
-                        <td align="right" style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#1e3a5f;">
+                        <td align="right" style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#1e3a5f;border-top:1px solid #e2e8f0;padding-top:8px;white-space:nowrap;">
                           ${total}
                         </td>
                       </tr>
@@ -463,7 +569,28 @@ function buildPaymentEmailHtml({
               <p style="margin:16px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.5;color:#94a3b8;text-align:center;word-break:break-all;">
                 Buton çalışmazsa bu bağlantıyı tarayıcınıza yapıştırın:<br />
                 <a href="${safeUrl}" style="color:#1d4ed8;text-decoration:none;">${safeUrl}</a>
-              </p>`
+              </p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0 0 0;">
+                <tr>
+                  <td style="background:#f8fafc;border:1px solid #e8edf3;border-radius:12px;padding:16px 18px;">
+                    <p style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;">
+                      Havale / EFT
+                    </p>
+                    <p style="margin:0 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.55;color:#334155;">
+                      ${escapeHtml(DEFAULT_BANK_TRANSFER.intro)}
+                    </p>
+                    <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.7;color:#0f172a;word-break:break-word;overflow-wrap:anywhere;">
+                      ${escapeHtml(DEFAULT_BANK_TRANSFER.accountName)}<br />
+                      ${escapeHtml(DEFAULT_BANK_TRANSFER.bank)}<br />
+                      TL IBAN: ${escapeHtml(DEFAULT_BANK_TRANSFER.ibanTl)}<br />
+                      USD IBAN: ${escapeHtml(DEFAULT_BANK_TRANSFER.ibanUsd)}
+                    </p>
+                    <p style="margin:10px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;">
+                      ${escapeHtml(DEFAULT_BANK_TRANSFER.note)}
+                    </p>
+                  </td>
+                </tr>
+              </table>`
                   : `
               <p style="margin:18px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.65;color:#166534;text-align:center;font-weight:600;">
                 ${escapeHtml(copy.thanks)}
@@ -497,10 +624,13 @@ function buildPaymentEmailText({
   currency,
   paymentUrl,
   seller,
+  isReminder = false,
 }) {
   const awaitingPayment = Boolean(String(paymentUrl || '').trim());
-  const copy = invoiceMailCopy({ invoices, awaitingPayment });
+  const copy = invoiceMailCopy({ invoices, awaitingPayment, isReminder });
   const company = normalizeSeller(seller);
+  const vat = combinedVatParts(invoices);
+  const payAmount = numberOrZero(amount) || vat.total;
   const lines = [
     `Sayın ${customerName || 'Yetkili'},`,
     '',
@@ -511,7 +641,9 @@ function buildPaymentEmailText({
       return `${localInvoiceNumber(invoice.invoice_number) || 'Fatura'}  ${formatDateTr(invoice.invoice_date)}  ${formatMoney(remaining, invoice.currency || currency)}`;
     }),
     '',
-    `${copy.amountLabel}: ${formatMoney(amount, currency)}`,
+    `KDV hariç tutar: ${formatMoney(vat.subtotal, currency)}`,
+    `KDV: ${formatMoney(vat.tax, currency)}`,
+    `${copy.amountLabel}: ${formatMoney(payAmount, currency)}`,
     '',
     ...(awaitingPayment
       ? [
@@ -519,6 +651,8 @@ function buildPaymentEmailText({
           paymentUrl,
           '',
           'Ödeme 3D Secure ile banka altyapısı üzerinden alınır. Kart bilgileriniz Microvise sistemlerinde saklanmaz.',
+          '',
+          ...bankTransferLines(),
         ]
       : [copy.thanks]),
     '',
@@ -538,9 +672,10 @@ async function buildInvoicePaymentPdf({
   currency,
   paymentUrl,
   seller,
+  isReminder = false,
 }) {
   const awaitingPayment = Boolean(String(paymentUrl || '').trim());
-  const copy = invoiceMailCopy({ invoices, awaitingPayment });
+  const copy = invoiceMailCopy({ invoices, awaitingPayment, isReminder });
   const company = normalizeSeller(seller);
   let qrPng = null;
   if (awaitingPayment) {
@@ -627,8 +762,18 @@ async function buildInvoicePaymentPdf({
       .text(copy.body, left, doc.y, { width, lineGap: 2 });
     doc.moveDown(0.9);
 
+    const vat = combinedVatParts(invoices);
+    const payAmount = numberOrZero(amount) || vat.total;
+    const footerReserve = 36;
+    const pageBottom = () => doc.page.height - 48 - footerReserve;
+    const ensureSpace = (needed) => {
+      if (doc.y + needed <= pageBottom()) return;
+      doc.addPage();
+      doc.y = 48;
+    };
+
     const colNo = left;
-    const colDate = left + width * 0.42;
+    const colDate = left + width * 0.46;
     const colAmt = right;
     const headerY = doc.y;
     doc.save();
@@ -638,33 +783,34 @@ async function buildInvoicePaymentPdf({
       .fillColor('#64748b')
       .font(fonts.bold)
       .fontSize(8)
-      .text('FATURA NO', colNo + 8, headerY + 7, { width: width * 0.38 });
-    doc.text('TARİH', colDate, headerY + 7, { width: 90 });
+      .text('FATURA NO', colNo + 8, headerY + 7, { width: width * 0.42 });
+    doc.text('TARİH', colDate, headerY + 7, { width: 78 });
     doc.text('TUTAR', colAmt - 90, headerY + 7, { width: 82, align: 'right' });
     doc.y = headerY + 26;
 
     for (const invoice of invoices) {
       const remaining =
         remainingAmount(invoice) || Number(invoice.grand_total || 0);
+      ensureSpace(28);
+      const numberText = localInvoiceNumber(invoice.invoice_number) || 'Fatura';
+      const numberHeight = doc
+        .font(fonts.bold)
+        .fontSize(10)
+        .heightOfString(numberText, { width: width * 0.42 });
+      const rowH = Math.max(18, numberHeight);
       const rowY = doc.y;
-      doc
-        .strokeColor('#e8edf3')
-        .lineWidth(0.6)
-        .moveTo(left, rowY + 18)
-        .lineTo(right, rowY + 18)
-        .stroke();
       doc
         .fillColor('#0f172a')
         .font(fonts.bold)
         .fontSize(10)
-        .text(localInvoiceNumber(invoice.invoice_number) || 'Fatura', colNo + 8, rowY, {
-          width: width * 0.38,
+        .text(numberText, colNo + 8, rowY, {
+          width: width * 0.42,
         });
       doc
         .fillColor('#64748b')
         .font(fonts.regular)
         .fontSize(10)
-        .text(formatDateTr(invoice.invoice_date), colDate, rowY, { width: 90 });
+        .text(formatDateTr(invoice.invoice_date), colDate, rowY, { width: 78 });
       doc
         .fillColor('#0f172a')
         .font(fonts.bold)
@@ -675,50 +821,72 @@ async function buildInvoicePaymentPdf({
           rowY,
           { width: 102, align: 'right' },
         );
-      doc.y = rowY + 24;
+      doc.y = rowY + rowH + 6;
+      doc
+        .strokeColor('#e8edf3')
+        .lineWidth(0.6)
+        .moveTo(left, doc.y)
+        .lineTo(right, doc.y)
+        .stroke();
+      doc.y += 6;
 
       for (const item of (invoice.items || []).slice(0, 10)) {
         const qty = Number(item.quantity || 1);
         const desc = String(item.description || 'Kalem').trim();
+        const rightCol = `${qty} ${item.unit || 'Adet'}   ${formatMoney(
+          item.line_total,
+          invoice.currency || currency,
+        )}`;
+        const descWidth = width - 132;
+        ensureSpace(18);
+        const itemY = doc.y;
         doc
           .fillColor('#64748b')
           .font(fonts.regular)
           .fontSize(8.5)
-          .text(
-            `${desc}   ${qty} ${item.unit || 'Adet'}   ${formatMoney(
-              item.line_total,
-              invoice.currency || currency,
-            )}`,
-            left + 12,
-            doc.y,
-            { width: width - 12 },
-          );
-        doc.moveDown(0.15);
+          .text(desc, left + 12, itemY, { width: descWidth });
+        const afterDesc = doc.y;
+        doc.text(rightCol, right - 118, itemY, {
+          width: 110,
+          align: 'right',
+        });
+        doc.y = Math.max(afterDesc, itemY + 11) + 2;
       }
       doc.moveDown(0.25);
     }
 
-    doc.moveDown(0.4);
+    const totalsHeight = 78;
+    ensureSpace(totalsHeight + 8);
     const totalY = doc.y;
     doc.save();
-    doc.roundedRect(left, totalY, width, 36, 6).fill('#f8fafc');
+    doc.roundedRect(left, totalY, width, totalsHeight, 6).fill('#f8fafc');
     doc.restore();
-    doc
-      .fillColor('#64748b')
-      .font(fonts.regular)
-      .fontSize(10)
-      .text(copy.amountLabel, left + 14, totalY + 12);
-    doc
-      .fillColor('#1e3a5f')
-      .font(fonts.bold)
-      .fontSize(14)
-      .text(formatMoney(amount, currency), left + width * 0.45, totalY + 10, {
-        width: width * 0.55 - 14,
-        align: 'right',
-      });
-    doc.y = totalY + 50;
+    const vatRows = [
+      ['KDV hariç tutar', formatMoney(vat.subtotal, currency), false],
+      ['KDV', formatMoney(vat.tax, currency), false],
+      [copy.amountLabel, formatMoney(payAmount, currency), true],
+    ];
+    vatRows.forEach((row, index) => {
+      const y = totalY + 10 + index * 22;
+      doc
+        .fillColor('#64748b')
+        .font(fonts.regular)
+        .fontSize(row[2] ? 11 : 10)
+        .text(row[0], left + 14, y);
+      doc
+        .fillColor(row[2] ? '#1e3a5f' : '#0f172a')
+        .font(row[2] ? fonts.bold : fonts.regular)
+        .fontSize(row[2] ? 13 : 10)
+        .text(row[1], left + width * 0.45, y - (row[2] ? 1 : 0), {
+          width: width * 0.55 - 14,
+          align: 'right',
+        });
+    });
+    doc.y = totalY + totalsHeight + 14;
 
     if (awaitingPayment) {
+      ensureSpace(qrPng ? 130 : 70);
+      const payBlockY = doc.y;
       doc
         .fillColor('#0f172a')
         .font(fonts.bold)
@@ -746,9 +914,34 @@ async function buildInvoicePaymentPdf({
           underline: true,
         });
       if (qrPng) {
-        doc.image(qrPng, right - 108, totalY + 50, { width: 108 });
+        doc.image(qrPng, right - 108, payBlockY, { width: 96 });
+        doc.y = Math.max(doc.y, payBlockY + 104);
+      } else {
+        doc.y = Math.max(doc.y, linkY + 18);
       }
+
+      ensureSpace(92);
+      doc.moveDown(0.5);
+      const bankY = doc.y;
+      doc.save();
+      doc.roundedRect(left, bankY, width, 88, 6).stroke('#e8edf3');
+      doc.restore();
+      doc
+        .fillColor('#0f172a')
+        .font(fonts.bold)
+        .fontSize(10)
+        .text('Havale / EFT', left + 12, bankY + 10);
+      doc
+        .fillColor('#334155')
+        .font(fonts.regular)
+        .fontSize(9)
+        .text(bankTransferLines().join('\n'), left + 12, bankY + 26, {
+          width: width - 24,
+          lineGap: 1.5,
+        });
+      doc.y = bankY + 96;
     } else {
+      ensureSpace(24);
       doc
         .fillColor('#166534')
         .font(fonts.bold)
@@ -756,7 +949,7 @@ async function buildInvoicePaymentPdf({
         .text(copy.thanks, left, doc.y, { width });
     }
 
-    const footerY = 790;
+    const footerY = doc.page.height - 52;
     doc
       .strokeColor('#e8edf3')
       .lineWidth(0.8)
@@ -943,8 +1136,166 @@ async function sendInvoicePaymentLinkEmail({
   };
 }
 
+async function sendPosPaymentReminders({
+  linkIds,
+  createdBy,
+  req,
+  onlyOverdue = false,
+  skipAlreadyReminded = false,
+  now = new Date(),
+}) {
+  await ensureInvoicePaymentLinksTable();
+  const requestedIds = uniqueLinkIds(linkIds);
+  let rows = [];
+  if (requestedIds.length) {
+    const result = await query(
+      `
+        select
+          l.*,
+          c.name as customer_name,
+          c.email as customer_email
+        from public.invoice_payment_links l
+        left join public.customers c on c.id = l.customer_id
+        where l.id = any($1::uuid[])
+      `,
+      [requestedIds],
+    );
+    rows = result.rows;
+  } else if (onlyOverdue) {
+    const result = await query(
+      `
+        select
+          l.*,
+          c.name as customer_name,
+          c.email as customer_email
+        from public.invoice_payment_links l
+        left join public.customers c on c.id = l.customer_id
+        where coalesce(l.status, 'pending') = 'pending'
+          and l.dismissed_at is null
+          and coalesce(l.emailed_at, l.created_at) <= now() - interval '7 days'
+          and ($1::boolean = false or l.reminded_at is null)
+        order by coalesce(l.emailed_at, l.created_at) asc
+        limit 80
+      `,
+      [skipAlreadyReminded === true],
+    );
+    rows = result.rows;
+  } else {
+    const error = new Error('Ödeme kaydı seçilmelidir.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const sent = [];
+  const skipped = [];
+  const seller = await loadSellerForMail();
+
+  for (const row of rows) {
+    const status = String(row.status || 'pending').toLowerCase();
+    if (status !== 'pending' || row.dismissed_at) {
+      skipped.push(row.id);
+      continue;
+    }
+    if (skipAlreadyReminded && row.reminded_at) {
+      skipped.push(row.id);
+      continue;
+    }
+    if (onlyOverdue && !posPaymentOverdue(row, { now })) {
+      skipped.push(row.id);
+      continue;
+    }
+    const invoiceIds = Array.isArray(row.invoice_ids) ? row.invoice_ids : [];
+    if (!invoiceIds.length) {
+      skipped.push(row.id);
+      continue;
+    }
+    let invoices;
+    try {
+      invoices = await loadInvoicesForMail(invoiceIds);
+    } catch (_) {
+      skipped.push(row.id);
+      continue;
+    }
+    const openInvoices = invoices.filter(
+      (invoice) => remainingAmount(invoice) > 0.009,
+    );
+    if (!openInvoices.length) {
+      skipped.push(row.id);
+      continue;
+    }
+    const to = String(row.customer_email || invoices[0].customer_email || '').trim();
+    if (!isValidEmail(to)) {
+      skipped.push(row.id);
+      continue;
+    }
+    const paymentUrl = buildHostedPaymentUrl({ token: row.token, req });
+    const amount = Number(row.amount || 0);
+    const currency = row.currency || invoices[0].currency || 'TRY';
+    const customerName = row.customer_name || invoices[0].customer_name || 'Cari';
+    const mailPayload = {
+      customerName,
+      invoices: openInvoices,
+      amount,
+      currency,
+      paymentUrl,
+      seller,
+      isReminder: true,
+    };
+    const named = invoiceNumbersPhrase(openInvoices);
+    const pdf = await buildInvoicePaymentPdf(mailPayload);
+    const invoiceLabel = openInvoices
+      .map((item) => localInvoiceNumber(item.invoice_number))
+      .filter(Boolean)
+      .join(', ');
+    await sendEmail({
+      to,
+      subject: named
+        ? `Hatırlatma · ${named} için ödeme`
+        : 'Hatırlatma · Fatura ödemesi',
+      html: buildPaymentEmailHtml(mailPayload),
+      text: buildPaymentEmailText(mailPayload),
+      attachments: [
+        {
+          filename: `hatirlatma-${(invoiceLabel || 'microvise')
+            .replace(/[^\w.-]+/g, '_')
+            .slice(0, 60)}.pdf`,
+          content: pdf.toString('base64'),
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+    await query(
+      `
+        update public.invoice_payment_links
+        set reminded_at = now(),
+            reminded_count = coalesce(reminded_count, 0) + 1,
+            expires_at = now() + interval '14 days',
+            updated_at = now()
+        where id = $1::uuid
+      `,
+      [row.id],
+    );
+    sent.push(row.id);
+  }
+
+  const count = sent.length;
+  return {
+    ok: true,
+    count,
+    sent,
+    skipped: skipped.length,
+    message:
+      count === 0
+        ? 'Gönderilecek hatırlatma yok.'
+        : count === 1
+          ? 'Hatırlatma gönderildi.'
+          : `${count} hatırlatma gönderildi.`,
+  };
+}
+
 module.exports = {
   sendInvoicePaymentLinkEmail,
+  sendPosPaymentReminders,
   loadInvoicesForMail,
   markPaymentLinkEmailed,
   rememberCustomerEmail,
@@ -957,4 +1308,6 @@ module.exports = {
   buildPaymentEmailText,
   normalizeSeller,
   buildInvoicePaymentPdf,
+  combinedVatParts,
+  DEFAULT_BANK_TRANSFER,
 };

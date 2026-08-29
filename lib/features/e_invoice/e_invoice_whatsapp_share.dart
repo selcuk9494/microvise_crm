@@ -218,6 +218,7 @@ String buildInvoicePaymentWhatsAppMessage({
   required String amountLabel,
   required List<String> invoiceLabels,
   String? customerName,
+  bool includePdfNote = false,
 }) {
   final numbers = invoiceLabels
       .map((label) => label.trim())
@@ -226,10 +227,14 @@ String buildInvoicePaymentWhatsAppMessage({
   final name = (customerName ?? '').trim();
   final greeting = name.isEmpty ? 'Merhaba,' : 'Merhaba $name,';
   final invoicePart = numbers.isEmpty ? 'faturanız' : numbers;
+  final pdfNote = includePdfNote
+      ? 'Fatura PDF’si bu mesajla birlikte gönderilir.\n'
+      : '';
   return '$greeting\n\n'
       '$invoicePart için sanal POS ödeme linki:\n'
       '$paymentUrl\n\n'
       'Tutar: $amountLabel\n'
+      '$pdfNote'
       'Microvise Innovation';
 }
 
@@ -324,13 +329,15 @@ Future<void> shareInvoicePaymentLinkWithWhatsApp({
   required List<String> invoiceLabels,
   String? customerName,
   CustomerDetail? customer,
+  List<EInvoicePdfDownload> pdfs = const [],
 }) async {
   final phone = await pickWhatsAppPhone(
     context: context,
     customer: customer,
     title: 'Ödeme linkini WhatsApp ile gönder',
-    subtitle:
-        'Numara seçin; WhatsApp sohbeti ödeme linki mesajıyla açılır.',
+    subtitle: pdfs.isEmpty
+        ? 'Numara seçin; WhatsApp sohbeti ödeme linki mesajıyla açılır.'
+        : 'Numara seçin; WhatsApp sohbeti ödeme linki ve fatura PDF’siyle açılır.',
   );
   if (phone == null || !context.mounted) return;
 
@@ -339,6 +346,7 @@ Future<void> shareInvoicePaymentLinkWithWhatsApp({
     amountLabel: amountLabel,
     invoiceLabels: invoiceLabels,
     customerName: customerName ?? customer?.name,
+    includePdfNote: pdfs.isNotEmpty,
   );
   await Clipboard.setData(ClipboardData(text: message));
 
@@ -352,10 +360,46 @@ Future<void> shareInvoicePaymentLinkWithWhatsApp({
   if (!opened) {
     await openExternalUrl(url.toString());
   }
+
+  var sharedPdf = false;
+  if (pdfs.isNotEmpty) {
+    try {
+      sharedPdf = await shareEInvoicePdfBundle(
+        files: pdfs,
+        shareText: message,
+      );
+    } catch (_) {
+      sharedPdf = false;
+    }
+    if (!sharedPdf) {
+      for (final pdf in pdfs) {
+        if (kIsWeb && isLocalOpenPdfUrl(pdf.url)) {
+          sharedPdf = await openExternalUrl(pdf.url) || sharedPdf;
+          continue;
+        }
+        if (pdf.url.trim().isNotEmpty && !isLocalOpenPdfUrl(pdf.url)) {
+          sharedPdf = await openExternalUrl(pdf.url) || sharedPdf;
+        }
+      }
+    }
+    if (kIsWeb) {
+      for (final pdf in pdfs) {
+        final revealUrl = revealLocalFileUrlFromOpenPdf(pdf.url);
+        if (revealUrl != null) {
+          await openExternalUrl(revealUrl);
+        }
+      }
+    }
+  }
+
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text('WhatsApp açıldı. Ödeme linki sohbete yazıldı.'),
+    SnackBar(
+      content: Text(
+        sharedPdf
+            ? 'WhatsApp açıldı. Fatura PDF’sini sohbete ekleyin.'
+            : 'WhatsApp açıldı. Ödeme linki sohbete yazıldı.',
+      ),
     ),
   );
 }

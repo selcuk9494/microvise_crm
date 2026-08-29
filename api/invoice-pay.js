@@ -12,6 +12,7 @@ const {
   startHostedPayment,
   buildCrmHostedPaymentPageHtml,
   getInvoiceNumbersForLink,
+  loadDraftInvoicesForPayPage,
   verifyInvoiceHostedSession,
   verifyPosRefundTicket,
   signInvoiceHostedSession,
@@ -65,6 +66,7 @@ async function buildHostedPageFromToken({
   let customerName = query.customer;
   let invoiceCount = Number(query.invoices || 0) || 0;
   let sessionToken = String(session || '').trim();
+  let draftInvoices = [];
 
   if (lookupToken) {
     const link = await getPaymentLinkByToken(lookupToken);
@@ -80,6 +82,11 @@ async function buildHostedPageFromToken({
     invoiceCount = Array.isArray(link.invoice_ids) ? link.invoice_ids.length : 0;
     if (!invoiceNumbers.length) {
       invoiceNumbers = await getInvoiceNumbersForLink(link);
+    }
+    try {
+      draftInvoices = await loadDraftInvoicesForPayPage(link);
+    } catch (_) {
+      draftInvoices = [];
     }
     if (!sessionToken) {
       sessionToken = signInvoiceHostedSession({
@@ -106,6 +113,7 @@ async function buildHostedPageFromToken({
       customerName,
       invoiceCount,
       invoiceNumbers,
+      invoices: draftInvoices,
       status,
       errorMessage: query.errmsg || '',
     }),

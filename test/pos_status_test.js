@@ -7,6 +7,9 @@ const {
   canDismissPosCollection,
   posCollectionVisible,
   invoicePaymentAwaiting,
+  POS_REMINDER_DAYS,
+  posPaymentOverdue,
+  posNeedsAutoReminder,
   periodKeyForDate,
   dueDayInMonth,
   isPlanDueOn,
@@ -143,6 +146,57 @@ test('recurring billing day clamps to month length', () => {
   );
   assert.equal(
     isPlanDueOn({ is_active: false, billing_day: 1 }, new Date(2026, 7, 29)),
+    false,
+  );
+});
+
+test('ödeme linki 7 gün sonra gecikmiş sayılır, hatırlatma bir kez otomatik gider', () => {
+  const now = new Date('2026-08-29T12:00:00Z');
+  assert.equal(POS_REMINDER_DAYS, 7);
+  assert.equal(
+    posPaymentOverdue(
+      { status: 'pending', emailed_at: '2026-08-22T12:00:00Z' },
+      { now },
+    ),
+    true,
+  );
+  assert.equal(
+    posPaymentOverdue(
+      { status: 'pending', created_at: '2026-08-22T12:00:00Z' },
+      { now },
+    ),
+    true,
+  );
+  assert.equal(
+    posPaymentOverdue(
+      { status: 'pending', emailed_at: '2026-08-23T12:00:00Z' },
+      { now },
+    ),
+    false,
+  );
+  assert.equal(
+    posPaymentOverdue(
+      { status: 'paid', emailed_at: '2026-08-01T12:00:00Z' },
+      { now },
+    ),
+    false,
+  );
+  assert.equal(
+    posNeedsAutoReminder(
+      { status: 'pending', emailed_at: '2026-08-22T12:00:00Z' },
+      { now },
+    ),
+    true,
+  );
+  assert.equal(
+    posNeedsAutoReminder(
+      {
+        status: 'pending',
+        emailed_at: '2026-08-22T12:00:00Z',
+        reminded_at: '2026-08-29T08:00:00Z',
+      },
+      { now },
+    ),
     false,
   );
 });

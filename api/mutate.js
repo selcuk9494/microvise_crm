@@ -54,7 +54,7 @@ const {
   markPosPaymentSettled,
   dismissPosCollection,
 } = require('./_lib/invoice_payment');
-const { sendInvoicePaymentLinkEmail } = require('./_lib/invoice_mail');
+const { sendInvoicePaymentLinkEmail, sendPosPaymentReminders } = require('./_lib/invoice_mail');
 const {
   upsertRecurringBillingPlan,
   setRecurringBillingPlanActive,
@@ -3651,6 +3651,27 @@ module.exports = async (req, res) => {
         );
       } catch (error) {
         if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'remindPosCollection') {
+      if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) {
+        return;
+      }
+      try {
+        return ok(
+          req,
+          res,
+          await sendPosPaymentReminders({
+            linkIds: body.linkIds || body.linkId || body.id,
+            createdBy: user?.auth_user_id || user?.id || null,
+            req,
+          }),
+        );
+      } catch (error) {
+        if (error?.statusCode === 400 || error?.statusCode === 502) {
+          return badRequest(req, res, error.message);
+        }
         throw error;
       }
     }

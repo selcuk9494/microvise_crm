@@ -65,6 +65,34 @@ function invoicePaymentAwaiting(row) {
   return Boolean(row?.payment_link_emailed_at || row?.emailed_at);
 }
 
+const POS_REMINDER_DAYS = 7;
+
+function posLinkSentAt(row) {
+  return row?.emailed_at || row?.created_at || null;
+}
+
+function posDaysSinceSent(row, now = new Date()) {
+  const sent = posLinkSentAt(row);
+  if (!sent) return null;
+  const sentDate = sent instanceof Date ? sent : new Date(sent);
+  if (Number.isNaN(sentDate.getTime())) return null;
+  const current = now instanceof Date ? now : new Date(now);
+  if (Number.isNaN(current.getTime())) return null;
+  return Math.floor((current.getTime() - sentDate.getTime()) / 86400000);
+}
+
+function posPaymentOverdue(row, { now = new Date(), days = POS_REMINDER_DAYS } = {}) {
+  if (posListStatus(row) !== 'pending') return false;
+  if (row?.dismissed_at) return false;
+  const elapsed = posDaysSinceSent(row, now);
+  return elapsed != null && elapsed >= days;
+}
+
+function posNeedsAutoReminder(row, opts = {}) {
+  if (row?.reminded_at) return false;
+  return posPaymentOverdue(row, opts);
+}
+
 function periodKeyForDate(date) {
   const value = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(value.getTime())) return '';
@@ -201,6 +229,11 @@ module.exports = {
   canDismissPosCollection,
   posCollectionVisible,
   invoicePaymentAwaiting,
+  POS_REMINDER_DAYS,
+  posLinkSentAt,
+  posDaysSinceSent,
+  posPaymentOverdue,
+  posNeedsAutoReminder,
   periodKeyForDate,
   dueDayInMonth,
   isPlanDueOn,

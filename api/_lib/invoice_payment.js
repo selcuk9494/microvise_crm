@@ -1018,7 +1018,9 @@ async function ensureInvoicePaymentLinksTable() {
       add column if not exists settled_by uuid,
       add column if not exists dismissed_at timestamptz,
       add column if not exists dismissed_by uuid,
-      add column if not exists valor_days integer
+      add column if not exists valor_days integer,
+      add column if not exists reminded_at timestamptz,
+      add column if not exists reminded_count integer not null default 0
   `);
 }
 
@@ -1283,7 +1285,7 @@ async function createInvoicePaymentLink({
   const customerId = invoices[0].customerId;
   const description = `Açık fatura ödemesi (${invoices.length} fatura)`;
   const token = randomToken();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
   const customerResult = await query(
     `select name from public.customers where id = $1 limit 1`,
@@ -1384,6 +1386,106 @@ async function getPaymentLinkByToken(token) {
   return result.rows[0] || null;
 }
 
+function displayInvoiceNumber(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^\d{9}-/, '');
+}
+
+function formatPayMoney(amount, currency) {
+  const value = Number(amount);
+  const safe = Number.isFinite(value) ? value : 0;
+  const formatted = safe.toLocaleString('tr-TR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const code = String(currency || 'TRY').toUpperCase();
+  if (code === 'TRY' || code === 'TL') return `${formatted} ₺`;
+  if (code === 'USD') return `$${formatted}`;
+  if (code === 'EUR') return `€${formatted}`;
+  if (code === 'GBP') return `£${formatted}`;
+  return `${formatted} ${code}`;
+}
+
+async function loadDraftInvoicesForPayPage(link) {
+  const ids = Array.isArray(link?.invoice_ids) ? link.invoice_ids : [];
+  if (!ids.length) return [];
+  const invoices = await query(
+    `
+      select
+        id,
+        invoice_number,
+        invoice_date,
+        currency,
+        subtotal,
+        tax_total,
+        grand_total
+      from public.invoices
+      where id = any($1::uuid[])
+      order by invoice_date asc, invoice_number asc
+    `,
+    [ids],
+  );
+  const items = await query(
+    `
+      select
+        invoice_id,
+        description,
+        quantity,
+        unit,
+        unit_price,
+        tax_rate,
+        line_total
+      from public.invoice_items
+      where invoice_id = any($1::uuid[])
+      order by sort_order asc, created_at asc
+    `,
+    [ids],
+  );
+  const itemsByInvoice = new Map();
+  for (const item of items.rows) {
+    const list = itemsByInvoice.get(item.invoice_id) || [];
+    list.push(item);
+    itemsByInvoice.set(item.invoice_id, list);
+  }
+  return invoices.rows.map((row) => ({
+    ...row,
+    invoice_number: displayInvoiceNumber(row.invoice_number),
+    items: itemsByInvoice.get(row.id) || [],
+  }));
+}
+
+function draftVatParts(invoices) {
+  return (invoices || []).reduce(
+    (acc, invoice) => {
+      let subtotal = Number(invoice.subtotal || 0);
+      let tax = Number(invoice.tax_total || 0);
+      const total = Number(invoice.grand_total || 0);
+      if (subtotal <= 0 && invoice.items?.length) {
+        subtotal = invoice.items.reduce(
+          (sum, item) =>
+            sum + Number(item.unit_price || 0) * Number(item.quantity || 1),
+          0,
+        );
+        tax = invoice.items.reduce((sum, item) => {
+          const net =
+            Number(item.unit_price || 0) * Number(item.quantity || 1);
+          const line = Number(item.line_total || 0);
+          return sum + (line > net ? line - net : net * Number(item.tax_rate || 0) / 100);
+        }, 0);
+      }
+      if (subtotal <= 0 && total > 0 && tax > 0) subtotal = total - tax;
+      if (subtotal <= 0 && total > 0) subtotal = total;
+      if (tax <= 0 && total > subtotal) tax = total - subtotal;
+      acc.subtotal += subtotal;
+      acc.tax += tax;
+      acc.total += total || subtotal + tax;
+      return acc;
+    },
+    { subtotal: 0, tax: 0, total: 0 },
+  );
+}
+
 async function getInvoiceNumbersForLink(link) {
   const ids = Array.isArray(link?.invoice_ids) ? link.invoice_ids : [];
   if (!ids.length) return [];
@@ -1397,7 +1499,11 @@ async function getInvoiceNumbersForLink(link) {
     [ids],
   );
   return result.rows
-    .map((row) => String(row.invoice_number || '').trim())
+    .map((row) =>
+      String(row.invoice_number || '')
+        .trim()
+        .replace(/^\d{9}-/, ''),
+    )
     .filter(Boolean);
 }
 
@@ -1550,14 +1656,16 @@ function buildCrmHostedPaymentPageHtml({
   customerName,
   invoiceCount,
   invoiceNumbers,
+  invoices,
   status,
   errorMessage,
 }) {
   const amountText = Number(amount || 0).toFixed(2);
   const currencyLabel = String(currency || 'TRY');
   const customer = String(customerName || 'Müşteri');
+  const drafts = Array.isArray(invoices) ? invoices : [];
   const numbers = (invoiceNumbers || [])
-    .map((n) => String(n || '').trim())
+    .map((n) => displayInvoiceNumber(n))
     .filter(Boolean);
   const countLabel =
     numbers.length > 0
@@ -1565,6 +1673,21 @@ function buildCrmHostedPaymentPageHtml({
       : invoiceCount > 0
         ? `${invoiceCount} adet`
         : '-';
+  const vat = draftVatParts(drafts);
+  const vatCurrency = drafts[0]?.currency || currencyLabel;
+  const itemRows = drafts
+    .flatMap((invoice) =>
+      (invoice.items || []).map((item) => {
+        const desc = String(item.description || 'Kalem').trim();
+        const qty = Number(item.quantity || 1);
+        return `<tr>
+          <td>${escapeHtml(desc)}</td>
+          <td class="num">${escapeHtml(String(qty))} ${escapeHtml(item.unit || 'Adet')}</td>
+          <td class="num">${escapeHtml(formatPayMoney(item.line_total, invoice.currency || vatCurrency))}</td>
+        </tr>`;
+      }),
+    )
+    .join('');
   const nestpayApi =
     'https://www.microvise.net/wp-admin/admin-post.php?action=microvise_invoice_nestpay';
 
@@ -1614,7 +1737,17 @@ function buildCrmHostedPaymentPageHtml({
     .summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
     .box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px}
     .label{display:block;font-size:11px;color:#64748b;margin-bottom:4px}
-    .value{font-size:16px;font-weight:800;word-break:break-word}
+    .value{font-size:16px;font-weight:800;word-break:break-word;overflow-wrap:anywhere}
+    .helper{margin:0 0 14px;color:#64748b;font-size:13px;line-height:1.45}
+    .draft{margin:0 0 14px;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden}
+    .draft table{width:100%;border-collapse:collapse;table-layout:fixed}
+    .draft th,.draft td{padding:8px 10px;font-size:13px;text-align:left;word-break:break-word;overflow-wrap:anywhere;border-bottom:1px solid #eef2f7;vertical-align:top}
+    .draft th{background:#f8fafc;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#64748b}
+    .draft .num{text-align:right;white-space:normal;width:28%}
+    .totals{padding:10px 12px;background:#f8fafc}
+    .totals .row{display:flex;justify-content:space-between;gap:12px;padding:4px 0;font-size:13px}
+    .totals .row strong{white-space:nowrap}
+    .totals .pay{font-size:16px;font-weight:800;padding-top:8px;border-top:1px solid #e2e8f0;margin-top:4px}
     .helper{margin:0 0 14px;color:#64748b;font-size:13px;line-height:1.45}
     .notice{display:none;padding:12px 14px;border-radius:12px;margin-bottom:12px;border:1px solid #fecaca;background:#fff1f2;color:#b91c1c}
     .grid{display:grid;gap:10px}
@@ -1641,8 +1774,23 @@ function buildCrmHostedPaymentPageHtml({
         <div class="summary">
           <div class="box"><span class="label">Müşteri</span><div class="value">${escapeHtml(customer)}</div></div>
           <div class="box"><span class="label">Fatura No</span><div class="value">${escapeHtml(countLabel)}</div></div>
-          <div class="box"><span class="label">Tutar</span><div class="value">${escapeHtml(amountText + ' ' + currencyLabel)}</div></div>
+          <div class="box"><span class="label">Tutar</span><div class="value">${escapeHtml(formatPayMoney(amount, currencyLabel))}</div></div>
         </div>
+        ${
+          itemRows || vat.total > 0
+            ? `<div class="draft">
+          <table>
+            <thead><tr><th>Taslak fatura</th><th class="num">Miktar</th><th class="num">Tutar</th></tr></thead>
+            <tbody>${itemRows || `<tr><td colspan="3">${escapeHtml(countLabel)}</td></tr>`}</tbody>
+          </table>
+          <div class="totals">
+            <div class="row"><span>KDV hariç tutar</span><strong>${escapeHtml(formatPayMoney(vat.subtotal || amount, vatCurrency))}</strong></div>
+            <div class="row"><span>KDV</span><strong>${escapeHtml(formatPayMoney(vat.tax, vatCurrency))}</strong></div>
+            <div class="row pay"><span>Toplam</span><strong>${escapeHtml(formatPayMoney(vat.total || amount, vatCurrency))}</strong></div>
+          </div>
+        </div>`
+            : ''
+        }
         <p class="helper">Kart bilgilerinizi girin. 3D Secure onayı sonrası sonuç bu ekranda gösterilir.</p>
         <div id="err" class="notice"></div>
         <form id="pay-form" class="grid" novalidate>
@@ -2399,6 +2547,9 @@ async function dismissPosCollection({
 module.exports = {
   ensureInvoicePaymentLinksTable,
   createInvoicePaymentLink,
+  getPublicBaseUrl,
+  buildHostedPaymentUrl,
+  uniqueLinkIds,
   getPaymentLinkByToken,
   getHostedSessionInfo,
   startHostedPayment,
@@ -2414,6 +2565,7 @@ module.exports = {
   getHostedPageUrl,
   useHostedPaymentPage,
   buildCrmHostedPaymentPageHtml,
+  loadDraftInvoicesForPayPage,
   getInvoiceNumbersForLink,
   verifyInvoiceHostedSession,
   signInvoiceHostedSession,

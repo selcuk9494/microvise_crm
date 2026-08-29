@@ -7,6 +7,7 @@ const {
   formatMoney,
   localInvoiceNumber,
   formatDateTr,
+  invoiceMailCopy,
   normalizeSeller,
   buildInvoicePaymentPdf,
 } = require('../api/_lib/invoice_mail');
@@ -18,11 +19,15 @@ const sampleInvoices = [
     grand_total: 1250,
     paid_amount: 0,
     currency: 'TRY',
+    subtotal: 1068.38,
+    tax_total: 181.62,
     items: [
       {
         description: 'Worldline A910',
         quantity: 1,
         unit: 'Adet',
+        unit_price: 1068.38,
+        tax_rate: 17,
         line_total: 1250,
       },
     ],
@@ -56,6 +61,14 @@ test('HTML mail kurumsal şablon ve ödeme bağlantısı içerir', () => {
   assert.match(html, /Güvenli ödeme yap/);
   assert.match(html, /https:\/\/crm\.microvise\.net\/pay\/abc/);
   assert.match(html, /1\.250,00 ₺/);
+  assert.match(html, /KDV hariç tutar/);
+  assert.match(html, /1\.068,38 ₺/);
+  assert.match(html, /KDV/);
+  assert.match(html, /181,62 ₺/);
+  assert.match(html, /TR57 0006 4000 0016 8010 3409 94/);
+  assert.match(html, /TR41 0006 4000 0026 8010 4107 29/);
+  assert.match(html, /Türkiye İş Bankası/);
+  assert.match(html, /overflow-wrap:anywhere/);
   assert.match(html, /2026-1-00000000042 nolu faturanız için ödeme beklenmektedir/);
   assert.match(html, /Worldline A910/);
   assert.match(html, /3D Secure/);
@@ -74,6 +87,9 @@ test('düz metin kopyası ödeme linkini içerir', () => {
   assert.match(text, /2026-1-00000000042 nolu faturanız/);
   assert.match(text, /https:\/\/crm\.microvise\.net\/pay\/abc/);
   assert.match(text, /1\.250,00 ₺/);
+  assert.match(text, /KDV hariç tutar: 1\.068,38 ₺/);
+  assert.match(text, /KDV: 181,62 ₺/);
+  assert.match(text, /TR57 0006 4000 0016 8010 3409 94/);
 });
 
 test('satıcı bilgisi boş alanlarda varsayılana düşer', () => {
@@ -106,4 +122,30 @@ test('PDF eki üretilir', async () => {
   assert.ok(Buffer.isBuffer(pdf));
   assert.ok(pdf.length > 800);
   assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
+});
+
+test('hatırlatma kopyası 1 hafta dilini kullanır', () => {
+  const copy = invoiceMailCopy({
+    invoices: sampleInvoices,
+    awaitingPayment: true,
+    isReminder: true,
+  });
+  assert.equal(copy.headerLabel, 'Ödeme hatırlatması');
+  assert.match(copy.body, /1 haftadır ödeme beklenmektedir/);
+  assert.match(copy.preheader, /ödeme hatırlatması/);
+});
+
+test('hatırlatma HTML mailinde ödeme linki ve hatırlatma başlığı vardır', () => {
+  const html = buildPaymentEmailHtml({
+    customerName: 'Örnek Ticaret Ltd',
+    invoices: sampleInvoices,
+    amount: 1250,
+    currency: 'TRY',
+    paymentUrl: 'https://crm.microvise.net/pay/abc',
+    isReminder: true,
+  });
+  assert.match(html, /Ödeme hatırlatması/);
+  assert.match(html, /1 haftadır ödeme beklenmektedir/);
+  assert.match(html, /https:\/\/crm\.microvise\.net\/pay\/abc/);
+  assert.match(html, /Güvenli ödeme yap/);
 });

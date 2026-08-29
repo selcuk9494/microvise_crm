@@ -582,7 +582,7 @@ function drawMeta(doc, label, value, x, y, width, row = 0, rowHeight = 30) {
 
 // Mal/Hizmet wide for long product names; Açıklama narrow (often empty).
 // Band 48→272 (224pt): Mal ~168pt, Açıklama ~56pt. Other columns unchanged.
-const TABLE_COLUMNS = [48, 216, 272, 336, 384, 421, 458, 504, 548];
+const TABLE_COLUMNS = [48, 200, 252, 322, 376, 416, 456, 504, 548];
 const TABLE_HEADERS = [
   'Mal/Hizmet',
   'Açıklama',
@@ -619,8 +619,6 @@ function rowHeight(doc, values, font, size, layout = null) {
       doc.heightOfString(value, { width: box.width, lineGap: 0.6 }),
     );
   }, 0);
-  // Uzun isimler tek satırı şişirmesin; çok kalemde tavan kompakt kalır.
-  // Az kalemde min yükseklik ile satırlar açılır.
   return Math.max(minH, Math.min(tallest + extra, maxH));
 }
 
@@ -647,9 +645,9 @@ function resolvePageLayout(itemCount) {
     afterMeta: 20,
     listTitleTop: 14,
     tableHeaderOffset: 18,
-    rowExtra: 3.5,
-    rowMax: 16.5,
-    rowMin: 11,
+    rowExtra: 4,
+    rowMax: 34,
+    rowMin: 13,
     afterTable: 6,
     totalsLineGap: 12.5,
   };
@@ -670,9 +668,9 @@ function resolvePageLayout(itemCount) {
     listTitleTop: 14 + Math.round(10 * t),
     tableHeaderOffset: 18 + Math.round(8 * t),
     // Az–orta kalemde satırlar hafif nefes alır; sahte ızgara satırı yok.
-    rowExtra: 3.5,
-    rowMax: 16.5 + Math.round(2 * t),
-    rowMin: 11 + Math.round(2.5 * t),
+    rowExtra: 4,
+    rowMax: 34 + Math.round(6 * t),
+    rowMin: 13 + Math.round(2 * t),
     afterTable: 6 + Math.round(18 * t),
     totalsLineGap: 12.5 + 2.5 * t,
   };
@@ -711,6 +709,8 @@ function drawRow(doc, values, y, height, font, size) {
   doc.font(font).fontSize(size).fillColor(COLORS.text);
   values.forEach((value, index) => {
     const box = columnBox(index);
+    doc.save();
+    doc.rect(box.x - 1, y + 1, box.width + 2, height - 2).clip();
     const textHeight = Math.min(
       height - 2,
       doc.heightOfString(value, {
@@ -718,13 +718,14 @@ function drawRow(doc, values, y, height, font, size) {
         lineGap: 0.6,
       }),
     );
-    doc.text(value, box.x, y + (height - textHeight) / 2, {
+    doc.text(value, box.x, y + Math.max(1, (height - textHeight) / 2), {
       width: box.width,
       height: height - 2,
       lineGap: 0.6,
       align: index < 2 ? 'left' : 'right',
       ellipsis: true,
     });
+    doc.restore();
   });
 }
 
