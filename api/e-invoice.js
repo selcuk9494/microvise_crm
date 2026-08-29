@@ -23,6 +23,7 @@ const {
   resolveSelectedBranch,
   syncActiveBranchFromEnvironment,
 } = require('./_lib/e_invoice_branches');
+const { normalizeValorDays } = require('./_lib/pos_status');
 
 async function readJson(req) {
   const chunks = [];
@@ -116,7 +117,8 @@ async function ensureEInvoiceSchema() {
       add column if not exists prod_branch_code text,
       add column if not exists prod_branch_name text,
       add column if not exists prod_branch_code_2 text,
-      add column if not exists prod_branch_name_2 text
+      add column if not exists prod_branch_name_2 text,
+      add column if not exists pos_valor_days integer not null default 1
   `);
   await query(`
     update public.e_invoice_settings
@@ -2834,6 +2836,7 @@ async function handler(req, res) {
         'smtp_user',
         'smtp_pass',
         'smtp_from',
+        'pos_valor_days',
       ];
       const current = await getSettings();
       const picked = {};
@@ -2863,6 +2866,9 @@ async function handler(req, res) {
       const synced = syncActiveBranchFromEnvironment({ ...current, ...picked });
       picked.seller_branch_code = synced.seller_branch_code;
       picked.seller_branch_name = synced.seller_branch_name;
+      if (Object.prototype.hasOwnProperty.call(picked, 'pos_valor_days')) {
+        picked.pos_valor_days = normalizeValorDays(picked.pos_valor_days);
+      }
       picked.updated_at = new Date().toISOString();
       if (user.auth_user_id) picked.created_by = user.auth_user_id;
 
@@ -2874,6 +2880,29 @@ async function handler(req, res) {
         [current.id, ...keys.map((key) => picked[key])],
       );
       return ok(req, res, { settings: result.rows[0] });
+    }
+
+    if (action === 'save_pos_valor_days') {
+      const settings = await getSettings();
+      if (!settings?.id) {
+        return badRequest(req, res, 'E-fatura ayarları bulunamadı.');
+      }
+      const days = normalizeValorDays(body.days ?? body.pos_valor_days);
+      const result = await query(
+        `
+          update public.e_invoice_settings
+          set pos_valor_days = $2,
+              updated_at = now()
+          where id = $1
+          returning pos_valor_days
+        `,
+        [settings.id, days],
+      );
+      return ok(req, res, {
+        ok: true,
+        posValorDays: Number(result.rows[0]?.pos_valor_days || days),
+        message: `Valör ${days} gün olarak kaydedildi.`,
+      });
     }
 
     if (action === 'test_mail') {

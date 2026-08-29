@@ -9,6 +9,11 @@ const {
   periodKeyForDate,
   dueDayInMonth,
   isPlanDueOn,
+  posValorInfo,
+  normalizeValorDays,
+  addCalendarDays,
+  daysBetweenCalendar,
+  posValorLabel,
 } = require('../api/_lib/pos_status');
 
 test('posListStatus maps paid / settled / pending', () => {
@@ -85,6 +90,31 @@ test('invoicePaymentAwaiting is true after mail until paid', () => {
   assert.equal(
     invoicePaymentAwaiting({ payment_link_status: 'pending' }),
     false,
+  );
+});
+
+test('valör tarihi ödeme gününe gün ekler ve kalan günü yazar', () => {
+  assert.equal(normalizeValorDays('2'), 2);
+  assert.equal(normalizeValorDays(-4), 0);
+  assert.equal(addCalendarDays('2026-08-29', 2), '2026-08-31');
+  assert.equal(daysBetweenCalendar('2026-08-29', '2026-08-31'), 2);
+  assert.equal(posValorLabel(3), 'Valör: 3 gün kaldı');
+  assert.equal(posValorLabel(1), 'Valör: yarın yatmalı');
+  assert.equal(posValorLabel(0), 'Valör: bugün yatmalı');
+  assert.equal(posValorLabel(-2), 'Valör: 2 gün gecikti');
+  const info = posValorInfo(
+    { status: 'paid', paid_at: '2026-08-29T10:00:00+03:00', valor_days: 2 },
+    { now: new Date('2026-08-29T12:00:00+03:00') },
+  );
+  assert.equal(info.expectedSettleOn, '2026-08-31');
+  assert.equal(info.daysRemaining, 2);
+  assert.equal(info.label, 'Valör: 2 gün kaldı');
+  assert.equal(
+    posValorInfo(
+      { status: 'paid', paid_at: '2026-08-29', settled_at: '2026-08-30' },
+      { now: new Date('2026-08-29') },
+    ).label,
+    '',
   );
 });
 

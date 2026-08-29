@@ -3626,7 +3626,7 @@ module.exports = async (req, res) => {
           await markPosPaymentSettled({
             linkId: body.linkId || body.id,
             settled: body.settled !== false && body.settled !== 'false',
-            createdBy: user?.id || null,
+            createdBy: user?.auth_user_id || user?.id || null,
           }),
         );
       } catch (error) {
@@ -3645,7 +3645,7 @@ module.exports = async (req, res) => {
           await dismissPosCollection({
             linkId: body.linkId || body.id,
             dismissed: body.dismissed !== false && body.dismissed !== 'false',
-            createdBy: user?.id || null,
+            createdBy: user?.auth_user_id || user?.id || null,
           }),
         );
       } catch (error) {

@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { query, withTransaction } = require('./db');
 const { ensureInvoicePaidCloseRule } = require('./invoice_paid_status');
+const { normalizeValorDays } = require('./pos_status');
 
 const HALKBANK_PROD_GATEWAY_URL = 'https://sanalpos.halkbank.com.tr/fim/est3Dgate';
 const HALKBANK_TEST_GATEWAY_URL = 'https://entegrasyon.asseco-see.com.tr/fim/est3Dgate';
@@ -19,6 +20,18 @@ function nestpayEscape(value) {
   return String(value ?? '')
     .replace(/\\/g, '\\\\')
     .replace(/\|/g, '\\|');
+}
+
+function asUuidOrNull(value) {
+  const text = String(value || '').trim();
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      text,
+    )
+  ) {
+    return null;
+  }
+  return text;
 }
 
 function buildHalkbankHashVer3(params, storeKey) {
@@ -1004,8 +1017,26 @@ async function ensureInvoicePaymentLinksTable() {
       add column if not exists settled_at timestamptz,
       add column if not exists settled_by uuid,
       add column if not exists dismissed_at timestamptz,
-      add column if not exists dismissed_by uuid
+      add column if not exists dismissed_by uuid,
+      add column if not exists valor_days integer
   `);
+}
+
+async function loadPosValorDays() {
+  try {
+    const result = await query(
+      `
+        select pos_valor_days
+        from public.e_invoice_settings
+        where is_active = true
+        order by created_at asc
+        limit 1
+      `,
+    );
+    return normalizeValorDays(result.rows[0]?.pos_valor_days);
+  } catch (_) {
+    return 1;
+  }
 }
 
 async function loadOpenInvoices(invoiceIds) {
@@ -1262,6 +1293,7 @@ async function createInvoicePaymentLink({
   const invoiceNumbers = invoices
     .map((i) => i.invoiceNumber)
     .filter(Boolean);
+  const valorDays = await loadPosValorDays();
 
   const inserted = await query(
     `
@@ -1275,9 +1307,10 @@ async function createInvoicePaymentLink({
         status,
         provider,
         created_by,
-        expires_at
+        expires_at,
+        valor_days
       ) values (
-        $1, $2, $3::uuid[], $4, $5, $6, 'pending', $7, $8, $9
+        $1, $2, $3::uuid[], $4, $5, $6, 'pending', $7, $8, $9, $10
       )
       returning *
     `,
@@ -1291,6 +1324,7 @@ async function createInvoicePaymentLink({
       config.provider,
       createdBy || null,
       expiresAt.toISOString(),
+      valorDays,
     ],
   );
 
@@ -1905,6 +1939,7 @@ async function completeInvoicePayment(link, { success, providerPayload, provider
   if (link.status === 'paid') return { ok: true, alreadyPaid: true };
 
   await ensureInvoicePaidCloseRule();
+  const valorDays = await loadPosValorDays();
   await withTransaction(async (txQuery) => {
     const locked = await txQuery(
       `
@@ -1975,6 +2010,7 @@ async function completeInvoicePayment(link, { success, providerPayload, provider
         update public.invoice_payment_links
         set status = 'paid',
             paid_at = now(),
+            valor_days = coalesce(valor_days, $4),
             provider_order_id = coalesce($2, provider_order_id),
             provider_payload = coalesce(provider_payload, '{}'::jsonb) || $3::jsonb,
             updated_at = now()
@@ -1984,6 +2020,7 @@ async function completeInvoicePayment(link, { success, providerPayload, provider
         current.id,
         providerOrderId || null,
         JSON.stringify(providerPayload || {}),
+        valorDays,
       ],
     );
   });
@@ -2247,12 +2284,12 @@ async function markPosPaymentSettled({
     `
       update public.invoice_payment_links
       set settled_at = case when $2 then now() else null end,
-          settled_by = case when $2 then $3 else null end,
+          settled_by = case when $2 then $3::uuid else null end,
           updated_at = now()
       where id = $1::uuid
       returning id, status, settled_at
     `,
-    [id, settled === true, createdBy || null],
+    [id, settled === true, asUuidOrNull(createdBy)],
   );
   const next = updated.rows[0];
   return {
@@ -2297,12 +2334,12 @@ async function dismissPosCollection({
     `
       update public.invoice_payment_links
       set dismissed_at = case when $2 then now() else null end,
-          dismissed_by = case when $2 then $3 else null end,
+          dismissed_by = case when $2 then $3::uuid else null end,
           updated_at = now()
       where id = $1::uuid
       returning id, status, dismissed_at
     `,
-    [id, dismissed === true, createdBy || null],
+    [id, dismissed === true, asUuidOrNull(createdBy)],
   );
   const next = updated.rows[0];
   return {
@@ -2327,6 +2364,7 @@ module.exports = {
   refundInvoicePosPayment,
   markPosPaymentSettled,
   dismissPosCollection,
+  loadPosValorDays,
   verifyPosRefundTicket,
   getPosConfigFromEnv,
   validatePosConfig,

@@ -91,6 +91,106 @@ function localToday() {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
+function calendarDateParts(value, timeZone = 'Asia/Famagusta') {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, part.value]),
+  );
+  return {
+    year: Number(values.year),
+    month: Number(values.month),
+    day: Number(values.day),
+  };
+}
+
+function calendarDateUtc(value) {
+  const parts = calendarDateParts(value);
+  if (!parts) return null;
+  return Date.UTC(parts.year, parts.month - 1, parts.day);
+}
+
+function formatCalendarDate(value) {
+  const parts = calendarDateParts(value);
+  if (!parts) return null;
+  return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+}
+
+function addCalendarDays(value, days) {
+  const parts = calendarDateParts(value);
+  if (!parts) return null;
+  const added = Number(days);
+  if (!Number.isFinite(added)) return formatCalendarDate(value);
+  const utc = Date.UTC(parts.year, parts.month - 1, parts.day + added);
+  const next = new Date(utc);
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
+}
+
+function daysBetweenCalendar(from, to) {
+  const start = calendarDateUtc(from);
+  const end = calendarDateUtc(to);
+  if (start == null || end == null) return null;
+  return Math.round((end - start) / (24 * 60 * 60 * 1000));
+}
+
+function normalizeValorDays(value, fallback = 1) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(30, Math.max(0, parsed));
+}
+
+function posValorLabel(daysRemaining) {
+  if (daysRemaining == null || !Number.isFinite(daysRemaining)) return '';
+  if (daysRemaining > 1) return `Valör: ${daysRemaining} gün kaldı`;
+  if (daysRemaining === 1) return 'Valör: yarın yatmalı';
+  if (daysRemaining === 0) return 'Valör: bugün yatmalı';
+  const late = Math.abs(daysRemaining);
+  return late === 1 ? 'Valör: 1 gün gecikti' : `Valör: ${late} gün gecikti`;
+}
+
+function posValorInfo(row, { now = new Date(), fallbackValorDays = 1 } = {}) {
+  const valorDays = normalizeValorDays(
+    row?.valor_days ?? fallbackValorDays,
+    fallbackValorDays,
+  );
+  const status = textOrEmpty(row?.list_status || row?.status).toLowerCase();
+  if (row?.settled_at || status === 'settled' || status === 'refunded') {
+    return {
+      valorDays,
+      expectedSettleOn: null,
+      daysRemaining: null,
+      label: '',
+    };
+  }
+  if (status !== 'paid') {
+    return {
+      valorDays,
+      expectedSettleOn: null,
+      daysRemaining: null,
+      label: '',
+    };
+  }
+  const paidAt = row?.paid_at || row?.paid_on;
+  const expectedSettleOn = addCalendarDays(paidAt, valorDays);
+  const daysRemaining = expectedSettleOn
+    ? daysBetweenCalendar(now, expectedSettleOn)
+    : null;
+  return {
+    valorDays,
+    expectedSettleOn,
+    daysRemaining,
+    label: posValorLabel(daysRemaining),
+  };
+}
+
 module.exports = {
   posListStatus,
   posListStatusLabel,
@@ -100,4 +200,9 @@ module.exports = {
   dueDayInMonth,
   isPlanDueOn,
   localToday,
+  normalizeValorDays,
+  addCalendarDays,
+  daysBetweenCalendar,
+  posValorLabel,
+  posValorInfo,
 };

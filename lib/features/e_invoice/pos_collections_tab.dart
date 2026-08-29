@@ -73,6 +73,10 @@ class PosCollectionRow {
   final DateTime? emailedAt;
   final DateTime? settledAt;
   final String? emailedTo;
+  final int valorDays;
+  final DateTime? expectedSettleOn;
+  final int? daysUntilValor;
+  final String valorLabel;
 
   const PosCollectionRow({
     required this.id,
@@ -93,6 +97,10 @@ class PosCollectionRow {
     this.emailedAt,
     this.settledAt,
     this.emailedTo,
+    this.valorDays = 1,
+    this.expectedSettleOn,
+    this.daysUntilValor,
+    this.valorLabel = '',
   });
 
   static double _toDouble(dynamic value, {double fallback = 0}) {
@@ -140,6 +148,12 @@ class PosCollectionRow {
       emailedAt: parseAppDateTime(json['emailed_at']?.toString()),
       settledAt: parseAppDateTime(json['settled_at']?.toString()),
       emailedTo: json['emailed_to']?.toString(),
+      valorDays: _toInt(json['valor_days'], fallback: 1),
+      expectedSettleOn: parseAppDateTime(json['expected_settle_on']?.toString()),
+      daysUntilValor: json['days_until_valor'] == null
+          ? null
+          : _toInt(json['days_until_valor']),
+      valorLabel: json['valor_label']?.toString() ?? '',
     );
   }
 }
@@ -151,6 +165,7 @@ class PosCollectionsResult {
   final int pendingCount;
   final int paidCount;
   final int settledCount;
+  final int valorDays;
   final double totalAmount;
 
   const PosCollectionsResult({
@@ -160,6 +175,7 @@ class PosCollectionsResult {
     this.pendingCount = 0,
     this.paidCount = 0,
     this.settledCount = 0,
+    this.valorDays = 1,
     required this.totalAmount,
   });
 }
@@ -215,6 +231,10 @@ final posCollectionsProvider = FutureProvider.autoDispose
           summaryMap?['settledCount'],
           fallback: items.where((e) => e.listStatus == 'settled').length,
         ),
+        valorDays: PosCollectionRow._toInt(
+          summaryMap?['valorDays'],
+          fallback: 1,
+        ),
         totalAmount: PosCollectionRow._toDouble(
           summaryMap?['totalAmount'],
           fallback: items
@@ -226,6 +246,16 @@ final posCollectionsProvider = FutureProvider.autoDispose
 
 DateTime _dateOnly(DateTime value) =>
     DateTime(value.year, value.month, value.day);
+
+(String, AppBadgeTone) _valorBadge(PosCollectionRow row) {
+  final days = row.daysUntilValor;
+  if (days == null || row.valorLabel.isEmpty) {
+    return ('', AppBadgeTone.neutral);
+  }
+  if (days < 0) return (row.valorLabel, AppBadgeTone.error);
+  if (days == 0) return (row.valorLabel, AppBadgeTone.primary);
+  return (row.valorLabel, AppBadgeTone.warning);
+}
 
 (String, AppBadgeTone) _statusBadge(PosCollectionRow row) {
   return switch (row.listStatus) {
@@ -251,6 +281,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
   bool _includeRefunded = false;
   String _status = 'all';
   bool _busy = false;
+  bool _savingValor = false;
 
   @override
   void initState() {
@@ -415,6 +446,40 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
     }
   }
 
+  Future<void> _saveValorDays(int days) async {
+    final next = days.clamp(0, 30);
+    setState(() => _savingValor = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      if (apiClient == null) return;
+      final response = await apiClient.postJson(
+        '/e-invoice',
+        body: {
+          'action': 'save_pos_valor_days',
+          'days': next,
+        },
+      );
+      if (!mounted) return;
+      ref.invalidate(posCollectionsProvider(_filter));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            response['message']?.toString() ??
+                'Valör $next gün olarak kaydedildi.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Valör kaydedilemedi: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _savingValor = false);
+    }
+  }
+
   Future<void> _refund(PosCollectionRow row, {bool crmOnly = false}) async {
     if (row.invoiceId == null || row.invoiceId!.isEmpty || !row.isActive) {
       return;
@@ -496,6 +561,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(posCollectionsProvider(_filter));
+    final valorDays = async.value?.valorDays ?? 1;
     final dateLabel = _start == _end
         ? DateFormat('d MMM yyyy', 'tr_TR').format(_start)
         : '${DateFormat('d MMM', 'tr_TR').format(_start)} – ${DateFormat('d MMM yyyy', 'tr_TR').format(_end)}';
@@ -516,9 +582,9 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
               ),
               const Gap(4),
               Text(
-                'Yalnızca ödeme linki oluşturulan veya mail atılan kayıtlar. '
-                'Nakit tahsil edilip fatura kapanınca bekleyen link düşer; '
-                'isterseniz “Listeden çıkar” ile de kaldırabilirsiniz.',
+                'Ödeme linki veya mail atılan tahsilatlar. '
+                'Valör, ödemenin hesaba kaç gün sonra yatacağını belirtir; '
+                'yeni anlaşmada buradan güncellenir.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: AppTheme.textMuted,
                 ),
@@ -578,6 +644,60 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                     ),
                 ],
               ),
+              const Gap(10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceMuted,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(AppPhosphorIcons.calendarBlank, size: 16),
+                    const Gap(8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Valör',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          Text(
+                            valorDays == 0
+                                ? 'Ödeme aynı gün hesaba yatar (T+0).'
+                                : 'Ödeme $valorDays gün sonra hesaba yatar. Yeni anlaşmada buradan değiştirin.',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppTheme.textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Azalt',
+                      onPressed: _savingValor || valorDays <= 0
+                          ? null
+                          : () => _saveValorDays(valorDays - 1),
+                      icon: const Icon(Icons.remove),
+                    ),
+                    Text(
+                      '$valorDays gün',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Artır',
+                      onPressed: _savingValor || valorDays >= 30
+                          ? null
+                          : () => _saveValorDays(valorDays + 1),
+                      icon: const Icon(Icons.add),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -636,6 +756,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                           row.invoiceNumber,
                         );
                         final (statusLabel, statusTone) = _statusBadge(row);
+                        final (valorLabel, valorTone) = _valorBadge(row);
                         return AppCard(
                           padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
                           child: Row(
@@ -689,6 +810,13 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                                             dense: true,
                                             label: 'Link gönderildi',
                                             tone: AppBadgeTone.warning,
+                                          ),
+                                        if (row.listStatus == 'paid' &&
+                                            valorLabel.isNotEmpty)
+                                          AppBadge(
+                                            dense: true,
+                                            label: valorLabel,
+                                            tone: valorTone,
                                           ),
                                         Text(
                                           DateFormat(

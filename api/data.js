@@ -42,8 +42,12 @@ const {
   ensureProductImageUrlColumn,
 } = require('./_lib/schema');
 const { ensureBrandIntegrations } = require('./_lib/mutakabat_processor');
-const { ensureInvoicePaymentLinksTable } = require('./_lib/invoice_payment');
-const { posListStatus, posCollectionVisible } = require('./_lib/pos_status');
+const { ensureInvoicePaymentLinksTable, loadPosValorDays } = require('./_lib/invoice_payment');
+const {
+  posListStatus,
+  posCollectionVisible,
+  posValorInfo,
+} = require('./_lib/pos_status');
 const {
   ensureRecurringBillingTables,
   listRecurringBillingPlans,
@@ -2174,6 +2178,7 @@ module.exports = async (req, res) => {
       case 'pos_collections_list': {
         if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) return;
         await ensureInvoicePaymentLinksTable();
+        const valorDaysSetting = await loadPosValorDays();
         const startDate = String(req.query.startDate || '').trim();
         const endDate = String(req.query.endDate || '').trim();
         const includeRefunded = parseBoolean(req.query.includeRefunded, false);
@@ -2229,6 +2234,7 @@ module.exports = async (req, res) => {
               l.emailed_to,
               l.settled_at,
               l.dismissed_at,
+              l.valor_days,
               l.created_at,
               l.expires_at,
               json_build_object('name', c.name, 'email', c.email) as customers,
@@ -2259,6 +2265,10 @@ module.exports = async (req, res) => {
           const listStatus = posListStatus(row);
           const invoiceList = Array.isArray(row.invoices) ? row.invoices : [];
           const firstInvoice = invoiceList[0] || null;
+          const valor = posValorInfo(
+            { ...row, list_status: listStatus },
+            { fallbackValorDays: valorDaysSetting },
+          );
           return {
             ...row,
             list_status: listStatus,
@@ -2270,6 +2280,10 @@ module.exports = async (req, res) => {
             payment_link_status: row.status,
             payment_link_paid_at: row.paid_at,
             paid_on: row.paid_at || row.created_at,
+            valor_days: valor.valorDays,
+            expected_settle_on: valor.expectedSettleOn,
+            days_until_valor: valor.daysRemaining,
+            valor_label: valor.label,
           };
         }).filter((row) =>
           posCollectionVisible({
@@ -2294,6 +2308,7 @@ module.exports = async (req, res) => {
             settledCount: items.filter((row) => row.list_status === 'settled').length,
             activeCount: visible.length,
             totalAmount,
+            valorDays: valorDaysSetting,
           },
         });
       }
