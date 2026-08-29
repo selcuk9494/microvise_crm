@@ -785,7 +785,8 @@ async function applyOfficialInvoiceNumber({
 // Sayaç yalnızca başarılı gönderimden sonra ilerlediği için hazırlanmış ya da
 // hatalı kalan faturalar aynı numarayı tutabiliyor. Numarayı gönderim anında
 // yerelde kullanılmış olanları atlayarak seçiyoruz.
-async function reservedInvoiceNumbers(prefix, excludeInvoiceId) {
+async function reservedInvoiceNumbers(prefix, excludeInvoiceId, environment) {
+  const env = environment === 'production' ? 'production' : 'test';
   const result = await query(
     `
       select e_invoice_number
@@ -793,8 +794,9 @@ async function reservedInvoiceNumbers(prefix, excludeInvoiceId) {
       where e_invoice_number like $1
         and id is distinct from $2
         and e_invoice_status in ('sent', 'prepared')
+        and coalesce(nullif(btrim(e_invoice_environment), ''), 'test') = $3
     `,
-    [`${prefix}%`, excludeInvoiceId || null],
+    [`${prefix}%`, excludeInvoiceId || null, env],
   );
   return new Set(
     result.rows
@@ -833,7 +835,11 @@ function nextSerialForBranch({ taken, prefix, floor = 1 }) {
 
 async function resolveInvoiceNumber({ settings, invoice, invoiceId, skip }) {
   const prefix = invoiceNumberPrefix(settings, invoice);
-  const taken = await reservedInvoiceNumbers(prefix, invoiceId);
+  const taken = await reservedInvoiceNumbers(
+    prefix,
+    invoiceId,
+    settings.environment,
+  );
   for (const value of skip || []) {
     const cleaned = cleanText(value);
     if (cleaned) taken.add(cleaned);
