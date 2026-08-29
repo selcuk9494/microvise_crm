@@ -296,52 +296,55 @@ Future<void> _sendInvoicePaymentLinkEmailFlow({
       .map((invoice) => (invoice.customerEmail ?? '').trim())
       .firstWhere((email) => email.contains('@'), orElse: () => '');
 
-  final emailController = TextEditingController(text: initialEmail);
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Fatura ve ödeme linkini mail at'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${payable.length} fatura · ${money.format(total)}\n'
-            'PDF ve sanal POS ödeme linki müşteriye gönderilir. '
-            'Sonrasında “Link gönderildi · ödeme bekliyor” görünür.',
-          ),
-          const Gap(12),
-          TextField(
-            controller: emailController,
-            keyboardType: TextInputType.emailAddress,
-            autofillHints: const [AutofillHints.email],
-            decoration: const InputDecoration(
-              labelText: 'E-posta',
-              hintText: 'musteri@ornek.com',
+  var email = initialEmail;
+  if (!email.contains('@')) {
+    final emailController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Fatura ve ödeme linkini mail at'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${payable.length} fatura · ${money.format(total)}\n'
+              'PDF ve sanal POS ödeme linki müşteriye gönderilir. '
+              'Yazdığınız e-posta cari karta kaydedilir; sonraki faturalar sormadan buraya gider.',
             ),
+            const Gap(12),
+            TextField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+              decoration: const InputDecoration(
+                labelText: 'E-posta',
+                hintText: 'musteri@ornek.com',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Gönder'),
           ),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Vazgeç'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Gönder'),
-        ),
-      ],
-    ),
-  );
-  final email = emailController.text.trim();
-  emailController.dispose();
-  if (confirmed != true || !context.mounted) return;
-  if (!email.contains('@')) {
-    messenger.showSnackBar(
-      const SnackBar(content: Text('Geçerli bir e-posta yazın.')),
     );
-    return;
+    email = emailController.text.trim();
+    emailController.dispose();
+    if (confirmed != true || !context.mounted) return;
+    if (!email.contains('@')) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Geçerli bir e-posta yazın.')),
+      );
+      return;
+    }
   }
 
   final apiClient = ref.read(apiClientProvider);
@@ -359,11 +362,12 @@ Future<void> _sendInvoicePaymentLinkEmailFlow({
     if (!context.mounted) return;
     ref.invalidate(invoicesProvider);
     ref.invalidate(accountBalancesProvider);
+    ref.invalidate(customersProvider);
     messenger.showSnackBar(
       SnackBar(
         content: Text(
           response['message']?.toString() ??
-              'Fatura ve ödeme linki gönderildi. Link gönderildi · ödeme bekliyor.',
+              'Fatura ve ödeme linki $email adresine gönderildi.',
         ),
       ),
     );

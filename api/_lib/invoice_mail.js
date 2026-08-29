@@ -780,6 +780,23 @@ async function buildInvoicePaymentPdf({
   });
 }
 
+async function rememberCustomerEmail(customerId, email) {
+  const id = String(customerId || '').trim();
+  const to = String(email || '').trim().toLowerCase();
+  if (!id || !isValidEmail(to)) return false;
+  const result = await query(
+    `
+      update public.customers
+      set email = $2
+      where id = $1::uuid
+        and coalesce(lower(btrim(email)), '') is distinct from $2
+      returning id
+    `,
+    [id, to],
+  );
+  return Boolean(result.rows[0]);
+}
+
 async function markPaymentLinkEmailed({ linkId, emailedTo }) {
   await ensureInvoicePaymentLinksTable();
   await query(
@@ -892,6 +909,13 @@ async function sendInvoicePaymentLinkEmail({
     attachments,
   });
 
+  let savedToCustomer = false;
+  try {
+    savedToCustomer = await rememberCustomerEmail(invoices[0].customer_id, to);
+  } catch (error) {
+    console.error('Cari e-posta kaydı:', error);
+  }
+
   if (link) {
     await markPaymentLinkEmailed({
       linkId: link.id,
@@ -899,6 +923,7 @@ async function sendInvoicePaymentLinkEmail({
     });
   }
 
+  const savedNote = savedToCustomer ? ' Adres cari karta kaydedildi.' : '';
   return {
     ok: true,
     paymentUrl: paymentUrl || null,
@@ -907,13 +932,14 @@ async function sendInvoicePaymentLinkEmail({
     invoiceCount: invoices.length,
     emailedTo: to,
     customerName,
+    savedToCustomer,
     status: awaitingPayment ? 'pending' : 'paid',
     statusLabel: awaitingPayment
       ? 'Link gönderildi · ödeme bekliyor'
       : 'Ödeme teşekkür maili gönderildi',
     message: awaitingPayment
-      ? `Fatura ve ödeme linki ${to} adresine gönderildi.`
-      : `Ödemeniz için teşekkür maili ${to} adresine gönderildi.`,
+      ? `Fatura ve ödeme linki ${to} adresine gönderildi.${savedNote}`
+      : `Ödemeniz için teşekkür maili ${to} adresine gönderildi.${savedNote}`,
   };
 }
 
@@ -921,6 +947,7 @@ module.exports = {
   sendInvoicePaymentLinkEmail,
   loadInvoicesForMail,
   markPaymentLinkEmailed,
+  rememberCustomerEmail,
   formatMoney,
   localInvoiceNumber,
   formatDateTr,
