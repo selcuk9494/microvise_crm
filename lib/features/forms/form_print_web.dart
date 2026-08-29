@@ -1,24 +1,9 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
 import 'dart:html' as html;
-import 'dart:js_util' as js_util;
 
-/// Printable HTML'i yeni pencerede açar.
-///
-/// Blob URL kullanmaz; böylece yazdırma üst/alt bilgisinde CRM linki çıkmaz.
+/// Printable HTML'i tek sekmede açar.
 void openFormPrintHtml(String htmlContent, {Duration? revokeAfter}) {
-  try {
-    final opened = html.window.open('', '_blank');
-    if (opened != null) {
-      final doc = js_util.getProperty(opened, 'document');
-      js_util.callMethod(doc, 'open', const []);
-      js_util.callMethod(doc, 'write', [htmlContent]);
-      js_util.callMethod(doc, 'close', const []);
-      return;
-    }
-  } catch (_) {}
-
-  // Popup engellenirse eski yol (üst/altta blob/CRM URL görünebilir).
   final blob = html.Blob([htmlContent], 'text/html');
   final url = html.Url.createObjectUrlFromBlob(blob);
   try {
