@@ -633,17 +633,17 @@ function nextNumber(settings, invoiceType) {
 }
 
 function invoiceNumber(settings, invoice, serial) {
+  const year = new Date(invoice.invoice_date || Date.now()).getFullYear();
+  const vkn = requireApiVkn(settings.seller_vkn, 'Satıcı VKN');
+  const branch = cleanText(settings.seller_branch_code) || '1';
   if (invoice.e_invoice_number) {
     const parts = String(invoice.e_invoice_number).split('-');
     if (parts.length === 4) {
       parts[0] = requireApiVkn(parts[0], 'Fatura numarasındaki VKN');
+      parts[2] = branch;
       return parts.join('-');
     }
-    return invoice.e_invoice_number;
   }
-  const year = new Date(invoice.invoice_date || Date.now()).getFullYear();
-  const vkn = requireApiVkn(settings.seller_vkn, 'Satıcı VKN');
-  const branch = cleanText(settings.seller_branch_code) || '1';
   return `${vkn}-${year}-${branch}-${String(serial).padStart(11, '0')}`;
 }
 
@@ -813,7 +813,7 @@ async function resolveInvoiceNumber({ settings, invoice, invoiceId, skip }) {
   const stored = cleanText(invoice.e_invoice_number);
   if (stored) {
     const normalized = invoiceNumber(settings, invoice, 0);
-    if (!taken.has(normalized)) {
+    if (normalized.startsWith(prefix) && !taken.has(normalized)) {
       return { number: normalized, serial: serialFromNumber(normalized, prefix) };
     }
   }
@@ -1125,16 +1125,33 @@ function validateRegisteredBranch(settings, branches) {
 }
 
 function maliyeErrorMessage(json, text, fallback) {
-  const nested = json?.error && typeof json.error === 'object' ? json.error : null;
+  let body = json && typeof json === 'object' ? json : {};
+  if (typeof body.error === 'string') {
+    try {
+      const parsed = JSON.parse(body.error);
+      if (parsed && typeof parsed === 'object') body = { ...body, ...parsed };
+    } catch (_) {
+      /* keep raw string */
+    }
+  }
+  const nested = body.error && typeof body.error === 'object' ? body.error : null;
+  const fromResults = Array.isArray(body.sonuclar)
+    ? body.sonuclar.map((item) => cleanText(item?.hataMesaji)).filter(Boolean).join(' ')
+    : '';
   const message =
-    json?.mesaj ||
-    json?.message ||
-    json?.error_description ||
-    (typeof json?.error === 'string' ? json.error : null) ||
+    body.hataMesaji ||
+    nested?.hataMesaji ||
+    fromResults ||
+    body.mesaj ||
+    body.message ||
+    body.error_description ||
+    (typeof body.error === 'string' ? body.error : null) ||
     nested?.mesaj ||
     nested?.message ||
-    (typeof text === 'string' && text.trim() && !text.trim().startsWith('{') ? text.trim() : null) ||
-    json?.raw;
+    (typeof text === 'string' && text.trim() && !text.trim().startsWith('{')
+      ? text.trim()
+      : null) ||
+    body.raw;
   const cleaned = cleanText(message);
   return cleaned || fallback;
 }
@@ -1948,7 +1965,11 @@ async function sendToMaliye({ settings, payload }) {
     json = { raw: text };
   }
   if (!response.ok) {
-    const message = json?.error || json?.message || text || 'E-fatura gönderimi başarısız.';
+    const message = maliyeErrorMessage(
+      json,
+      text,
+      'E-fatura gönderimi başarısız.',
+    );
     const error = new Error(message);
     error.response = json;
     throw error;
@@ -3185,6 +3206,7 @@ module.exports.testUtils = {
   requireStoredVkn,
   requireApiVkn,
   invoiceNumber,
+  maliyeErrorMessage,
   createUuidV7,
   validateInvoiceForEInvoice,
   canSendInvoiceToEnvironment,

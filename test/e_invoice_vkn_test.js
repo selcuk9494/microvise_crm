@@ -26,6 +26,7 @@ const {
   canArchiveOfficialPdf,
   isIncomingOfficialInvoice,
   buildOfficialMaliyePortalUrl,
+  maliyeErrorMessage,
 } = require('../api/e-invoice').testUtils;
 const { buildEInvoiceArchivePdf } = require('../api/_lib/e_invoice_pdf');
 
@@ -89,6 +90,34 @@ test('önceden hazırlanmış 10 haneli VKN içeren fatura numarasını düzelti
     1,
   );
   assert.equal(number, '007033259-2026-1-00000000001');
+});
+
+test('seçilen şube kodunu hazırlanmış fatura numarasına yazar', () => {
+  const number = invoiceNumber(
+    { seller_vkn: '620009058', seller_branch_code: '2' },
+    {
+      e_invoice_number: '620009058-2026-1-00000000067',
+      invoice_date: '2026-08-29',
+      invoice_type: 'sales',
+    },
+    67,
+  );
+  assert.equal(number, '620009058-2026-2-00000000067');
+});
+
+test('Maliye fatura no hata mesajını düz metin olarak çıkarır', () => {
+  assert.equal(
+    maliyeErrorMessage(
+      {
+        faturaNo: '620009058-2026-1-00000000067',
+        hataMesaji:
+          'Fatura no formatı doğru değil. Format: VKN-YIL-SUBEKOD-SIRA şeklinde olmalıdır.',
+      },
+      '',
+      'fallback',
+    ),
+    'Fatura no formatı doğru değil. Format: VKN-YIL-SUBEKOD-SIRA şeklinde olmalıdır.',
+  );
 });
 
 test('Maliye yanıtından resmi fatura numarasını alır', () => {
