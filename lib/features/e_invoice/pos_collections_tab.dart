@@ -330,6 +330,37 @@ DateTime _dateOnly(DateTime value) =>
   };
 }
 
+bool _matchesValorFilter(PosCollectionRow row, String valorFilter) {
+  final days = row.daysUntilValor;
+  return switch (valorFilter) {
+    'overdue' => days != null && days < 0,
+    'today' => days == 0,
+    'tomorrow' => days == 1,
+    'remaining' => days != null && days > 1,
+    _ => true,
+  };
+}
+
+int _compareValorSort(
+  PosCollectionRow a,
+  PosCollectionRow b,
+  String valorSort,
+) {
+  if (valorSort == 'paid_on') {
+    return b.paidOn.compareTo(a.paidOn);
+  }
+  final aDays = a.daysUntilValor;
+  final bDays = b.daysUntilValor;
+  if (aDays == null && bDays == null) return b.paidOn.compareTo(a.paidOn);
+  if (aDays == null) return 1;
+  if (bDays == null) return -1;
+  final cmp = valorSort == 'valor_late'
+      ? bDays.compareTo(aDays)
+      : aDays.compareTo(bDays);
+  if (cmp != 0) return cmp;
+  return b.paidOn.compareTo(a.paidOn);
+}
+
 class PosCollectionsTab extends ConsumerStatefulWidget {
   const PosCollectionsTab({super.key, required this.moneyTry});
 
@@ -344,6 +375,8 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
   late DateTime _end;
   bool _includeRefunded = false;
   String _status = 'all';
+  String _valorFilter = 'all';
+  String _valorSort = 'valor_soon';
   bool _busy = false;
   bool _savingValor = false;
 
@@ -709,6 +742,58 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                     ),
                 ],
               ),
+              const Gap(8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    'Valör',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  for (final entry in const [
+                    ('all', 'Tümü'),
+                    ('overdue', 'Gecikti'),
+                    ('today', 'Bugün yatmalı'),
+                    ('tomorrow', 'Yarın'),
+                    ('remaining', 'Kalan'),
+                  ])
+                    FilterChip(
+                      label: Text(entry.$2),
+                      selected: _valorFilter == entry.$1,
+                      onSelected: (_) {
+                        setState(() {
+                          _valorFilter = entry.$1;
+                          if (entry.$1 != 'all' && _status == 'all') {
+                            _status = 'paid';
+                          }
+                        });
+                      },
+                    ),
+                  const Gap(8),
+                  Text(
+                    'Sıra',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  for (final entry in const [
+                    ('valor_soon', 'Yakın valör'),
+                    ('valor_late', 'Uzak valör'),
+                    ('paid_on', 'Ödeme tarihi'),
+                  ])
+                    FilterChip(
+                      label: Text(entry.$2),
+                      selected: _valorSort == entry.$1,
+                      onSelected: (_) {
+                        setState(() => _valorSort = entry.$1);
+                      },
+                    ),
+                ],
+              ),
               const Gap(10),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -776,13 +861,20 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
               message: '$error',
             ),
             data: (result) {
-              if (result.items.isEmpty) {
-                return const EmptyStateCard(
-                  icon: AppPhosphorIcons.money,
-                  title: 'Sanal POS kaydı yok',
-                  message:
-                      'Ödeme linki veya ödeme maili olan kayıtlar burada görünür. '
-                      'Nakit kapanmış faturalar listeden düşer.',
+              final items = result.items
+                  .where((row) => _matchesValorFilter(row, _valorFilter))
+                  .toList()
+                ..sort((a, b) => _compareValorSort(a, b, _valorSort));
+              if (items.isEmpty) {
+                return EmptyStateCard(
+                  icon: AppPhosphorIcons.calendarBlank,
+                  title: _valorFilter == 'all'
+                      ? 'Sanal POS kaydı yok'
+                      : 'Bu valör filtresinde kayıt yok',
+                  message: _valorFilter == 'all'
+                      ? 'Ödeme linki veya ödeme maili olan kayıtlar burada görünür. '
+                          'Nakit kapanmış faturalar listeden düşer.'
+                      : 'Başka bir valör filtresi veya tarih aralığı seçin.',
                 );
               }
               return Column(
@@ -803,7 +895,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                               ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                         Text(
-                          paidTotalsByCurrency(result.items),
+                          paidTotalsByCurrency(items),
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: AppTheme.textMuted),
                         ),
@@ -813,10 +905,10 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                   const Gap(8),
                   Expanded(
                     child: ListView.separated(
-                      itemCount: result.items.length,
+                      itemCount: items.length,
                       separatorBuilder: (_, _) => const Gap(8),
                       itemBuilder: (context, index) {
-                        final row = result.items[index];
+                        final row = items[index];
                         final invoiceLabel = formatInvoiceNumberForDisplay(
                           row.invoiceNumber,
                         );
@@ -885,13 +977,6 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                                             label: 'Link gönderildi',
                                             tone: AppBadgeTone.warning,
                                           ),
-                                        if (row.listStatus == 'paid' &&
-                                            valorLabel.isNotEmpty)
-                                          AppBadge(
-                                            dense: true,
-                                            label: valorLabel,
-                                            tone: valorTone,
-                                          ),
                                         Text(
                                           DateFormat(
                                             'd MMM yyyy HH:mm',
@@ -937,6 +1022,15 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                                         .titleSmall
                                         ?.copyWith(fontWeight: FontWeight.w800),
                                   ),
+                                  if (row.listStatus == 'paid' &&
+                                      valorLabel.isNotEmpty) ...[
+                                    const Gap(8),
+                                    _ValorCountdown(
+                                      days: row.daysUntilValor!,
+                                      expectedSettleOn: row.expectedSettleOn,
+                                      tone: valorTone,
+                                    ),
+                                  ],
                                   if (row.listStatus == 'paid') ...[
                                     const Gap(4),
                                     TextButton(
@@ -988,6 +1082,101 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ValorCountdown extends StatelessWidget {
+  const _ValorCountdown({
+    required this.days,
+    required this.tone,
+    this.expectedSettleOn,
+  });
+
+  final int days;
+  final AppBadgeTone tone;
+  final DateTime? expectedSettleOn;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (tone) {
+      AppBadgeTone.error => AppTheme.error,
+      AppBadgeTone.primary => AppTheme.primary,
+      _ => AppTheme.warning,
+    };
+    final headline = days < 0
+        ? '${days.abs()}'
+        : days == 0
+            ? 'BUGÜN'
+            : days == 1
+                ? 'YARIN'
+                : '$days';
+    final caption = days < 0
+        ? 'gün gecikti'
+        : days == 0 || days == 1
+            ? 'yatmalı'
+            : 'gün kaldı';
+    final dateLabel = expectedSettleOn == null
+        ? null
+        : DateFormat('d MMM yyyy', 'tr_TR').format(expectedSettleOn!);
+    final largeNumber = days < 0 || days > 1;
+
+    return Container(
+      constraints: const BoxConstraints(minWidth: 112),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: color, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            'VALÖR',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.1,
+              color: color,
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                headline,
+                style: TextStyle(
+                  fontSize: largeNumber ? 26 : 18,
+                  fontWeight: FontWeight.w900,
+                  height: 1.05,
+                  color: color,
+                ),
+              ),
+              const Gap(4),
+              Text(
+                caption,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          if (dateLabel != null)
+            Text(
+              dateLabel,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
