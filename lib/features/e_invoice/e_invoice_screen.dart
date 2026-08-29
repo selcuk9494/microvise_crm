@@ -379,6 +379,109 @@ Future<void> _sendInvoicePaymentLinkEmailFlow({
   }
 }
 
+Future<void> _sendInvoicePaymentLinkWhatsAppFlow({
+  required BuildContext context,
+  required WidgetRef ref,
+  required List<Invoice> invoices,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final payable = invoices
+      .where(
+        (invoice) =>
+            invoice.isActive &&
+            invoice.isOpen &&
+            invoice.remainingAmount > 0 &&
+            invoice.invoiceType == 'sales',
+      )
+      .toList(growable: false);
+  if (payable.isEmpty) {
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('WhatsApp için açık satış faturası seçin.'),
+      ),
+    );
+    return;
+  }
+
+  final customerIds = payable.map((e) => e.customerId).toSet();
+  if (customerIds.length > 1) {
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('WhatsApp aynı cari için gönderilebilir.'),
+      ),
+    );
+    return;
+  }
+
+  final currencies = payable.map((e) => e.currency).toSet();
+  if (currencies.length > 1) {
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Seçilen faturaların para birimi aynı olmalıdır.'),
+      ),
+    );
+    return;
+  }
+
+  final total = payable.fold<double>(
+    0,
+    (sum, inv) => sum + inv.remainingAmount,
+  );
+  final currency = (currencies.first).toString().trim().toUpperCase();
+
+  final apiClient = ref.read(apiClientProvider);
+  if (apiClient == null) return;
+
+  try {
+    final response = await apiClient.postJson(
+      '/mutate',
+      body: {
+        'op': 'createInvoicePaymentLink',
+        'invoiceIds': payable.map((e) => e.id).toList(),
+      },
+    );
+    final paymentUrl = response['paymentUrl']?.toString() ?? '';
+    if (paymentUrl.isEmpty) {
+      throw Exception('Ödeme linki alınamadı');
+    }
+    if (!context.mounted) return;
+    final amount = (response['amount'] as num?)?.toDouble() ?? total;
+    final responseCurrency =
+        (response['currency']?.toString() ?? currency).trim().toUpperCase();
+    final resultMoney = NumberFormat.currency(
+      locale: 'tr_TR',
+      symbol: _currencySymbol(responseCurrency),
+      decimalDigits: 2,
+    );
+    CustomerDetail? customer;
+    final customerId = payable.first.customerId.trim();
+    if (customerId.isNotEmpty) {
+      try {
+        customer = await ref.read(customerDetailProvider(customerId).future);
+      } catch (_) {
+        customer = null;
+      }
+    }
+    if (!context.mounted) return;
+    ref.invalidate(invoicesProvider);
+    await shareInvoicePaymentLinkWithWhatsApp(
+      context: context,
+      paymentUrl: paymentUrl,
+      amountLabel: resultMoney.format(amount),
+      invoiceLabels: payable
+          .map((invoice) => formatInvoiceNumberForDisplay(invoice.invoiceNumber))
+          .toList(growable: false),
+      customerName: customer?.name ?? payable.first.customerName,
+      customer: customer,
+    );
+  } catch (error) {
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text('WhatsApp ödeme linki gönderilemedi: $error')),
+    );
+  }
+}
+
 class _EInvoiceBranchOption {
   const _EInvoiceBranchOption({required this.code, required this.name});
   final String code;
@@ -1378,6 +1481,22 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                             _bulkDeleting ||
                                             _bulkProcessing
                                         ? null
+                                        : () => _whatsAppPaymentLinkSelected(
+                                            items,
+                                          ),
+                                    icon: const Icon(
+                                      LucideIcons.messageCircle,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Fatura + link WhatsApp'),
+                                  ),
+                                  const Gap(8),
+                                  OutlinedButton.icon(
+                                    onPressed:
+                                        _selectedInvoiceIds.isEmpty ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing
+                                        ? null
                                         : () => _exportSelectedStatement(items),
                                     icon: const Icon(
                                       AppPhosphorIcons.receipt,
@@ -1590,6 +1709,20 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                     size: 18,
                                   ),
                                   label: const Text('Fatura + link mail'),
+                                ),
+                                OutlinedButton.icon(
+                                  onPressed:
+                                      _selectedInvoiceIds.isEmpty ||
+                                          _bulkDeleting ||
+                                          _bulkProcessing
+                                      ? null
+                                      : () =>
+                                            _whatsAppPaymentLinkSelected(items),
+                                  icon: const Icon(
+                                    LucideIcons.messageCircle,
+                                    size: 18,
+                                  ),
+                                  label: const Text('Fatura + link WhatsApp'),
                                 ),
                                 OutlinedButton.icon(
                                   onPressed:
@@ -2622,6 +2755,17 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
         .toList(growable: false);
     await _sendInvoicePaymentLinkEmailFlow(
+      context: context,
+      ref: ref,
+      invoices: selected,
+    );
+  }
+
+  Future<void> _whatsAppPaymentLinkSelected(List<Invoice> visibleInvoices) async {
+    final selected = visibleInvoices
+        .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
+        .toList(growable: false);
+    await _sendInvoicePaymentLinkWhatsAppFlow(
       context: context,
       ref: ref,
       invoices: selected,
@@ -4052,6 +4196,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             tone: _InvoiceActionTone.primary,
             onPressed: _busy ? null : _emailPaymentLink,
           ),
+        if (canPaymentLink)
+          _InvoiceIconAction(
+            tooltip: 'Fatura ve ödeme linkini WhatsApp ile gönder',
+            icon: LucideIcons.messageCircle,
+            tone: _InvoiceActionTone.primary,
+            onPressed: _busy ? null : _whatsAppPaymentLink,
+          ),
         if (canPosRefund)
           _InvoiceIconAction(
             tooltip: 'Sanal POS iade',
@@ -4123,6 +4274,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 _sendPaymentLink();
               case 'payment_link_email':
                 _emailPaymentLink();
+              case 'payment_link_whatsapp':
+                _whatsAppPaymentLink();
               case 'pos_refund':
                 _refundPosPayment();
               case 'manual':
@@ -4151,6 +4304,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               const PopupMenuItem(
                 value: 'payment_link_email',
                 child: Text('Fatura + link mail'),
+              ),
+              const PopupMenuItem(
+                value: 'payment_link_whatsapp',
+                child: Text('Fatura + link WhatsApp'),
               ),
             ],
             if (invoice.invoiceType == 'sales' &&
@@ -4281,6 +4438,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               _sendPaymentLink();
             case 'payment_link_email':
               _emailPaymentLink();
+            case 'payment_link_whatsapp':
+              _whatsAppPaymentLink();
             case 'pos_refund':
               _refundPosPayment();
             case 'manual':
@@ -4309,6 +4468,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             const PopupMenuItem(
               value: 'payment_link_email',
               child: Text('Fatura + link mail'),
+            ),
+            const PopupMenuItem(
+              value: 'payment_link_whatsapp',
+              child: Text('Fatura + link WhatsApp'),
             ),
           ],
           if (invoice.invoiceType == 'sales' &&
@@ -4820,6 +4983,19 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     setState(() => _busy = true);
     try {
       await _sendInvoicePaymentLinkEmailFlow(
+        context: context,
+        ref: ref,
+        invoices: [widget.invoice],
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _whatsAppPaymentLink() async {
+    setState(() => _busy = true);
+    try {
+      await _sendInvoicePaymentLinkWhatsAppFlow(
         context: context,
         ref: ref,
         invoices: [widget.invoice],

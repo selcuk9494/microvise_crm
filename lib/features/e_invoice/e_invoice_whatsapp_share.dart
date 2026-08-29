@@ -216,6 +216,170 @@ String buildEInvoiceWhatsAppMessage({
   return 'Microvise E-Fatura • $number$namePart • $amount $currency';
 }
 
+String buildInvoicePaymentWhatsAppMessage({
+  required String paymentUrl,
+  required String amountLabel,
+  required List<String> invoiceLabels,
+  String? customerName,
+}) {
+  final numbers = invoiceLabels
+      .map((label) => label.trim())
+      .where((label) => label.isNotEmpty)
+      .join(', ');
+  final name = (customerName ?? '').trim();
+  final greeting = name.isEmpty ? 'Merhaba,' : 'Merhaba $name,';
+  final invoicePart = numbers.isEmpty ? 'faturanız' : numbers;
+  return '$greeting\n\n'
+      '$invoicePart için sanal POS ödeme linki:\n'
+      '$paymentUrl\n\n'
+      'Tutar: $amountLabel\n'
+      'Microvise Innovation';
+}
+
+/// Cari numaralarından birini seçtirir veya elle numara ister. İptalde null.
+Future<String?> pickWhatsAppPhone({
+  required BuildContext context,
+  CustomerDetail? customer,
+  String title = 'WhatsApp ile gönder',
+  String subtitle =
+      'Numara seçin; WhatsApp sohbeti ödeme linkiyle açılır.',
+}) async {
+  final options = <_PhoneOption>[];
+
+  void addPhone(String label, String? number) {
+    final raw = (number ?? '').trim();
+    if (raw.isEmpty) return;
+    final normalizedKey = _normalizePhoneKey(raw);
+    if (normalizedKey.isEmpty) return;
+    if (options.any((o) => _normalizePhoneKey(o.phone) == normalizedKey)) {
+      return;
+    }
+    options.add(_PhoneOption(label: label, phone: raw));
+  }
+
+  if (customer != null) {
+    addPhone(
+      (customer.phone1Title ?? 'Müşteri').trim().isEmpty
+          ? 'Müşteri'
+          : customer.phone1Title!,
+      customer.phone1,
+    );
+    addPhone(
+      (customer.phone2Title ?? 'İrtibat').trim().isEmpty
+          ? 'İrtibat'
+          : customer.phone2Title!,
+      customer.phone2,
+    );
+    addPhone(
+      (customer.phone3Title ?? 'İrtibat 2').trim().isEmpty
+          ? 'İrtibat 2'
+          : customer.phone3Title!,
+      customer.phone3,
+    );
+  }
+
+  final action = await showModalBottomSheet<_ShareAction>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          8,
+          16,
+          16 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            const Gap(6),
+            Text(
+              options.isEmpty
+                  ? 'Cariye kayıtlı numara yok. Numara girin veya vazgeçin.'
+                  : subtitle,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+            ),
+            const Gap(12),
+            for (final opt in options)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(LucideIcons.messageCircle),
+                title: Text(opt.label),
+                subtitle: Text(opt.phone),
+                onTap: () =>
+                    Navigator.of(context).pop(_ShareAction.whatsApp(opt.phone)),
+              ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(LucideIcons.phoneCall),
+              title: const Text('Başka numara'),
+              onTap: () =>
+                  Navigator.of(context).pop(const _ShareAction.other()),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  if (action == null) return null;
+  if (action.kind == _ShareActionKind.other) {
+    if (!context.mounted) return null;
+    return _askPhoneNumber(context);
+  }
+  if (action.kind == _ShareActionKind.whatsapp) {
+    return action.phone;
+  }
+  return null;
+}
+
+Future<void> shareInvoicePaymentLinkWithWhatsApp({
+  required BuildContext context,
+  required String paymentUrl,
+  required String amountLabel,
+  required List<String> invoiceLabels,
+  String? customerName,
+  CustomerDetail? customer,
+}) async {
+  final phone = await pickWhatsAppPhone(
+    context: context,
+    customer: customer,
+    title: 'Ödeme linkini WhatsApp ile gönder',
+    subtitle:
+        'Numara seçin; WhatsApp sohbeti ödeme linki mesajıyla açılır.',
+  );
+  if (phone == null || !context.mounted) return;
+
+  final message = buildInvoicePaymentWhatsAppMessage(
+    paymentUrl: paymentUrl,
+    amountLabel: amountLabel,
+    invoiceLabels: invoiceLabels,
+    customerName: customerName ?? customer?.name,
+  );
+  await Clipboard.setData(ClipboardData(text: message));
+
+  final waPhone = normalizePhoneForWhatsApp(phone);
+  final url = waPhone.isEmpty
+      ? Uri.parse('https://wa.me/?text=${Uri.encodeComponent(message)}')
+      : Uri.parse(
+          'https://wa.me/$waPhone?text=${Uri.encodeComponent(message)}',
+        );
+  final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
+  if (!opened) {
+    await openExternalUrl(url.toString());
+  }
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('WhatsApp açıldı. Ödeme linki sohbete yazıldı.'),
+    ),
+  );
+}
+
 /// TR (+90) ve Kıbrıs (+357 / KKTC 053x→90) numaralarını wa.me için normalize eder.
 String normalizePhoneForWhatsApp(String raw) {
   var digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
