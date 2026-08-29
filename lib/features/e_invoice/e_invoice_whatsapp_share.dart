@@ -11,6 +11,20 @@ import '../customers/customer_detail_screen.dart';
 import '../invoices/invoice_model.dart';
 import 'e_invoice_pdf_share.dart';
 
+String _phoneLabel(String? title, String fallback) {
+  final trimmed = (title ?? '').trim();
+  return trimmed.isEmpty ? fallback : trimmed;
+}
+
+void _addCustomerPhones(
+  void Function(String label, String? number) addPhone,
+  CustomerDetail customer,
+) {
+  addPhone(_phoneLabel(customer.phone1Title, 'Müşteri'), customer.phone1);
+  addPhone(_phoneLabel(customer.phone2Title, 'İrtibat'), customer.phone2);
+  addPhone(_phoneLabel(customer.phone3Title, 'İrtibat 2'), customer.phone3);
+}
+
 /// E-fatura PDF'ini WhatsApp sohbetine yönlendirerek paylaşır.
 ///
 /// Masaüstünde / Electron'da WhatsApp URL ile dosya eklenemez; PDF yerel olarak
@@ -36,24 +50,7 @@ Future<void> shareEInvoicePdfWithWhatsApp({
   }
 
   if (customer != null) {
-    addPhone(
-      (customer.phone1Title ?? 'Müşteri').trim().isEmpty
-          ? 'Müşteri'
-          : customer.phone1Title!,
-      customer.phone1,
-    );
-    addPhone(
-      (customer.phone2Title ?? 'İrtibat').trim().isEmpty
-          ? 'İrtibat'
-          : customer.phone2Title!,
-      customer.phone2,
-    );
-    addPhone(
-      (customer.phone3Title ?? 'İrtibat 2').trim().isEmpty
-          ? 'İrtibat 2'
-          : customer.phone3Title!,
-      customer.phone3,
-    );
+    _addCustomerPhones(addPhone, customer);
   }
 
   final action = await showModalBottomSheet<_ShareAction>(
@@ -258,24 +255,7 @@ Future<String?> pickWhatsAppPhone({
   }
 
   if (customer != null) {
-    addPhone(
-      (customer.phone1Title ?? 'Müşteri').trim().isEmpty
-          ? 'Müşteri'
-          : customer.phone1Title!,
-      customer.phone1,
-    );
-    addPhone(
-      (customer.phone2Title ?? 'İrtibat').trim().isEmpty
-          ? 'İrtibat'
-          : customer.phone2Title!,
-      customer.phone2,
-    );
-    addPhone(
-      (customer.phone3Title ?? 'İrtibat 2').trim().isEmpty
-          ? 'İrtibat 2'
-          : customer.phone3Title!,
-      customer.phone3,
-    );
+    _addCustomerPhones(addPhone, customer);
   }
 
   final action = await showModalBottomSheet<_ShareAction>(

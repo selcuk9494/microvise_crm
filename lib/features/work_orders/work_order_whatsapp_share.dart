@@ -9,6 +9,11 @@ import '../customers/customer_detail_screen.dart';
 import 'work_order_model.dart';
 import 'work_order_share.dart';
 
+String _phoneLabel(String? title, String fallback) {
+  final trimmed = (title ?? '').trim();
+  return trimmed.isEmpty ? fallback : trimmed;
+}
+
 Future<void> shareWorkOrderPdfWithWhatsAppPrompt({
   required BuildContext context,
   required WorkOrder order,
@@ -30,24 +35,9 @@ Future<void> shareWorkOrderPdfWithWhatsAppPrompt({
     options.add(_PhoneOption(label: label, phone: raw));
   }
 
-  addPhone(
-    (customer.phone1Title ?? 'Müşteri').trim().isEmpty
-        ? 'Müşteri'
-        : customer.phone1Title!,
-    customer.phone1,
-  );
-  addPhone(
-    (customer.phone2Title ?? 'İrtibat').trim().isEmpty
-        ? 'İrtibat'
-        : customer.phone2Title!,
-    customer.phone2,
-  );
-  addPhone(
-    (customer.phone3Title ?? 'İrtibat 2').trim().isEmpty
-        ? 'İrtibat 2'
-        : customer.phone3Title!,
-    customer.phone3,
-  );
+  addPhone(_phoneLabel(customer.phone1Title, 'Müşteri'), customer.phone1);
+  addPhone(_phoneLabel(customer.phone2Title, 'İrtibat'), customer.phone2);
+  addPhone(_phoneLabel(customer.phone3Title, 'İrtibat 2'), customer.phone3);
   addPhone('İş Emri İrtibat', order.contactPhone);
 
   final action = await showModalBottomSheet<_ShareAction>(
