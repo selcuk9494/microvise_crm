@@ -43,18 +43,16 @@ class AppBadge extends StatelessWidget {
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           SizedBox(width: dense ? 5 : 6),
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w500,
-                color: fg,
-                fontSize: dense ? 10.5 : 11,
-                height: 1.15,
-                letterSpacing: 0.05,
-              ),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w500,
+              color: fg,
+              fontSize: dense ? 10.5 : 11,
+              height: 1.15,
+              letterSpacing: 0.05,
             ),
           ),
         ],

@@ -188,7 +188,9 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                         vertical: widget.compactHeader ? 6 : 8,
                       ),
                       child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: widget.compactHeader
+                            ? CrossAxisAlignment.center
+                            : CrossAxisAlignment.start,
                         children: [
                           Expanded(
                             child: Column(
