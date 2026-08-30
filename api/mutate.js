@@ -3434,6 +3434,106 @@ module.exports = async (req, res) => {
       return ok(req, res, { ok: true });
     }
 
+    if (op === 'ensureSoftwareCompanies') {
+      if (
+        !hasPageAccess(user, 'tanimlamalar') &&
+        !hasPageAccess(user, 'urunler') &&
+        !hasPageAccess(user, 'musteriler')
+      ) {
+        return forbidden(req, res);
+      }
+      await ensureSoftwareCompaniesTable();
+
+      const foldCompanyName = (value) => {
+        const folded = String(value || '')
+          .trim()
+          .toLocaleLowerCase('tr-TR')
+          .replaceAll('\u0307', '')
+          .replaceAll('ı', 'i')
+          .replaceAll('i̇', 'i')
+          .replace(/[^a-z0-9]+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        return folded;
+      };
+
+      const all = await query(`select id, name from public.software_companies`);
+      const byFold = new Map();
+      const indexRow = (row) => {
+        const folded = foldCompanyName(row.name);
+        if (!folded) return;
+        byFold.set(folded, row);
+        byFold.set(folded.replace(/\s+/g, ''), row);
+      };
+      for (const row of all.rows) indexRow(row);
+
+      const rawNames = Array.isArray(body.names) ? body.names : [];
+      const items = [];
+      const seen = new Set();
+      for (const raw of rawNames) {
+        const name = String(raw || '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (!name) continue;
+        const folded = foldCompanyName(name);
+        if (!folded || seen.has(folded)) continue;
+        seen.add(folded);
+
+        const matched = byFold.get(folded) || byFold.get(folded.replace(/\s+/g, ''));
+        if (matched) {
+          items.push({
+            id: matched.id,
+            name: matched.name,
+            requested: name,
+            created: false,
+          });
+          continue;
+        }
+
+        try {
+          const inserted = await query(
+            `
+              insert into public.software_companies (name, is_active)
+              values ($1, true)
+              returning id, name
+            `,
+            [name],
+          );
+          if (inserted.rows[0]) {
+            indexRow(inserted.rows[0]);
+            items.push({
+              id: inserted.rows[0].id,
+              name: inserted.rows[0].name,
+              requested: name,
+              created: true,
+            });
+          }
+        } catch (error) {
+          const again = await query(
+            `
+              select id, name
+              from public.software_companies
+              where upper(btrim(name)) = upper(btrim($1))
+              limit 1
+            `,
+            [name],
+          );
+          if (again.rows[0]) {
+            indexRow(again.rows[0]);
+            items.push({
+              id: again.rows[0].id,
+              name: again.rows[0].name,
+              requested: name,
+              created: false,
+            });
+          } else {
+            throw error;
+          }
+        }
+      }
+      return ok(req, res, { items });
+    }
+
     if (op === 'parseTsmLog') {
       if (!hasPageAccess(user, 'tsm_log') && !hasPageAccess(user, 'formlar')) {
         return forbidden(req, res, 'TSM Log için yetkiniz yok.');

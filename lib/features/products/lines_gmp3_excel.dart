@@ -12,6 +12,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../customers/customers_providers.dart';
 import '../customers/web_download_helper.dart'
     if (dart.library.io) '../customers/io_download_helper.dart';
+import '../definitions/definitions_screen.dart';
 import 'issued_license_type.dart';
 
 String _normalizeHeader(String value) {
@@ -52,6 +53,24 @@ String _coerceNumberLike(String raw) {
 }
 
 String _digitsOnly(String raw) => raw.replaceAll(RegExp(r'[^0-9]'), '');
+
+bool _isPlaceholderCompany(String raw) {
+  final t = raw.trim();
+  if (t.isEmpty) return true;
+  final fold = _foldLookupText(t);
+  const placeholders = {
+    'bos',
+    'yok',
+    'n a',
+    'na',
+    'none',
+    'null',
+    'tanimlanmadi',
+    'belirtilmedi',
+  };
+  if (placeholders.contains(fold)) return true;
+  return RegExp(r'^[-_.]+$').hasMatch(t);
+}
 
 String _foldLookupText(String value) {
   var t = value.trim().toLowerCase();
@@ -425,6 +444,7 @@ Future<void> _importLinesAndGmp3Excel({
   final errors = <String>[];
   final lineRows = <Map<String, dynamic>>[];
   final licenseRows = <Map<String, dynamic>>[];
+  final missingCompaniesByKey = <String, String>{};
 
   final linesRows = safeRows(linesSheet);
   final linesHeader = headerOf(linesRows);
@@ -593,13 +613,21 @@ Future<void> _importLinesAndGmp3Excel({
           ? typeFromCell
           : licenseType;
       final companyId = lookupCompanyId(companyText);
-      if (companyText.trim().isNotEmpty && (companyId ?? '').isEmpty) {
-        errors.add(
-          '$typeLabel satır $excelRowNo: Yazılım firması eşleşmedi, sicille yüklendi: $companyText',
+      final trimmedCompany = companyText.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (trimmedCompany.isNotEmpty &&
+          (companyId ?? '').isEmpty &&
+          !_isPlaceholderCompany(trimmedCompany)) {
+        missingCompaniesByKey.putIfAbsent(
+          normalizeCompanyName(trimmedCompany),
+          () => trimmedCompany,
         );
       }
       licenseRows.add({
         '_rowIndex': excelRowNo,
+        if (companyId == null &&
+            trimmedCompany.isNotEmpty &&
+            !_isPlaceholderCompany(trimmedCompany))
+          '_companyName': trimmedCompany,
         'customer_id': customerId,
         'name': name.isEmpty
             ? IssuedLicenseType.defaultName(resolvedType)
@@ -635,6 +663,8 @@ Future<void> _importLinesAndGmp3Excel({
   final irestoCount = licenseRows
       .where((e) => IssuedLicenseType.isIresto(e['license_type']?.toString()))
       .length;
+  final missingCompanyNames = missingCompaniesByKey.values.toList()
+    ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
   if (lineRows.isEmpty && licenseRows.isEmpty) {
     if (!context.mounted) return;
@@ -661,6 +691,37 @@ Future<void> _importLinesAndGmp3Excel({
           Text('Hat: ${lineRows.length}'),
           Text('GMP3: $gmp3Count'),
           Text('iResto: $irestoCount'),
+          if (missingCompanyNames.isNotEmpty) ...[
+            const Gap(12),
+            Text(
+              '${missingCompanyNames.length} yazılım firması Tanımlar’da yok; otomatik açılacak.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const Gap(8),
+            SizedBox(
+              height: missingCompanyNames.length > 8 ? 120 : 24.0 * missingCompanyNames.length.clamp(1, 8),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final name
+                      in missingCompanyNames.take(30))
+                    Text(
+                      '• $name',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  if (missingCompanyNames.length > 30)
+                    Text(
+                      '… ${missingCompanyNames.length - 30} firma daha',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
           if (errors.isNotEmpty) ...[
             const Gap(8),
             Text(
@@ -725,7 +786,7 @@ Future<void> _importLinesAndGmp3Excel({
               children: [
                 CircularProgressIndicator(),
                 SizedBox(height: 16),
-                Text('Eski kayıtlar siliniyor, Excel yükleniyor...'),
+                Text('Eski kayıtlar siliniyor, firmalar açılıyor, Excel yükleniyor...'),
               ],
             ),
           ),
@@ -741,6 +802,60 @@ Future<void> _importLinesAndGmp3Excel({
   var replaceFailed = false;
 
   try {
+    if (missingCompanyNames.isNotEmpty) {
+      if (apiClient != null) {
+        final response = await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'ensureSoftwareCompanies',
+            'names': missingCompanyNames,
+          },
+          timeout: const Duration(seconds: 120),
+        );
+        final items = ((response['items'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => e.cast<String, dynamic>());
+        for (final item in items) {
+          final id = (item['id'] ?? '').toString().trim();
+          indexCompany((item['name'] ?? '').toString(), id);
+          indexCompany((item['requested'] ?? '').toString(), id);
+        }
+      } else {
+        if (client == null) {
+          throw StateError('Veritabanı bağlantısı yok.');
+        }
+        for (final name in missingCompanyNames) {
+          try {
+            await client.from('software_companies').insert({
+              'name': name,
+              'is_active': true,
+            });
+          } catch (_) {}
+        }
+        final refreshed = await client
+            .from('software_companies')
+            .select('id,name')
+            .limit(5000);
+        for (final row in (refreshed as List).cast<Map<String, dynamic>>()) {
+          indexCompany(
+            (row['name'] ?? '').toString(),
+            (row['id'] ?? '').toString().trim(),
+          );
+        }
+      }
+      for (final row in licenseRows) {
+        final existingId = (row['software_company_id'] ?? '').toString().trim();
+        final rawName = (row['_companyName'] ?? '').toString();
+        if (existingId.isEmpty && rawName.isNotEmpty) {
+          final id = lookupCompanyId(rawName);
+          if ((id ?? '').isNotEmpty) {
+            row['software_company_id'] = id;
+          }
+        }
+        row.remove('_companyName');
+      }
+    }
+
     if (apiClient != null) {
       await apiClient.postJson(
         '/mutate',
@@ -774,7 +889,10 @@ Future<void> _importLinesAndGmp3Excel({
           (i + chunkSize) > rows.length ? rows.length : (i + chunkSize),
         );
         final sanitized = [
-          for (final row in chunk) {...row}..remove('_rowIndex'),
+          for (final row in chunk)
+            {...row}
+              ..remove('_rowIndex')
+              ..remove('_companyName'),
         ];
         try {
           if (apiClient != null) {
@@ -794,7 +912,9 @@ Future<void> _importLinesAndGmp3Excel({
           for (final row in chunk) {
             final rn = row['_rowIndex'];
             try {
-              final one = {...row}..remove('_rowIndex');
+              final one = {...row}
+                ..remove('_rowIndex')
+                ..remove('_companyName');
               if (apiClient != null) {
                 await apiClient.postJson(
                   '/mutate',
@@ -843,6 +963,7 @@ Future<void> _importLinesAndGmp3Excel({
 
   ref.invalidate(customersProvider);
   ref.invalidate(customerCitiesProvider);
+  ref.invalidate(softwareCompaniesProvider);
   onImported?.call();
   if (!context.mounted) return;
   final failedWithoutInsert =
