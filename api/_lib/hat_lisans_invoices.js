@@ -6,6 +6,7 @@ const {
   ensureLicensesSoftwareCompanyColumn,
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,
+  ensureHatLisansBillingSettingsTable,
 } = require('./schema');
 
 const BILLING_SOURCE = 'hat_lisans';
@@ -38,20 +39,58 @@ function parsePrice(value, fallback = 0) {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
+function normalizeInvoiceCurrency(value) {
+  const raw = String(value || 'TRY').trim().toUpperCase();
+  if (raw === 'USD' || raw === 'US$' || raw === '$') return 'USD';
+  return 'TRY';
+}
+
+function mapSettings(row = {}) {
+  return {
+    lineProductId: row.line_product_id || null,
+    gmp3ProductId: row.gmp3_product_id || null,
+    irestoProductId: row.iresto_product_id || null,
+    linePriceTry: Number(row.line_price_try) || 0,
+    linePriceUsd: Number(row.line_price_usd) || 0,
+    gmp3PriceTry: Number(row.gmp3_price_try) || 0,
+    gmp3PriceUsd: Number(row.gmp3_price_usd) || 0,
+    irestoPriceTry: Number(row.iresto_price_try) || 0,
+    irestoPriceUsd: Number(row.iresto_price_usd) || 0,
+    defaultCurrency: normalizeInvoiceCurrency(row.default_currency),
+  };
+}
+
 async function ensureHatLisansInvoiceSchema() {
   await ensureInvoiceItemsTable();
   await ensureInvoicePricesIncludeVatColumn();
   await ensureInvoicesBillingSourceColumn();
+  await ensureHatLisansBillingSettingsTable();
   await ensureLinesOperatorColumn();
   await ensureLicensesSoftwareCompanyColumn();
   await ensureLicensesRegistryNumberColumn();
 }
 
-async function findOrCreateProduct({ name, aliases }) {
-  const wanted = [name, ...(aliases || [])].map(foldName).filter(Boolean);
+async function loadProductById(id) {
+  const productId = String(id || '').trim();
+  if (!productId) return null;
+  const result = await query(
+    `
+      select id, name, sale_price, tax_rate, unit, currency, is_active
+      from public.products
+      where id = $1::uuid
+      limit 1
+    `,
+    [productId],
+  );
+  return result.rows[0] || null;
+}
+
+async function findProductByName(name, aliases = []) {
+  const wanted = [name, ...aliases].map(foldName).filter(Boolean);
+  if (!wanted.length) return null;
   const rows = await query(
     `
-      select id, name, sale_price, tax_rate, unit, currency
+      select id, name, sale_price, tax_rate, unit, currency, is_active
       from public.products
       where coalesce(is_active, true) = true
       order by name asc
@@ -66,34 +105,125 @@ async function findOrCreateProduct({ name, aliases }) {
       return row;
     }
   }
-  const inserted = await query(
-    `
-      insert into public.products (
-        name, product_type, unit, sale_price, tax_rate, currency, is_active
-      )
-      values ($1, 'service', 'Adet', 0, 20, 'TRY', true)
-      returning id, name, sale_price, tax_rate, unit, currency
-    `,
-    [name],
-  );
-  return inserted.rows[0];
+  return null;
 }
 
 async function loadBillingCatalog() {
   await ensureHatLisansInvoiceSchema();
-  const gprs = await findOrCreateProduct({
-    name: GPRS_NAME,
-    aliases: ['gprs data', 'gpras data'],
-  });
-  const gmp3 = await findOrCreateProduct({
-    name: GMP3_NAME,
-    aliases: ['gmp3 yazarkasa entegrasyonu'],
-  });
+  const settingsResult = await query(
+    `select * from public.hat_lisans_billing_settings where id = 1 limit 1`,
+  );
+  const settings = mapSettings(settingsResult.rows[0] || {});
+  let gprs = await loadProductById(settings.lineProductId);
+  let gmp3 = await loadProductById(settings.gmp3ProductId);
+  let iresto = await loadProductById(settings.irestoProductId);
+  if (!gprs) {
+    gprs = await findProductByName(GPRS_NAME, ['gprs data', 'gpras data']);
+  }
+  if (!gmp3) {
+    gmp3 = await findProductByName(GMP3_NAME, ['gmp3 yazarkasa entegrasyonu']);
+  }
+  if (!iresto) {
+    iresto = await findProductByName(IRESTO_NAME, [
+      'iresto yazarkasa entegrasyonu',
+    ]);
+  }
+  const hasPrices =
+    settings.linePriceTry > 0 ||
+    settings.linePriceUsd > 0 ||
+    settings.gmp3PriceTry > 0 ||
+    settings.gmp3PriceUsd > 0;
   return {
+    configured: hasPrices,
     gprs,
     gmp3,
-    irestoName: IRESTO_NAME,
+    iresto,
+    settings: {
+      ...settings,
+      lineProductId: settings.lineProductId || gprs?.id || null,
+      gmp3ProductId: settings.gmp3ProductId || gmp3?.id || null,
+      irestoProductId: settings.irestoProductId || iresto?.id || null,
+    },
   };
+}
+
+async function saveHatLisansBillingSettings(input = {}) {
+  await ensureHatLisansInvoiceSchema();
+  const current = await loadBillingCatalog();
+  const lineId =
+    String(input.lineProductId ?? current.settings.lineProductId ?? '').trim() ||
+    null;
+  const gmp3Id =
+    String(input.gmp3ProductId ?? current.settings.gmp3ProductId ?? '').trim() ||
+    null;
+  const irestoId =
+    String(input.irestoProductId ?? current.settings.irestoProductId ?? '').trim() ||
+    null;
+  if (lineId && !(await loadProductById(lineId))) {
+    const error = new Error('Seçilen hat ürünü bulunamadı.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (gmp3Id && !(await loadProductById(gmp3Id))) {
+    const error = new Error('Seçilen GMP3 ürünü bulunamadı.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (irestoId && !(await loadProductById(irestoId))) {
+    const error = new Error('Seçilen iResto ürünü bulunamadı.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const currency = normalizeInvoiceCurrency(
+    input.defaultCurrency ?? input.currency ?? current.settings.defaultCurrency,
+  );
+  await query(
+    `
+      insert into public.hat_lisans_billing_settings (
+        id,
+        line_product_id,
+        gmp3_product_id,
+        iresto_product_id,
+        line_price_try,
+        line_price_usd,
+        gmp3_price_try,
+        gmp3_price_usd,
+        iresto_price_try,
+        iresto_price_usd,
+        default_currency,
+        updated_at
+      )
+      values (
+        1, $1::uuid, $2::uuid, $3::uuid,
+        $4, $5, $6, $7, $8, $9, $10, now()
+      )
+      on conflict (id) do update set
+        line_product_id = excluded.line_product_id,
+        gmp3_product_id = excluded.gmp3_product_id,
+        iresto_product_id = excluded.iresto_product_id,
+        line_price_try = excluded.line_price_try,
+        line_price_usd = excluded.line_price_usd,
+        gmp3_price_try = excluded.gmp3_price_try,
+        gmp3_price_usd = excluded.gmp3_price_usd,
+        iresto_price_try = excluded.iresto_price_try,
+        iresto_price_usd = excluded.iresto_price_usd,
+        default_currency = excluded.default_currency,
+        updated_at = now()
+    `,
+    [
+      lineId,
+      gmp3Id,
+      irestoId,
+      parsePrice(input.linePriceTry, current.settings.linePriceTry),
+      parsePrice(input.linePriceUsd, current.settings.linePriceUsd),
+      parsePrice(input.gmp3PriceTry, current.settings.gmp3PriceTry),
+      parsePrice(input.gmp3PriceUsd, current.settings.gmp3PriceUsd),
+      parsePrice(input.irestoPriceTry, current.settings.irestoPriceTry),
+      parsePrice(input.irestoPriceUsd, current.settings.irestoPriceUsd),
+      currency,
+    ],
+  );
+  return loadBillingCatalog();
 }
 
 async function loadCustomerCounts(customerIds) {
@@ -240,21 +370,59 @@ async function insertInvoiceItem({
 
 async function createHatLisansInvoices({ customerIds, prices, user }) {
   await ensureHatLisansInvoiceSchema();
+  if (prices && typeof prices === 'object') {
+    await saveHatLisansBillingSettings({
+      lineProductId: prices.lineProductId,
+      gmp3ProductId: prices.gmp3ProductId,
+      irestoProductId: prices.irestoProductId,
+      linePriceTry: prices.lineUnitPriceTry ?? prices.linePriceTry,
+      linePriceUsd: prices.lineUnitPriceUsd ?? prices.linePriceUsd,
+      gmp3PriceTry: prices.gmp3UnitPriceTry ?? prices.gmp3PriceTry,
+      gmp3PriceUsd: prices.gmp3UnitPriceUsd ?? prices.gmp3PriceUsd,
+      irestoPriceTry: prices.irestoUnitPriceTry ?? prices.irestoPriceTry,
+      irestoPriceUsd: prices.irestoUnitPriceUsd ?? prices.irestoPriceUsd,
+      defaultCurrency: prices.currency,
+    });
+  }
   const catalog = await loadBillingCatalog();
+  const settings = catalog.settings || {};
+  const gprs = catalog.gprs;
+  const gmp3 = catalog.gmp3;
+  const irestoProduct = catalog.iresto || gmp3;
   const rows = await loadCustomerCounts(customerIds);
-  const taxRate = parsePrice(prices?.taxRate, Number(catalog.gprs?.tax_rate) || 20);
-  const linePrice = parsePrice(
-    prices?.lineUnitPrice,
-    Number(catalog.gprs?.sale_price) || 0,
+  const currency = normalizeInvoiceCurrency(
+    prices?.currency || settings.defaultCurrency,
   );
-  const gmp3Price = parsePrice(
-    prices?.gmp3UnitPrice,
-    Number(catalog.gmp3?.sale_price) || 0,
+  const taxRate = parsePrice(
+    prices?.taxRate,
+    Number(gprs?.tax_rate || gmp3?.tax_rate) || 20,
   );
-  const irestoPrice = parsePrice(prices?.irestoUnitPrice, gmp3Price);
-  const currency = String(prices?.currency || catalog.gprs?.currency || 'TRY')
-    .trim()
-    .toUpperCase() || 'TRY';
+  const linePrice = currency === 'USD'
+    ? parsePrice(prices?.lineUnitPriceUsd ?? prices?.lineUnitPrice, settings.linePriceUsd)
+    : parsePrice(prices?.lineUnitPriceTry ?? prices?.lineUnitPrice, settings.linePriceTry);
+  const gmp3Price = currency === 'USD'
+    ? parsePrice(prices?.gmp3UnitPriceUsd ?? prices?.gmp3UnitPrice, settings.gmp3PriceUsd)
+    : parsePrice(prices?.gmp3UnitPriceTry ?? prices?.gmp3UnitPrice, settings.gmp3PriceTry);
+  const irestoPrice = currency === 'USD'
+    ? parsePrice(
+        prices?.irestoUnitPriceUsd ?? prices?.irestoUnitPrice,
+        settings.irestoPriceUsd || gmp3Price,
+      )
+    : parsePrice(
+        prices?.irestoUnitPriceTry ?? prices?.irestoUnitPrice,
+        settings.irestoPriceTry || gmp3Price,
+      );
+  if (linePrice <= 0 && gmp3Price <= 0 && irestoPrice <= 0) {
+    const error = new Error(
+      `Seçilen para biriminde (${currency === 'USD' ? 'USD' : 'TL'}) Hat ve GMP3 birim fiyatı girin.`,
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+  const lineName = String(gprs?.name || GPRS_NAME).trim() || GPRS_NAME;
+  const gmp3Name = String(gmp3?.name || GMP3_NAME).trim() || GMP3_NAME;
+  const irestoName =
+    String(irestoProduct?.name || IRESTO_NAME).trim() || IRESTO_NAME;
 
   const created = [];
   const skipped = [];
@@ -281,11 +449,20 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
     }
 
     const items = [];
+    const currencyLabel = currency === 'USD' ? 'USD' : 'TL';
     if (linesTotal > 0) {
+      if (linePrice <= 0) {
+        skipped.push({
+          customerId: row.customer_id,
+          customerName: row.customer_name,
+          reason: `Hat birim fiyatı (${currencyLabel}) girilmedi`,
+        });
+        continue;
+      }
       items.push({
-        productId: catalog.gprs?.id,
-        description: GPRS_NAME,
-        unit: catalog.gprs?.unit || 'Adet',
+        productId: gprs?.id,
+        description: lineName,
+        unit: gprs?.unit || 'Adet',
         ...lineParts({
           quantity: linesTotal,
           unitPrice: linePrice,
@@ -294,10 +471,18 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
       });
     }
     if (gmp3Total > 0) {
+      if (gmp3Price <= 0) {
+        skipped.push({
+          customerId: row.customer_id,
+          customerName: row.customer_name,
+          reason: `GMP3 birim fiyatı (${currencyLabel}) girilmedi`,
+        });
+        continue;
+      }
       items.push({
-        productId: catalog.gmp3?.id,
-        description: GMP3_NAME,
-        unit: catalog.gmp3?.unit || 'Adet',
+        productId: gmp3?.id,
+        description: gmp3Name,
+        unit: gmp3?.unit || 'Adet',
         ...lineParts({
           quantity: gmp3Total,
           unitPrice: gmp3Price,
@@ -306,10 +491,18 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
       });
     }
     if (irestoTotal > 0) {
+      if (irestoPrice <= 0) {
+        skipped.push({
+          customerId: row.customer_id,
+          customerName: row.customer_name,
+          reason: `iResto birim fiyatı (${currencyLabel}) girilmedi`,
+        });
+        continue;
+      }
       items.push({
-        productId: catalog.gmp3?.id,
-        description: IRESTO_NAME,
-        unit: catalog.gmp3?.unit || 'Adet',
+        productId: irestoProduct?.id,
+        description: irestoName,
+        unit: irestoProduct?.unit || 'Adet',
         ...lineParts({
           quantity: irestoTotal,
           unitPrice: irestoPrice,
@@ -333,7 +526,8 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
     const invoiceNumber = await nextSalesInvoiceNumber();
     const invoiceDate = new Date().toISOString().slice(0, 10);
 
-    const inserted = await query(
+    try {
+      const inserted = await query(
       `
         insert into public.invoices (
           invoice_number,
@@ -408,6 +602,13 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
       gmp3Total,
       irestoTotal,
     });
+    } catch (error) {
+      skipped.push({
+        customerId: row.customer_id,
+        customerName: row.customer_name,
+        reason: error instanceof Error ? error.message : 'Fatura yazılamadı',
+      });
+    }
   }
 
   return { created, skipped, createdCount: created.length, skippedCount: skipped.length };
@@ -477,6 +678,7 @@ async function listHatLisansInvoices({ payment = '' } = {}) {
 module.exports = {
   BILLING_SOURCE,
   loadBillingCatalog,
+  saveHatLisansBillingSettings,
   createHatLisansInvoices,
   listHatLisansInvoices,
 };

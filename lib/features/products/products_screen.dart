@@ -1933,6 +1933,8 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
             ),
           ),
           const Gap(8),
+          const HatLisansBillingPriceCard(),
+          const Gap(8),
           Expanded(
             child: totalsAsync.when(
               data: (rows) {

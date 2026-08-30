@@ -45,6 +45,16 @@ final hatLisansInvoicesProvider = FutureProvider.autoDispose<List<Invoice>>((
       .toList(growable: false);
 });
 
+final hatLisansBillingCatalogProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+      final apiClient = ref.watch(apiClientProvider);
+      if (apiClient == null) return const {};
+      return apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'hat_lisans_billing_catalog'},
+      );
+    });
+
 class HatLisansInvoiceCustomer {
   const HatLisansInvoiceCustomer({
     required this.customerId,
@@ -73,6 +83,21 @@ NumberFormat _money(String currency) {
   );
 }
 
+String _priceText(Object? value) {
+  final n = value is num
+      ? value.toDouble()
+      : double.tryParse(value?.toString().replaceAll(',', '.') ?? '') ?? 0;
+  if (n <= 0) return '';
+  if (n == n.roundToDouble()) return n.round().toString();
+  return n.toString();
+}
+
+Map<String, dynamic> _asMap(Object? value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) return Map<String, dynamic>.from(value);
+  return const {};
+}
+
 Future<void> showCreateHatLisansInvoiceDialog({
   required BuildContext context,
   required WidgetRef ref,
@@ -89,153 +114,693 @@ Future<void> showCreateHatLisansInvoiceDialog({
     return;
   }
 
-  final apiClient = ref.read(apiClientProvider);
-  if (apiClient == null) return;
-
-  Map<String, dynamic> catalog = const {};
-  try {
-    catalog = await apiClient.getJson(
-      '/data',
-      queryParameters: {'resource': 'hat_lisans_billing_catalog'},
-    );
-  } catch (_) {}
-  if (!context.mounted) return;
-
-  double catalogPrice(String key) {
-    final row = catalog[key];
-    if (row is Map) {
-      return (row['sale_price'] as num?)?.toDouble() ?? 0;
-    }
-    return 0;
-  }
-
-  final gprs = TextEditingController(
-    text: catalogPrice('gprs') == 0 ? '' : catalogPrice('gprs').toString(),
-  );
-  final gmp3 = TextEditingController(
-    text: catalogPrice('gmp3') == 0 ? '' : catalogPrice('gmp3').toString(),
-  );
-  final iresto = TextEditingController(
-    text: catalogPrice('gmp3') == 0 ? '' : catalogPrice('gmp3').toString(),
-  );
-
-  final hatCount = targets.fold<int>(0, (sum, e) => sum + e.linesTotal);
-  final gmp3Count = targets.fold<int>(0, (sum, e) => sum + e.gmp3Total);
-  final irestoCount = targets.fold<int>(0, (sum, e) => sum + e.irestoTotal);
-
-  final confirmed = await showDialog<bool>(
+  final created = await showDialog<int>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Hat & Lisans faturası'),
-      content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              singleCustomerId == null
-                  ? '${targets.length} müşteri için taslak fatura oluşacak. '
-                        'Her müşterideki hat / GMP3 / iResto adedi kalem miktarı olur.'
-                  : '${targets.first.customerName}: Hat ${targets.first.linesTotal} · '
-                        'GMP3 ${targets.first.gmp3Total} · iResto ${targets.first.irestoTotal}',
-            ),
-            const Gap(8),
-            Text(
-              'Kalemler: Gprs Data ($hatCount) ve Gmp3 Yazarkasa Entegrasyonu '
-              '(GMP3 $gmp3Count, iResto $irestoCount). '
-              'Ödeme yapılana kadar satış faturası olmaz; Maliye gönderiminden sonra kapanır.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
-            ),
-            const Gap(12),
-            TextField(
-              controller: gprs,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Gprs Data birim fiyatı',
-              ),
-            ),
-            const Gap(8),
-            TextField(
-              controller: gmp3,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Gmp3 Yazarkasa Entegrasyonu birim fiyatı',
-              ),
-            ),
-            const Gap(8),
-            TextField(
-              controller: iresto,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'iResto birim fiyatı',
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Vazgeç'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Fatura Oluştur'),
-        ),
-      ],
+    barrierDismissible: false,
+    builder: (dialogContext) => _CreateHatLisansInvoiceDialog(
+      targets: targets,
+      singleCustomer: singleCustomerId != null,
     ),
   );
-  if (confirmed != true) {
-    gprs.dispose();
-    gmp3.dispose();
-    iresto.dispose();
-    return;
-  }
-  if (!context.mounted) return;
-
-  try {
-    final response = await apiClient.postJson(
-      '/mutate',
-      body: {
-        'op': 'createHatLisansInvoices',
-        'customerIds': targets.map((e) => e.customerId).toList(),
-        'prices': {
-          'lineUnitPrice': gprs.text.trim(),
-          'gmp3UnitPrice': gmp3.text.trim(),
-          'irestoUnitPrice': iresto.text.trim(),
-        },
-      },
-      timeout: const Duration(seconds: 120),
-    );
-    final created = (response['createdCount'] as num?)?.toInt() ?? 0;
-    final skipped = (response['skippedCount'] as num?)?.toInt() ?? 0;
-    ref.invalidate(hatLisansInvoicesProvider);
-    if (!context.mounted) return;
+  if (!context.mounted || created == null) return;
+  if (created > 0) {
     final tab = DefaultTabController.maybeOf(context);
     if (tab != null && tab.length > 4) {
       tab.animateTo(4);
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Taslak fatura: $created'
-          '${skipped == 0 ? '' : ' • Atlanan $skipped'}',
+  }
+}
+
+class _CreateHatLisansInvoiceDialog extends ConsumerStatefulWidget {
+  const _CreateHatLisansInvoiceDialog({
+    required this.targets,
+    required this.singleCustomer,
+  });
+
+  final List<HatLisansInvoiceCustomer> targets;
+  final bool singleCustomer;
+
+  @override
+  ConsumerState<_CreateHatLisansInvoiceDialog> createState() =>
+      _CreateHatLisansInvoiceDialogState();
+}
+
+class _CreateHatLisansInvoiceDialogState
+    extends ConsumerState<_CreateHatLisansInvoiceDialog> {
+  final _lineTry = TextEditingController();
+  final _lineUsd = TextEditingController();
+  final _gmp3Try = TextEditingController();
+  final _gmp3Usd = TextEditingController();
+  final _irestoTry = TextEditingController();
+  final _irestoUsd = TextEditingController();
+  String _currency = 'TRY';
+  String? _lineProductId;
+  String? _gmp3ProductId;
+  String? _irestoProductId;
+  bool _hydrated = false;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _lineTry.dispose();
+    _lineUsd.dispose();
+    _gmp3Try.dispose();
+    _gmp3Usd.dispose();
+    _irestoTry.dispose();
+    _irestoUsd.dispose();
+    super.dispose();
+  }
+
+  void _hydrate(Map<String, dynamic> catalog) {
+    if (_hydrated || catalog.isEmpty) return;
+    final settings = _asMap(catalog['settings']);
+    _lineTry.text = _priceText(settings['linePriceTry']);
+    _lineUsd.text = _priceText(settings['linePriceUsd']);
+    _gmp3Try.text = _priceText(settings['gmp3PriceTry']);
+    _gmp3Usd.text = _priceText(settings['gmp3PriceUsd']);
+    _irestoTry.text = _priceText(settings['irestoPriceTry']);
+    _irestoUsd.text = _priceText(settings['irestoPriceUsd']);
+    _currency = (settings['defaultCurrency'] ?? 'TRY').toString().toUpperCase() ==
+            'USD'
+        ? 'USD'
+        : 'TRY';
+    _lineProductId = settings['lineProductId']?.toString();
+    _gmp3ProductId = settings['gmp3ProductId']?.toString();
+    _irestoProductId = settings['irestoProductId']?.toString();
+    _hydrated = true;
+  }
+
+  void _applyProductPrice(Product product, {required String kind}) {
+    final price = _priceText(product.salePrice);
+    if (price.isEmpty) return;
+    final isUsd = product.currency.toUpperCase() == 'USD';
+    setState(() {
+      switch (kind) {
+        case 'line':
+          _lineProductId = product.id;
+          if (isUsd) {
+            if (_lineUsd.text.trim().isEmpty) _lineUsd.text = price;
+          } else if (_lineTry.text.trim().isEmpty) {
+            _lineTry.text = price;
+          }
+        case 'gmp3':
+          _gmp3ProductId = product.id;
+          if (isUsd) {
+            if (_gmp3Usd.text.trim().isEmpty) _gmp3Usd.text = price;
+          } else if (_gmp3Try.text.trim().isEmpty) {
+            _gmp3Try.text = price;
+          }
+        case 'iresto':
+          _irestoProductId = product.id;
+          if (isUsd) {
+            if (_irestoUsd.text.trim().isEmpty) _irestoUsd.text = price;
+          } else if (_irestoTry.text.trim().isEmpty) {
+            _irestoTry.text = price;
+          }
+      }
+    });
+  }
+
+  Future<void> _submit() async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null || _saving) return;
+    final selectedPrice = _currency == 'USD'
+        ? (_lineUsd.text.trim().isNotEmpty ||
+              _gmp3Usd.text.trim().isNotEmpty ||
+              _irestoUsd.text.trim().isNotEmpty)
+        : (_lineTry.text.trim().isNotEmpty ||
+              _gmp3Try.text.trim().isNotEmpty ||
+              _irestoTry.text.trim().isNotEmpty);
+    if (!selectedPrice) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _currency == 'USD'
+                ? 'USD fatura için Hat ve GMP3 dolar fiyatı girin.'
+                : 'TL fatura için Hat ve GMP3 TL fiyatı girin.',
+          ),
         ),
-      ),
-    );
-  } catch (e) {
-    if (context.mounted) {
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final response = await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'createHatLisansInvoices',
+          'customerIds': widget.targets.map((e) => e.customerId).toList(),
+          'prices': {
+            'currency': _currency,
+            'lineProductId': _lineProductId,
+            'gmp3ProductId': _gmp3ProductId,
+            'irestoProductId': _irestoProductId,
+            'lineUnitPriceTry': _lineTry.text.trim(),
+            'lineUnitPriceUsd': _lineUsd.text.trim(),
+            'gmp3UnitPriceTry': _gmp3Try.text.trim(),
+            'gmp3UnitPriceUsd': _gmp3Usd.text.trim(),
+            'irestoUnitPriceTry': _irestoTry.text.trim(),
+            'irestoUnitPriceUsd': _irestoUsd.text.trim(),
+          },
+        },
+        timeout: const Duration(seconds: 120),
+      );
+      final created = (response['createdCount'] as num?)?.toInt() ?? 0;
+      final skipped = (response['skipped'] as List?) ?? const [];
+      ref.invalidate(hatLisansInvoicesProvider);
+      ref.invalidate(hatLisansBillingCatalogProvider);
+      if (!mounted) return;
+      final skipText = skipped
+          .whereType<Map>()
+          .take(4)
+          .map((row) {
+            final name = row['customerName'] ?? '';
+            final reason = row['reason'] ?? '';
+            return '$name: $reason';
+          })
+          .join('\n');
+      final message = created == 0
+          ? (skipText.isEmpty
+                ? 'Fatura oluşmadı. Seçilen para biriminde fiyat girin.'
+                : 'Fatura oluşmadı.\n$skipText')
+          : 'Taslak fatura: $created'
+                '${skipped.isEmpty ? '' : ' • Atlanan ${skipped.length}'}'
+                '${skipText.isEmpty ? '' : '\n$skipText'}';
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.of(context).pop(created);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: Duration(seconds: skipped.isEmpty ? 3 : 8),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Fatura oluşturulamadı: $e')));
     }
-  } finally {
-    gprs.dispose();
-    gmp3.dispose();
-    iresto.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final catalogAsync = ref.watch(hatLisansBillingCatalogProvider);
+    final productsAsync = ref.watch(productsProvider(null));
+    catalogAsync.whenData((catalog) {
+      if (_hydrated || catalog.isEmpty) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _hydrated) return;
+        setState(() => _hydrate(catalog));
+      });
+    });
+    final products = productsAsync.asData?.value ?? const <Product>[];
+    final hatCount = widget.targets.fold<int>(0, (sum, e) => sum + e.linesTotal);
+    final gmp3Count = widget.targets.fold<int>(0, (sum, e) => sum + e.gmp3Total);
+    final irestoCount = widget.targets.fold<int>(
+      0,
+      (sum, e) => sum + e.irestoTotal,
+    );
+
+    return AlertDialog(
+      title: const Text('Hat & Lisans faturası'),
+      content: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.singleCustomer
+                    ? '${widget.targets.first.customerName}: Hat ${widget.targets.first.linesTotal} · '
+                          'GMP3 ${widget.targets.first.gmp3Total} · iResto ${widget.targets.first.irestoTotal}'
+                    : '${widget.targets.length} müşteri için taslak fatura oluşacak. '
+                          'Hat $hatCount · GMP3 $gmp3Count · iResto $irestoCount',
+              ),
+              const Gap(8),
+              Text(
+                'Kalem adları Ürün/Hizmet kataloğundan seçilir. Fiyatları bu ekranda '
+                'TL ve USD olarak girin; faturanın para birimini aşağıdan seçin.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+              ),
+              const Gap(12),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'TRY', label: Text('Fatura: TL')),
+                  ButtonSegment(value: 'USD', label: Text('Fatura: USD')),
+                ],
+                selected: {_currency},
+                onSelectionChanged: _saving
+                    ? null
+                    : (value) => setState(() => _currency = value.first),
+              ),
+              const Gap(14),
+              _ProductPickField(
+                label: 'Hat kalemi',
+                products: products,
+                selectedId: _lineProductId,
+                enabled: !_saving,
+                onSelected: (product) =>
+                    _applyProductPrice(product, kind: 'line'),
+              ),
+              const Gap(8),
+              _DualPriceRow(
+                tryController: _lineTry,
+                usdController: _lineUsd,
+                tryLabel: 'Hat TL',
+                usdLabel: 'Hat USD',
+                highlightUsd: _currency == 'USD',
+                enabled: !_saving,
+              ),
+              const Gap(14),
+              _ProductPickField(
+                label: 'GMP3 kalemi',
+                products: products,
+                selectedId: _gmp3ProductId,
+                enabled: !_saving,
+                onSelected: (product) =>
+                    _applyProductPrice(product, kind: 'gmp3'),
+              ),
+              const Gap(8),
+              _DualPriceRow(
+                tryController: _gmp3Try,
+                usdController: _gmp3Usd,
+                tryLabel: 'GMP3 TL',
+                usdLabel: 'GMP3 USD',
+                highlightUsd: _currency == 'USD',
+                enabled: !_saving,
+              ),
+              const Gap(14),
+              _ProductPickField(
+                label: 'iResto kalemi (opsiyonel)',
+                products: products,
+                selectedId: _irestoProductId,
+                enabled: !_saving,
+                onSelected: (product) =>
+                    _applyProductPrice(product, kind: 'iresto'),
+              ),
+              const Gap(8),
+              _DualPriceRow(
+                tryController: _irestoTry,
+                usdController: _irestoUsd,
+                tryLabel: 'iResto TL',
+                usdLabel: 'iResto USD',
+                highlightUsd: _currency == 'USD',
+                enabled: !_saving,
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Vazgeç'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _submit,
+          child: _saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Fatura Oluştur'),
+        ),
+      ],
+    );
+  }
+}
+
+class _DualPriceRow extends StatelessWidget {
+  const _DualPriceRow({
+    required this.tryController,
+    required this.usdController,
+    required this.tryLabel,
+    required this.usdLabel,
+    required this.highlightUsd,
+    required this.enabled,
+  });
+
+  final TextEditingController tryController;
+  final TextEditingController usdController;
+  final String tryLabel;
+  final String usdLabel;
+  final bool highlightUsd;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: tryController,
+            enabled: enabled,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: tryLabel,
+              prefixText: '₺ ',
+              filled: !highlightUsd,
+              isDense: true,
+            ),
+          ),
+        ),
+        const Gap(8),
+        Expanded(
+          child: TextField(
+            controller: usdController,
+            enabled: enabled,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: usdLabel,
+              prefixText: r'$ ',
+              filled: highlightUsd,
+              isDense: true,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProductPickField extends StatelessWidget {
+  const _ProductPickField({
+    required this.label,
+    required this.products,
+    required this.selectedId,
+    required this.onSelected,
+    required this.enabled,
+  });
+
+  final String label;
+  final List<Product> products;
+  final String? selectedId;
+  final ValueChanged<Product> onSelected;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = products.where((p) => p.id == selectedId).firstOrNull;
+    return Autocomplete<Product>(
+      optionsBuilder: (text) {
+        final q = text.text.toLowerCase();
+        final active = products.where((p) => p.isActive).toList();
+        if (q.isEmpty) return active.take(12);
+        return active
+            .where(
+              (p) =>
+                  p.name.toLowerCase().contains(q) ||
+                  (p.code?.toLowerCase().contains(q) ?? false),
+            )
+            .take(12);
+      },
+      displayStringForOption: (p) => p.name,
+      onSelected: onSelected,
+      fieldViewBuilder: (context, controller, focusNode, _) {
+        if (controller.text.isEmpty && selected != null) {
+          controller.text = selected.name;
+        }
+        return TextField(
+          controller: controller,
+          focusNode: focusNode,
+          enabled: enabled,
+          decoration: InputDecoration(
+            labelText: label,
+            hintText: 'Ürün/Hizmet kataloğundan ara',
+            isDense: true,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class HatLisansBillingPriceCard extends ConsumerStatefulWidget {
+  const HatLisansBillingPriceCard({super.key});
+
+  @override
+  ConsumerState<HatLisansBillingPriceCard> createState() =>
+      _HatLisansBillingPriceCardState();
+}
+
+class _HatLisansBillingPriceCardState
+    extends ConsumerState<HatLisansBillingPriceCard> {
+  final _lineTry = TextEditingController();
+  final _lineUsd = TextEditingController();
+  final _gmp3Try = TextEditingController();
+  final _gmp3Usd = TextEditingController();
+  final _irestoTry = TextEditingController();
+  final _irestoUsd = TextEditingController();
+  String _currency = 'TRY';
+  String? _lineProductId;
+  String? _gmp3ProductId;
+  String? _irestoProductId;
+  bool _hydrated = false;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _lineTry.dispose();
+    _lineUsd.dispose();
+    _gmp3Try.dispose();
+    _gmp3Usd.dispose();
+    _irestoTry.dispose();
+    _irestoUsd.dispose();
+    super.dispose();
+  }
+
+  void _hydrate(Map<String, dynamic> catalog) {
+    if (_hydrated || catalog.isEmpty) return;
+    final settings = _asMap(catalog['settings']);
+    _lineTry.text = _priceText(settings['linePriceTry']);
+    _lineUsd.text = _priceText(settings['linePriceUsd']);
+    _gmp3Try.text = _priceText(settings['gmp3PriceTry']);
+    _gmp3Usd.text = _priceText(settings['gmp3PriceUsd']);
+    _irestoTry.text = _priceText(settings['irestoPriceTry']);
+    _irestoUsd.text = _priceText(settings['irestoPriceUsd']);
+    _currency =
+        (settings['defaultCurrency'] ?? 'TRY').toString().toUpperCase() ==
+            'USD'
+        ? 'USD'
+        : 'TRY';
+    _lineProductId = settings['lineProductId']?.toString();
+    _gmp3ProductId = settings['gmp3ProductId']?.toString();
+    _irestoProductId = settings['irestoProductId']?.toString();
+    _hydrated = true;
+  }
+
+  Future<void> _save() async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null || _saving) return;
+    setState(() => _saving = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'saveHatLisansBillingSettings',
+          'settings': {
+            'currency': _currency,
+            'lineProductId': _lineProductId,
+            'gmp3ProductId': _gmp3ProductId,
+            'irestoProductId': _irestoProductId,
+            'linePriceTry': _lineTry.text.trim(),
+            'linePriceUsd': _lineUsd.text.trim(),
+            'gmp3PriceTry': _gmp3Try.text.trim(),
+            'gmp3PriceUsd': _gmp3Usd.text.trim(),
+            'irestoPriceTry': _irestoTry.text.trim(),
+            'irestoPriceUsd': _irestoUsd.text.trim(),
+          },
+        },
+      );
+      ref.invalidate(hatLisansBillingCatalogProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hat / GMP3 fiyatları kaydedildi.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Kaydedilemedi: $e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final catalogAsync = ref.watch(hatLisansBillingCatalogProvider);
+    final products =
+        ref.watch(productsProvider(null)).asData?.value ?? const <Product>[];
+    catalogAsync.whenData((catalog) {
+      if (_hydrated || catalog.isEmpty) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _hydrated) return;
+        setState(() => _hydrate(catalog));
+      });
+    });
+
+    return AppCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'Hat / GMP3 fiyatları',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'TRY', label: Text('Fatura TL')),
+                  ButtonSegment(value: 'USD', label: Text('Fatura USD')),
+                ],
+                selected: {_currency},
+                onSelectionChanged: _saving
+                    ? null
+                    : (value) => setState(() => _currency = value.first),
+              ),
+              FilledButton.tonal(
+                onPressed: _saving ? null : _save,
+                child: Text(_saving ? 'Kaydediliyor…' : 'Kaydet'),
+              ),
+            ],
+          ),
+          const Gap(6),
+          Text(
+            'Kalem adını Ürün/Hizmet kataloğundan seçin. Her kalem için TL ve USD '
+            'birim fiyatı girin; fatura oluştururken seçilen para birimi kullanılır.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+          ),
+          const Gap(10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final narrow = constraints.maxWidth < 900;
+              final hat = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _ProductPickField(
+                    label: 'Hat kalemi',
+                    products: products,
+                    selectedId: _lineProductId,
+                    enabled: !_saving,
+                    onSelected: (product) {
+                      setState(() => _lineProductId = product.id);
+                      final price = _priceText(product.salePrice);
+                      if (price.isEmpty) return;
+                      if (product.currency.toUpperCase() == 'USD') {
+                        if (_lineUsd.text.trim().isEmpty) _lineUsd.text = price;
+                      } else if (_lineTry.text.trim().isEmpty) {
+                        _lineTry.text = price;
+                      }
+                    },
+                  ),
+                  const Gap(8),
+                  _DualPriceRow(
+                    tryController: _lineTry,
+                    usdController: _lineUsd,
+                    tryLabel: 'Hat TL',
+                    usdLabel: 'Hat USD',
+                    highlightUsd: _currency == 'USD',
+                    enabled: !_saving,
+                  ),
+                ],
+              );
+              final gmp3 = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _ProductPickField(
+                    label: 'GMP3 kalemi',
+                    products: products,
+                    selectedId: _gmp3ProductId,
+                    enabled: !_saving,
+                    onSelected: (product) {
+                      setState(() => _gmp3ProductId = product.id);
+                      final price = _priceText(product.salePrice);
+                      if (price.isEmpty) return;
+                      if (product.currency.toUpperCase() == 'USD') {
+                        if (_gmp3Usd.text.trim().isEmpty) _gmp3Usd.text = price;
+                      } else if (_gmp3Try.text.trim().isEmpty) {
+                        _gmp3Try.text = price;
+                      }
+                    },
+                  ),
+                  const Gap(8),
+                  _DualPriceRow(
+                    tryController: _gmp3Try,
+                    usdController: _gmp3Usd,
+                    tryLabel: 'GMP3 TL',
+                    usdLabel: 'GMP3 USD',
+                    highlightUsd: _currency == 'USD',
+                    enabled: !_saving,
+                  ),
+                ],
+              );
+              final iresto = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _ProductPickField(
+                    label: 'iResto (opsiyonel)',
+                    products: products,
+                    selectedId: _irestoProductId,
+                    enabled: !_saving,
+                    onSelected: (product) {
+                      setState(() => _irestoProductId = product.id);
+                      final price = _priceText(product.salePrice);
+                      if (price.isEmpty) return;
+                      if (product.currency.toUpperCase() == 'USD') {
+                        if (_irestoUsd.text.trim().isEmpty) {
+                          _irestoUsd.text = price;
+                        }
+                      } else if (_irestoTry.text.trim().isEmpty) {
+                        _irestoTry.text = price;
+                      }
+                    },
+                  ),
+                  const Gap(8),
+                  _DualPriceRow(
+                    tryController: _irestoTry,
+                    usdController: _irestoUsd,
+                    tryLabel: 'iResto TL',
+                    usdLabel: 'iResto USD',
+                    highlightUsd: _currency == 'USD',
+                    enabled: !_saving,
+                  ),
+                ],
+              );
+              if (narrow) {
+                return Column(
+                  children: [hat, const Gap(12), gmp3, const Gap(12), iresto],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: hat),
+                  const Gap(12),
+                  Expanded(child: gmp3),
+                  const Gap(12),
+                  Expanded(child: iresto),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -310,6 +875,8 @@ class HatLisansInvoicesTab extends ConsumerWidget {
               },
             ),
           ),
+          const Gap(8),
+          const HatLisansBillingPriceCard(),
           const Gap(8),
           Expanded(
             child: invoicesAsync.when(

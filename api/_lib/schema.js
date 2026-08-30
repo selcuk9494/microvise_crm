@@ -35,6 +35,7 @@ const ensured = {
   customer_country_columns: false,
   invoice_prices_include_vat: false,
   invoices_billing_source: false,
+  hat_lisans_billing_settings: false,
   akinsoft_invoice_sync: false,
   mutakabat_records: false,
   mutakabat_price_settings: false,
@@ -1993,6 +1994,46 @@ async function ensureInvoicesBillingSourceColumn() {
   return true;
 }
 
+async function ensureHatLisansBillingSettingsTable() {
+  if (ensured.hat_lisans_billing_settings) return true;
+  await query(`
+    create table if not exists public.hat_lisans_billing_settings (
+      id smallint primary key default 1 check (id = 1),
+      line_product_id uuid,
+      gmp3_product_id uuid,
+      iresto_product_id uuid,
+      line_price_try numeric(14, 4) not null default 0,
+      line_price_usd numeric(14, 4) not null default 0,
+      gmp3_price_try numeric(14, 4) not null default 0,
+      gmp3_price_usd numeric(14, 4) not null default 0,
+      iresto_price_try numeric(14, 4) not null default 0,
+      iresto_price_usd numeric(14, 4) not null default 0,
+      default_currency text not null default 'TRY',
+      updated_at timestamptz not null default now()
+    )
+  `);
+  await query(`
+    alter table public.hat_lisans_billing_settings
+      add column if not exists line_product_id uuid,
+      add column if not exists gmp3_product_id uuid,
+      add column if not exists iresto_product_id uuid,
+      add column if not exists line_price_try numeric(14, 4) not null default 0,
+      add column if not exists line_price_usd numeric(14, 4) not null default 0,
+      add column if not exists gmp3_price_try numeric(14, 4) not null default 0,
+      add column if not exists gmp3_price_usd numeric(14, 4) not null default 0,
+      add column if not exists iresto_price_try numeric(14, 4) not null default 0,
+      add column if not exists iresto_price_usd numeric(14, 4) not null default 0,
+      add column if not exists default_currency text not null default 'TRY'
+  `);
+  await query(`
+    insert into public.hat_lisans_billing_settings (id)
+    values (1)
+    on conflict (id) do nothing
+  `);
+  ensured.hat_lisans_billing_settings = true;
+  return true;
+}
+
 async function ensureInvoicePricesIncludeVatColumn() {
   if (ensured.invoice_prices_include_vat) return true;
   await query(`
@@ -2293,6 +2334,7 @@ module.exports = {
   ensureApplicationFormActivityLogsTable,
   ensureInvoicePricesIncludeVatColumn,
   ensureInvoicesBillingSourceColumn,
+  ensureHatLisansBillingSettingsTable,
   ensureAkinsoftInvoiceSyncColumns,
   ensureMutakabatRecordsTable,
   ensureMutakabatPriceSettingsTable,

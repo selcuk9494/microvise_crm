@@ -64,6 +64,7 @@ const {
 const { parseTsmLogRequestBody } = require('./_lib/tsm_log');
 const {
   createHatLisansInvoices,
+  saveHatLisansBillingSettings,
 } = require('./_lib/hat_lisans_invoices');
 const {
   handleCors,
@@ -3535,6 +3536,19 @@ module.exports = async (req, res) => {
         }
       }
       return ok(req, res, { items });
+    }
+
+    if (op === 'saveHatLisansBillingSettings') {
+      if (!hasPageAccess(user, 'urunler')) {
+        return forbidden(req, res);
+      }
+      try {
+        const catalog = await saveHatLisansBillingSettings(body.settings || body);
+        return ok(req, res, catalog);
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
     }
 
     if (op === 'createHatLisansInvoices') {
