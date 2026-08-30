@@ -454,103 +454,23 @@ Future<void> _importLinesAndGmp3Excel({
     }
   }
 
-  final lineUpdates = <Map<String, dynamic>>[];
-  if (lineRows.isNotEmpty) {
-    try {
-      final uniqueCustomerIds = lineRows
-          .map((e) => (e['customer_id'] ?? '').toString().trim())
-          .where((e) => e.isNotEmpty)
-          .toSet()
-          .toList(growable: false);
-
-      if (uniqueCustomerIds.isNotEmpty) {
-        List<Map<String, dynamic>> rows;
-        if (apiClient != null) {
-          final response = await apiClient.getJson(
-            '/data',
-            queryParameters: {
-              'resource': 'customer_lines_numbers_bulk',
-              'ids': uniqueCustomerIds.join(','),
-            },
-          );
-          rows = ((response['items'] as List?) ?? const [])
-              .whereType<Map>()
-              .map((e) => e.cast<String, dynamic>())
-              .toList(growable: false);
-        } else {
-          final result = await client!
-              .from('lines')
-              .select('id,customer_id,number,sim_number,operator')
-              .inFilter('customer_id', uniqueCustomerIds)
-              .limit(5000);
-          rows = (result as List).cast<Map<String, dynamic>>().toList(
-            growable: false,
-          );
-        }
-
-        final existingByKey = <String, Map<String, dynamic>>{};
-        for (final row in rows) {
-          final cid = (row['customer_id'] ?? '').toString().trim();
-          final num = (row['number'] ?? '').toString().trim();
-          final id = (row['id'] ?? '').toString().trim();
-          if (cid.isEmpty || num.isEmpty) continue;
-          if (id.isEmpty) continue;
-          existingByKey['$cid::$num'] = row;
-        }
-
-        final seenInImport = <String>{};
-        final filtered = <Map<String, dynamic>>[];
-        for (final row in lineRows) {
-          final cid = (row['customer_id'] ?? '').toString().trim();
-          final num = (row['number'] ?? '').toString().trim();
-          if (cid.isEmpty || num.isEmpty) continue;
-          final key = '$cid::$num';
-          if (seenInImport.contains(key)) {
-            final rn = row['_rowIndex'];
-            errors.add('Hat satır $rn: excel içinde tekrar, atlandı: $num');
-            continue;
-          }
-          seenInImport.add(key);
-          final existingRow = existingByKey[key];
-          if (existingRow != null) {
-            final rn = row['_rowIndex'];
-            final sim = (row['sim_number'] ?? '').toString().trim();
-            final operator = (row['operator'] ?? '').toString().trim();
-            final existingSim = (existingRow['sim_number'] ?? '')
-                .toString()
-                .trim();
-            final existingOperator = (existingRow['operator'] ?? '')
-                .toString()
-                .trim();
-
-            final updateValues = <String, dynamic>{};
-            if (sim.isNotEmpty && sim != existingSim) {
-              updateValues['sim_number'] = sim;
-            }
-            if (operator.isNotEmpty && operator != existingOperator) {
-              updateValues['operator'] = operator;
-            }
-
-            if (updateValues.isNotEmpty) {
-              lineUpdates.add({
-                '_rowIndex': rn,
-                'id': (existingRow['id'] ?? '').toString(),
-                'number': num,
-                'values': updateValues,
-              });
-            } else {
-              errors.add('Hat satır $rn: aynı numara var, atlandı: $num');
-            }
-            continue;
-          }
-          filtered.add(row);
-        }
-        lineRows
-          ..clear()
-          ..addAll(filtered);
-      }
-    } catch (_) {}
+  final seenLineKeys = <String>{};
+  final uniqueLineRows = <Map<String, dynamic>>[];
+  for (final row in lineRows) {
+    final cid = (row['customer_id'] ?? '').toString().trim();
+    final num = (row['number'] ?? '').toString().trim();
+    if (cid.isEmpty || num.isEmpty) continue;
+    final key = '$cid::$num';
+    if (seenLineKeys.contains(key)) {
+      errors.add('Hat satır ${row['_rowIndex']}: excel içinde tekrar, atlandı: $num');
+      continue;
+    }
+    seenLineKeys.add(key);
+    uniqueLineRows.add(row);
   }
+  lineRows
+    ..clear()
+    ..addAll(uniqueLineRows);
 
   final gmp3Rows = safeRows(gmp3Sheet);
   final gmp3Header = headerOf(gmp3Rows);
@@ -645,9 +565,11 @@ Future<void> _importLinesAndGmp3Excel({
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Text(
+            'Mevcut hat ve GMP3 kayıtları silinecek, ardından Excel yüklenecek.',
+          ),
+          const Gap(12),
           Text('Hat: ${lineRows.length}'),
-          if (lineUpdates.isNotEmpty)
-            Text('Hat Güncelleme: ${lineUpdates.length}'),
           Text('GMP3: ${licenseRows.length}'),
           if (errors.isNotEmpty) ...[
             const Gap(8),
@@ -690,7 +612,7 @@ Future<void> _importLinesAndGmp3Excel({
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('İçe Aktar'),
+          child: const Text('Sil ve Yükle'),
         ),
       ],
     ),
@@ -698,22 +620,56 @@ Future<void> _importLinesAndGmp3Excel({
   if (confirmed != true) return;
 
   if (!context.mounted) return;
-  showDialog<void>(
+  final navigator = Navigator.of(context, rootNavigator: true);
+  final loaderRoute = DialogRoute<void>(
     context: context,
     barrierDismissible: false,
-    builder: (context) => const AlertDialog(
-      content: SizedBox(
-        height: 72,
-        child: Center(child: CircularProgressIndicator()),
-      ),
-    ),
+    builder: (context) {
+      return const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Eski kayıtlar siliniyor, Excel yükleniyor...'),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
   );
+  navigator.push(loaderRoute);
+  await WidgetsBinding.instance.endOfFrame;
 
   int insertedLines = 0;
   int insertedLicenses = 0;
-  int updatedLines = 0;
+  var replaceFailed = false;
 
   try {
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {'op': 'clearIssuedLinesAndLicenses', 'confirm': 'SİL'},
+        timeout: const Duration(seconds: 120),
+      );
+    } else {
+      if (client == null) {
+        throw StateError('Veritabanı bağlantısı yok.');
+      }
+      await client.from('invoice_items').delete().inFilter('source_table', [
+        'lines',
+        'licenses',
+      ]);
+      await client.from('line_transfers').delete().neq('id', '');
+      await client.from('lines').delete().neq('id', '');
+      await client.from('licenses').delete().neq('id', '');
+    }
+
     const chunkSize = 200;
 
     Future<void> insertManySafe({
@@ -735,6 +691,7 @@ Future<void> _importLinesAndGmp3Excel({
             await apiClient.postJson(
               '/mutate',
               body: {'op': 'insertMany', 'table': table, 'rows': sanitized},
+              timeout: const Duration(seconds: 120),
             );
           } else {
             await client!.from(table).insert(sanitized);
@@ -755,6 +712,7 @@ Future<void> _importLinesAndGmp3Excel({
                     'table': table,
                     'rows': [one],
                   },
+                  timeout: const Duration(seconds: 120),
                 );
               } else {
                 await client!.from(table).insert(one);
@@ -775,52 +733,33 @@ Future<void> _importLinesAndGmp3Excel({
       onInserted: () => insertedLines += 1,
     );
 
-    for (final row in lineUpdates) {
-      final id = (row['id'] ?? '').toString().trim();
-      final values =
-          (row['values'] as Map?)?.cast<String, dynamic>() ?? const {};
-      if (id.isEmpty || values.isEmpty) continue;
-      try {
-        if (apiClient != null) {
-          await apiClient.postJson(
-            '/mutate',
-            body: {
-              'op': 'updateWhere',
-              'table': 'lines',
-              'filters': [
-                {'col': 'id', 'op': 'eq', 'value': id},
-              ],
-              'values': values,
-            },
-          );
-        } else {
-          await client!.from('lines').update(values).eq('id', id);
-        }
-        updatedLines += 1;
-      } catch (e) {
-        errors.add('Hat güncelleme: $id: $e');
-      }
-    }
-
     await insertManySafe(
       table: 'licenses',
       rows: licenseRows,
       onInserted: () => insertedLicenses += 1,
     );
+  } catch (e) {
+    replaceFailed = true;
+    errors.add('Aktarım hatası: $e');
   } finally {
-    if (context.mounted) Navigator.of(context).pop();
+    if (loaderRoute.isActive) {
+      navigator.removeRoute(loaderRoute);
+    }
   }
 
   ref.invalidate(customersProvider);
   ref.invalidate(customerCitiesProvider);
   onImported?.call();
   if (!context.mounted) return;
+  final failedWithoutInsert =
+      replaceFailed && insertedLines == 0 && insertedLicenses == 0;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(
-        'İçe aktarıldı: Hat $insertedLines • GMP3 $insertedLicenses'
-        '${updatedLines == 0 ? '' : ' • Hat Güncelleme $updatedLines'}'
-        '${errors.isEmpty ? '' : ' • Uyarı/Hata ${errors.length}'}',
+        failedWithoutInsert
+            ? 'Yükleme başarısız: ${errors.last}'
+            : 'Yeniden yüklendi: Hat $insertedLines • GMP3 $insertedLicenses'
+                '${errors.isEmpty ? '' : ' • Uyarı/Hata ${errors.length}'}',
       ),
     ),
   );

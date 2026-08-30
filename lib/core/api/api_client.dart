@@ -60,6 +60,7 @@ class ApiClient {
     Object? body,
     Map<String, String>? queryParameters,
     bool requiresAuth = true,
+    Duration timeout = const Duration(seconds: 25),
   }) async {
     return _requestJson(
       method: 'POST',
@@ -67,6 +68,7 @@ class ApiClient {
       queryParameters: queryParameters,
       requiresAuth: requiresAuth,
       body: body,
+      timeout: timeout,
     );
   }
 
@@ -91,6 +93,7 @@ class ApiClient {
     Map<String, String>? queryParameters,
     required bool requiresAuth,
     Object? body,
+    Duration timeout = const Duration(seconds: 25),
   }) async {
     final headers = <String, String>{'Accept': 'application/json'};
     if (requiresAuth) {
@@ -112,7 +115,7 @@ class ApiClient {
 
     late final http.StreamedResponse streamed;
     try {
-      streamed = await request.send().timeout(const Duration(seconds: 25));
+      streamed = await request.send().timeout(timeout);
     } on TimeoutException {
       throw Exception(
         'Sunucuya bağlanılamadı (zaman aşımı). İnterneti kontrol edin.',
