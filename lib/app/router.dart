@@ -29,6 +29,7 @@ import '../features/forms/serial_tracking_screen.dart';
 import '../features/forms/transfer_form_screen.dart';
 import '../features/mutakabat/mutakabat_screen.dart';
 import '../features/personnel/personnel_screen.dart';
+import '../features/reports/reports_models.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/service/service_screen.dart';
 import '../features/service/service_detail_screen.dart';
@@ -170,8 +171,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
         GoRoute(
           path: '/raporlar',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: ReportsScreen()),
+          redirect: (context, state) {
+            if (state.uri.path == '/raporlar') return '/raporlar/ozet';
+            return null;
+          },
+          routes: [
+            GoRoute(
+              path: ':section',
+              pageBuilder: (context, state) => NoTransitionPage(
+                child: ReportsScreen(
+                  section: ReportsSectionX.fromPath(
+                    state.pathParameters['section'],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
         GoRoute(
           path: '/personel',

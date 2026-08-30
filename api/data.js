@@ -41,6 +41,7 @@ const {
   ensureQuotesTables,
   ensureProductImageUrlColumn,
 } = require('./_lib/schema');
+const { buildSystemReports } = require('./_lib/reports');
 const { ensureBrandIntegrations } = require('./_lib/mutakabat_processor');
 const { ensureInvoicePaymentLinksTable, loadPosValorDays } = require('./_lib/invoice_payment');
 const {
@@ -240,6 +241,9 @@ module.exports = async (req, res) => {
     }
     if (resource.startsWith('finance_')) {
       if (!requirePage(req, user, 'finans', res)) return;
+    }
+    if (resource.startsWith('reports_')) {
+      if (!requireAnyPage(req, user, ['raporlar'], res)) return;
     }
     if (resource === 'halkbank_exchange_rates') {
       // Panel + fatura/iş emri: fatura oluştururken güncel kur için.
@@ -2424,6 +2428,16 @@ module.exports = async (req, res) => {
           `select id,full_name,role from public.users order by full_name asc`,
         );
         return ok(req, res, { items: result.rows });
+      }
+
+      case 'reports_system': {
+        if (!requireAnyPage(req, user, ['raporlar'], res)) return;
+        const payload = await buildSystemReports({
+          from: String(req.query.from || '').trim(),
+          to: String(req.query.to || '').trim(),
+          userId: String(req.query.userId || '').trim(),
+        });
+        return ok(req, res, payload);
       }
 
       case 'reports_payments': {
