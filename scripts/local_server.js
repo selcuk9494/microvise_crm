@@ -123,7 +123,7 @@ async function handleAkinsoftTestConnection(req, res) {
       JSON.stringify({ ok: false, error: 'POST gerekli.' }),
     );
   }
-  const body = await readJson(req);
+  const body = await mergeAkinsoftSettingsFromCrm(await readJson(req));
   const year = String(
     body.akinsoft_database_year || process.env.AKINSOFT_DATABASE_YEAR || '2026',
   ).trim();
@@ -145,7 +145,11 @@ async function handleAkinsoftTestConnection(req, res) {
       res,
       400,
       { 'Content-Type': 'application/json; charset=utf-8' },
-      JSON.stringify({ ok: false, error: 'SQL şifresi zorunludur.' }),
+      JSON.stringify({
+        ok: false,
+        error:
+          'SQL şifresi zorunludur. E-Fatura Ayarları içindeki SAP / MSSQL şifresini kaydedin.',
+      }),
     );
   }
 
@@ -206,7 +210,54 @@ async function handleAkinsoftTestConnection(req, res) {
 // Havuzdaki DATABASE S kilitlerini WOLVOX engeli sanmamak için kullanılır.
 const AKINSOFT_CRM_APP_NAME = 'microvise-crm';
 
-function buildAkinsoftSqlConfig(body) {
+const AKINSOFT_SETTING_KEYS = [
+  'akinsoft_mssql_host',
+  'akinsoft_mssql_port',
+  'akinsoft_mssql_database',
+  'akinsoft_database_year',
+  'akinsoft_database_pattern',
+  'akinsoft_mssql_username',
+  'akinsoft_mssql_password',
+];
+
+async function mergeAkinsoftSettingsFromCrm(body) {
+  const merged = { ...(body || {}) };
+  const hasPassword = String(
+    merged.akinsoft_mssql_password || process.env.AKINSOFT_MSSQL_PASSWORD || '',
+  ).trim();
+  if (hasPassword) return merged;
+  try {
+    const { query } = require(path.join(rootDir, 'api', '_lib', 'db.js'));
+    const result = await query(
+      `
+        select
+          akinsoft_mssql_host,
+          akinsoft_mssql_port,
+          akinsoft_mssql_database,
+          akinsoft_database_year,
+          akinsoft_database_pattern,
+          akinsoft_mssql_username,
+          akinsoft_mssql_password
+        from public.e_invoice_settings
+        where coalesce(is_active, true) = true
+        order by created_at asc
+        limit 1
+      `,
+    );
+    const row = result.rows[0] || {};
+    for (const key of AKINSOFT_SETTING_KEYS) {
+      const fromRow = String(row[key] ?? '').trim();
+      const fromBody = String(merged[key] ?? '').trim();
+      if (!fromBody && fromRow) merged[key] = fromRow;
+    }
+  } catch (_) {
+    // CRM DB yoksa env / istek gövdesi kullanılır.
+  }
+  return merged;
+}
+
+async function buildAkinsoftSqlConfig(body) {
+  body = await mergeAkinsoftSettingsFromCrm(body || {});
   // UI her istekte şifreyi gönderir; yerelde kalıcı olsun ki CLI/senkron da çalışsın.
   try {
     const map = {
@@ -249,7 +300,9 @@ function buildAkinsoftSqlConfig(body) {
     body.akinsoft_mssql_password || process.env.AKINSOFT_MSSQL_PASSWORD || '',
   ).trim();
   if (!password) {
-    const error = new Error('SQL şifresi zorunludur.');
+    const error = new Error(
+      'SQL şifresi zorunludur. E-Fatura Ayarları içindeki SAP / MSSQL şifresini kaydedin.',
+    );
     error.statusCode = 400;
     throw error;
   }
@@ -889,7 +942,7 @@ async function handleAkinsoftAnalyze(req, res) {
   }
 
   const body = await readJson(req);
-  const { database, config } = buildAkinsoftSqlConfig(body);
+  const { database, config } = await buildAkinsoftSqlConfig(body);
   const pool = await connectAkinsoftPool(config);
 
   try {
@@ -2506,7 +2559,7 @@ async function readAkinsoftCustomerMatchRows(pool) {
 
 async function writeAkinsoftCustomerMatch(body, match) {
   const sql = require('mssql');
-  const { config } = buildAkinsoftSqlConfig(body || {});
+  const { config } = await buildAkinsoftSqlConfig(body || {});
   const pool = await connectAkinsoftPool(config);
   const localTaxNumber = taxNumberOrNull(match.localCustomerTaxNumber);
   try {
@@ -2749,7 +2802,7 @@ async function resolveAkinsoftCustomerRows(customers, externalRows = []) {
 
 async function pullAkinsoftDataset(body) {
   const sql = require('mssql');
-  const { database, config } = buildAkinsoftSqlConfig(body);
+  const { database, config } = await buildAkinsoftSqlConfig(body);
   const limit = Math.max(1, Math.min(Number(body.limit || 2000), 5000));
   // pull-and-update: tam stok/hizmet kataloğu yerine yalnızca fatura
   // kalemlerinde geçen ürünleri çeker (büyük STOK/HIZMET taraması atlanır).
@@ -4508,7 +4561,7 @@ async function handleAkinsoftImport(req, res) {
   if (body.statusOnly !== true) {
     try {
       const sql = require('mssql');
-      const { config } = buildAkinsoftSqlConfig(body.settings || body);
+      const { config } = await buildAkinsoftSqlConfig(body.settings || body);
       config.requestTimeout = Math.max(Number(config.requestTimeout || 0), 180000);
       const pool = await connectAkinsoftPool(config);
       try {
@@ -4611,7 +4664,7 @@ async function handleAkinsoftImportJob(req, res) {
           job.stageLabel = 'CRM stokları Akınsoft’a yazılıyor';
           job.updatedAt = new Date().toISOString();
           const sql = require('mssql');
-          const { config } = buildAkinsoftSqlConfig(body.settings || body);
+          const { config } = await buildAkinsoftSqlConfig(body.settings || body);
           config.requestTimeout = Math.max(
             Number(config.requestTimeout || 0),
             180000,
@@ -4780,7 +4833,7 @@ async function runAkinsoftPullAndUpdate(body, reportProgress) {
           total: 1,
         });
         const sql = require('mssql');
-        const { config } = buildAkinsoftSqlConfig(body);
+        const { config } = await buildAkinsoftSqlConfig(body);
         config.requestTimeout = Math.max(Number(config.requestTimeout || 0), 180000);
         const pool = await connectAkinsoftPool(config);
         try {
@@ -7418,7 +7471,7 @@ async function handleAkinsoftPushInvoices(req, res) {
   }
 
   const sql = require('mssql');
-  const { config } = buildAkinsoftSqlConfig(body.settings || body);
+  const { config } = await buildAkinsoftSqlConfig(body.settings || body);
   config.requestTimeout = Math.max(Number(config.requestTimeout || 0), 180000);
   // Yazımda TX + opsiyonel monitor; fazla havuz bağlantısı self-lock riskini artırır.
   config.pool = { max: 3, min: 0, idleTimeoutMillis: 10000 };
@@ -7612,7 +7665,7 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
   );
 
   const sql = require('mssql');
-  const { config } = buildAkinsoftSqlConfig(body.settings || body);
+  const { config } = await buildAkinsoftSqlConfig(body.settings || body);
   // Toplu güncellemede satır başına birkaç sorgu olduğu için süreyi uzat.
   config.requestTimeout = Math.max(Number(config.requestTimeout || 0), 180000);
   config.pool = { max: 3, min: 0, idleTimeoutMillis: 10000 };

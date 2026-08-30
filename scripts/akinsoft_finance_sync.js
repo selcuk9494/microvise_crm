@@ -40,7 +40,7 @@ function createAkinsoftFinanceHandlers(ctx) {
   }
 
   async function withPool(body, fn) {
-    const built = buildAkinsoftSqlConfig(body || {});
+    const built = await buildAkinsoftSqlConfig(body || {});
     const config = built.config || built;
     config.requestTimeout = Math.max(Number(config.requestTimeout) || 90000, 120000);
     const pool = await connectAkinsoftPool(config);
