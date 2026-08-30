@@ -53,9 +53,26 @@ String _coerceNumberLike(String raw) {
 
 String _digitsOnly(String raw) => raw.replaceAll(RegExp(r'[^0-9]'), '');
 
-String _normalizeVkn(String raw) {
-  final coerced = _coerceNumberLike(raw);
-  return _digitsOnly(coerced);
+String _foldLookupText(String value) {
+  var t = value.trim().toLowerCase();
+  t = t
+      .replaceAll('\u0307', '')
+      .replaceAll('ı', 'i')
+      .replaceAll('İ', 'i')
+      .replaceAll('i̇', 'i')
+      .replaceAll('ğ', 'g')
+      .replaceAll('Ğ', 'g')
+      .replaceAll('ş', 's')
+      .replaceAll('Ş', 's')
+      .replaceAll('ç', 'c')
+      .replaceAll('Ç', 'c')
+      .replaceAll('ö', 'o')
+      .replaceAll('Ö', 'o')
+      .replaceAll('ü', 'u')
+      .replaceAll('Ü', 'u');
+  t = t.replaceAll(RegExp(r'[^a-z0-9]+'), ' ');
+  t = t.replaceAll(RegExp(r'\s+'), ' ').trim();
+  return t;
 }
 
 String? _toIsoDate(Object? raw) {
@@ -231,11 +248,16 @@ Future<void> _importLinesAndGmp3Excel({
   }
 
   final customerIdByVkn = <String, String>{};
-  for (final row in lookupItems) {
-    final vkn = _normalizeVkn((row['vkn'] ?? '').toString());
-    final id = (row['id'] ?? '').toString().trim();
-    if (vkn.isEmpty || id.isEmpty) continue;
+  void indexVkn(String raw, String id) {
+    final vkn = _normalizeVkn(raw);
+    if (vkn.isEmpty || id.isEmpty) return;
     customerIdByVkn[vkn] = id;
+    final stripped = vkn.replaceFirst(RegExp(r'^0+'), '');
+    if (stripped.isNotEmpty) customerIdByVkn[stripped] = id;
+  }
+
+  for (final row in lookupItems) {
+    indexVkn((row['vkn'] ?? '').toString(), (row['id'] ?? '').toString().trim());
   }
 
   List<Map<String, dynamic>> companyRows;
@@ -258,16 +280,35 @@ Future<void> _importLinesAndGmp3Excel({
       growable: false,
     );
   }
-  String normalizeCompanyName(String value) {
-    return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
-  }
+  String normalizeCompanyName(String value) => _foldLookupText(value);
 
   final companyIdByName = <String, String>{};
-  for (final row in companyRows) {
-    final name = normalizeCompanyName((row['name'] ?? '').toString());
-    final id = (row['id'] ?? '').toString().trim();
-    if (name.isEmpty || id.isEmpty) continue;
+  void indexCompany(String raw, String id) {
+    final name = normalizeCompanyName(raw);
+    if (name.isEmpty || id.isEmpty) return;
     companyIdByName[name] = id;
+    final compact = name.replaceAll(' ', '');
+    if (compact.isNotEmpty) companyIdByName[compact] = id;
+  }
+
+  for (final row in companyRows) {
+    indexCompany(
+      (row['name'] ?? '').toString(),
+      (row['id'] ?? '').toString().trim(),
+    );
+  }
+
+  String? lookupCompanyId(String raw) {
+    final name = normalizeCompanyName(raw);
+    if (name.isEmpty) return null;
+    return companyIdByName[name] ?? companyIdByName[name.replaceAll(' ', '')];
+  }
+
+  String? lookupCustomerId(String raw) {
+    final vkn = _normalizeVkn(raw);
+    if (vkn.isEmpty) return null;
+    return customerIdByVkn[vkn] ??
+        customerIdByVkn[vkn.replaceFirst(RegExp(r'^0+'), '')];
   }
 
   late final excel.Excel book;
@@ -400,7 +441,7 @@ Future<void> _importLinesAndGmp3Excel({
           'vergi',
         ]),
       );
-      final customerId = customerIdByVkn[vkn];
+      final customerId = lookupCustomerId(vkn);
       if ((customerId ?? '').isEmpty) {
         if (vkn.isNotEmpty) {
           errors.add('Hat satır $excelRowNo: VKN bulunamadı: $vkn');
@@ -510,7 +551,7 @@ Future<void> _importLinesAndGmp3Excel({
           'vergi',
         ]),
       );
-      final customerId = customerIdByVkn[vkn];
+      final customerId = lookupCustomerId(vkn);
       if ((customerId ?? '').isEmpty) {
         if (vkn.isNotEmpty) {
           errors.add('$typeLabel satır $excelRowNo: VKN bulunamadı: $vkn');
@@ -551,15 +592,11 @@ Future<void> _importLinesAndGmp3Excel({
               typeFromCell == IssuedLicenseType.iresto
           ? typeFromCell
           : licenseType;
-      final companyKey = normalizeCompanyName(companyText);
-      final companyId = companyKey.isEmpty
-          ? null
-          : companyIdByName[companyKey];
-      if (companyKey.isNotEmpty && (companyId ?? '').isEmpty) {
+      final companyId = lookupCompanyId(companyText);
+      if (companyText.trim().isNotEmpty && (companyId ?? '').isEmpty) {
         errors.add(
-          '$typeLabel satır $excelRowNo: Yazılım firması bulunamadı: $companyText',
+          '$typeLabel satır $excelRowNo: Yazılım firması eşleşmedi, sicille yüklendi: $companyText',
         );
-        continue;
       }
       licenseRows.add({
         '_rowIndex': excelRowNo,
@@ -627,7 +664,7 @@ Future<void> _importLinesAndGmp3Excel({
           if (errors.isNotEmpty) ...[
             const Gap(8),
             Text(
-              'Uyarı: ${errors.length} satır atlandı.',
+              'Uyarı: ${errors.length} satır (lisanslar yine de yüklenecek).',
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
@@ -753,6 +790,7 @@ Future<void> _importLinesAndGmp3Excel({
             onInserted();
           }
         } catch (e) {
+          var recovered = 0;
           for (final row in chunk) {
             final rn = row['_rowIndex'];
             try {
@@ -771,11 +809,14 @@ Future<void> _importLinesAndGmp3Excel({
                 await client!.from(table).insert(one);
               }
               onInserted();
+              recovered += 1;
             } catch (inner) {
               errors.add('$table satır $rn: $inner');
             }
           }
-          errors.add('$table: toplu aktarım hatası: $e');
+          if (recovered < chunk.length) {
+            errors.add('$table: toplu aktarım hatası: $e');
+          }
         }
       }
     }
@@ -811,8 +852,8 @@ Future<void> _importLinesAndGmp3Excel({
       content: Text(
         failedWithoutInsert
             ? 'Yükleme başarısız: ${errors.last}'
-            : 'Yeniden yüklendi: Hat $insertedLines • GMP3 $gmp3Count • iResto $irestoCount'
-                '${errors.isEmpty ? '' : ' • Uyarı/Hata ${errors.length}'}',
+            : 'Yeniden yüklendi: Hat $insertedLines • Lisans $insertedLicenses'
+                '${errors.isEmpty ? '' : ' • Uyarı ${errors.length}'}',
       ),
     ),
   );
