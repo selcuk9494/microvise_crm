@@ -96,6 +96,7 @@ class Invoice {
   final String? paymentLinkStatus;
   final DateTime? paymentLinkEmailedAt;
   final DateTime? paymentLinkSettledAt;
+  final String? billingSource;
 
   const Invoice({
     required this.id,
@@ -143,11 +144,20 @@ class Invoice {
     this.paymentLinkStatus,
     this.paymentLinkEmailedAt,
     this.paymentLinkSettledAt,
+    this.billingSource,
   });
 
   double get remainingAmount => grandTotal - paidAmount;
   bool get isPaid => status == 'paid';
   bool get isOpen => status == 'open' || status == 'partial';
+  bool get isHatLisansBilling =>
+      (billingSource ?? '').trim() == 'hat_lisans';
+  bool get isHatLisansPayable =>
+      isHatLisansBilling &&
+      isActive &&
+      invoiceType == 'sales' &&
+      remainingAmount > 0.009 &&
+      (status == 'draft' || status == 'open' || status == 'partial');
   bool get isPaidViaPos {
     final method = (lastPaymentMethod ?? '').trim().toLowerCase();
     if (method == 'pos') return true;
@@ -361,6 +371,7 @@ class Invoice {
       paymentLinkSettledAt: json['payment_link_settled_at'] != null
           ? parseAppDateTime(json['payment_link_settled_at'].toString())
           : null,
+      billingSource: json['billing_source']?.toString(),
     );
   }
 
@@ -432,7 +443,7 @@ class InvoiceItem {
   factory InvoiceItem.fromJson(Map<String, dynamic> json) {
     return InvoiceItem(
       id: json['id'].toString(),
-      invoiceId: json['invoice_id'].toString(),
+      invoiceId: json['invoice_id']?.toString() ?? '',
       productId: json['product_id']?.toString(),
       description: json['description']?.toString() ?? '',
       notes: () {

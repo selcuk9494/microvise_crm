@@ -63,6 +63,9 @@ const {
 } = require('./_lib/recurring_billing');
 const { parseTsmLogRequestBody } = require('./_lib/tsm_log');
 const {
+  createHatLisansInvoices,
+} = require('./_lib/hat_lisans_invoices');
+const {
   handleCors,
   ok,
   badRequest,
@@ -3534,6 +3537,27 @@ module.exports = async (req, res) => {
       return ok(req, res, { items });
     }
 
+    if (op === 'createHatLisansInvoices') {
+      if (!hasPageAccess(user, 'urunler')) {
+        return forbidden(req, res);
+      }
+      const customerIds = Array.isArray(body.customerIds) ? body.customerIds : [];
+      if (!customerIds.length) {
+        return badRequest(req, res, 'En az bir müşteri seçin.');
+      }
+      try {
+        const result = await createHatLisansInvoices({
+          customerIds,
+          prices: body.prices || {},
+          user,
+        });
+        return ok(req, res, result);
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+
     if (op === 'parseTsmLog') {
       if (!hasPageAccess(user, 'tsm_log') && !hasPageAccess(user, 'formlar')) {
         return forbidden(req, res, 'TSM Log için yetkiniz yok.');
@@ -3663,7 +3687,8 @@ module.exports = async (req, res) => {
     if (op === 'createInvoicePaymentLink') {
       if (
         !hasPageAccess(user, 'faturalama') &&
-        !hasPageAccess(user, 'e_fatura')
+        !hasPageAccess(user, 'e_fatura') &&
+        !hasPageAccess(user, 'urunler')
       ) {
         return forbidden(req, res);
       }
@@ -3690,7 +3715,8 @@ module.exports = async (req, res) => {
     if (op === 'sendInvoicePaymentLinkEmail') {
       if (
         !hasPageAccess(user, 'faturalama') &&
-        !hasPageAccess(user, 'e_fatura')
+        !hasPageAccess(user, 'e_fatura') &&
+        !hasPageAccess(user, 'urunler')
       ) {
         return forbidden(req, res);
       }

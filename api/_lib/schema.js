@@ -34,6 +34,7 @@ const ensured = {
   application_form_activity_logs: false,
   customer_country_columns: false,
   invoice_prices_include_vat: false,
+  invoices_billing_source: false,
   akinsoft_invoice_sync: false,
   mutakabat_records: false,
   mutakabat_price_settings: false,
@@ -1973,6 +1974,25 @@ async function ensureApplicationFormActivityLogsTable() {
   return true;
 }
 
+async function ensureInvoicesBillingSourceColumn() {
+  if (ensured.invoices_billing_source) return true;
+  if (!(await tableExists('invoices'))) {
+    ensured.invoices_billing_source = true;
+    return true;
+  }
+  await query(`
+    alter table public.invoices
+      add column if not exists billing_source text
+  `);
+  await query(`
+    create index if not exists idx_invoices_billing_source
+    on public.invoices (billing_source)
+    where billing_source is not null
+  `);
+  ensured.invoices_billing_source = true;
+  return true;
+}
+
 async function ensureInvoicePricesIncludeVatColumn() {
   if (ensured.invoice_prices_include_vat) return true;
   await query(`
@@ -2272,6 +2292,7 @@ module.exports = {
   ensureApplicationFormsCreatedByRepair,
   ensureApplicationFormActivityLogsTable,
   ensureInvoicePricesIncludeVatColumn,
+  ensureInvoicesBillingSourceColumn,
   ensureAkinsoftInvoiceSyncColumns,
   ensureMutakabatRecordsTable,
   ensureMutakabatPriceSettingsTable,

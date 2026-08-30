@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { query, withTransaction } = require('./db');
 const { ensureInvoicePaidCloseRule } = require('./invoice_paid_status');
 const { canDismissPosCollection, normalizeValorDays } = require('./pos_status');
+const { ensureInvoicesBillingSourceColumn } = require('./schema');
 
 const HALKBANK_PROD_GATEWAY_URL = 'https://sanalpos.halkbank.com.tr/fim/est3Dgate';
 const HALKBANK_TEST_GATEWAY_URL = 'https://entegrasyon.asseco-see.com.tr/fim/est3Dgate';
@@ -1042,6 +1043,7 @@ async function loadPosValorDays() {
 }
 
 async function loadOpenInvoices(invoiceIds) {
+  await ensureInvoicesBillingSourceColumn();
   const ids = Array.from(
     new Set(
       (invoiceIds || [])
@@ -1066,6 +1068,7 @@ async function loadOpenInvoices(invoiceIds) {
         grand_total,
         coalesce(paid_amount, 0) as paid_amount,
         status,
+        coalesce(billing_source, '') as billing_source,
         is_active
       from public.invoices
       where id = any($1::uuid[])
@@ -1097,9 +1100,14 @@ async function loadOpenInvoices(invoiceIds) {
         exchangeRate: Number(row.exchange_rate || 1) || 1,
         remaining,
         status: String(row.status || ''),
+        billingSource: String(row.billing_source || ''),
       };
     })
-    .filter((row) => row.remaining > 0.009 && ['open', 'partial'].includes(row.status));
+    .filter((row) => {
+      if (row.remaining <= 0.009) return false;
+      if (['open', 'partial'].includes(row.status)) return true;
+      return row.status === 'draft' && row.billingSource === 'hat_lisans';
+    });
   if (!open.length) {
     const error = new Error('Tahsil edilecek açık fatura yok.');
     error.statusCode = 400;

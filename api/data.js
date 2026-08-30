@@ -41,6 +41,7 @@ const {
   ensureMutakabatRecordsTable,
   ensureQuotesTables,
   ensureProductImageUrlColumn,
+  ensureInvoicesBillingSourceColumn,
 } = require('./_lib/schema');
 const { buildSystemReports } = require('./_lib/reports');
 const { ensureBrandIntegrations } = require('./_lib/mutakabat_processor');
@@ -56,6 +57,10 @@ const {
   ensureRecurringBillingTables,
   listRecurringBillingPlans,
 } = require('./_lib/recurring_billing');
+const {
+  listHatLisansInvoices,
+  loadBillingCatalog,
+} = require('./_lib/hat_lisans_invoices');
 const {
   handleCors,
   ok,
@@ -221,7 +226,7 @@ module.exports = async (req, res) => {
     if (resource === 'personnel_users') {
       if (!requireAnyPage(req, user, ['personel', 'is_emirleri', 'formlar'], res)) return;
     }
-    if (resource.startsWith('products_') || resource === 'customers_lookup') {
+    if (resource.startsWith('products_') || resource === 'customers_lookup' || resource === 'hat_lisans_invoices' || resource === 'hat_lisans_billing_catalog') {
       if (!requirePage(req, user, 'urunler', res)) return;
     }
     if (
@@ -1887,6 +1892,16 @@ module.exports = async (req, res) => {
           values.push(endDate);
           whereSql += ` and i.invoice_date <= $${values.length}::date`;
         }
+        await ensureInvoicesBillingSourceColumn();
+        const billingSource = String(req.query.billingSource || '').trim();
+        if (billingSource === 'hat_lisans') {
+          whereSql += ` and i.billing_source = 'hat_lisans'`;
+        } else {
+          whereSql += ` and not (
+            coalesce(i.billing_source, '') = 'hat_lisans'
+            and i.status = 'draft'
+          )`;
+        }
 
         const result = await query(
           `
@@ -3154,6 +3169,17 @@ module.exports = async (req, res) => {
         );
 
         return ok(req, res, { items: result.rows });
+      }
+
+      case 'hat_lisans_billing_catalog': {
+        const catalog = await loadBillingCatalog();
+        return ok(req, res, catalog);
+      }
+
+      case 'hat_lisans_invoices': {
+        const payment = String(req.query.payment || '').trim();
+        const items = await listHatLisansInvoices({ payment });
+        return ok(req, res, { items });
       }
 
       case 'halkbank_exchange_rates': {

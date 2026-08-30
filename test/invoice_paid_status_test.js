@@ -93,3 +93,31 @@ test('taslak ve iptal durumunu korur', () => {
     'draft',
   );
 });
+
+test('Hat & Lisans taslağı ödenince satış faturası olur, Maliye olmadan kapanmaz', () => {
+  assert.equal(
+    invoiceStatusAfterPayment({
+      currentStatus: 'draft',
+      paidAmount: 100,
+      grandTotal: 100,
+      invoiceType: 'sales',
+      eInvoiceStatus: 'not_sent',
+      billingSource: 'hat_lisans',
+    }),
+    'open',
+  );
+});
+
+test('Hat & Lisans taslağı ödenip Maliye gönderilince kapanır', () => {
+  assert.equal(
+    invoiceStatusAfterPayment({
+      currentStatus: 'draft',
+      paidAmount: 100,
+      grandTotal: 100,
+      invoiceType: 'sales',
+      eInvoiceStatus: 'sent',
+      billingSource: 'hat_lisans',
+    }),
+    'paid',
+  );
+});

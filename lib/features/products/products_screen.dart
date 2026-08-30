@@ -20,6 +20,7 @@ import '../definitions/definitions_screen.dart';
 import 'line_stock_tab.dart';
 import 'lines_gmp3_excel.dart';
 import 'issued_license_type.dart';
+import 'hat_lisans_invoices_tab.dart';
 
 final productSearchProvider = NotifierProvider<ProductSearchNotifier, String>(
   ProductSearchNotifier.new,
@@ -755,7 +756,7 @@ class ProductsScreen extends ConsumerWidget {
     }
 
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: AppPageLayout(
         title: 'Hat & Lisanslar',
         subtitle: 'Verilen hatlar, GMP3 ve iResto lisansları tek listede.',
@@ -973,6 +974,7 @@ class ProductsScreen extends ConsumerWidget {
                                     Tab(text: 'Lisanslar (GMP3 / iResto)'),
                                     Tab(text: 'Toplamlar'),
                                     Tab(text: 'Hat Stok'),
+                                    Tab(text: 'Faturalar'),
                                   ],
                                 ),
                               ],
@@ -1000,6 +1002,7 @@ class ProductsScreen extends ConsumerWidget {
                                     Tab(text: 'Lisanslar (GMP3 / iResto)'),
                                     Tab(text: 'Toplamlar'),
                                     Tab(text: 'Hat Stok'),
+                                    Tab(text: 'Faturalar'),
                                   ],
                                 ),
                               ),
@@ -1037,6 +1040,7 @@ class ProductsScreen extends ConsumerWidget {
                           ),
                           const _TotalsTab(),
                           const LineStockTab(),
+                          const HatLisansInvoicesTab(),
                         ],
                       ),
                     ),
@@ -1859,6 +1863,36 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                   ),
                 );
 
+                final invoiceBtn = FilledButton.icon(
+                  onPressed: items.isEmpty
+                      ? null
+                      : () => showCreateHatLisansInvoiceDialog(
+                          context: context,
+                          ref: ref,
+                          customers: [
+                            for (final r in items)
+                              HatLisansInvoiceCustomer(
+                                customerId: r.customerId,
+                                customerName: r.customerName,
+                                linesTotal: r.linesTotal,
+                                gmp3Total: r.gmp3Total,
+                                irestoTotal: r.irestoTotal,
+                              ),
+                          ],
+                        ),
+                  icon: const Icon(LucideIcons.fileText, size: 18),
+                  label: const Text('Fatura Oluştur'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 32),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                );
+
                 if (narrow) {
                   return Column(
                     children: [
@@ -1869,6 +1903,8 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                           Expanded(child: clearBtn),
                           const Gap(8),
                           Expanded(child: exportBtn),
+                          const Gap(8),
+                          Expanded(child: invoiceBtn),
                         ],
                       ),
                     ],
@@ -1882,6 +1918,8 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                     clearBtn,
                     const Gap(8),
                     exportBtn,
+                    const Gap(8),
+                    invoiceBtn,
                     if (search.trim().isNotEmpty) const Gap(8),
                     if (search.trim().isNotEmpty)
                       AppBadge(
@@ -1959,6 +1997,33 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                               label: 'iResto: ${r.irestoTotal}',
                               tone: AppBadgeTone.primary,
                               dense: true,
+                            ),
+                            const Gap(8),
+                            FilledButton.tonal(
+                              onPressed: () => showCreateHatLisansInvoiceDialog(
+                                context: context,
+                                ref: ref,
+                                customers: [
+                                  HatLisansInvoiceCustomer(
+                                    customerId: r.customerId,
+                                    customerName: r.customerName,
+                                    linesTotal: r.linesTotal,
+                                    gmp3Total: r.gmp3Total,
+                                    irestoTotal: r.irestoTotal,
+                                  ),
+                                ],
+                                singleCustomerId: r.customerId,
+                              ),
+                              style: FilledButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                minimumSize: const Size(0, 32),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                              ),
+                              child: const Text('Fatura Oluştur'),
                             ),
                           ],
                         ),

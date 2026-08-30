@@ -1,4 +1,5 @@
 const { query } = require('./db');
+const { ensureInvoicesBillingSourceColumn } = require('./schema');
 
 const EINVOICE_CLOSE_STATUSES = new Set([
   'sent',
@@ -13,9 +14,13 @@ function invoiceStatusAfterPayment({
   grandTotal,
   invoiceType,
   eInvoiceStatus,
+  billingSource,
 }) {
   const current = String(currentStatus || 'open');
-  if (current === 'draft' || current === 'cancelled') return current;
+  if (current === 'cancelled') return current;
+  if (current === 'draft' && String(billingSource || '') !== 'hat_lisans') {
+    return current;
+  }
   const paid = Number(paidAmount) || 0;
   const total = Number(grandTotal) || 0;
   if (paid + 0.009 >= total && total > 0) {
@@ -27,7 +32,7 @@ function invoiceStatusAfterPayment({
     return 'open';
   }
   if (paid > 0.009) return 'partial';
-  return 'open';
+  return current === 'draft' ? 'draft' : 'open';
 }
 
 const REFRESH_SQL = `
@@ -43,20 +48,25 @@ declare
   v_e_status text;
   v_current text;
   v_new_status text;
+  v_source text;
 begin
   select
     coalesce(grand_total, 0),
     invoice_type,
     coalesce(e_invoice_status, 'not_sent'),
-    status
-  into v_total, v_type, v_e_status, v_current
+    status,
+    coalesce(billing_source, '')
+  into v_total, v_type, v_e_status, v_current, v_source
   from public.invoices
   where id = p_invoice_id;
 
   if not found then
     return;
   end if;
-  if v_current in ('draft', 'cancelled') then
+  if v_current = 'cancelled' then
+    return;
+  end if;
+  if v_current = 'draft' and v_source is distinct from 'hat_lisans' then
     return;
   end if;
 
@@ -72,6 +82,8 @@ begin
     end if;
   elsif v_paid > 0.009 then
     v_new_status := 'partial';
+  elsif v_current = 'draft' then
+    v_new_status := 'draft';
   else
     v_new_status := 'open';
   end if;
@@ -116,6 +128,7 @@ let ensured = false;
 
 async function ensureInvoicePaidCloseRule() {
   if (ensured) return;
+  await ensureInvoicesBillingSourceColumn();
   await query(REFRESH_SQL);
   await query(
     `drop trigger if exists trigger_update_invoice_status on public.transactions`,
