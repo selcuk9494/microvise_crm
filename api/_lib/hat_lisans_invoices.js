@@ -7,6 +7,7 @@ const {
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,
   ensureHatLisansBillingSettingsTable,
+  ensureHatLisansPriorCollectionsTable,
 } = require('./schema');
 
 const BILLING_SOURCE = 'hat_lisans';
@@ -76,6 +77,7 @@ async function ensureHatLisansInvoiceSchema() {
   await ensureInvoicePricesIncludeVatColumn();
   await ensureInvoicesBillingSourceColumn();
   await ensureHatLisansBillingSettingsTable();
+  await ensureHatLisansPriorCollectionsTable();
   await ensureLinesOperatorColumn();
   await ensureLicensesSoftwareCompanyColumn();
   await ensureLicensesRegistryNumberColumn();
@@ -303,6 +305,23 @@ async function loadCustomerCounts(customerIds) {
   return result.rows;
 }
 
+async function loadPriorCollectionIds(customerIds) {
+  const ids = Array.from(
+    new Set((customerIds || []).map((id) => String(id || '').trim()).filter(Boolean)),
+  );
+  if (!ids.length) return new Set();
+  await ensureHatLisansPriorCollectionsTable();
+  const result = await query(
+    `
+      select customer_id
+      from public.hat_lisans_prior_collections
+      where customer_id = any($1::uuid[])
+    `,
+    [ids],
+  );
+  return new Set(result.rows.map((row) => String(row.customer_id)));
+}
+
 async function hasOpenHatLisansInvoice(customerId) {
   const existing = await query(
     `
@@ -427,6 +446,7 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
   const gmp3 = catalog.gmp3;
   const irestoProduct = catalog.iresto || gmp3;
   const rows = await loadCustomerCounts(customerIds);
+  const priorCollected = await loadPriorCollectionIds(customerIds);
   const currency = normalizeInvoiceCurrency(
     prices?.currency || settings.defaultCurrency,
   );
@@ -481,6 +501,14 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
         customerId: row.customer_id,
         customerName: row.customer_name,
         reason: 'Hat / GMP3 / iResto yok',
+      });
+      continue;
+    }
+    if (priorCollected.has(String(row.customer_id))) {
+      skipped.push({
+        customerId: row.customer_id,
+        customerName: row.customer_name,
+        reason: 'Daha önce tahsil edildi olarak işaretli',
       });
       continue;
     }
@@ -892,6 +920,43 @@ async function deleteHatLisansInvoice({ invoiceId, user }) {
   return { ok: true, id: current.id };
 }
 
+async function markHatLisansPriorCollected({
+  customerIds,
+  collected = true,
+  user,
+}) {
+  await ensureHatLisansInvoiceSchema();
+  const ids = Array.from(
+    new Set((customerIds || []).map((id) => String(id || '').trim()).filter(Boolean)),
+  );
+  if (!ids.length) {
+    const error = new Error('En az bir müşteri seçin.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (collected) {
+    await query(
+      `
+        insert into public.hat_lisans_prior_collections (customer_id, collected_by)
+        select unnest($1::uuid[]), $2::uuid
+        on conflict (customer_id) do update set
+          collected_at = now(),
+          collected_by = excluded.collected_by
+      `,
+      [ids, user?.id || null],
+    );
+  } else {
+    await query(
+      `
+        delete from public.hat_lisans_prior_collections
+        where customer_id = any($1::uuid[])
+      `,
+      [ids],
+    );
+  }
+  return { ok: true, count: ids.length, collected: Boolean(collected) };
+}
+
 module.exports = {
   BILLING_SOURCE,
   loadBillingCatalog,
@@ -899,5 +964,6 @@ module.exports = {
   createHatLisansInvoices,
   updateHatLisansInvoice,
   deleteHatLisansInvoice,
+  markHatLisansPriorCollected,
   listHatLisansInvoices,
 };

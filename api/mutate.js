@@ -67,6 +67,7 @@ const {
   saveHatLisansBillingSettings,
   updateHatLisansInvoice,
   deleteHatLisansInvoice,
+  markHatLisansPriorCollected,
 } = require('./_lib/hat_lisans_invoices');
 const {
   handleCors,
@@ -3608,6 +3609,24 @@ module.exports = async (req, res) => {
         if (error?.statusCode === 400 || error?.statusCode === 404) {
           return badRequest(req, res, error.message);
         }
+        throw error;
+      }
+    }
+
+    if (op === 'markHatLisansPriorCollected') {
+      if (!hasPageAccess(user, 'urunler')) {
+        return forbidden(req, res);
+      }
+      const customerIds = Array.isArray(body.customerIds) ? body.customerIds : [];
+      try {
+        const result = await markHatLisansPriorCollected({
+          customerIds,
+          collected: body.collected !== false && body.collected !== 'false',
+          user,
+        });
+        return ok(req, res, result);
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
         throw error;
       }
     }

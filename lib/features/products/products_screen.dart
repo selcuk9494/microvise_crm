@@ -357,15 +357,20 @@ class CustomerTotalsRow {
 
   String get invoiceStatusLabel => switch (invoiceStatus) {
     'paid' => 'Ödendi',
+    'collected' => 'Tahsil edildi',
     'pending' => 'Ödeme bekliyor',
     _ => 'Fatura yok',
   };
 
   AppBadgeTone get invoiceStatusTone => switch (invoiceStatus) {
     'paid' => AppBadgeTone.success,
+    'collected' => AppBadgeTone.success,
     'pending' => AppBadgeTone.warning,
     _ => AppBadgeTone.neutral,
   };
+
+  bool get canMarkCollected => invoiceStatus == 'none';
+  bool get canUnmarkCollected => invoiceStatus == 'collected';
 
   factory CustomerTotalsRow.fromJson(Map<String, dynamic> json) {
     return CustomerTotalsRow(
@@ -1793,8 +1798,84 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
     List<CustomerTotalsRow> rows,
     String filter,
   ) {
-    if (filter == 'all') return rows;
-    return rows.where((row) => row.invoiceStatus == filter).toList();
+    return rows.where((row) {
+      switch (filter) {
+        case 'none':
+          return row.invoiceStatus == 'none';
+        case 'pending':
+          return row.invoiceStatus == 'pending';
+        case 'paid':
+          return row.invoiceStatus == 'paid' || row.invoiceStatus == 'collected';
+        default:
+          return row.invoiceStatus == 'none' || row.invoiceStatus == 'pending';
+      }
+    }).toList();
+  }
+
+  Future<void> _markCollected(
+    List<CustomerTotalsRow> rows, {
+    required bool collected,
+  }) async {
+    final targets = rows
+        .where((row) => collected ? row.canMarkCollected : row.canUnmarkCollected)
+        .toList();
+    if (targets.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            collected
+                ? 'Listeden çıkarılacak fatura kesilmemiş müşteri seçin.'
+                : 'Geri alınacak tahsil işareti yok.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (collected) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Daha önce tahsil edildi'),
+          content: Text(
+            '${targets.length} müşteri daha önce tahsil edildiği / faturası kesildiği '
+            'için bu listeden çıkarılsın mı?\n\nÖdendi filtresinden geri alabilirsiniz.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Vazgeç'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Listeden çıkar'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    await apiClient.postJson(
+      '/mutate',
+      body: {
+        'op': 'markHatLisansPriorCollected',
+        'customerIds': [for (final row in targets) row.customerId],
+        'collected': collected,
+      },
+    );
+    ref.read(hatLisansTotalsTickProvider.notifier).bump();
+    if (!mounted) return;
+    setState(_selected.clear);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          collected
+              ? '${targets.length} müşteri tahsil edildi olarak işaretlendi.'
+              : '${targets.length} müşteri tekrar listeye alındı.',
+        ),
+      ),
+    );
   }
 
   Future<void> _createInvoices(List<CustomerTotalsRow> rows) async {
@@ -1879,7 +1960,16 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
     final pendingCount = allItems
         .where((e) => e.invoiceStatus == 'pending')
         .length;
-    final paidCount = allItems.where((e) => e.invoiceStatus == 'paid').length;
+    final paidCount = allItems
+        .where((e) => e.invoiceStatus == 'paid' || e.invoiceStatus == 'collected')
+        .length;
+    final workCount = noneCount + pendingCount;
+    final selectedMarkable = selectedRows
+        .where((row) => row.canMarkCollected)
+        .toList();
+    final selectedUnmarkable = selectedRows
+        .where((row) => row.canUnmarkCollected)
+        .toList();
 
     ButtonStyle compactBtn() => OutlinedButton.styleFrom(
       minimumSize: const Size(0, 32),
@@ -1952,6 +2042,33 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     );
+                    final markBtn = OutlinedButton.icon(
+                      onPressed: selectedMarkable.isEmpty
+                          ? (selectedUnmarkable.isEmpty
+                                ? null
+                                : () => _markCollected(
+                                    selectedUnmarkable,
+                                    collected: false,
+                                  ))
+                          : () => _markCollected(
+                              selectedMarkable,
+                              collected: true,
+                            ),
+                      icon: Icon(
+                        selectedMarkable.isEmpty
+                            ? LucideIcons.undo2
+                            : LucideIcons.circleCheck,
+                        size: 16,
+                      ),
+                      label: Text(
+                        selectedMarkable.isEmpty
+                            ? (selectedUnmarkable.isEmpty
+                                  ? 'Tahsil edildi'
+                                  : 'Listeye al (${selectedUnmarkable.length})')
+                            : 'Tahsil edildi (${selectedMarkable.length})',
+                      ),
+                      style: compactBtn(),
+                    );
                     if (narrow) {
                       return Column(
                         children: [
@@ -1962,6 +2079,12 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                               Expanded(child: clearBtn),
                               const Gap(8),
                               Expanded(child: exportBtn),
+                            ],
+                          ),
+                          const Gap(6),
+                          Row(
+                            children: [
+                              Expanded(child: markBtn),
                               const Gap(8),
                               Expanded(child: invoiceBtn),
                             ],
@@ -1976,6 +2099,8 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                         clearBtn,
                         const Gap(8),
                         exportBtn,
+                        const Gap(8),
+                        markBtn,
                         const Gap(8),
                         invoiceBtn,
                         if (search.trim().isNotEmpty) const Gap(8),
@@ -1996,7 +2121,7 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     FilterChip(
-                      label: Text('Tümü (${allItems.length})'),
+                      label: Text('Tümü ($workCount)'),
                       selected: filter == 'all',
                       onSelected: (_) => ref
                           .read(totalsInvoiceFilterProvider.notifier)
@@ -2017,7 +2142,7 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                           .set('pending'),
                     ),
                     FilterChip(
-                      label: Text('Ödendi ($paidCount)'),
+                      label: Text('Tahsil edildi ($paidCount)'),
                       selected: filter == 'paid',
                       onSelected: (_) => ref
                           .read(totalsInvoiceFilterProvider.notifier)
@@ -2148,19 +2273,39 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                               dense: true,
                             ),
                             const Gap(8),
-                            FilledButton.tonal(
-                              onPressed: () => _createInvoices([r]),
-                              style: FilledButton.styleFrom(
-                                visualDensity: VisualDensity.compact,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                minimumSize: const Size(0, 32),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
+                            if (r.canUnmarkCollected)
+                              OutlinedButton(
+                                onPressed: () =>
+                                    _markCollected([r], collected: false),
+                                style: compactBtn(),
+                                child: const Text('Listeye al'),
+                              )
+                            else ...[
+                              if (r.canMarkCollected) ...[
+                                OutlinedButton(
+                                  onPressed: () =>
+                                      _markCollected([r], collected: true),
+                                  style: compactBtn(),
+                                  child: const Text('Tahsil edildi'),
                                 ),
-                              ),
-                              child: const Text('Fatura Oluştur'),
-                            ),
+                                const Gap(8),
+                              ],
+                              if (r.invoiceStatus != 'collected')
+                                FilledButton.tonal(
+                                  onPressed: () => _createInvoices([r]),
+                                  style: FilledButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    minimumSize: const Size(0, 32),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 8,
+                                    ),
+                                  ),
+                                  child: const Text('Fatura Oluştur'),
+                                ),
+                            ],
                           ],
                         ),
                       );

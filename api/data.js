@@ -43,6 +43,7 @@ const {
   ensureQuotesTables,
   ensureProductImageUrlColumn,
   ensureInvoicesBillingSourceColumn,
+  ensureHatLisansPriorCollectionsTable,
 } = require('./_lib/schema');
 const { buildSystemReports } = require('./_lib/reports');
 const { ensureBrandIntegrations } = require('./_lib/mutakabat_processor');
@@ -3112,6 +3113,7 @@ module.exports = async (req, res) => {
         await ensureLicensesSoftwareCompanyColumn();
         await ensureLicensesRegistryNumberColumn();
         await ensureInvoicesBillingSourceColumn();
+        await ensureHatLisansPriorCollectionsTable();
 
         const lineWhere = showPassive ? '' : 'where l.is_active = true';
         const gmp3Where = showPassive
@@ -3171,11 +3173,14 @@ module.exports = async (req, res) => {
               coalesce(gc.gmp3_total, 0)::int as gmp3_total,
               coalesce(ic.iresto_total, 0)::int as iresto_total,
               case
-                when hi.customer_id is null then 'none'
-                when hi.status = 'paid'
-                  or (hi.grand_total - hi.paid_amount) <= 0.009
-                  then 'paid'
-                else 'pending'
+                when hi.customer_id is not null
+                  and (
+                    hi.status = 'paid'
+                    or (hi.grand_total - hi.paid_amount) <= 0.009
+                  ) then 'paid'
+                when pc.customer_id is not null then 'collected'
+                when hi.customer_id is not null then 'pending'
+                else 'none'
               end as invoice_status,
               hi.invoice_number
             from public.customers c
@@ -3183,6 +3188,7 @@ module.exports = async (req, res) => {
             left join gmp3_counts gc on gc.customer_id = c.id
             left join iresto_counts ic on ic.customer_id = c.id
             left join hat_inv hi on hi.customer_id = c.id
+            left join public.hat_lisans_prior_collections pc on pc.customer_id = c.id
             ${whereCustomerSql}
               and (
                 coalesce(lc.lines_total, 0) > 0

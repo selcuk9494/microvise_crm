@@ -37,6 +37,7 @@ const ensured = {
   invoice_prices_include_vat: false,
   invoices_billing_source: false,
   hat_lisans_billing_settings: false,
+  hat_lisans_prior_collections: false,
   akinsoft_invoice_sync: false,
   mutakabat_records: false,
   mutakabat_price_settings: false,
@@ -2060,6 +2061,20 @@ async function ensureHatLisansBillingSettingsTable() {
   return true;
 }
 
+async function ensureHatLisansPriorCollectionsTable() {
+  if (ensured.hat_lisans_prior_collections) return true;
+  await query(`
+    create table if not exists public.hat_lisans_prior_collections (
+      customer_id uuid primary key references public.customers(id) on delete cascade,
+      collected_at timestamptz not null default now(),
+      collected_by uuid,
+      note text
+    )
+  `);
+  ensured.hat_lisans_prior_collections = true;
+  return true;
+}
+
 async function ensureInvoicePricesIncludeVatColumn() {
   if (ensured.invoice_prices_include_vat) return true;
   await query(`
@@ -2362,6 +2377,7 @@ module.exports = {
   ensureInvoicePricesIncludeVatColumn,
   ensureInvoicesBillingSourceColumn,
   ensureHatLisansBillingSettingsTable,
+  ensureHatLisansPriorCollectionsTable,
   ensureAkinsoftInvoiceSyncColumns,
   ensureMutakabatRecordsTable,
   ensureMutakabatPriceSettingsTable,
