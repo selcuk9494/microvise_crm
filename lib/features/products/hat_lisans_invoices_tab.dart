@@ -477,9 +477,9 @@ class _CreateHatLisansInvoiceDialogState
               ),
               const Gap(8),
               Text(
-                'Kalem ürünü kataloğdan seçilir. Her kalem için KDV, aylık ve yıllık '
-                'fiyat tanımlanır; fatura Aylık veya Yıllık olarak kesilir. '
-                'Ödeme açıklaması mail ve WhatsApp’ta görünür.',
+                'Önce Aylık veya Yıllık seçin, o dönemin fiyatını girin. '
+                'Diğer dönem için seçimi değiştirip ayrı fiyat yazın; Kaydet / Fatura '
+                'her iki dönemi de saklar. Ödeme açıklaması mail ve WhatsApp’ta görünür.',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
@@ -497,7 +497,10 @@ class _CreateHatLisansInvoiceDialogState
                     selected: {_period},
                     onSelectionChanged: _saving
                         ? null
-                        : (value) => setState(() => _period = value.first),
+                        : (value) {
+                            FocusManager.instance.primaryFocus?.unfocus();
+                            setState(() => _period = value.first);
+                          },
                   ),
                   SegmentedButton<String>(
                     segments: const [
@@ -535,23 +538,15 @@ class _CreateHatLisansInvoiceDialogState
               const Gap(8),
               _TaxRateField(id: 'create-line', controller: _lineTax, enabled: !_saving),
               const Gap(8),
-              _DualPriceRow(
-                id: 'create-line-month',
-                tryController: _lineMonthTry,
-                usdController: _lineMonthUsd,
-                tryLabel: 'Hat aylık TL',
-                usdLabel: 'Hat aylık USD',
-                highlightUsd: _currency == 'USD' && _period == 'monthly',
-                enabled: !_saving,
-              ),
-              const Gap(8),
-              _DualPriceRow(
-                id: 'create-line-year',
-                tryController: _lineTry,
-                usdController: _lineUsd,
-                tryLabel: 'Hat yıllık TL',
-                usdLabel: 'Hat yıllık USD',
-                highlightUsd: _currency == 'USD' && _period == 'yearly',
+              _PeriodPriceRow(
+                idPrefix: 'create-line',
+                kindLabel: 'Hat',
+                period: _period,
+                currency: _currency,
+                monthTry: _lineMonthTry,
+                monthUsd: _lineMonthUsd,
+                yearTry: _lineTry,
+                yearUsd: _lineUsd,
                 enabled: !_saving,
               ),
               const Gap(8),
@@ -573,23 +568,15 @@ class _CreateHatLisansInvoiceDialogState
               const Gap(8),
               _TaxRateField(id: 'create-gmp3', controller: _gmp3Tax, enabled: !_saving),
               const Gap(8),
-              _DualPriceRow(
-                id: 'create-gmp3-month',
-                tryController: _gmp3MonthTry,
-                usdController: _gmp3MonthUsd,
-                tryLabel: 'GMP3 aylık TL',
-                usdLabel: 'GMP3 aylık USD',
-                highlightUsd: _currency == 'USD' && _period == 'monthly',
-                enabled: !_saving,
-              ),
-              const Gap(8),
-              _DualPriceRow(
-                id: 'create-gmp3-year',
-                tryController: _gmp3Try,
-                usdController: _gmp3Usd,
-                tryLabel: 'GMP3 yıllık TL',
-                usdLabel: 'GMP3 yıllık USD',
-                highlightUsd: _currency == 'USD' && _period == 'yearly',
+              _PeriodPriceRow(
+                idPrefix: 'create-gmp3',
+                kindLabel: 'GMP3',
+                period: _period,
+                currency: _currency,
+                monthTry: _gmp3MonthTry,
+                monthUsd: _gmp3MonthUsd,
+                yearTry: _gmp3Try,
+                yearUsd: _gmp3Usd,
                 enabled: !_saving,
               ),
               const Gap(8),
@@ -611,23 +598,15 @@ class _CreateHatLisansInvoiceDialogState
               const Gap(8),
               _TaxRateField(id: 'create-iresto', controller: _irestoTax, enabled: !_saving),
               const Gap(8),
-              _DualPriceRow(
-                id: 'create-iresto-month',
-                tryController: _irestoMonthTry,
-                usdController: _irestoMonthUsd,
-                tryLabel: 'iResto aylık TL',
-                usdLabel: 'iResto aylık USD',
-                highlightUsd: _currency == 'USD' && _period == 'monthly',
-                enabled: !_saving,
-              ),
-              const Gap(8),
-              _DualPriceRow(
-                id: 'create-iresto-year',
-                tryController: _irestoTry,
-                usdController: _irestoUsd,
-                tryLabel: 'iResto yıllık TL',
-                usdLabel: 'iResto yıllık USD',
-                highlightUsd: _currency == 'USD' && _period == 'yearly',
+              _PeriodPriceRow(
+                idPrefix: 'create-iresto',
+                kindLabel: 'iResto',
+                period: _period,
+                currency: _currency,
+                monthTry: _irestoMonthTry,
+                monthUsd: _irestoMonthUsd,
+                yearTry: _irestoTry,
+                yearUsd: _irestoUsd,
                 enabled: !_saving,
               ),
               const Gap(8),
@@ -711,7 +690,10 @@ class _TaxRateField extends StatelessWidget {
       enableSuggestions: false,
       autocorrect: false,
       autofillHints: const [],
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      keyboardType: TextInputType.text,
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+      ],
       decoration: const InputDecoration(
         labelText: 'KDV %',
         hintText: '20',
@@ -721,8 +703,49 @@ class _TaxRateField extends StatelessWidget {
   }
 }
 
-class _DualPriceRow extends StatelessWidget {
+class _PeriodPriceRow extends StatelessWidget {
+  const _PeriodPriceRow({
+    required this.idPrefix,
+    required this.kindLabel,
+    required this.period,
+    required this.currency,
+    required this.monthTry,
+    required this.monthUsd,
+    required this.yearTry,
+    required this.yearUsd,
+    required this.enabled,
+  });
+
+  final String idPrefix;
+  final String kindLabel;
+  final String period;
+  final String currency;
+  final TextEditingController monthTry;
+  final TextEditingController monthUsd;
+  final TextEditingController yearTry;
+  final TextEditingController yearUsd;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final monthly = period == 'monthly';
+    final tag = monthly ? 'aylık' : 'yıllık';
+    return _DualPriceRow(
+      key: ValueKey('$idPrefix-$period'),
+      id: '$idPrefix-$period',
+      tryController: monthly ? monthTry : yearTry,
+      usdController: monthly ? monthUsd : yearUsd,
+      tryLabel: '$kindLabel $tag TL',
+      usdLabel: '$kindLabel $tag USD',
+      highlightUsd: currency == 'USD',
+      enabled: enabled,
+    );
+  }
+}
+
+class _DualPriceRow extends StatefulWidget {
   const _DualPriceRow({
+    super.key,
     required this.id,
     required this.tryController,
     required this.usdController,
@@ -741,24 +764,49 @@ class _DualPriceRow extends StatelessWidget {
   final bool enabled;
 
   @override
+  State<_DualPriceRow> createState() => _DualPriceRowState();
+}
+
+class _DualPriceRowState extends State<_DualPriceRow> {
+  late final FocusNode _tryFocus;
+  late final FocusNode _usdFocus;
+
+  @override
+  void initState() {
+    super.initState();
+    _tryFocus = FocusNode(debugLabel: '${widget.id}-try');
+    _usdFocus = FocusNode(debugLabel: '${widget.id}-usd');
+  }
+
+  @override
+  void dispose() {
+    _tryFocus.dispose();
+    _usdFocus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Row(
-      key: ValueKey(id),
       children: [
         Expanded(
           child: TextField(
-            key: ValueKey('$id-try'),
-            restorationId: '$id-try',
-            controller: tryController,
-            enabled: enabled,
+            key: ValueKey('${widget.id}-try'),
+            restorationId: '${widget.id}-try',
+            controller: widget.tryController,
+            focusNode: _tryFocus,
+            enabled: widget.enabled,
             enableSuggestions: false,
             autocorrect: false,
             autofillHints: const [],
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            keyboardType: TextInputType.text,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+            ],
             decoration: InputDecoration(
-              labelText: tryLabel,
+              labelText: widget.tryLabel,
               prefixText: '₺ ',
-              filled: !highlightUsd,
+              filled: !widget.highlightUsd,
               isDense: true,
             ),
           ),
@@ -766,18 +814,22 @@ class _DualPriceRow extends StatelessWidget {
         const Gap(8),
         Expanded(
           child: TextField(
-            key: ValueKey('$id-usd'),
-            restorationId: '$id-usd',
-            controller: usdController,
-            enabled: enabled,
+            key: ValueKey('${widget.id}-usd'),
+            restorationId: '${widget.id}-usd',
+            controller: widget.usdController,
+            focusNode: _usdFocus,
+            enabled: widget.enabled,
             enableSuggestions: false,
             autocorrect: false,
             autofillHints: const [],
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            keyboardType: TextInputType.text,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+            ],
             decoration: InputDecoration(
-              labelText: usdLabel,
+              labelText: widget.usdLabel,
               prefixText: r'$ ',
-              filled: highlightUsd,
+              filled: widget.highlightUsd,
               isDense: true,
             ),
           ),
@@ -1085,13 +1137,16 @@ class _HatLisansBillingPriceCardState
             children: [
               SegmentedButton<String>(
                 segments: const [
-                  ButtonSegment(value: 'yearly', label: Text('Varsayılan: Yıllık')),
-                  ButtonSegment(value: 'monthly', label: Text('Varsayılan: Aylık')),
+                  ButtonSegment(value: 'yearly', label: Text('Yıllık fiyat')),
+                  ButtonSegment(value: 'monthly', label: Text('Aylık fiyat')),
                 ],
                 selected: {_period},
                 onSelectionChanged: _saving
                     ? null
-                    : (value) => setState(() => _period = value.first),
+                    : (value) {
+                        FocusManager.instance.primaryFocus?.unfocus();
+                        setState(() => _period = value.first);
+                      },
               ),
               SegmentedButton<String>(
                 segments: const [
@@ -1108,6 +1163,13 @@ class _HatLisansBillingPriceCardState
                 child: Text(_saving ? 'Kaydediliyor…' : 'Kaydet'),
               ),
             ],
+          ),
+          const Gap(6),
+          Text(
+            'Aylık ve yıllık fiyatlar ayrıdır. Dönemi seçip fiyatı girin; Kaydet ikisini de saklar.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppTheme.textMuted,
+            ),
           ),
           const Gap(8),
           LayoutBuilder(
@@ -1138,23 +1200,15 @@ class _HatLisansBillingPriceCardState
                   const Gap(8),
                   _TaxRateField(id: 'settings-line', controller: _lineTax, enabled: !_saving),
                   const Gap(8),
-                  _DualPriceRow(
-                    id: 'settings-line-month',
-                    tryController: _lineMonthTry,
-                    usdController: _lineMonthUsd,
-                    tryLabel: 'Hat aylık TL',
-                    usdLabel: 'Hat aylık USD',
-                    highlightUsd: _currency == 'USD' && _period == 'monthly',
-                    enabled: !_saving,
-                  ),
-                  const Gap(8),
-                  _DualPriceRow(
-                    id: 'settings-line-year',
-                    tryController: _lineTry,
-                    usdController: _lineUsd,
-                    tryLabel: 'Hat yıllık TL',
-                    usdLabel: 'Hat yıllık USD',
-                    highlightUsd: _currency == 'USD' && _period == 'yearly',
+                  _PeriodPriceRow(
+                    idPrefix: 'settings-line',
+                    kindLabel: 'Hat',
+                    period: _period,
+                    currency: _currency,
+                    monthTry: _lineMonthTry,
+                    monthUsd: _lineMonthUsd,
+                    yearTry: _lineTry,
+                    yearUsd: _lineUsd,
                     enabled: !_saving,
                   ),
                   const Gap(8),
@@ -1191,23 +1245,15 @@ class _HatLisansBillingPriceCardState
                   const Gap(8),
                   _TaxRateField(id: 'settings-gmp3', controller: _gmp3Tax, enabled: !_saving),
                   const Gap(8),
-                  _DualPriceRow(
-                    id: 'settings-gmp3-month',
-                    tryController: _gmp3MonthTry,
-                    usdController: _gmp3MonthUsd,
-                    tryLabel: 'GMP3 aylık TL',
-                    usdLabel: 'GMP3 aylık USD',
-                    highlightUsd: _currency == 'USD' && _period == 'monthly',
-                    enabled: !_saving,
-                  ),
-                  const Gap(8),
-                  _DualPriceRow(
-                    id: 'settings-gmp3-year',
-                    tryController: _gmp3Try,
-                    usdController: _gmp3Usd,
-                    tryLabel: 'GMP3 yıllık TL',
-                    usdLabel: 'GMP3 yıllık USD',
-                    highlightUsd: _currency == 'USD' && _period == 'yearly',
+                  _PeriodPriceRow(
+                    idPrefix: 'settings-gmp3',
+                    kindLabel: 'GMP3',
+                    period: _period,
+                    currency: _currency,
+                    monthTry: _gmp3MonthTry,
+                    monthUsd: _gmp3MonthUsd,
+                    yearTry: _gmp3Try,
+                    yearUsd: _gmp3Usd,
                     enabled: !_saving,
                   ),
                   const Gap(8),
@@ -1246,23 +1292,15 @@ class _HatLisansBillingPriceCardState
                   const Gap(8),
                   _TaxRateField(id: 'settings-iresto', controller: _irestoTax, enabled: !_saving),
                   const Gap(8),
-                  _DualPriceRow(
-                    id: 'settings-iresto-month',
-                    tryController: _irestoMonthTry,
-                    usdController: _irestoMonthUsd,
-                    tryLabel: 'iResto aylık TL',
-                    usdLabel: 'iResto aylık USD',
-                    highlightUsd: _currency == 'USD' && _period == 'monthly',
-                    enabled: !_saving,
-                  ),
-                  const Gap(8),
-                  _DualPriceRow(
-                    id: 'settings-iresto-year',
-                    tryController: _irestoTry,
-                    usdController: _irestoUsd,
-                    tryLabel: 'iResto yıllık TL',
-                    usdLabel: 'iResto yıllık USD',
-                    highlightUsd: _currency == 'USD' && _period == 'yearly',
+                  _PeriodPriceRow(
+                    idPrefix: 'settings-iresto',
+                    kindLabel: 'iResto',
+                    period: _period,
+                    currency: _currency,
+                    monthTry: _irestoMonthTry,
+                    monthUsd: _irestoMonthUsd,
+                    yearTry: _irestoTry,
+                    yearUsd: _irestoUsd,
                     enabled: !_saving,
                   ),
                   const Gap(8),
