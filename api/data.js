@@ -20,6 +20,7 @@ const {
   ensureLicensesSoftwareCompanyColumn,
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,
+  ensureLinesRegistryNumberColumn,
   ensureLineStockTable,
   ensureServiceFaultTypesTable,
   ensureServiceAccessoryTypesTable,
@@ -350,9 +351,10 @@ module.exports = async (req, res) => {
           activeSql = `and is_active = $${values.length}`;
         }
         await ensureLinesOperatorColumn();
+        await ensureLinesRegistryNumberColumn();
         const result = await query(
           `
-            select id,label,number,sim_number,operator,starts_at,ends_at,expires_at,is_active,created_at
+            select id,label,number,sim_number,registry_number,operator,starts_at,ends_at,expires_at,is_active,created_at
             from public.lines
             where customer_id = $1
               ${activeSql}
@@ -2770,6 +2772,7 @@ module.exports = async (req, res) => {
           whereSql += ` and (
             l.number ilike $${values.length}
             or l.sim_number ilike $${values.length}
+            or l.registry_number ilike $${values.length}
             or c.name ilike $${values.length}
             or b.name ilike $${values.length}
           )`;
@@ -2797,6 +2800,7 @@ module.exports = async (req, res) => {
         }
 
         await ensureLinesOperatorColumn();
+        await ensureLinesRegistryNumberColumn();
         const result = await query(
           `
             select
@@ -2804,6 +2808,7 @@ module.exports = async (req, res) => {
               l.label,
               l.number,
               l.sim_number,
+              l.registry_number,
               l.operator,
               l.starts_at,
               l.ends_at,
@@ -2916,6 +2921,7 @@ module.exports = async (req, res) => {
           values.push(`%${search}%`);
           whereSql += ` and (
             lic.name ilike $${values.length}
+            or lic.registry_number ilike $${values.length}
             or c.name ilike $${values.length}
             or sc.name ilike $${values.length}
           )`;
@@ -2981,7 +2987,7 @@ module.exports = async (req, res) => {
         const endsTo = String(req.query.endsTo || '').trim();
         const showPassive = parseBoolean(req.query.showPassive, false);
         const values = [];
-        let whereSql = `where lic.license_type = 'gmp3'`;
+        let whereSql = `where lower(coalesce(lic.license_type,'')) in ('gmp3','iresto')`;
 
         if (!showPassive) {
           whereSql += ` and lic.is_active = true`;
@@ -2991,6 +2997,7 @@ module.exports = async (req, res) => {
           values.push(`%${search}%`);
           whereSql += ` and (
             lic.name ilike $${values.length}
+            or lic.registry_number ilike $${values.length}
             or c.name ilike $${values.length}
             or sc.name ilike $${values.length}
           )`;
@@ -3015,7 +3022,9 @@ module.exports = async (req, res) => {
 
         const totalResult = await query(
           `
-            select count(*)::int as total
+            select
+              count(*) filter (where lower(coalesce(lic.license_type,'')) = 'gmp3')::int as gmp3_total,
+              count(*) filter (where lower(coalesce(lic.license_type,'')) = 'iresto')::int as iresto_total
             from public.licenses lic
             left join public.customers c on c.id = lic.customer_id
             left join public.software_companies sc on sc.id = lic.software_company_id
@@ -3023,7 +3032,8 @@ module.exports = async (req, res) => {
           `,
           values,
         );
-        const gmp3Total = totalResult.rows?.[0]?.total ?? 0;
+        const gmp3Total = totalResult.rows?.[0]?.gmp3_total ?? 0;
+        const irestoTotal = totalResult.rows?.[0]?.iresto_total ?? 0;
 
         const byCompany = await query(
           `
@@ -3058,6 +3068,7 @@ module.exports = async (req, res) => {
 
         return ok(req, res, {
           gmp3_total: gmp3Total,
+          iresto_total: irestoTotal,
           by_company: byCompany.rows,
           by_customer: byCustomer.rows,
         });
@@ -3084,8 +3095,11 @@ module.exports = async (req, res) => {
 
         const lineWhere = showPassive ? '' : 'where l.is_active = true';
         const gmp3Where = showPassive
-          ? `where lic.license_type = 'gmp3'`
-          : `where lic.license_type = 'gmp3' and lic.is_active = true`;
+          ? `where lower(coalesce(lic.license_type,'')) = 'gmp3'`
+          : `where lower(coalesce(lic.license_type,'')) = 'gmp3' and lic.is_active = true`;
+        const irestoWhere = showPassive
+          ? `where lower(coalesce(lic.license_type,'')) = 'iresto'`
+          : `where lower(coalesce(lic.license_type,'')) = 'iresto' and lic.is_active = true`;
 
         const result = await query(
           `
@@ -3106,6 +3120,14 @@ module.exports = async (req, res) => {
               from public.licenses lic
               ${gmp3Where}
               group by lic.customer_id
+            ),
+            iresto_counts as (
+              select
+                lic.customer_id,
+                count(*)::int as iresto_total
+              from public.licenses lic
+              ${irestoWhere}
+              group by lic.customer_id
             )
             select
               c.id as customer_id,
@@ -3113,13 +3135,19 @@ module.exports = async (req, res) => {
               coalesce(lc.lines_total, 0)::int as lines_total,
               coalesce(lc.lines_turkcell, 0)::int as lines_turkcell,
               coalesce(lc.lines_telsim, 0)::int as lines_telsim,
-              coalesce(gc.gmp3_total, 0)::int as gmp3_total
+              coalesce(gc.gmp3_total, 0)::int as gmp3_total,
+              coalesce(ic.iresto_total, 0)::int as iresto_total
             from public.customers c
             left join line_counts lc on lc.customer_id = c.id
             left join gmp3_counts gc on gc.customer_id = c.id
+            left join iresto_counts ic on ic.customer_id = c.id
             ${whereCustomerSql}
-              and (coalesce(lc.lines_total, 0) > 0 or coalesce(gc.gmp3_total, 0) > 0)
-            order by gmp3_total desc, lines_total desc, customer_name asc
+              and (
+                coalesce(lc.lines_total, 0) > 0
+                or coalesce(gc.gmp3_total, 0) > 0
+                or coalesce(ic.iresto_total, 0) > 0
+              )
+            order by gmp3_total desc, iresto_total desc, lines_total desc, customer_name asc
             limit ${limit}
           `,
           values,

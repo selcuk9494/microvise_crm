@@ -19,6 +19,7 @@ import '../customers/web_download_helper.dart'
 import '../definitions/definitions_screen.dart';
 import 'line_stock_tab.dart';
 import 'lines_gmp3_excel.dart';
+import 'issued_license_type.dart';
 
 final productSearchProvider = NotifierProvider<ProductSearchNotifier, String>(
   ProductSearchNotifier.new,
@@ -183,7 +184,7 @@ final issuedLinesProvider = FutureProvider<List<IssuedLine>>((ref) async {
   var q = client
       .from('lines')
       .select(
-        'id,label,number,sim_number,operator,starts_at,ends_at,expires_at,is_active,customer_id,branch_id,customers(name,vkn),branches(name)',
+        'id,label,number,sim_number,registry_number,operator,starts_at,ends_at,expires_at,is_active,customer_id,branch_id,customers(name,vkn),branches(name)',
       );
 
   if (!(isAdmin && showPassive)) {
@@ -192,7 +193,7 @@ final issuedLinesProvider = FutureProvider<List<IssuedLine>>((ref) async {
 
   if (search.isNotEmpty) {
     q = q.or(
-      'number.ilike.%$search%,sim_number.ilike.%$search%,customers.name.ilike.%$search%,branches.name.ilike.%$search%',
+      'number.ilike.%$search%,sim_number.ilike.%$search%,registry_number.ilike.%$search%,customers.name.ilike.%$search%,branches.name.ilike.%$search%',
     );
   }
 
@@ -327,6 +328,7 @@ class CustomerTotalsRow {
     required this.linesTurkcell,
     required this.linesTelsim,
     required this.gmp3Total,
+    required this.irestoTotal,
   });
 
   final String customerId;
@@ -335,6 +337,7 @@ class CustomerTotalsRow {
   final int linesTurkcell;
   final int linesTelsim;
   final int gmp3Total;
+  final int irestoTotal;
 
   factory CustomerTotalsRow.fromJson(Map<String, dynamic> json) {
     return CustomerTotalsRow(
@@ -344,6 +347,7 @@ class CustomerTotalsRow {
       linesTurkcell: (json['lines_turkcell'] as int?) ?? 0,
       linesTelsim: (json['lines_telsim'] as int?) ?? 0,
       gmp3Total: (json['gmp3_total'] as int?) ?? 0,
+      irestoTotal: (json['iresto_total'] as int?) ?? 0,
     );
   }
 }
@@ -402,11 +406,13 @@ final customersLookupProvider = FutureProvider<List<CustomerLookup>>((
 class ProductsLicensesStats {
   const ProductsLicensesStats({
     required this.gmp3Total,
+    required this.irestoTotal,
     required this.byCompany,
     required this.byCustomer,
   });
 
   final int gmp3Total;
+  final int irestoTotal;
   final List<Map<String, dynamic>> byCompany;
   final List<Map<String, dynamic>> byCustomer;
 
@@ -421,6 +427,7 @@ class ProductsLicensesStats {
         .toList(growable: false);
     return ProductsLicensesStats(
       gmp3Total: (json['gmp3_total'] as int?) ?? 0,
+      irestoTotal: (json['iresto_total'] as int?) ?? 0,
       byCompany: byCompany,
       byCustomer: byCustomer,
     );
@@ -480,6 +487,7 @@ class ProductsScreen extends ConsumerWidget {
     final book = excel.Excel.createExcel();
     final hats = book['Hatlar'];
     final gmp3 = book['GMP3'];
+    final iresto = book['iResto'];
 
     hats.appendRow([
       _cell('customer_vkn'),
@@ -488,6 +496,7 @@ class ProductsScreen extends ConsumerWidget {
       _cell('operator'),
       _cell('line_label'),
       _cell('sim_no'),
+      _cell('sicil_no'),
       _cell('starts_at'),
       _cell('ends_at'),
       _cell('expires_at'),
@@ -501,6 +510,7 @@ class ProductsScreen extends ConsumerWidget {
         _cell(_operatorLabel(l.operator)),
         _cell(l.label ?? ''),
         _cell(l.simNumber ?? ''),
+        _cell(l.registryNumber ?? ''),
         _cell(
           l.startsAt == null
               ? ''
@@ -516,42 +526,53 @@ class ProductsScreen extends ConsumerWidget {
       ]);
     }
 
-    gmp3.appendRow([
-      _cell('customer_vkn'),
-      _cell('customer_name'),
-      _cell('license_name'),
-      _cell('software_company'),
-      _cell('registry_number'),
-      _cell('starts_at'),
-      _cell('ends_at'),
-      _cell('expires_at'),
-      _cell('is_active'),
-    ]);
-    for (final lic in licenses) {
-      gmp3.appendRow([
-        _cell(lic.customerVkn ?? ''),
-        _cell(lic.customerName ?? ''),
-        _cell(lic.name),
-        _cell(lic.softwareCompanyName ?? ''),
-        _cell(lic.registryNumber ?? ''),
-        _cell(
-          lic.startsAt == null
-              ? ''
-              : lic.startsAt!.toIso8601String().substring(0, 10),
-        ),
-        _cell(
-          lic.endsAt == null
-              ? ''
-              : lic.endsAt!.toIso8601String().substring(0, 10),
-        ),
-        _cell(
-          lic.endsAt == null
-              ? ''
-              : lic.endsAt!.toIso8601String().substring(0, 10),
-        ),
-        _cell(lic.isActive.toString()),
+    void writeLicenseSheet(excel.Sheet sheet, List<IssuedLicense> items) {
+      sheet.appendRow([
+        _cell('customer_vkn'),
+        _cell('customer_name'),
+        _cell('license_name'),
+        _cell('software_company'),
+        _cell('sicil_no'),
+        _cell('starts_at'),
+        _cell('ends_at'),
+        _cell('expires_at'),
+        _cell('is_active'),
       ]);
+      for (final lic in items) {
+        sheet.appendRow([
+          _cell(lic.customerVkn ?? ''),
+          _cell(lic.customerName ?? ''),
+          _cell(lic.name),
+          _cell(lic.softwareCompanyName ?? ''),
+          _cell(lic.registryNumber ?? ''),
+          _cell(
+            lic.startsAt == null
+                ? ''
+                : lic.startsAt!.toIso8601String().substring(0, 10),
+          ),
+          _cell(
+            lic.endsAt == null
+                ? ''
+                : lic.endsAt!.toIso8601String().substring(0, 10),
+          ),
+          _cell(
+            lic.endsAt == null
+                ? ''
+                : lic.endsAt!.toIso8601String().substring(0, 10),
+          ),
+          _cell(lic.isActive.toString()),
+        ]);
+      }
     }
+
+    writeLicenseSheet(
+      gmp3,
+      licenses.where((e) => IssuedLicenseType.isGmp3(e.licenseType)).toList(),
+    );
+    writeLicenseSheet(
+      iresto,
+      licenses.where((e) => IssuedLicenseType.isIresto(e.licenseType)).toList(),
+    );
 
     final bytes = book.encode();
     if (bytes == null) return;
@@ -589,7 +610,7 @@ class ProductsScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Tüm verilen hat ve GMP3 kayıtları silinecek. '
+                'Tüm verilen hat, GMP3 ve iResto kayıtları silinecek. '
                 'Depodaki hat stok silinmez. Bu işlem geri alınamaz.',
               ),
               const Gap(12),
@@ -649,7 +670,7 @@ class ProductsScreen extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Eski hat ve GMP3 listesi temizlendi. Excel ile yeniden yükleyebilirsiniz.',
+            'Eski hat, GMP3 ve iResto listesi temizlendi. Excel ile yeniden yükleyebilirsiniz.',
           ),
         ),
       );
@@ -682,7 +703,12 @@ class ProductsScreen extends ConsumerWidget {
     final gmp3Total =
         stats?.gmp3Total ??
         licenses
-            .where((e) => e.licenseType.trim().toLowerCase() == 'gmp3')
+            .where((e) => IssuedLicenseType.isGmp3(e.licenseType))
+            .length;
+    final irestoTotal =
+        stats?.irestoTotal ??
+        licenses
+            .where((e) => IssuedLicenseType.isIresto(e.licenseType))
             .length;
 
     String displayNameOrUnknown(String? value) {
@@ -732,7 +758,7 @@ class ProductsScreen extends ConsumerWidget {
       length: 4,
       child: AppPageLayout(
         title: 'Hat & Lisanslar',
-        subtitle: 'Verilen hatlar ve GMP3 lisansları tek listede.',
+        subtitle: 'Verilen hatlar, GMP3 ve iResto lisansları tek listede.',
         compactHeader: true,
         actions: [
           SingleChildScrollView(
@@ -758,6 +784,12 @@ class ProductsScreen extends ConsumerWidget {
                   AppBadge(
                     label: 'GMP3: $gmp3Total',
                     tone: AppBadgeTone.success,
+                    dense: true,
+                  ),
+                  const SizedBox(width: 8),
+                  AppBadge(
+                    label: 'iResto: $irestoTotal',
+                    tone: AppBadgeTone.primary,
                     dense: true,
                   ),
                   const SizedBox(width: 8),
@@ -885,7 +917,7 @@ class ProductsScreen extends ConsumerWidget {
                           width: isNarrow ? double.infinity : 320,
                           child: TextField(
                             decoration: const InputDecoration(
-                              hintText: 'Ara (müşteri, hat, SIM, firma...)',
+                              hintText: 'Ara (müşteri, hat, SIM, sicil, firma...)',
                               prefixIcon: Icon(LucideIcons.search),
                               isDense: true,
                             ),
@@ -938,7 +970,7 @@ class ProductsScreen extends ConsumerWidget {
                                   ),
                                   tabs: [
                                     Tab(text: 'Hatlar'),
-                                    Tab(text: 'Lisanslar (GMP3)'),
+                                    Tab(text: 'Lisanslar (GMP3 / iResto)'),
                                     Tab(text: 'Toplamlar'),
                                     Tab(text: 'Hat Stok'),
                                   ],
@@ -965,7 +997,7 @@ class ProductsScreen extends ConsumerWidget {
                                   ),
                                   tabs: [
                                     Tab(text: 'Hatlar'),
-                                    Tab(text: 'Lisanslar (GMP3)'),
+                                    Tab(text: 'Lisanslar (GMP3 / iResto)'),
                                     Tab(text: 'Toplamlar'),
                                     Tab(text: 'Hat Stok'),
                                   ],
@@ -1643,17 +1675,43 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
             child: licensesAsync.when(
               data: (items) {
                 final gmp3 = items
-                    .where((e) => e.licenseType == 'gmp3')
-                    .toList();
-                if (gmp3.isEmpty) return const _Empty(text: 'Kayıt yok.');
+                    .where((e) => IssuedLicenseType.isGmp3(e.licenseType))
+                    .toList(growable: false);
+                final iresto = items
+                    .where((e) => IssuedLicenseType.isIresto(e.licenseType))
+                    .toList(growable: false);
+                if (gmp3.isEmpty && iresto.isEmpty) {
+                  return const _Empty(text: 'Kayıt yok.');
+                }
                 return Scrollbar(
                   thumbVisibility: true,
-                  child: ListView.separated(
+                  child: ListView(
                     padding: const EdgeInsets.only(bottom: 120),
-                    itemCount: gmp3.length,
-                    separatorBuilder: (_, _) => const Gap(10),
-                    itemBuilder: (context, index) =>
-                        _LicenseRow(item: gmp3[index], isAdmin: widget.isAdmin),
+                    children: [
+                      if (gmp3.isNotEmpty) ...[
+                        const _SectionHeader(
+                          title: 'GMP3',
+                          tone: AppBadgeTone.success,
+                        ),
+                        const Gap(10),
+                        for (final item in gmp3) ...[
+                          _LicenseRow(item: item, isAdmin: widget.isAdmin),
+                          const Gap(10),
+                        ],
+                        const Gap(6),
+                      ],
+                      if (iresto.isNotEmpty) ...[
+                        const _SectionHeader(
+                          title: 'iResto',
+                          tone: AppBadgeTone.primary,
+                        ),
+                        const Gap(10),
+                        for (final item in iresto) ...[
+                          _LicenseRow(item: item, isAdmin: widget.isAdmin),
+                          const Gap(10),
+                        ],
+                      ],
+                    ],
                   ),
                 );
               },
@@ -1717,6 +1775,7 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
       _cell('lines_turkcell'),
       _cell('lines_telsim'),
       _cell('gmp3_total'),
+      _cell('iresto_total'),
     ]);
     for (final r in items) {
       sheet.appendRow([
@@ -1725,6 +1784,7 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
         _cell(r.linesTurkcell),
         _cell(r.linesTelsim),
         _cell(r.gmp3Total),
+        _cell(r.irestoTotal),
       ]);
     }
 
@@ -1894,6 +1954,12 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                               tone: AppBadgeTone.success,
                               dense: true,
                             ),
+                            const Gap(6),
+                            AppBadge(
+                              label: 'iResto: ${r.irestoTotal}',
+                              tone: AppBadgeTone.primary,
+                              dense: true,
+                            ),
                           ],
                         ),
                       );
@@ -1999,6 +2065,8 @@ class _LineRowState extends ConsumerState<_LineRow> {
                         item.branchName!,
                       if (item.simNumber?.trim().isNotEmpty ?? false)
                         'SIM: ${item.simNumber}',
+                      if (item.registryNumber?.trim().isNotEmpty ?? false)
+                        'Sicil: ${item.registryNumber}',
                       if (dateText != '—') 'Bitiş: $dateText',
                     ].join(' • '),
                     maxLines: 1,
@@ -2195,6 +2263,14 @@ class _LicenseRowState extends ConsumerState<_LicenseRow> {
             ),
           ),
           const Gap(8),
+          AppBadge(
+            label: IssuedLicenseType.label(item.licenseType),
+            tone: IssuedLicenseType.isIresto(item.licenseType)
+                ? AppBadgeTone.primary
+                : AppBadgeTone.success,
+            dense: true,
+          ),
+          const Gap(8),
           AppBadge(label: statusLabel, tone: tone, dense: true),
           if (widget.isAdmin) ...[
             const Gap(8),
@@ -2251,6 +2327,7 @@ Future<void> _showEditLineDialog(
   final labelController = TextEditingController(text: line.label ?? '');
   final numberController = TextEditingController(text: line.number ?? '');
   final simController = TextEditingController(text: line.simNumber ?? '');
+  final sicilController = TextEditingController(text: line.registryNumber ?? '');
   String operator = (line.operator ?? '').trim().isEmpty
       ? 'turkcell'
       : (line.operator ?? '').trim().toLowerCase();
@@ -2322,6 +2399,14 @@ Future<void> _showEditLineDialog(
                 TextField(
                   controller: simController,
                   decoration: const InputDecoration(labelText: 'SIM Numarası'),
+                ),
+                const Gap(12),
+                TextField(
+                  controller: sicilController,
+                  decoration: const InputDecoration(
+                    labelText: 'Sicil No',
+                    hintText: 'Cihaz sicil numarası',
+                  ),
                 ),
                 const Gap(12),
                 DropdownButtonFormField<String>(
@@ -2416,6 +2501,12 @@ Future<void> _showEditLineDialog(
                                         simController.text.trim().isEmpty
                                         ? null
                                         : simController.text.trim(),
+                                    'registry_number':
+                                        sicilController.text.trim().isEmpty
+                                        ? null
+                                        : sicilController.text
+                                              .trim()
+                                              .toUpperCase(),
                                     'label': labelController.text.trim().isEmpty
                                         ? null
                                         : labelController.text.trim(),
@@ -2492,6 +2583,7 @@ Future<void> _showEditLineDialog(
   labelController.dispose();
   numberController.dispose();
   simController.dispose();
+  sicilController.dispose();
 }
 
 Future<void> _extendLineAndQueueInvoice(
@@ -3083,6 +3175,7 @@ class IssuedLine {
     required this.label,
     required this.number,
     required this.simNumber,
+    required this.registryNumber,
     required this.operator,
     required this.startsAt,
     required this.endsAt,
@@ -3098,6 +3191,7 @@ class IssuedLine {
   final String? label;
   final String? number;
   final String? simNumber;
+  final String? registryNumber;
   final String? operator;
   final DateTime? startsAt;
   final DateTime? endsAt;
@@ -3114,6 +3208,7 @@ class IssuedLine {
       label: json['label']?.toString(),
       number: json['number']?.toString(),
       simNumber: json['sim_number']?.toString(),
+      registryNumber: json['registry_number']?.toString(),
       operator: json['operator']?.toString(),
       startsAt: DateTime.tryParse(json['starts_at']?.toString() ?? ''),
       endsAt:

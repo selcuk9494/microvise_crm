@@ -23,6 +23,7 @@ const {
   ensureLicensesSoftwareCompanyColumn,
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,
+  ensureLinesRegistryNumberColumn,
   ensureIssuedSourceInvoiceColumns,
   ensureLineStockTable,
   ensureWorkOrderSignaturesTable,
@@ -2958,6 +2959,7 @@ async function syncIssuedHatGmp3FromInvoice(invoiceId, user) {
   await ensureLicensesSoftwareCompanyColumn();
   await ensureLicensesRegistryNumberColumn();
   await ensureLinesOperatorColumn();
+  await ensureLinesRegistryNumberColumn();
   columnsCache.delete('lines');
   columnsCache.delete('licenses');
 
@@ -3862,6 +3864,7 @@ module.exports = async (req, res) => {
   }
     if (table === 'lines') {
       await ensureLinesOperatorColumn();
+      await ensureLinesRegistryNumberColumn();
       await ensureIssuedSourceInvoiceColumns();
       columnsCache.delete('lines');
     }

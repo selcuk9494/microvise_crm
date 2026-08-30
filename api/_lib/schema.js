@@ -13,6 +13,7 @@ const ensured = {
   licenses_software_company: false,
   licenses_registry_number: false,
   lines_operator: false,
+  lines_registry_number: false,
   issued_source_invoice: false,
   line_stock: false,
   users_auth: false,
@@ -1124,6 +1125,27 @@ async function ensureLinesOperatorColumn() {
   return true;
 }
 
+async function ensureLinesRegistryNumberColumn() {
+  if (ensured.lines_registry_number) return true;
+  const exists = await tableExists('lines');
+  if (exists) {
+    await query(
+      `
+        alter table public.lines
+          add column if not exists registry_number text
+      `,
+    );
+    await query(
+      `
+        create index if not exists idx_lines_registry_number
+        on public.lines (registry_number)
+      `,
+    );
+  }
+  ensured.lines_registry_number = true;
+  return true;
+}
+
 async function ensureIssuedSourceInvoiceColumns() {
   if (ensured.issued_source_invoice) return true;
   if (await tableExists('lines')) {
@@ -2193,6 +2215,7 @@ module.exports = {
   ensureLicensesSoftwareCompanyColumn,
   ensureLicensesRegistryNumberColumn,
   ensureLinesOperatorColumn,
+  ensureLinesRegistryNumberColumn,
   ensureIssuedSourceInvoiceColumns,
   ensureLineStockTable,
   ensureServiceFaultTypesTable,

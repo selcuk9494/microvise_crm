@@ -12,6 +12,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../customers/customers_providers.dart';
 import '../customers/web_download_helper.dart'
     if (dart.library.io) '../customers/io_download_helper.dart';
+import 'issued_license_type.dart';
 
 String _normalizeHeader(String value) {
   var t = value.trim().toLowerCase();
@@ -116,6 +117,7 @@ Future<void> downloadLinesGmp3Template(BuildContext context) async {
   final book = excel.Excel.createExcel();
   final hats = book['Hatlar'];
   final gmp3 = book['GMP3'];
+  final iresto = book['iResto'];
 
   excel.CellValue t(Object? v) => excel.TextCellValue((v ?? '').toString());
 
@@ -125,6 +127,7 @@ Future<void> downloadLinesGmp3Template(BuildContext context) async {
     t('operator'),
     t('line_label'),
     t('sim_no'),
+    t('sicil_no'),
     t('starts_at'),
     t('ends_at'),
     t('expires_at'),
@@ -136,26 +139,6 @@ Future<void> downloadLinesGmp3Template(BuildContext context) async {
     t('turkcell'),
     t('Hat Satışı'),
     t('SIM123'),
-    t('2026-01-01'),
-    t('2026-12-31'),
-    t('2026-12-31'),
-    t('true'),
-  ]);
-
-  gmp3.appendRow([
-    t('customer_vkn'),
-    t('license_name'),
-    t('software_company'),
-    t('registry_number'),
-    t('starts_at'),
-    t('ends_at'),
-    t('expires_at'),
-    t('is_active'),
-  ]);
-  gmp3.appendRow([
-    t('0000000000'),
-    t('GMP3 Lisansı'),
-    t('Örn: Microvise'),
     t('SICIL123456'),
     t('2026-01-01'),
     t('2026-12-31'),
@@ -163,9 +146,35 @@ Future<void> downloadLinesGmp3Template(BuildContext context) async {
     t('true'),
   ]);
 
+  void licenseTemplate(excel.Sheet sheet, String sampleName) {
+    sheet.appendRow([
+      t('customer_vkn'),
+      t('license_name'),
+      t('software_company'),
+      t('sicil_no'),
+      t('starts_at'),
+      t('ends_at'),
+      t('expires_at'),
+      t('is_active'),
+    ]);
+    sheet.appendRow([
+      t('0000000000'),
+      t(sampleName),
+      t('Örn: Microvise'),
+      t('SICIL123456'),
+      t('2026-01-01'),
+      t('2026-12-31'),
+      t('2026-12-31'),
+      t('true'),
+    ]);
+  }
+
+  licenseTemplate(gmp3, 'GMP3 Lisansı');
+  licenseTemplate(iresto, 'iResto Lisansı');
+
   final bytes = book.encode();
   if (bytes == null) return;
-  downloadExcelFile(bytes, 'hat_gmp3_sablon.xlsx');
+  downloadExcelFile(bytes, 'hat_lisans_sablon.xlsx');
 }
 
 Future<void> importLinesAndGmp3Excel({
@@ -284,7 +293,8 @@ Future<void> _importLinesAndGmp3Excel({
   }
 
   final linesSheet = findSheet({'hat', 'line'});
-  final gmp3Sheet = findSheet({'gmp3', 'lisans', 'license'});
+  final gmp3Sheet = findSheet({'gmp3'});
+  final irestoSheet = findSheet({'iresto'});
 
   List<List<excel.Data?>> safeRows(excel.Sheet? sheet) {
     if (sheet == null) return const [];
@@ -430,6 +440,13 @@ Future<void> _importLinesAndGmp3Excel({
           'sim_numarasi',
         ]),
       );
+      final sicil = cellStringAny(row, linesHeader, [
+        'sicil_no',
+        'sicil',
+        'registry_number',
+        'cihaz_sicil',
+        'cihaz_sicil_no',
+      ]).trim().toUpperCase();
       final operatorRaw = cellStringAny(row, linesHeader, [
         'operator',
         'operator_name',
@@ -445,6 +462,7 @@ Future<void> _importLinesAndGmp3Excel({
         'number': number,
         'operator': operator,
         'sim_number': sim.isEmpty ? null : sim,
+        'registry_number': sicil.isEmpty ? null : sicil,
         'starts_at': startsAt,
         'ends_at': endIso,
         'expires_at': expIso,
@@ -472,14 +490,19 @@ Future<void> _importLinesAndGmp3Excel({
     ..clear()
     ..addAll(uniqueLineRows);
 
-  final gmp3Rows = safeRows(gmp3Sheet);
-  final gmp3Header = headerOf(gmp3Rows);
-  if (gmp3Rows.length >= 2 && gmp3Header.isNotEmpty) {
-    for (var rowIndex = 1; rowIndex < gmp3Rows.length; rowIndex++) {
-      final row = gmp3Rows[rowIndex];
+  void parseLicenseSheet({
+    required excel.Sheet? sheet,
+    required String licenseType,
+    required String typeLabel,
+  }) {
+    final rows = safeRows(sheet);
+    final header = headerOf(rows);
+    if (rows.length < 2 || header.isEmpty) return;
+    for (var rowIndex = 1; rowIndex < rows.length; rowIndex++) {
+      final row = rows[rowIndex];
       final excelRowNo = rowIndex + 1;
       final vkn = _normalizeVkn(
-        cellStringAny(row, gmp3Header, [
+        cellStringAny(row, header, [
           'customer_vkn',
           'vkn',
           'customer_vat',
@@ -490,50 +513,61 @@ Future<void> _importLinesAndGmp3Excel({
       final customerId = customerIdByVkn[vkn];
       if ((customerId ?? '').isEmpty) {
         if (vkn.isNotEmpty) {
-          errors.add('GMP3 satır $excelRowNo: VKN bulunamadı: $vkn');
+          errors.add('$typeLabel satır $excelRowNo: VKN bulunamadı: $vkn');
         }
         continue;
       }
 
-      final startsAt =
-          cellDateIso(row, gmp3Header, 'starts_at') ?? defaultStartIso;
-      final endsAt = cellDateIso(row, gmp3Header, 'ends_at');
-      final expiresAt = cellDateIso(row, gmp3Header, 'expires_at');
+      final startsAt = cellDateIso(row, header, 'starts_at') ?? defaultStartIso;
+      final endsAt = cellDateIso(row, header, 'ends_at');
+      final expiresAt = cellDateIso(row, header, 'expires_at');
       final endIso = endsAt ?? expiresAt ?? defaultEndIso;
       final expIso = expiresAt ?? endIso;
 
-      final name = cellStringAny(row, gmp3Header, [
+      final name = cellStringAny(row, header, [
         'license_name',
         'name',
         'lisans_adi',
         'lisans',
       ]);
-      final companyText = cellStringAny(row, gmp3Header, [
+      final companyText = cellStringAny(row, header, [
         'software_company',
         'yazilim_firmasi',
         'yazılım firması',
         'firma',
       ]);
-      final registryNumber = cellStringAny(row, gmp3Header, [
-        'registry_number',
-        'sicil',
+      final registryNumber = cellStringAny(row, header, [
         'sicil_no',
-      ]);
+        'sicil',
+        'registry_number',
+        'cihaz_sicil',
+        'cihaz_sicil_no',
+      ]).trim().toUpperCase();
+      final typeFromCell = IssuedLicenseType.normalize(
+        cellStringAny(row, header, ['license_type', 'lisans_tipi', 'tip']),
+      );
+      final resolvedType =
+          typeFromCell == IssuedLicenseType.gmp3 ||
+              typeFromCell == IssuedLicenseType.iresto
+          ? typeFromCell
+          : licenseType;
       final companyKey = normalizeCompanyName(companyText);
       final companyId = companyKey.isEmpty
           ? null
           : companyIdByName[companyKey];
       if (companyKey.isNotEmpty && (companyId ?? '').isEmpty) {
         errors.add(
-          'GMP3 satır $excelRowNo: Yazılım firması bulunamadı: $companyText',
+          '$typeLabel satır $excelRowNo: Yazılım firması bulunamadı: $companyText',
         );
         continue;
       }
       licenseRows.add({
         '_rowIndex': excelRowNo,
         'customer_id': customerId,
-        'name': name.isEmpty ? 'GMP3 Lisansı' : name,
-        'license_type': 'gmp3',
+        'name': name.isEmpty
+            ? IssuedLicenseType.defaultName(resolvedType)
+            : name,
+        'license_type': resolvedType,
         'software_company_id': companyId,
         'registry_number': registryNumber.trim().isEmpty
             ? null
@@ -541,11 +575,29 @@ Future<void> _importLinesAndGmp3Excel({
         'starts_at': startsAt,
         'ends_at': endIso,
         'expires_at': expIso,
-        'is_active': cellBool(row, gmp3Header, 'is_active'),
+        'is_active': cellBool(row, header, 'is_active'),
         'created_by': createdBy,
       });
     }
   }
+
+  parseLicenseSheet(
+    sheet: gmp3Sheet,
+    licenseType: IssuedLicenseType.gmp3,
+    typeLabel: 'GMP3',
+  );
+  parseLicenseSheet(
+    sheet: irestoSheet,
+    licenseType: IssuedLicenseType.iresto,
+    typeLabel: 'iResto',
+  );
+
+  final gmp3Count = licenseRows
+      .where((e) => IssuedLicenseType.isGmp3(e['license_type']?.toString()))
+      .length;
+  final irestoCount = licenseRows
+      .where((e) => IssuedLicenseType.isIresto(e['license_type']?.toString()))
+      .length;
 
   if (lineRows.isEmpty && licenseRows.isEmpty) {
     if (!context.mounted) return;
@@ -566,11 +618,12 @@ Future<void> _importLinesAndGmp3Excel({
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Mevcut hat ve GMP3 kayıtları silinecek, ardından Excel yüklenecek.',
+            'Mevcut hat, GMP3 ve iResto kayıtları silinecek, ardından Excel yüklenecek.',
           ),
           const Gap(12),
           Text('Hat: ${lineRows.length}'),
-          Text('GMP3: ${licenseRows.length}'),
+          Text('GMP3: $gmp3Count'),
+          Text('iResto: $irestoCount'),
           if (errors.isNotEmpty) ...[
             const Gap(8),
             Text(
@@ -758,7 +811,7 @@ Future<void> _importLinesAndGmp3Excel({
       content: Text(
         failedWithoutInsert
             ? 'Yükleme başarısız: ${errors.last}'
-            : 'Yeniden yüklendi: Hat $insertedLines • GMP3 $insertedLicenses'
+            : 'Yeniden yüklendi: Hat $insertedLines • GMP3 $gmp3Count • iResto $irestoCount'
                 '${errors.isEmpty ? '' : ' • Uyarı/Hata ${errors.length}'}',
       ),
     ),
