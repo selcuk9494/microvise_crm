@@ -9,6 +9,7 @@ class AppPageLayout extends StatefulWidget {
     required this.title,
     this.subtitle,
     required this.body,
+    this.leading,
     this.actions,
     this.compactHeader = false,
   });
@@ -16,6 +17,9 @@ class AppPageLayout extends StatefulWidget {
   final String title;
   final String? subtitle;
   final Widget body;
+
+  /// Content shown immediately after the title, left-aligned.
+  final Widget? leading;
   final List<Widget>? actions;
   final bool compactHeader;
 
@@ -117,6 +121,10 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                         overflow: TextOverflow.ellipsis,
                         style: titleStyle,
                       ),
+                      if (widget.leading != null) ...[
+                        SizedBox(height: widget.compactHeader ? 8 : 10),
+                        widget.leading!,
+                      ],
                       if (hasSubtitle) ...[
                         SizedBox(height: widget.compactHeader ? 5 : 6),
                         Text(
@@ -192,44 +200,63 @@ class _AppPageLayoutState extends State<AppPageLayout> {
                             ? CrossAxisAlignment.center
                             : CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  widget.title,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .headlineSmall
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: widget.compactHeader
-                                            ? 20
-                                            : null,
-                                      ),
-                                ),
-                                if (!widget.compactHeader &&
-                                    widget.subtitle != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: Text(
-                                      widget.subtitle!,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyMedium
-                                          ?.copyWith(
-                                            color: AppTheme.textMuted,
-                                            fontSize: 13,
-                                          ),
-                                    ),
+                          if (widget.leading == null)
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.title,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineSmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: widget.compactHeader
+                                              ? 20
+                                              : null,
+                                        ),
                                   ),
-                              ],
+                                  if (!widget.compactHeader &&
+                                      widget.subtitle != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text(
+                                        widget.subtitle!,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.copyWith(
+                                              color: AppTheme.textMuted,
+                                              fontSize: 13,
+                                            ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            )
+                          else ...[
+                            Text(
+                              widget.title,
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: widget.compactHeader ? 20 : null,
+                                  ),
                             ),
-                          ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: widget.leading,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                          ],
                           if (normalizedActions != null)
                             Flexible(
                               child: Align(
-                                alignment: Alignment.topRight,
+                                alignment: Alignment.centerRight,
                                 child: Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
