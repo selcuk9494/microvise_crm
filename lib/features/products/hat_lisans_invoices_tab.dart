@@ -533,9 +533,10 @@ class _CreateHatLisansInvoiceDialogState
                     _applyProductPrice(product, kind: 'line'),
               ),
               const Gap(8),
-              _TaxRateField(controller: _lineTax, enabled: !_saving),
+              _TaxRateField(id: 'create-line', controller: _lineTax, enabled: !_saving),
               const Gap(8),
               _DualPriceRow(
+                id: 'create-line-month',
                 tryController: _lineMonthTry,
                 usdController: _lineMonthUsd,
                 tryLabel: 'Hat aylık TL',
@@ -545,6 +546,7 @@ class _CreateHatLisansInvoiceDialogState
               ),
               const Gap(8),
               _DualPriceRow(
+                id: 'create-line-year',
                 tryController: _lineTry,
                 usdController: _lineUsd,
                 tryLabel: 'Hat yıllık TL',
@@ -554,6 +556,7 @@ class _CreateHatLisansInvoiceDialogState
               ),
               const Gap(8),
               _PaymentTitleField(
+                id: 'create-line',
                 controller: _lineTitle,
                 label: 'Ödeme açıklaması (Hat)',
                 enabled: !_saving,
@@ -568,9 +571,10 @@ class _CreateHatLisansInvoiceDialogState
                     _applyProductPrice(product, kind: 'gmp3'),
               ),
               const Gap(8),
-              _TaxRateField(controller: _gmp3Tax, enabled: !_saving),
+              _TaxRateField(id: 'create-gmp3', controller: _gmp3Tax, enabled: !_saving),
               const Gap(8),
               _DualPriceRow(
+                id: 'create-gmp3-month',
                 tryController: _gmp3MonthTry,
                 usdController: _gmp3MonthUsd,
                 tryLabel: 'GMP3 aylık TL',
@@ -580,6 +584,7 @@ class _CreateHatLisansInvoiceDialogState
               ),
               const Gap(8),
               _DualPriceRow(
+                id: 'create-gmp3-year',
                 tryController: _gmp3Try,
                 usdController: _gmp3Usd,
                 tryLabel: 'GMP3 yıllık TL',
@@ -589,6 +594,7 @@ class _CreateHatLisansInvoiceDialogState
               ),
               const Gap(8),
               _PaymentTitleField(
+                id: 'create-gmp3',
                 controller: _gmp3Title,
                 label: 'Ödeme açıklaması (GMP3)',
                 enabled: !_saving,
@@ -603,9 +609,10 @@ class _CreateHatLisansInvoiceDialogState
                     _applyProductPrice(product, kind: 'iresto'),
               ),
               const Gap(8),
-              _TaxRateField(controller: _irestoTax, enabled: !_saving),
+              _TaxRateField(id: 'create-iresto', controller: _irestoTax, enabled: !_saving),
               const Gap(8),
               _DualPriceRow(
+                id: 'create-iresto-month',
                 tryController: _irestoMonthTry,
                 usdController: _irestoMonthUsd,
                 tryLabel: 'iResto aylık TL',
@@ -615,6 +622,7 @@ class _CreateHatLisansInvoiceDialogState
               ),
               const Gap(8),
               _DualPriceRow(
+                id: 'create-iresto-year',
                 tryController: _irestoTry,
                 usdController: _irestoUsd,
                 tryLabel: 'iResto yıllık TL',
@@ -624,6 +632,7 @@ class _CreateHatLisansInvoiceDialogState
               ),
               const Gap(8),
               _PaymentTitleField(
+                id: 'create-iresto',
                 controller: _irestoTitle,
                 label: 'Ödeme açıklaması (iResto)',
                 enabled: !_saving,
@@ -654,11 +663,13 @@ class _CreateHatLisansInvoiceDialogState
 
 class _PaymentTitleField extends StatelessWidget {
   const _PaymentTitleField({
+    required this.id,
     required this.controller,
     required this.label,
     required this.enabled,
   });
 
+  final String id;
   final TextEditingController controller;
   final String label;
   final bool enabled;
@@ -666,6 +677,8 @@ class _PaymentTitleField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TextField(
+      key: ValueKey('$id-title'),
+      restorationId: '$id-title',
       controller: controller,
       enabled: enabled,
       decoration: InputDecoration(
@@ -678,16 +691,26 @@ class _PaymentTitleField extends StatelessWidget {
 }
 
 class _TaxRateField extends StatelessWidget {
-  const _TaxRateField({required this.controller, required this.enabled});
+  const _TaxRateField({
+    required this.id,
+    required this.controller,
+    required this.enabled,
+  });
 
+  final String id;
   final TextEditingController controller;
   final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     return TextField(
+      key: ValueKey('$id-tax'),
+      restorationId: '$id-tax',
       controller: controller,
       enabled: enabled,
+      enableSuggestions: false,
+      autocorrect: false,
+      autofillHints: const [],
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: const InputDecoration(
         labelText: 'KDV %',
@@ -700,6 +723,7 @@ class _TaxRateField extends StatelessWidget {
 
 class _DualPriceRow extends StatelessWidget {
   const _DualPriceRow({
+    required this.id,
     required this.tryController,
     required this.usdController,
     required this.tryLabel,
@@ -708,6 +732,7 @@ class _DualPriceRow extends StatelessWidget {
     required this.enabled,
   });
 
+  final String id;
   final TextEditingController tryController;
   final TextEditingController usdController;
   final String tryLabel;
@@ -718,11 +743,17 @@ class _DualPriceRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      key: ValueKey(id),
       children: [
         Expanded(
           child: TextField(
+            key: ValueKey('$id-try'),
+            restorationId: '$id-try',
             controller: tryController,
             enabled: enabled,
+            enableSuggestions: false,
+            autocorrect: false,
+            autofillHints: const [],
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
               labelText: tryLabel,
@@ -735,8 +766,13 @@ class _DualPriceRow extends StatelessWidget {
         const Gap(8),
         Expanded(
           child: TextField(
+            key: ValueKey('$id-usd'),
+            restorationId: '$id-usd',
             controller: usdController,
             enabled: enabled,
+            enableSuggestions: false,
+            autocorrect: false,
+            autofillHints: const [],
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
               labelText: usdLabel,
@@ -1035,7 +1071,12 @@ class _HatLisansBillingPriceCardState
               ],
             ),
           ),
-          if (_expanded) ...[
+          Visibility(
+            visible: _expanded,
+            maintainState: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
           const Gap(8),
           Wrap(
             spacing: 8,
@@ -1095,9 +1136,10 @@ class _HatLisansBillingPriceCardState
                     },
                   ),
                   const Gap(8),
-                  _TaxRateField(controller: _lineTax, enabled: !_saving),
+                  _TaxRateField(id: 'settings-line', controller: _lineTax, enabled: !_saving),
                   const Gap(8),
                   _DualPriceRow(
+                    id: 'settings-line-month',
                     tryController: _lineMonthTry,
                     usdController: _lineMonthUsd,
                     tryLabel: 'Hat aylık TL',
@@ -1107,6 +1149,7 @@ class _HatLisansBillingPriceCardState
                   ),
                   const Gap(8),
                   _DualPriceRow(
+                    id: 'settings-line-year',
                     tryController: _lineTry,
                     usdController: _lineUsd,
                     tryLabel: 'Hat yıllık TL',
@@ -1116,6 +1159,7 @@ class _HatLisansBillingPriceCardState
                   ),
                   const Gap(8),
                   _PaymentTitleField(
+                    id: 'settings-line',
                     controller: _lineTitle,
                     label: 'Ödeme açıklaması',
                     enabled: !_saving,
@@ -1145,9 +1189,10 @@ class _HatLisansBillingPriceCardState
                     },
                   ),
                   const Gap(8),
-                  _TaxRateField(controller: _gmp3Tax, enabled: !_saving),
+                  _TaxRateField(id: 'settings-gmp3', controller: _gmp3Tax, enabled: !_saving),
                   const Gap(8),
                   _DualPriceRow(
+                    id: 'settings-gmp3-month',
                     tryController: _gmp3MonthTry,
                     usdController: _gmp3MonthUsd,
                     tryLabel: 'GMP3 aylık TL',
@@ -1157,6 +1202,7 @@ class _HatLisansBillingPriceCardState
                   ),
                   const Gap(8),
                   _DualPriceRow(
+                    id: 'settings-gmp3-year',
                     tryController: _gmp3Try,
                     usdController: _gmp3Usd,
                     tryLabel: 'GMP3 yıllık TL',
@@ -1166,6 +1212,7 @@ class _HatLisansBillingPriceCardState
                   ),
                   const Gap(8),
                   _PaymentTitleField(
+                    id: 'settings-gmp3',
                     controller: _gmp3Title,
                     label: 'Ödeme açıklaması',
                     enabled: !_saving,
@@ -1197,9 +1244,10 @@ class _HatLisansBillingPriceCardState
                     },
                   ),
                   const Gap(8),
-                  _TaxRateField(controller: _irestoTax, enabled: !_saving),
+                  _TaxRateField(id: 'settings-iresto', controller: _irestoTax, enabled: !_saving),
                   const Gap(8),
                   _DualPriceRow(
+                    id: 'settings-iresto-month',
                     tryController: _irestoMonthTry,
                     usdController: _irestoMonthUsd,
                     tryLabel: 'iResto aylık TL',
@@ -1209,6 +1257,7 @@ class _HatLisansBillingPriceCardState
                   ),
                   const Gap(8),
                   _DualPriceRow(
+                    id: 'settings-iresto-year',
                     tryController: _irestoTry,
                     usdController: _irestoUsd,
                     tryLabel: 'iResto yıllık TL',
@@ -1218,6 +1267,7 @@ class _HatLisansBillingPriceCardState
                   ),
                   const Gap(8),
                   _PaymentTitleField(
+                    id: 'settings-iresto',
                     controller: _irestoTitle,
                     label: 'Ödeme açıklaması',
                     enabled: !_saving,
@@ -1241,7 +1291,9 @@ class _HatLisansBillingPriceCardState
               );
             },
           ),
-          ],
+              ],
+            ),
+          ),
         ],
       ),
     );

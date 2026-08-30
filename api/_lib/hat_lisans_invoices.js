@@ -43,6 +43,12 @@ function parsePrice(value, fallback = 0) {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
+function parseOwnPrice(input, key, fallback = 0) {
+  if (input == null || typeof input !== 'object') return fallback;
+  if (!Object.prototype.hasOwnProperty.call(input, key)) return fallback;
+  return parsePrice(input[key], fallback);
+}
+
 function normalizeInvoiceCurrency(value) {
   const raw = String(value || 'TRY').trim().toUpperCase();
   if (raw === 'USD' || raw === 'US$' || raw === '$') return 'USD';
@@ -327,12 +333,12 @@ async function saveHatLisansBillingSettings(input = {}) {
       parsePrice(input.gmp3PriceUsd ?? input.gmp3PriceYearUsd, current.settings.gmp3PriceUsd),
       parsePrice(input.irestoPriceTry ?? input.irestoPriceYearTry, current.settings.irestoPriceTry),
       parsePrice(input.irestoPriceUsd ?? input.irestoPriceYearUsd, current.settings.irestoPriceUsd),
-      parsePrice(input.linePriceMonthTry, current.settings.linePriceMonthTry),
-      parsePrice(input.linePriceMonthUsd, current.settings.linePriceMonthUsd),
-      parsePrice(input.gmp3PriceMonthTry, current.settings.gmp3PriceMonthTry),
-      parsePrice(input.gmp3PriceMonthUsd, current.settings.gmp3PriceMonthUsd),
-      parsePrice(input.irestoPriceMonthTry, current.settings.irestoPriceMonthTry),
-      parsePrice(input.irestoPriceMonthUsd, current.settings.irestoPriceMonthUsd),
+      parseOwnPrice(input, 'linePriceMonthTry', current.settings.linePriceMonthTry),
+      parseOwnPrice(input, 'linePriceMonthUsd', current.settings.linePriceMonthUsd),
+      parseOwnPrice(input, 'gmp3PriceMonthTry', current.settings.gmp3PriceMonthTry),
+      parseOwnPrice(input, 'gmp3PriceMonthUsd', current.settings.gmp3PriceMonthUsd),
+      parseOwnPrice(input, 'irestoPriceMonthTry', current.settings.irestoPriceMonthTry),
+      parseOwnPrice(input, 'irestoPriceMonthUsd', current.settings.irestoPriceMonthUsd),
       parseTaxRate(input.lineTaxRate, current.settings.lineTaxRate),
       parseTaxRate(input.gmp3TaxRate, current.settings.gmp3TaxRate),
       parseTaxRate(input.irestoTaxRate, current.settings.irestoTaxRate),
