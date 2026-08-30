@@ -12,6 +12,7 @@ const ensured = {
   bkm_acquirers: false,
   licenses_software_company: false,
   licenses_registry_number: false,
+  licenses_license_type: false,
   lines_operator: false,
   lines_registry_number: false,
   issued_source_invoice: false,
@@ -1062,10 +1063,47 @@ async function ensureBkmAcquirersTable() {
   return true;
 }
 
+async function ensureLicensesLicenseTypeConstraint() {
+  if (ensured.licenses_license_type) return true;
+  const exists = await tableExists('licenses');
+  if (exists) {
+    await query(
+      `
+        do $$
+        declare
+          rec record;
+        begin
+          for rec in
+            select c.conname
+            from pg_constraint c
+            join pg_class t on t.oid = c.conrelid
+            join pg_namespace n on n.oid = t.relnamespace
+            where n.nspname = 'public'
+              and t.relname = 'licenses'
+              and c.contype = 'c'
+              and pg_get_constraintdef(c.oid) ilike '%license_type%'
+          loop
+            execute format(
+              'alter table public.licenses drop constraint if exists %I',
+              rec.conname
+            );
+          end loop;
+          alter table public.licenses
+            add constraint licenses_license_type_check
+            check (license_type in ('gmp3', 'iresto'));
+        end $$;
+      `,
+    );
+  }
+  ensured.licenses_license_type = true;
+  return true;
+}
+
 async function ensureLicensesSoftwareCompanyColumn() {
   if (ensured.licenses_software_company) return true;
   const exists = await tableExists('licenses');
   if (exists) {
+    await ensureLicensesLicenseTypeConstraint();
     await query(
       `
         alter table public.licenses
@@ -1087,6 +1125,7 @@ async function ensureLicensesRegistryNumberColumn() {
   if (ensured.licenses_registry_number) return true;
   const exists = await tableExists('licenses');
   if (exists) {
+    await ensureLicensesLicenseTypeConstraint();
     await query(
       `
         alter table public.licenses
@@ -2214,6 +2253,7 @@ module.exports = {
   ensureBkmAcquirersTable,
   ensureLicensesSoftwareCompanyColumn,
   ensureLicensesRegistryNumberColumn,
+  ensureLicensesLicenseTypeConstraint,
   ensureLinesOperatorColumn,
   ensureLinesRegistryNumberColumn,
   ensureIssuedSourceInvoiceColumns,
