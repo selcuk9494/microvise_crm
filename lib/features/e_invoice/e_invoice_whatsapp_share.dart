@@ -219,6 +219,7 @@ String buildInvoicePaymentWhatsAppMessage({
   required List<String> invoiceLabels,
   String? customerName,
   bool includePdfNote = false,
+  List<String> paymentLines = const [],
 }) {
   final numbers = invoiceLabels
       .map((label) => label.trim())
@@ -227,13 +228,27 @@ String buildInvoicePaymentWhatsAppMessage({
   final name = (customerName ?? '').trim();
   final greeting = name.isEmpty ? 'Merhaba,' : 'Merhaba $name,';
   final invoicePart = numbers.isEmpty ? 'faturanız' : numbers;
+  final seen = <String>{};
+  final purpose = <String>[];
+  for (final raw in paymentLines) {
+    final line = raw.trim();
+    if (line.isEmpty) continue;
+    final key = line.toLowerCase();
+    if (seen.contains(key)) continue;
+    seen.add(key);
+    purpose.add(line);
+  }
+  final purposeBlock = purpose.isEmpty
+      ? ''
+      : '\n${purpose.map((line) => '• $line').join('\n')}\n';
   final pdfNote = includePdfNote
       ? 'Fatura PDF’si bu mesajla birlikte gönderilir.\n'
       : '';
   return '$greeting\n\n'
-      '$invoicePart için sanal POS ödeme linki:\n'
+      '$invoicePart için ödeme:$purposeBlock\n'
+      'Tutar: $amountLabel\n\n'
+      'Güvenli ödeme linki:\n'
       '$paymentUrl\n\n'
-      'Tutar: $amountLabel\n'
       '$pdfNote'
       'Microvise Innovation';
 }
@@ -330,6 +345,7 @@ Future<void> shareInvoicePaymentLinkWithWhatsApp({
   String? customerName,
   CustomerDetail? customer,
   List<EInvoicePdfDownload> pdfs = const [],
+  List<String> paymentLines = const [],
 }) async {
   final phone = await pickWhatsAppPhone(
     context: context,
@@ -347,6 +363,7 @@ Future<void> shareInvoicePaymentLinkWithWhatsApp({
     invoiceLabels: invoiceLabels,
     customerName: customerName ?? customer?.name,
     includePdfNote: pdfs.isNotEmpty,
+    paymentLines: paymentLines,
   );
   await Clipboard.setData(ClipboardData(text: message));
 

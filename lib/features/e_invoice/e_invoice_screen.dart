@@ -510,6 +510,11 @@ Future<void> _sendInvoicePaymentLinkWhatsAppFlow({
       customerName: customer?.name ?? payable.first.customerName,
       customer: customer,
       pdfs: pdfs,
+      paymentLines: [
+        for (final invoice in payable)
+          for (final item in invoice.items)
+            item.description,
+      ],
     );
   } catch (error) {
     if (!context.mounted) return;

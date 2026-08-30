@@ -6,6 +6,7 @@ const QRCode = require('qrcode');
 
 const { query } = require('./db');
 const { escapeHtml, isValidEmail, sendEmail } = require('./mail');
+const { ensureCustomerEmailColumns } = require('./schema');
 const {
   createInvoicePaymentLink,
   ensureInvoicePaymentLinksTable,
@@ -173,6 +174,20 @@ function bankTransferLines() {
   ];
 }
 
+function bankTransferPdfLines() {
+  const bank = DEFAULT_BANK_TRANSFER;
+  return [
+    `${bank.accountName}  ·  ${bank.bank}`,
+    `TL  ${bank.ibanTl}`,
+    `USD  ${bank.ibanUsd}`,
+    bank.note,
+  ];
+}
+
+function wrapUnbroken(text, chunk = 36) {
+  return String(text || '').replace(new RegExp(`(\\S{${chunk}})`, 'g'), '$1\u200b');
+}
+
 const DEFAULT_SELLER = {
   title: 'Microvise Innovation Ltd',
   address: 'Atatürk Cad. Yenişehir Emek 2 Apt. Dış Kapı No: 1, Lefkoşa',
@@ -222,6 +237,7 @@ function websiteHref(website) {
 }
 
 async function loadInvoicesForMail(invoiceIds) {
+  await ensureCustomerEmailColumns();
   const ids = Array.from(
     new Set(
       (invoiceIds || [])
@@ -251,7 +267,9 @@ async function loadInvoicesForMail(invoiceIds) {
         i.e_invoice_pdf_bucket,
         i.e_invoice_pdf_path,
         c.name as customer_name,
-        c.email as customer_email
+        c.email as customer_email,
+        c.email_2 as customer_email_2,
+        c.email_3 as customer_email_3
       from public.invoices i
       left join public.customers c on c.id = i.customer_id
       where i.id = any($1::uuid[])
@@ -322,10 +340,35 @@ function invoiceNumbersPhrase(invoices) {
   return `${numbers.slice(0, -1).join(', ')} ve ${last} nolu faturalarınız`;
 }
 
+function paymentPurposeTitles(invoices) {
+  const seen = new Set();
+  const titles = [];
+  for (const invoice of invoices || []) {
+    for (const item of invoice.items || []) {
+      const desc = String(item.description || '').trim();
+      if (!desc) continue;
+      const key = desc.toLocaleLowerCase('tr-TR');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      titles.push(desc);
+    }
+  }
+  return titles;
+}
+
+function paymentPurposeSentence(invoices) {
+  const titles = paymentPurposeTitles(invoices);
+  if (!titles.length) return '';
+  if (titles.length === 1) return `Bu ödeme: ${titles[0]}.`;
+  return `Bu ödeme:\n${titles.map((title) => `• ${title}`).join('\n')}`;
+}
+
 function invoiceMailCopy({ invoices, awaitingPayment, isReminder = false }) {
   const list = Array.isArray(invoices) ? invoices : [];
   const named = invoiceNumbersPhrase(list);
   const many = list.length > 1;
+  const purpose = paymentPurposeSentence(list);
+  const withPurpose = (text) => (purpose ? `${text}\n\n${purpose}` : text);
   if (isReminder && awaitingPayment) {
     return {
       preheader: named
@@ -333,9 +376,11 @@ function invoiceMailCopy({ invoices, awaitingPayment, isReminder = false }) {
         : 'Faturanız için ödeme hatırlatması.',
       headerLabel: 'Ödeme hatırlatması',
       amountLabel: 'Ödenecek tutar',
-      body: named
-        ? `${named} için 1 haftadır ödeme beklenmektedir. Belge özeti yeniden ektedir. Tahsilatı aşağıdaki güvenli bağlantı üzerinden tamamlayabilirsiniz. Ödeme alındıktan sonra resmi faturanız tarafınıza iletilecektir.`
-        : 'Faturanız için 1 haftadır ödeme beklenmektedir. Belge özeti yeniden ektedir. Tahsilatı aşağıdaki güvenli bağlantı üzerinden tamamlayabilirsiniz.',
+      body: withPurpose(
+        named
+          ? `${named} için 1 haftadır ödeme beklenmektedir. Belge özeti yeniden ektedir. Tahsilatı aşağıdaki güvenli bağlantı üzerinden tamamlayabilirsiniz. Ödeme alındıktan sonra resmi faturanız tarafınıza iletilecektir.`
+          : 'Faturanız için 1 haftadır ödeme beklenmektedir. Belge özeti yeniden ektedir. Tahsilatı aşağıdaki güvenli bağlantı üzerinden tamamlayabilirsiniz.',
+      ),
       thanks: '',
     };
   }
@@ -346,9 +391,11 @@ function invoiceMailCopy({ invoices, awaitingPayment, isReminder = false }) {
         : 'Faturanız hazır. Güvenli ödeme bağlantısı bu e-postadadır.',
       headerLabel: 'Ödeme bildirimi',
       amountLabel: 'Ödenecek tutar',
-      body: named
-        ? `${named} için ödeme beklenmektedir. Belge özeti ektedir. Tahsilatı aşağıdaki güvenli bağlantı üzerinden tamamlayabilirsiniz. Ödeme alındıktan sonra resmi faturanız tarafınıza iletilecektir.`
-        : 'Fatura bilgileriniz aşağıdadır. Belge özeti ektedir. Tahsilatı aşağıdaki güvenli bağlantı üzerinden tamamlayabilirsiniz. Ödeme alındıktan sonra resmi faturanız tarafınıza iletilecektir.',
+      body: withPurpose(
+        named
+          ? `${named} için ödeme beklenmektedir. Belge özeti ektedir. Tahsilatı aşağıdaki güvenli bağlantı üzerinden tamamlayabilirsiniz. Ödeme alındıktan sonra resmi faturanız tarafınıza iletilecektir.`
+          : 'Fatura bilgileriniz aşağıdadır. Belge özeti ektedir. Tahsilatı aşağıdaki güvenli bağlantı üzerinden tamamlayabilirsiniz. Ödeme alındıktan sonra resmi faturanız tarafınıza iletilecektir.',
+      ),
       thanks: '',
     };
   }
@@ -358,11 +405,13 @@ function invoiceMailCopy({ invoices, awaitingPayment, isReminder = false }) {
       : 'Ödemeniz için teşekkür ederiz. Faturanız ektedir.',
     headerLabel: 'Ödeme onayı',
     amountLabel: 'Ödenen tutar',
-    body: named
-      ? `Ödemeniz için teşekkür ederiz. ${named} kesilmiş olup ${
-          many ? 'belgeler' : 'belgesi'
-        } bu e-postanın ekinde yer almaktadır.`
-      : 'Ödemeniz için teşekkür ederiz. Faturanız kesilmiş olup belgesi bu e-postanın ekinde yer almaktadır.',
+    body: withPurpose(
+      named
+        ? `Ödemeniz için teşekkür ederiz. ${named} kesilmiş olup ${
+            many ? 'belgeler' : 'belgesi'
+          } bu e-postanın ekinde yer almaktadır.`
+        : 'Ödemeniz için teşekkür ederiz. Faturanız kesilmiş olup belgesi bu e-postanın ekinde yer almaktadır.',
+    ),
     thanks: 'Ödemeniz alınmıştır. İyi çalışmalar dileriz.',
   };
 }
@@ -405,14 +454,13 @@ function buildPaymentEmailHtml({
         </tr>`;
     })
     .join('');
-  const itemPreview =
-    invoiceCount === 1
-      ? (invoices[0].items || [])
-          .slice(0, 6)
-          .map((item) => {
-            const desc = String(item.description || 'Kalem').trim();
-            const qty = Number(item.quantity || 1);
-            return `
+  const itemPreview = invoices
+    .flatMap((invoice) => invoice.items || [])
+    .slice(0, 12)
+    .map((item) => {
+      const desc = String(item.description || 'Kalem').trim();
+      const qty = Number(item.quantity || 1);
+      return `
               <tr>
                 <td style="padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#334155;word-break:break-word;overflow-wrap:anywhere;">
                   ${escapeHtml(desc)}
@@ -421,9 +469,8 @@ function buildPaymentEmailHtml({
                   ${escapeHtml(String(qty))} ${escapeHtml(item.unit || 'Adet')}
                 </td>
               </tr>`;
-          })
-          .join('')
-      : '';
+    })
+    .join('');
   const footerBits = [
     escapeHtml(company.title),
     company.address ? escapeHtml(company.address) : '',
@@ -484,7 +531,7 @@ function buildPaymentEmailHtml({
                 ${greeting}
               </p>
               <p style="margin:0 0 22px 0;font-size:15px;line-height:1.65;color:#334155;">
-                ${escapeHtml(copy.body)}
+                ${escapeHtml(copy.body).replace(/\n/g, '<br />')}
               </p>
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e8edf3;border-radius:12px;overflow:hidden;table-layout:fixed;">
                 <tr>
@@ -504,7 +551,7 @@ function buildPaymentEmailHtml({
                 itemPreview
                   ? `
               <p style="margin:18px 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;">
-                Kalem özeti
+                Ödeme kalemleri
               </p>
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e8edf3;border-radius:12px;overflow:hidden;">
                 ${itemPreview}
@@ -682,8 +729,8 @@ async function buildInvoicePaymentPdf({
     try {
       qrPng = await QRCode.toBuffer(paymentUrl, {
         type: 'png',
-        margin: 1,
-        width: 160,
+        margin: 0,
+        width: 120,
         errorCorrectionLevel: 'M',
       });
     } catch (_) {
@@ -694,7 +741,8 @@ async function buildInvoicePaymentPdf({
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4',
-      margin: 48,
+      margin: 36,
+      bufferPages: true,
       info: {
         Title: copy.headerLabel,
         Author: company.title,
@@ -707,69 +755,68 @@ async function buildInvoicePaymentPdf({
 
     const fonts = registerPdfFonts(doc);
     const pageWidth = doc.page.width;
-    const left = 48;
-    const right = pageWidth - 48;
+    const left = 36;
+    const right = pageWidth - 36;
     const width = right - left;
+    const footerY = doc.page.height - 52;
+    const pageBottom = () => footerY - 10;
 
     doc.save();
-    doc.rect(0, 0, pageWidth, 78).fill('#1e3a5f');
-    doc.rect(0, 78, pageWidth, 4).fill('#2563eb');
+    doc.rect(0, 0, pageWidth, 64).fill('#1e3a5f');
+    doc.rect(0, 64, pageWidth, 3).fill('#2563eb');
     doc
       .fillColor('#ffffff')
       .font(fonts.bold)
-      .fontSize(18)
-      .text('MICROVISE', left, 20);
+      .fontSize(16)
+      .text('MICROVISE', left, 16);
     doc
       .fillColor('#bfdbfe')
       .font(fonts.regular)
-      .fontSize(9)
-      .text(company.title, left, 46, { width: width * 0.62 });
+      .fontSize(8)
+      .text(company.title, left, 38, { width: width * 0.62, lineBreak: false });
     doc
       .fillColor('#dbeafe')
       .font(fonts.regular)
-      .fontSize(9)
-      .text(copy.headerLabel, left + width * 0.62, 24, {
+      .fontSize(8)
+      .text(copy.headerLabel, left + width * 0.62, 18, {
         width: width * 0.38,
         align: 'right',
       });
     doc
       .fillColor('#bfdbfe')
       .font(fonts.regular)
-      .fontSize(9)
-      .text(formatDateTr(new Date()), left + width * 0.62, 40, {
+      .fontSize(8)
+      .text(formatDateTr(new Date()), left + width * 0.62, 34, {
         width: width * 0.38,
         align: 'right',
       });
     doc.restore();
 
-    doc.y = 104;
+    doc.y = 82;
     doc
       .fillColor('#64748b')
       .font(fonts.regular)
-      .fontSize(9)
+      .fontSize(8)
       .text('SAYIN', left, doc.y);
-    doc.moveDown(0.25);
+    doc.moveDown(0.15);
     doc
       .fillColor('#0f172a')
       .font(fonts.bold)
-      .fontSize(16)
+      .fontSize(13)
       .text(customerName || 'Yetkili', left, doc.y, { width });
-    doc.moveDown(0.55);
+    doc.moveDown(0.3);
     doc
       .fillColor('#334155')
       .font(fonts.regular)
-      .fontSize(10.5)
-      .text(copy.body, left, doc.y, { width, lineGap: 2 });
-    doc.moveDown(0.9);
+      .fontSize(9)
+      .text(copy.body, left, doc.y, { width, lineGap: 1.2 });
+    doc.moveDown(0.45);
 
     const vat = combinedVatParts(invoices);
     const payAmount = numberOrZero(amount) || vat.total;
-    const footerReserve = 36;
-    const pageBottom = () => doc.page.height - 48 - footerReserve;
     const ensureSpace = (needed) => {
       if (doc.y + needed <= pageBottom()) return;
-      doc.addPage();
-      doc.y = 48;
+      doc.y = Math.min(doc.y, pageBottom() - 4);
     };
 
     const colNo = left;
@@ -777,27 +824,30 @@ async function buildInvoicePaymentPdf({
     const colAmt = right;
     const headerY = doc.y;
     doc.save();
-    doc.rect(left, headerY, width, 22).fill('#f1f5f9');
+    doc.rect(left, headerY, width, 18).fill('#f1f5f9');
     doc.restore();
     doc
       .fillColor('#64748b')
       .font(fonts.bold)
-      .fontSize(8)
-      .text('FATURA NO', colNo + 8, headerY + 7, { width: width * 0.42 });
-    doc.text('TARİH', colDate, headerY + 7, { width: 78 });
-    doc.text('TUTAR', colAmt - 90, headerY + 7, { width: 82, align: 'right' });
-    doc.y = headerY + 26;
+      .fontSize(7.5)
+      .text('FATURA NO', colNo + 8, headerY + 5, { width: width * 0.42 });
+    doc.text('TARİH', colDate, headerY + 5, { width: 78 });
+    doc.text('TUTAR', colAmt - 90, headerY + 5, { width: 82, align: 'right' });
+    doc.y = headerY + 22;
 
     for (const invoice of invoices) {
       const remaining =
         remainingAmount(invoice) || Number(invoice.grand_total || 0);
-      ensureSpace(28);
-      const numberText = localInvoiceNumber(invoice.invoice_number) || 'Fatura';
+      ensureSpace(22);
+      const numberText = wrapUnbroken(
+        localInvoiceNumber(invoice.invoice_number) || 'Fatura',
+        28,
+      );
       const numberHeight = doc
         .font(fonts.bold)
         .fontSize(10)
         .heightOfString(numberText, { width: width * 0.42 });
-      const rowH = Math.max(18, numberHeight);
+      const rowH = Math.max(16, Math.min(numberHeight, 28));
       const rowY = doc.y;
       doc
         .fillColor('#0f172a')
@@ -805,11 +855,13 @@ async function buildInvoicePaymentPdf({
         .fontSize(10)
         .text(numberText, colNo + 8, rowY, {
           width: width * 0.42,
+          height: rowH,
+          ellipsis: true,
         });
       doc
         .fillColor('#64748b')
         .font(fonts.regular)
-        .fontSize(10)
+        .fontSize(9)
         .text(formatDateTr(invoice.invoice_date), colDate, rowY, { width: 78 });
       doc
         .fillColor('#0f172a')
@@ -821,45 +873,47 @@ async function buildInvoicePaymentPdf({
           rowY,
           { width: 102, align: 'right' },
         );
-      doc.y = rowY + rowH + 6;
+      doc.y = rowY + rowH + 4;
       doc
         .strokeColor('#e8edf3')
         .lineWidth(0.6)
         .moveTo(left, doc.y)
         .lineTo(right, doc.y)
         .stroke();
-      doc.y += 6;
+      doc.y += 4;
 
-      for (const item of (invoice.items || []).slice(0, 10)) {
+      for (const item of (invoice.items || []).slice(0, 8)) {
         const qty = Number(item.quantity || 1);
-        const desc = String(item.description || 'Kalem').trim();
+        const desc = wrapUnbroken(String(item.description || 'Kalem').trim(), 42);
         const rightCol = `${qty} ${item.unit || 'Adet'}   ${formatMoney(
           item.line_total,
           invoice.currency || currency,
         )}`;
         const descWidth = width - 132;
-        ensureSpace(18);
+        ensureSpace(14);
         const itemY = doc.y;
         doc
           .fillColor('#64748b')
           .font(fonts.regular)
-          .fontSize(8.5)
-          .text(desc, left + 12, itemY, { width: descWidth });
-        const afterDesc = doc.y;
+          .fontSize(8)
+          .text(desc, left + 12, itemY, {
+            width: descWidth,
+            height: 12,
+            ellipsis: true,
+          });
         doc.text(rightCol, right - 118, itemY, {
           width: 110,
           align: 'right',
         });
-        doc.y = Math.max(afterDesc, itemY + 11) + 2;
+        doc.y = itemY + 12;
       }
-      doc.moveDown(0.25);
     }
 
-    const totalsHeight = 78;
-    ensureSpace(totalsHeight + 8);
+    const totalsHeight = 62;
+    ensureSpace(totalsHeight + 6);
     const totalY = doc.y;
     doc.save();
-    doc.roundedRect(left, totalY, width, totalsHeight, 6).fill('#f8fafc');
+    doc.roundedRect(left, totalY, width, totalsHeight, 5).fill('#f8fafc');
     doc.restore();
     const vatRows = [
       ['KDV hariç tutar', formatMoney(vat.subtotal, currency), false],
@@ -867,107 +921,116 @@ async function buildInvoicePaymentPdf({
       [copy.amountLabel, formatMoney(payAmount, currency), true],
     ];
     vatRows.forEach((row, index) => {
-      const y = totalY + 10 + index * 22;
+      const y = totalY + 8 + index * 18;
       doc
         .fillColor('#64748b')
         .font(fonts.regular)
-        .fontSize(row[2] ? 11 : 10)
+        .fontSize(row[2] ? 10 : 9)
         .text(row[0], left + 14, y);
       doc
         .fillColor(row[2] ? '#1e3a5f' : '#0f172a')
         .font(row[2] ? fonts.bold : fonts.regular)
-        .fontSize(row[2] ? 13 : 10)
-        .text(row[1], left + width * 0.45, y - (row[2] ? 1 : 0), {
+        .fontSize(row[2] ? 12 : 9)
+        .text(row[1], left + width * 0.45, y, {
           width: width * 0.55 - 14,
           align: 'right',
         });
     });
-    doc.y = totalY + totalsHeight + 14;
+    doc.y = totalY + totalsHeight + 8;
 
     if (awaitingPayment) {
-      ensureSpace(qrPng ? 130 : 70);
+      const qrSize = 72;
+      const textWidth = qrPng ? width - qrSize - 16 : width;
       const payBlockY = doc.y;
       doc
         .fillColor('#0f172a')
         .font(fonts.bold)
-        .fontSize(11)
-        .text('Güvenli ödeme', left, doc.y);
-      doc.moveDown(0.25);
+        .fontSize(10)
+        .text('Güvenli ödeme', left, payBlockY);
       doc
         .fillColor('#334155')
         .font(fonts.regular)
-        .fontSize(9.5)
+        .fontSize(8)
         .text(
-          'Ödeme 3D Secure ile banka altyapısı üzerinden alınır. Kart bilgileriniz Microvise sistemlerinde saklanmaz.',
+          'Ödeme 3D Secure ile alınır. Kart bilgileriniz saklanmaz.',
           left,
-          doc.y,
-          { width: qrPng ? width - 130 : width, lineGap: 2 },
+          payBlockY + 14,
+          { width: textWidth, lineGap: 1 },
         );
-      const linkY = doc.y + 8;
       doc
         .fillColor('#1d4ed8')
         .font(fonts.regular)
-        .fontSize(9)
-        .text(paymentUrl, left, linkY, {
-          width: qrPng ? width - 130 : width,
+        .fontSize(7.5)
+        .text(wrapUnbroken(paymentUrl, 34), left, payBlockY + 32, {
+          width: textWidth,
+          height: 28,
           link: paymentUrl,
           underline: true,
         });
       if (qrPng) {
-        doc.image(qrPng, right - 108, payBlockY, { width: 96 });
-        doc.y = Math.max(doc.y, payBlockY + 104);
+        doc.image(qrPng, right - qrSize, payBlockY, { width: qrSize });
+        doc.y = Math.max(payBlockY + 62, payBlockY + qrSize);
       } else {
-        doc.y = Math.max(doc.y, linkY + 18);
+        doc.y = payBlockY + 62;
       }
 
-      ensureSpace(92);
-      doc.moveDown(0.5);
-      const bankY = doc.y;
+      const bankH = 70;
+      if (doc.y + bankH > pageBottom()) {
+        doc.y = pageBottom() - bankH;
+      }
+      const bankY = doc.y + 6;
       doc.save();
-      doc.roundedRect(left, bankY, width, 88, 6).stroke('#e8edf3');
+      doc.roundedRect(left, bankY, width, bankH, 5).stroke('#e8edf3');
       doc.restore();
       doc
         .fillColor('#0f172a')
         .font(fonts.bold)
-        .fontSize(10)
-        .text('Havale / EFT', left + 12, bankY + 10);
+        .fontSize(9)
+        .text('Havale / EFT', left + 10, bankY + 8);
       doc
         .fillColor('#334155')
         .font(fonts.regular)
-        .fontSize(9)
-        .text(bankTransferLines().join('\n'), left + 12, bankY + 26, {
-          width: width - 24,
-          lineGap: 1.5,
+        .fontSize(8)
+        .text(bankTransferPdfLines().join('\n'), left + 10, bankY + 22, {
+          width: width - 20,
+          height: bankH - 28,
+          lineGap: 1.2,
         });
-      doc.y = bankY + 96;
+      doc.y = bankY + bankH;
     } else {
-      ensureSpace(24);
       doc
         .fillColor('#166534')
         .font(fonts.bold)
-        .fontSize(11)
+        .fontSize(10)
         .text(copy.thanks, left, doc.y, { width });
     }
 
-    const footerY = doc.page.height - 52;
+    doc.switchToPage(0);
+    doc.page.margins.bottom = 0;
     doc
       .strokeColor('#e8edf3')
       .lineWidth(0.8)
       .moveTo(left, footerY)
       .lineTo(right, footerY)
       .stroke();
+    const footerLine1 = company.title || '';
+    const footerLine2 = [company.address, company.phone, company.email, company.website]
+      .filter(Boolean)
+      .join('  ·  ');
     doc
       .fillColor('#64748b')
       .font(fonts.regular)
-      .fontSize(8)
-      .text(
-        [company.title, company.address, company.phone, company.email, company.website]
-          .filter(Boolean)
-          .join('  ·  '),
-        left,
-        footerY + 8,
-        { width, align: 'center' },
-      );
+      .fontSize(7)
+      .text(footerLine1, left, footerY + 5, {
+        width,
+        align: 'center',
+        lineBreak: false,
+      });
+    doc.text(footerLine2, left, footerY + 15, {
+      width,
+      align: 'center',
+      lineBreak: false,
+    });
 
     doc.end();
   });
@@ -982,12 +1045,29 @@ async function rememberCustomerEmail(customerId, email) {
       update public.customers
       set email = $2
       where id = $1::uuid
-        and coalesce(lower(btrim(email)), '') is distinct from $2
+        and coalesce(lower(btrim(email)), '') = ''
       returning id
     `,
     [id, to],
   );
   return Boolean(result.rows[0]);
+}
+
+function uniqueValidEmails(...sources) {
+  const seen = new Set();
+  const out = [];
+  for (const source of sources) {
+    const values = Array.isArray(source) ? source : [source];
+    for (const value of values) {
+      for (const part of String(value || '').split(/[;,]+/)) {
+        const email = part.trim().toLowerCase();
+        if (!isValidEmail(email) || seen.has(email)) continue;
+        seen.add(email);
+        out.push(email);
+      }
+    }
+  }
+  return out;
 }
 
 async function markPaymentLinkEmailed({ linkId, emailedTo }) {
@@ -1007,6 +1087,7 @@ async function markPaymentLinkEmailed({ linkId, emailedTo }) {
 async function sendInvoicePaymentLinkEmail({
   invoiceIds,
   email,
+  emails,
   createdBy,
   req,
 }) {
@@ -1018,14 +1099,21 @@ async function sendInvoicePaymentLinkEmail({
     throw error;
   }
   const customerName = invoices[0].customer_name || 'Cari';
-  const to = String(email || invoices[0].customer_email || '').trim();
-  if (!isValidEmail(to)) {
+  const recipients = uniqueValidEmails(
+    email,
+    emails,
+    invoices[0].customer_email,
+    invoices[0].customer_email_2,
+    invoices[0].customer_email_3,
+  );
+  if (!recipients.length) {
     const error = new Error(
       'Müşteri e-postası yok. Göndermeden önce e-posta yazın.',
     );
     error.statusCode = 400;
     throw error;
   }
+  const toLabel = recipients.join(', ');
 
   const totalRemaining = invoices.reduce(
     (sum, invoice) => sum + remainingAmount(invoice),
@@ -1089,7 +1177,7 @@ async function sendInvoicePaymentLinkEmail({
     : [crmAttachment];
 
   await sendEmail({
-    to,
+    to: recipients,
     subject: awaitingPayment
       ? named
         ? `${named} için ödeme`
@@ -1104,7 +1192,10 @@ async function sendInvoicePaymentLinkEmail({
 
   let savedToCustomer = false;
   try {
-    savedToCustomer = await rememberCustomerEmail(invoices[0].customer_id, to);
+    savedToCustomer = await rememberCustomerEmail(
+      invoices[0].customer_id,
+      recipients[0],
+    );
   } catch (error) {
     console.error('Cari e-posta kaydı:', error);
   }
@@ -1112,7 +1203,7 @@ async function sendInvoicePaymentLinkEmail({
   if (link) {
     await markPaymentLinkEmailed({
       linkId: link.id,
-      emailedTo: to,
+      emailedTo: toLabel,
     });
   }
 
@@ -1123,7 +1214,7 @@ async function sendInvoicePaymentLinkEmail({
     amount,
     currency,
     invoiceCount: invoices.length,
-    emailedTo: to,
+    emailedTo: toLabel,
     customerName,
     savedToCustomer,
     status: awaitingPayment ? 'pending' : 'paid',
@@ -1131,8 +1222,8 @@ async function sendInvoicePaymentLinkEmail({
       ? 'Link gönderildi · ödeme bekliyor'
       : 'Ödeme teşekkür maili gönderildi',
     message: awaitingPayment
-      ? `Fatura ve ödeme linki ${to} adresine gönderildi.${savedNote}`
-      : `Ödemeniz için teşekkür maili ${to} adresine gönderildi.${savedNote}`,
+      ? `Fatura ve ödeme linki ${toLabel} adresine gönderildi.${savedNote}`
+      : `Ödemeniz için teşekkür maili ${toLabel} adresine gönderildi.${savedNote}`,
   };
 }
 
@@ -1307,6 +1398,8 @@ module.exports = {
   buildPaymentEmailHtml,
   buildPaymentEmailText,
   normalizeSeller,
+  wrapUnbroken,
+  bankTransferPdfLines,
   buildInvoicePaymentPdf,
   combinedVatParts,
   DEFAULT_BANK_TRANSFER,

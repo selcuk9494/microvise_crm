@@ -8,6 +8,7 @@ const {
   localInvoiceNumber,
   formatDateTr,
   invoiceMailCopy,
+  wrapUnbroken,
   normalizeSeller,
   buildInvoicePaymentPdf,
 } = require('../api/_lib/invoice_mail');
@@ -75,6 +76,48 @@ test('HTML mail kurumsal şablon ve ödeme bağlantısı içerir', () => {
   assert.match(html, /Microvise Innovation Ltd/);
 });
 
+test('ödeme mailinde kalem açıklaması yazılır', () => {
+  const invoices = [
+    {
+      invoice_number: '2026-1-00000000099',
+      invoice_date: '2026-08-30',
+      grand_total: 100,
+      paid_amount: 0,
+      currency: 'TRY',
+      items: [
+        {
+          description: 'Yazar kasa İnternet hattı Yıllık kullanım',
+          quantity: 2,
+          unit: 'Adet',
+        },
+        { description: 'Yazar Kasa Entegrasyon ödemesi', quantity: 1, unit: 'Adet' },
+      ],
+    },
+  ];
+  const copy = invoiceMailCopy({ invoices, awaitingPayment: true });
+  assert.match(copy.body, /Bu ödeme:/);
+  assert.match(copy.body, /Yazar kasa İnternet hattı Yıllık kullanım/);
+  assert.match(copy.body, /Yazar Kasa Entegrasyon ödemesi/);
+  const html = buildPaymentEmailHtml({
+    customerName: 'Test Cari',
+    invoices,
+    amount: 100,
+    currency: 'TRY',
+    paymentUrl: 'https://crm.microvise.net/pay/x',
+  });
+  assert.match(html, /Bu ödeme:/);
+  assert.match(html, /Yazar kasa İnternet hattı Yıllık kullanım/);
+  assert.match(html, /Ödeme kalemleri/);
+  const text = buildPaymentEmailText({
+    customerName: 'Test Cari',
+    invoices,
+    amount: 100,
+    currency: 'TRY',
+    paymentUrl: 'https://crm.microvise.net/pay/x',
+  });
+  assert.match(text, /Yazar Kasa Entegrasyon ödemesi/);
+});
+
 test('düz metin kopyası ödeme linkini içerir', () => {
   const text = buildPaymentEmailText({
     customerName: 'Örnek Ticaret Ltd',
@@ -122,6 +165,26 @@ test('PDF eki üretilir', async () => {
   assert.ok(Buffer.isBuffer(pdf));
   assert.ok(pdf.length > 800);
   assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
+});
+
+test('uzun ödeme URL’si satır kırılır', () => {
+  const wrapped = wrapUnbroken(
+    'https://crm.microvise.net/p/86a29ce6f46f310ef1d04df9142e60260549d1274a13eeda',
+    34,
+  );
+  assert.match(wrapped, /\u200b/);
+});
+
+test('ödeme PDF eki uzun linkte tek sayfa kalır', async () => {
+  const pdf = await buildInvoicePaymentPdf({
+    customerName: 'Örnek Ticaret Ltd',
+    invoices: sampleInvoices,
+    amount: 23200,
+    currency: 'TRY',
+    paymentUrl:
+      'https://crm.microvise.net/p/86a29ce6f46f310ef1d04df9142e60260549d1274a13eeda',
+  });
+  assert.match(pdf.toString('latin1'), /\/Count 1[^0-9]/);
 });
 
 test('hatırlatma kopyası 1 hafta dilini kullanır', () => {

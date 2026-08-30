@@ -92,6 +92,15 @@ String _priceText(Object? value) {
   return n.toString();
 }
 
+String _titleText(Object? value, String fallback) {
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty ? fallback : text;
+}
+
+const _kLinePaymentTitle = 'Yazar kasa İnternet hattı Yıllık kullanım';
+const _kGmp3PaymentTitle = 'Yazar Kasa Entegrasyon ödemesi';
+const _kIrestoPaymentTitle = 'iResto Yazarkasa Entegrasyon ödemesi';
+
 Map<String, dynamic> _asMap(Object? value) {
   if (value is Map<String, dynamic>) return value;
   if (value is Map) return Map<String, dynamic>.from(value);
@@ -153,6 +162,9 @@ class _CreateHatLisansInvoiceDialogState
   final _gmp3Usd = TextEditingController();
   final _irestoTry = TextEditingController();
   final _irestoUsd = TextEditingController();
+  final _lineTitle = TextEditingController(text: _kLinePaymentTitle);
+  final _gmp3Title = TextEditingController(text: _kGmp3PaymentTitle);
+  final _irestoTitle = TextEditingController(text: _kIrestoPaymentTitle);
   String _currency = 'TRY';
   String? _lineProductId;
   String? _gmp3ProductId;
@@ -168,6 +180,9 @@ class _CreateHatLisansInvoiceDialogState
     _gmp3Usd.dispose();
     _irestoTry.dispose();
     _irestoUsd.dispose();
+    _lineTitle.dispose();
+    _gmp3Title.dispose();
+    _irestoTitle.dispose();
     super.dispose();
   }
 
@@ -180,6 +195,18 @@ class _CreateHatLisansInvoiceDialogState
     _gmp3Usd.text = _priceText(settings['gmp3PriceUsd']);
     _irestoTry.text = _priceText(settings['irestoPriceTry']);
     _irestoUsd.text = _priceText(settings['irestoPriceUsd']);
+    _lineTitle.text = _titleText(
+      settings['linePaymentTitle'],
+      _kLinePaymentTitle,
+    );
+    _gmp3Title.text = _titleText(
+      settings['gmp3PaymentTitle'],
+      _kGmp3PaymentTitle,
+    );
+    _irestoTitle.text = _titleText(
+      settings['irestoPaymentTitle'],
+      _kIrestoPaymentTitle,
+    );
     _currency = (settings['defaultCurrency'] ?? 'TRY').toString().toUpperCase() ==
             'USD'
         ? 'USD'
@@ -261,6 +288,9 @@ class _CreateHatLisansInvoiceDialogState
             'gmp3UnitPriceUsd': _gmp3Usd.text.trim(),
             'irestoUnitPriceTry': _irestoTry.text.trim(),
             'irestoUnitPriceUsd': _irestoUsd.text.trim(),
+            'linePaymentTitle': _lineTitle.text.trim(),
+            'gmp3PaymentTitle': _gmp3Title.text.trim(),
+            'irestoPaymentTitle': _irestoTitle.text.trim(),
           },
         },
         timeout: const Duration(seconds: 120),
@@ -340,8 +370,8 @@ class _CreateHatLisansInvoiceDialogState
               ),
               const Gap(8),
               Text(
-                'Kalem adları Ürün/Hizmet kataloğundan seçilir. Fiyatları bu ekranda '
-                'TL ve USD olarak girin; faturanın para birimini aşağıdan seçin.',
+                'Kalem ürünü kataloğdan seçilir. Ödeme açıklaması mail ve WhatsApp’ta '
+                'görünür; fatura kalem adı da bu metindir. Fiyatları TL/USD girin.',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
@@ -375,6 +405,12 @@ class _CreateHatLisansInvoiceDialogState
                 highlightUsd: _currency == 'USD',
                 enabled: !_saving,
               ),
+              const Gap(8),
+              _PaymentTitleField(
+                controller: _lineTitle,
+                label: 'Ödeme açıklaması (Hat)',
+                enabled: !_saving,
+              ),
               const Gap(14),
               _ProductPickField(
                 label: 'GMP3 kalemi',
@@ -393,6 +429,12 @@ class _CreateHatLisansInvoiceDialogState
                 highlightUsd: _currency == 'USD',
                 enabled: !_saving,
               ),
+              const Gap(8),
+              _PaymentTitleField(
+                controller: _gmp3Title,
+                label: 'Ödeme açıklaması (GMP3)',
+                enabled: !_saving,
+              ),
               const Gap(14),
               _ProductPickField(
                 label: 'iResto kalemi (opsiyonel)',
@@ -409,6 +451,12 @@ class _CreateHatLisansInvoiceDialogState
                 tryLabel: 'iResto TL',
                 usdLabel: 'iResto USD',
                 highlightUsd: _currency == 'USD',
+                enabled: !_saving,
+              ),
+              const Gap(8),
+              _PaymentTitleField(
+                controller: _irestoTitle,
+                label: 'Ödeme açıklaması (iResto)',
                 enabled: !_saving,
               ),
             ],
@@ -431,6 +479,31 @@ class _CreateHatLisansInvoiceDialogState
               : const Text('Fatura Oluştur'),
         ),
       ],
+    );
+  }
+}
+
+class _PaymentTitleField extends StatelessWidget {
+  const _PaymentTitleField({
+    required this.controller,
+    required this.label,
+    required this.enabled,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      enabled: enabled,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: 'Mail ve WhatsApp’ta görünen ödeme açıklaması',
+        isDense: true,
+      ),
     );
   }
 }
@@ -556,6 +629,9 @@ class _HatLisansBillingPriceCardState
   final _gmp3Usd = TextEditingController();
   final _irestoTry = TextEditingController();
   final _irestoUsd = TextEditingController();
+  final _lineTitle = TextEditingController(text: _kLinePaymentTitle);
+  final _gmp3Title = TextEditingController(text: _kGmp3PaymentTitle);
+  final _irestoTitle = TextEditingController(text: _kIrestoPaymentTitle);
   String _currency = 'TRY';
   String? _lineProductId;
   String? _gmp3ProductId;
@@ -571,6 +647,9 @@ class _HatLisansBillingPriceCardState
     _gmp3Usd.dispose();
     _irestoTry.dispose();
     _irestoUsd.dispose();
+    _lineTitle.dispose();
+    _gmp3Title.dispose();
+    _irestoTitle.dispose();
     super.dispose();
   }
 
@@ -583,6 +662,18 @@ class _HatLisansBillingPriceCardState
     _gmp3Usd.text = _priceText(settings['gmp3PriceUsd']);
     _irestoTry.text = _priceText(settings['irestoPriceTry']);
     _irestoUsd.text = _priceText(settings['irestoPriceUsd']);
+    _lineTitle.text = _titleText(
+      settings['linePaymentTitle'],
+      _kLinePaymentTitle,
+    );
+    _gmp3Title.text = _titleText(
+      settings['gmp3PaymentTitle'],
+      _kGmp3PaymentTitle,
+    );
+    _irestoTitle.text = _titleText(
+      settings['irestoPaymentTitle'],
+      _kIrestoPaymentTitle,
+    );
     _currency =
         (settings['defaultCurrency'] ?? 'TRY').toString().toUpperCase() ==
             'USD'
@@ -614,13 +705,18 @@ class _HatLisansBillingPriceCardState
             'gmp3PriceUsd': _gmp3Usd.text.trim(),
             'irestoPriceTry': _irestoTry.text.trim(),
             'irestoPriceUsd': _irestoUsd.text.trim(),
+            'linePaymentTitle': _lineTitle.text.trim(),
+            'gmp3PaymentTitle': _gmp3Title.text.trim(),
+            'irestoPaymentTitle': _irestoTitle.text.trim(),
           },
         },
       );
       ref.invalidate(hatLisansBillingCatalogProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hat / GMP3 fiyatları kaydedildi.')),
+        const SnackBar(
+          content: Text('Hat / GMP3 fiyatları ve ödeme açıklamaları kaydedildi.'),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -679,8 +775,8 @@ class _HatLisansBillingPriceCardState
           ),
           const Gap(6),
           Text(
-            'Kalem adını Ürün/Hizmet kataloğundan seçin. Her kalem için TL ve USD '
-            'birim fiyatı girin; fatura oluştururken seçilen para birimi kullanılır.',
+            'Ödeme açıklaması mail ve WhatsApp’ta görünür; fatura kalem adı da bu '
+            'metindir. Kaydet’ten sonra yeni kesilen faturalarda kullanılır.',
             style: Theme.of(
               context,
             ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
@@ -717,6 +813,12 @@ class _HatLisansBillingPriceCardState
                     highlightUsd: _currency == 'USD',
                     enabled: !_saving,
                   ),
+                  const Gap(8),
+                  _PaymentTitleField(
+                    controller: _lineTitle,
+                    label: 'Ödeme açıklaması',
+                    enabled: !_saving,
+                  ),
                 ],
               );
               final gmp3 = Column(
@@ -745,6 +847,12 @@ class _HatLisansBillingPriceCardState
                     tryLabel: 'GMP3 TL',
                     usdLabel: 'GMP3 USD',
                     highlightUsd: _currency == 'USD',
+                    enabled: !_saving,
+                  ),
+                  const Gap(8),
+                  _PaymentTitleField(
+                    controller: _gmp3Title,
+                    label: 'Ödeme açıklaması',
                     enabled: !_saving,
                   ),
                 ],
@@ -777,6 +885,12 @@ class _HatLisansBillingPriceCardState
                     tryLabel: 'iResto TL',
                     usdLabel: 'iResto USD',
                     highlightUsd: _currency == 'USD',
+                    enabled: !_saving,
+                  ),
+                  const Gap(8),
+                  _PaymentTitleField(
+                    controller: _irestoTitle,
+                    label: 'Ödeme açıklaması',
                     enabled: !_saving,
                   ),
                 ],
@@ -1028,6 +1142,9 @@ class _HatLisansInvoiceRowState extends ConsumerState<_HatLisansInvoiceRow> {
       invoiceLabels: [formatInvoiceNumberForDisplay(invoice.invoiceNumber)],
       customerName: invoice.customerName,
       customer: customer,
+      paymentLines: [
+        for (final item in invoice.items) item.description,
+      ],
     );
   }
 

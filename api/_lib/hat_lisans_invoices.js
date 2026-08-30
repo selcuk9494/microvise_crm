@@ -13,6 +13,9 @@ const BILLING_SOURCE = 'hat_lisans';
 const GPRS_NAME = 'Gprs Data';
 const GMP3_NAME = 'Gmp3 Yazarkasa Entegrasyonu';
 const IRESTO_NAME = 'iResto Yazarkasa Entegrasyonu';
+const LINE_PAYMENT_TITLE = 'Yazar kasa İnternet hattı Yıllık kullanım';
+const GMP3_PAYMENT_TITLE = 'Yazar Kasa Entegrasyon ödemesi';
+const IRESTO_PAYMENT_TITLE = 'iResto Yazarkasa Entegrasyon ödemesi';
 
 function round2(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
@@ -45,6 +48,11 @@ function normalizeInvoiceCurrency(value) {
   return 'TRY';
 }
 
+function parseTitle(value, fallback) {
+  const text = String(value == null ? '' : value).trim();
+  return text || fallback;
+}
+
 function mapSettings(row = {}) {
   return {
     lineProductId: row.line_product_id || null,
@@ -57,6 +65,9 @@ function mapSettings(row = {}) {
     irestoPriceTry: Number(row.iresto_price_try) || 0,
     irestoPriceUsd: Number(row.iresto_price_usd) || 0,
     defaultCurrency: normalizeInvoiceCurrency(row.default_currency),
+    linePaymentTitle: parseTitle(row.line_payment_title, LINE_PAYMENT_TITLE),
+    gmp3PaymentTitle: parseTitle(row.gmp3_payment_title, GMP3_PAYMENT_TITLE),
+    irestoPaymentTitle: parseTitle(row.iresto_payment_title, IRESTO_PAYMENT_TITLE),
   };
 }
 
@@ -191,11 +202,14 @@ async function saveHatLisansBillingSettings(input = {}) {
         iresto_price_try,
         iresto_price_usd,
         default_currency,
+        line_payment_title,
+        gmp3_payment_title,
+        iresto_payment_title,
         updated_at
       )
       values (
         1, $1::uuid, $2::uuid, $3::uuid,
-        $4, $5, $6, $7, $8, $9, $10, now()
+        $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now()
       )
       on conflict (id) do update set
         line_product_id = excluded.line_product_id,
@@ -208,6 +222,9 @@ async function saveHatLisansBillingSettings(input = {}) {
         iresto_price_try = excluded.iresto_price_try,
         iresto_price_usd = excluded.iresto_price_usd,
         default_currency = excluded.default_currency,
+        line_payment_title = excluded.line_payment_title,
+        gmp3_payment_title = excluded.gmp3_payment_title,
+        iresto_payment_title = excluded.iresto_payment_title,
         updated_at = now()
     `,
     [
@@ -221,6 +238,18 @@ async function saveHatLisansBillingSettings(input = {}) {
       parsePrice(input.irestoPriceTry, current.settings.irestoPriceTry),
       parsePrice(input.irestoPriceUsd, current.settings.irestoPriceUsd),
       currency,
+      parseTitle(
+        input.linePaymentTitle,
+        current.settings.linePaymentTitle || LINE_PAYMENT_TITLE,
+      ),
+      parseTitle(
+        input.gmp3PaymentTitle,
+        current.settings.gmp3PaymentTitle || GMP3_PAYMENT_TITLE,
+      ),
+      parseTitle(
+        input.irestoPaymentTitle,
+        current.settings.irestoPaymentTitle || IRESTO_PAYMENT_TITLE,
+      ),
     ],
   );
   return loadBillingCatalog();
@@ -382,6 +411,9 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
       irestoPriceTry: prices.irestoUnitPriceTry ?? prices.irestoPriceTry,
       irestoPriceUsd: prices.irestoUnitPriceUsd ?? prices.irestoPriceUsd,
       defaultCurrency: prices.currency,
+      linePaymentTitle: prices.linePaymentTitle,
+      gmp3PaymentTitle: prices.gmp3PaymentTitle,
+      irestoPaymentTitle: prices.irestoPaymentTitle,
     });
   }
   const catalog = await loadBillingCatalog();
@@ -419,10 +451,18 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
     error.statusCode = 400;
     throw error;
   }
-  const lineName = String(gprs?.name || GPRS_NAME).trim() || GPRS_NAME;
-  const gmp3Name = String(gmp3?.name || GMP3_NAME).trim() || GMP3_NAME;
-  const irestoName =
-    String(irestoProduct?.name || IRESTO_NAME).trim() || IRESTO_NAME;
+  const lineName = parseTitle(
+    prices?.linePaymentTitle ?? settings.linePaymentTitle,
+    LINE_PAYMENT_TITLE,
+  );
+  const gmp3Name = parseTitle(
+    prices?.gmp3PaymentTitle ?? settings.gmp3PaymentTitle,
+    GMP3_PAYMENT_TITLE,
+  );
+  const irestoName = parseTitle(
+    prices?.irestoPaymentTitle ?? settings.irestoPaymentTitle,
+    IRESTO_PAYMENT_TITLE,
+  );
 
   const created = [];
   const skipped = [];
@@ -644,10 +684,13 @@ async function listHatLisansInvoices({ payment = '' } = {}) {
             select
               ii.id,
               ii.invoice_id,
+              ii.product_id,
               ii.description,
               ii.quantity,
+              ii.unit,
               ii.unit_price,
               ii.tax_rate,
+              ii.tax_amount,
               ii.line_total,
               ii.sort_order
             from public.invoice_items ii

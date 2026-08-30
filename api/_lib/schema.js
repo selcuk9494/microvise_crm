@@ -33,6 +33,7 @@ const ensured = {
   application_forms_created_by_repair: false,
   application_form_activity_logs: false,
   customer_country_columns: false,
+  customer_extra_emails: false,
   invoice_prices_include_vat: false,
   invoices_billing_source: false,
   hat_lisans_billing_settings: false,
@@ -56,6 +57,17 @@ async function ensureCustomerCountryColumns() {
        or nullif(trim(country), '') is null
   `);
   ensured.customer_country_columns = true;
+  return true;
+}
+
+async function ensureCustomerEmailColumns() {
+  if (ensured.customer_extra_emails) return true;
+  await query(`
+    alter table public.customers
+      add column if not exists email_2 text,
+      add column if not exists email_3 text
+  `);
+  ensured.customer_extra_emails = true;
   return true;
 }
 
@@ -2009,6 +2021,9 @@ async function ensureHatLisansBillingSettingsTable() {
       iresto_price_try numeric(14, 4) not null default 0,
       iresto_price_usd numeric(14, 4) not null default 0,
       default_currency text not null default 'TRY',
+      line_payment_title text not null default 'Yazar kasa İnternet hattı Yıllık kullanım',
+      gmp3_payment_title text not null default 'Yazar Kasa Entegrasyon ödemesi',
+      iresto_payment_title text not null default 'iResto Yazarkasa Entegrasyon ödemesi',
       updated_at timestamptz not null default now()
     )
   `);
@@ -2023,12 +2038,23 @@ async function ensureHatLisansBillingSettingsTable() {
       add column if not exists gmp3_price_usd numeric(14, 4) not null default 0,
       add column if not exists iresto_price_try numeric(14, 4) not null default 0,
       add column if not exists iresto_price_usd numeric(14, 4) not null default 0,
-      add column if not exists default_currency text not null default 'TRY'
+      add column if not exists default_currency text not null default 'TRY',
+      add column if not exists line_payment_title text,
+      add column if not exists gmp3_payment_title text,
+      add column if not exists iresto_payment_title text
   `);
   await query(`
     insert into public.hat_lisans_billing_settings (id)
     values (1)
     on conflict (id) do nothing
+  `);
+  await query(`
+    update public.hat_lisans_billing_settings
+    set
+      line_payment_title = coalesce(nullif(btrim(line_payment_title), ''), 'Yazar kasa İnternet hattı Yıllık kullanım'),
+      gmp3_payment_title = coalesce(nullif(btrim(gmp3_payment_title), ''), 'Yazar Kasa Entegrasyon ödemesi'),
+      iresto_payment_title = coalesce(nullif(btrim(iresto_payment_title), ''), 'iResto Yazarkasa Entegrasyon ödemesi')
+    where id = 1
   `);
   ensured.hat_lisans_billing_settings = true;
   return true;
@@ -2301,6 +2327,7 @@ async function ensureQuoteDocumentSettings() {
 
 module.exports = {
   ensureCustomerCountryColumns,
+  ensureCustomerEmailColumns,
   ensureSerialTrackingTable,
   ensureUsersAuthColumns,
   ensureRegionColorsTable,
