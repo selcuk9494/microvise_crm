@@ -54,6 +54,52 @@ function parseTitle(value, fallback) {
   return text || fallback;
 }
 
+function parseTaxRate(value, fallback = 20) {
+  const n = parsePrice(value, fallback);
+  if (!Number.isFinite(n) || n < 0 || n > 100) return fallback;
+  return n;
+}
+
+function normalizePeriod(value) {
+  const raw = String(value || 'yearly').trim().toLowerCase();
+  if (['monthly', 'month', 'aylik', 'aylık', 'ay'].includes(raw)) return 'monthly';
+  return 'yearly';
+}
+
+function titleForPeriod(title, period) {
+  const text = String(title || '').trim();
+  if (period !== 'monthly') {
+    return text.replace(/\baylık\b/gi, 'Yıllık');
+  }
+  if (/\byıllık\b/i.test(text)) return text.replace(/\byıllık\b/gi, 'Aylık');
+  return text ? `${text} · Aylık` : 'Aylık kullanım';
+}
+
+function pickPeriodPrice({
+  currency,
+  period,
+  unitTry,
+  unitUsd,
+  yearTry,
+  yearUsd,
+  monthTry,
+  monthUsd,
+  yearTrySetting,
+  yearUsdSetting,
+  monthTrySetting,
+  monthUsdSetting,
+}) {
+  const monthly = period === 'monthly';
+  if (currency === 'USD') {
+    return monthly
+      ? parsePrice(monthUsd, monthUsdSetting)
+      : parsePrice(yearUsd ?? unitUsd, yearUsdSetting);
+  }
+  return monthly
+    ? parsePrice(monthTry, monthTrySetting)
+    : parsePrice(yearTry ?? unitTry, yearTrySetting);
+}
+
 function mapSettings(row = {}) {
   return {
     lineProductId: row.line_product_id || null,
@@ -65,6 +111,16 @@ function mapSettings(row = {}) {
     gmp3PriceUsd: Number(row.gmp3_price_usd) || 0,
     irestoPriceTry: Number(row.iresto_price_try) || 0,
     irestoPriceUsd: Number(row.iresto_price_usd) || 0,
+    linePriceMonthTry: Number(row.line_price_month_try) || 0,
+    linePriceMonthUsd: Number(row.line_price_month_usd) || 0,
+    gmp3PriceMonthTry: Number(row.gmp3_price_month_try) || 0,
+    gmp3PriceMonthUsd: Number(row.gmp3_price_month_usd) || 0,
+    irestoPriceMonthTry: Number(row.iresto_price_month_try) || 0,
+    irestoPriceMonthUsd: Number(row.iresto_price_month_usd) || 0,
+    lineTaxRate: parseTaxRate(row.line_tax_rate, 20),
+    gmp3TaxRate: parseTaxRate(row.gmp3_tax_rate, 20),
+    irestoTaxRate: parseTaxRate(row.iresto_tax_rate, 20),
+    defaultPeriod: normalizePeriod(row.default_period),
     defaultCurrency: normalizeInvoiceCurrency(row.default_currency),
     linePaymentTitle: parseTitle(row.line_payment_title, LINE_PAYMENT_TITLE),
     gmp3PaymentTitle: parseTitle(row.gmp3_payment_title, GMP3_PAYMENT_TITLE),
@@ -144,8 +200,16 @@ async function loadBillingCatalog() {
   const hasPrices =
     settings.linePriceTry > 0 ||
     settings.linePriceUsd > 0 ||
+    settings.linePriceMonthTry > 0 ||
+    settings.linePriceMonthUsd > 0 ||
     settings.gmp3PriceTry > 0 ||
-    settings.gmp3PriceUsd > 0;
+    settings.gmp3PriceUsd > 0 ||
+    settings.gmp3PriceMonthTry > 0 ||
+    settings.gmp3PriceMonthUsd > 0 ||
+    settings.irestoPriceTry > 0 ||
+    settings.irestoPriceUsd > 0 ||
+    settings.irestoPriceMonthTry > 0 ||
+    settings.irestoPriceMonthUsd > 0;
   return {
     configured: hasPrices,
     gprs,
@@ -190,6 +254,9 @@ async function saveHatLisansBillingSettings(input = {}) {
   const currency = normalizeInvoiceCurrency(
     input.defaultCurrency ?? input.currency ?? current.settings.defaultCurrency,
   );
+  const period = normalizePeriod(
+    input.defaultPeriod ?? input.period ?? current.settings.defaultPeriod,
+  );
   await query(
     `
       insert into public.hat_lisans_billing_settings (
@@ -203,6 +270,16 @@ async function saveHatLisansBillingSettings(input = {}) {
         gmp3_price_usd,
         iresto_price_try,
         iresto_price_usd,
+        line_price_month_try,
+        line_price_month_usd,
+        gmp3_price_month_try,
+        gmp3_price_month_usd,
+        iresto_price_month_try,
+        iresto_price_month_usd,
+        line_tax_rate,
+        gmp3_tax_rate,
+        iresto_tax_rate,
+        default_period,
         default_currency,
         line_payment_title,
         gmp3_payment_title,
@@ -211,7 +288,8 @@ async function saveHatLisansBillingSettings(input = {}) {
       )
       values (
         1, $1::uuid, $2::uuid, $3::uuid,
-        $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now()
+        $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+        $16, $17, $18, $19, $20, $21, $22, $23, now()
       )
       on conflict (id) do update set
         line_product_id = excluded.line_product_id,
@@ -223,6 +301,16 @@ async function saveHatLisansBillingSettings(input = {}) {
         gmp3_price_usd = excluded.gmp3_price_usd,
         iresto_price_try = excluded.iresto_price_try,
         iresto_price_usd = excluded.iresto_price_usd,
+        line_price_month_try = excluded.line_price_month_try,
+        line_price_month_usd = excluded.line_price_month_usd,
+        gmp3_price_month_try = excluded.gmp3_price_month_try,
+        gmp3_price_month_usd = excluded.gmp3_price_month_usd,
+        iresto_price_month_try = excluded.iresto_price_month_try,
+        iresto_price_month_usd = excluded.iresto_price_month_usd,
+        line_tax_rate = excluded.line_tax_rate,
+        gmp3_tax_rate = excluded.gmp3_tax_rate,
+        iresto_tax_rate = excluded.iresto_tax_rate,
+        default_period = excluded.default_period,
         default_currency = excluded.default_currency,
         line_payment_title = excluded.line_payment_title,
         gmp3_payment_title = excluded.gmp3_payment_title,
@@ -233,12 +321,22 @@ async function saveHatLisansBillingSettings(input = {}) {
       lineId,
       gmp3Id,
       irestoId,
-      parsePrice(input.linePriceTry, current.settings.linePriceTry),
-      parsePrice(input.linePriceUsd, current.settings.linePriceUsd),
-      parsePrice(input.gmp3PriceTry, current.settings.gmp3PriceTry),
-      parsePrice(input.gmp3PriceUsd, current.settings.gmp3PriceUsd),
-      parsePrice(input.irestoPriceTry, current.settings.irestoPriceTry),
-      parsePrice(input.irestoPriceUsd, current.settings.irestoPriceUsd),
+      parsePrice(input.linePriceTry ?? input.linePriceYearTry, current.settings.linePriceTry),
+      parsePrice(input.linePriceUsd ?? input.linePriceYearUsd, current.settings.linePriceUsd),
+      parsePrice(input.gmp3PriceTry ?? input.gmp3PriceYearTry, current.settings.gmp3PriceTry),
+      parsePrice(input.gmp3PriceUsd ?? input.gmp3PriceYearUsd, current.settings.gmp3PriceUsd),
+      parsePrice(input.irestoPriceTry ?? input.irestoPriceYearTry, current.settings.irestoPriceTry),
+      parsePrice(input.irestoPriceUsd ?? input.irestoPriceYearUsd, current.settings.irestoPriceUsd),
+      parsePrice(input.linePriceMonthTry, current.settings.linePriceMonthTry),
+      parsePrice(input.linePriceMonthUsd, current.settings.linePriceMonthUsd),
+      parsePrice(input.gmp3PriceMonthTry, current.settings.gmp3PriceMonthTry),
+      parsePrice(input.gmp3PriceMonthUsd, current.settings.gmp3PriceMonthUsd),
+      parsePrice(input.irestoPriceMonthTry, current.settings.irestoPriceMonthTry),
+      parsePrice(input.irestoPriceMonthUsd, current.settings.irestoPriceMonthUsd),
+      parseTaxRate(input.lineTaxRate, current.settings.lineTaxRate),
+      parseTaxRate(input.gmp3TaxRate, current.settings.gmp3TaxRate),
+      parseTaxRate(input.irestoTaxRate, current.settings.irestoTaxRate),
+      period,
       currency,
       parseTitle(
         input.linePaymentTitle,
@@ -420,16 +518,58 @@ async function insertInvoiceItem({
 async function createHatLisansInvoices({ customerIds, prices, user }) {
   await ensureHatLisansInvoiceSchema();
   if (prices && typeof prices === 'object') {
+    const billedPeriod = normalizePeriod(prices.period ?? prices.defaultPeriod);
+    const yearlyFallback = billedPeriod !== 'monthly';
     await saveHatLisansBillingSettings({
       lineProductId: prices.lineProductId,
       gmp3ProductId: prices.gmp3ProductId,
       irestoProductId: prices.irestoProductId,
-      linePriceTry: prices.lineUnitPriceTry ?? prices.linePriceTry,
-      linePriceUsd: prices.lineUnitPriceUsd ?? prices.linePriceUsd,
-      gmp3PriceTry: prices.gmp3UnitPriceTry ?? prices.gmp3PriceTry,
-      gmp3PriceUsd: prices.gmp3UnitPriceUsd ?? prices.gmp3PriceUsd,
-      irestoPriceTry: prices.irestoUnitPriceTry ?? prices.irestoPriceTry,
-      irestoPriceUsd: prices.irestoUnitPriceUsd ?? prices.irestoPriceUsd,
+      linePriceTry:
+        prices.linePriceYearTry ??
+        prices.linePriceTry ??
+        (yearlyFallback ? prices.lineUnitPriceTry : undefined),
+      linePriceUsd:
+        prices.linePriceYearUsd ??
+        prices.linePriceUsd ??
+        (yearlyFallback ? prices.lineUnitPriceUsd : undefined),
+      gmp3PriceTry:
+        prices.gmp3PriceYearTry ??
+        prices.gmp3PriceTry ??
+        (yearlyFallback ? prices.gmp3UnitPriceTry : undefined),
+      gmp3PriceUsd:
+        prices.gmp3PriceYearUsd ??
+        prices.gmp3PriceUsd ??
+        (yearlyFallback ? prices.gmp3UnitPriceUsd : undefined),
+      irestoPriceTry:
+        prices.irestoPriceYearTry ??
+        prices.irestoPriceTry ??
+        (yearlyFallback ? prices.irestoUnitPriceTry : undefined),
+      irestoPriceUsd:
+        prices.irestoPriceYearUsd ??
+        prices.irestoPriceUsd ??
+        (yearlyFallback ? prices.irestoUnitPriceUsd : undefined),
+      linePriceMonthTry:
+        prices.linePriceMonthTry ??
+        (billedPeriod === 'monthly' ? prices.lineUnitPriceTry : undefined),
+      linePriceMonthUsd:
+        prices.linePriceMonthUsd ??
+        (billedPeriod === 'monthly' ? prices.lineUnitPriceUsd : undefined),
+      gmp3PriceMonthTry:
+        prices.gmp3PriceMonthTry ??
+        (billedPeriod === 'monthly' ? prices.gmp3UnitPriceTry : undefined),
+      gmp3PriceMonthUsd:
+        prices.gmp3PriceMonthUsd ??
+        (billedPeriod === 'monthly' ? prices.gmp3UnitPriceUsd : undefined),
+      irestoPriceMonthTry:
+        prices.irestoPriceMonthTry ??
+        (billedPeriod === 'monthly' ? prices.irestoUnitPriceTry : undefined),
+      irestoPriceMonthUsd:
+        prices.irestoPriceMonthUsd ??
+        (billedPeriod === 'monthly' ? prices.irestoUnitPriceUsd : undefined),
+      lineTaxRate: prices.lineTaxRate ?? prices.taxRate,
+      gmp3TaxRate: prices.gmp3TaxRate ?? prices.taxRate,
+      irestoTaxRate: prices.irestoTaxRate ?? prices.taxRate,
+      defaultPeriod: prices.period ?? prices.defaultPeriod,
       defaultCurrency: prices.currency,
       linePaymentTitle: prices.linePaymentTitle,
       gmp3PaymentTitle: prices.gmp3PaymentTitle,
@@ -450,43 +590,92 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
   const currency = normalizeInvoiceCurrency(
     prices?.currency || settings.defaultCurrency,
   );
-  const taxRate = parsePrice(
-    prices?.taxRate,
-    Number(gprs?.tax_rate || gmp3?.tax_rate) || 20,
+  const period = normalizePeriod(
+    prices?.period ?? prices?.defaultPeriod ?? settings.defaultPeriod,
   );
-  const linePrice = currency === 'USD'
-    ? parsePrice(prices?.lineUnitPriceUsd ?? prices?.lineUnitPrice, settings.linePriceUsd)
-    : parsePrice(prices?.lineUnitPriceTry ?? prices?.lineUnitPrice, settings.linePriceTry);
-  const gmp3Price = currency === 'USD'
-    ? parsePrice(prices?.gmp3UnitPriceUsd ?? prices?.gmp3UnitPrice, settings.gmp3PriceUsd)
-    : parsePrice(prices?.gmp3UnitPriceTry ?? prices?.gmp3UnitPrice, settings.gmp3PriceTry);
-  const irestoPrice = currency === 'USD'
-    ? parsePrice(
-        prices?.irestoUnitPriceUsd ?? prices?.irestoUnitPrice,
-        settings.irestoPriceUsd || gmp3Price,
-      )
-    : parsePrice(
-        prices?.irestoUnitPriceTry ?? prices?.irestoUnitPrice,
-        settings.irestoPriceTry || gmp3Price,
-      );
+  const lineTaxRate = parseTaxRate(
+    prices?.lineTaxRate ?? prices?.taxRate,
+    settings.lineTaxRate || Number(gprs?.tax_rate) || 20,
+  );
+  const gmp3TaxRate = parseTaxRate(
+    prices?.gmp3TaxRate ?? prices?.taxRate,
+    settings.gmp3TaxRate || Number(gmp3?.tax_rate) || 20,
+  );
+  const irestoTaxRate = parseTaxRate(
+    prices?.irestoTaxRate ?? prices?.taxRate,
+    settings.irestoTaxRate || Number(irestoProduct?.tax_rate) || 20,
+  );
+  const linePrice = pickPeriodPrice({
+    currency,
+    period,
+    unitTry: prices?.lineUnitPriceTry ?? prices?.lineUnitPrice,
+    unitUsd: prices?.lineUnitPriceUsd ?? prices?.lineUnitPrice,
+    yearTry: prices?.linePriceYearTry ?? prices?.linePriceTry,
+    yearUsd: prices?.linePriceYearUsd ?? prices?.linePriceUsd,
+    monthTry: prices?.linePriceMonthTry ?? prices?.lineUnitPriceMonthTry,
+    monthUsd: prices?.linePriceMonthUsd ?? prices?.lineUnitPriceMonthUsd,
+    yearTrySetting: settings.linePriceTry,
+    yearUsdSetting: settings.linePriceUsd,
+    monthTrySetting: settings.linePriceMonthTry,
+    monthUsdSetting: settings.linePriceMonthUsd,
+  });
+  const gmp3Price = pickPeriodPrice({
+    currency,
+    period,
+    unitTry: prices?.gmp3UnitPriceTry ?? prices?.gmp3UnitPrice,
+    unitUsd: prices?.gmp3UnitPriceUsd ?? prices?.gmp3UnitPrice,
+    yearTry: prices?.gmp3PriceYearTry ?? prices?.gmp3PriceTry,
+    yearUsd: prices?.gmp3PriceYearUsd ?? prices?.gmp3PriceUsd,
+    monthTry: prices?.gmp3PriceMonthTry ?? prices?.gmp3UnitPriceMonthTry,
+    monthUsd: prices?.gmp3PriceMonthUsd ?? prices?.gmp3UnitPriceMonthUsd,
+    yearTrySetting: settings.gmp3PriceTry,
+    yearUsdSetting: settings.gmp3PriceUsd,
+    monthTrySetting: settings.gmp3PriceMonthTry,
+    monthUsdSetting: settings.gmp3PriceMonthUsd,
+  });
+  const irestoPrice = pickPeriodPrice({
+    currency,
+    period,
+    unitTry: prices?.irestoUnitPriceTry ?? prices?.irestoUnitPrice,
+    unitUsd: prices?.irestoUnitPriceUsd ?? prices?.irestoUnitPrice,
+    yearTry: prices?.irestoPriceYearTry ?? prices?.irestoPriceTry,
+    yearUsd: prices?.irestoPriceYearUsd ?? prices?.irestoPriceUsd,
+    monthTry: prices?.irestoPriceMonthTry ?? prices?.irestoUnitPriceMonthTry,
+    monthUsd: prices?.irestoPriceMonthUsd ?? prices?.irestoUnitPriceMonthUsd,
+    yearTrySetting: settings.irestoPriceTry,
+    yearUsdSetting: settings.irestoPriceUsd,
+    monthTrySetting: settings.irestoPriceMonthTry,
+    monthUsdSetting: settings.irestoPriceMonthUsd,
+  });
+  const periodLabel = period === 'monthly' ? 'aylık' : 'yıllık';
+  const currencyLabel = currency === 'USD' ? 'USD' : 'TL';
   if (linePrice <= 0 && gmp3Price <= 0 && irestoPrice <= 0) {
     const error = new Error(
-      `Seçilen para biriminde (${currency === 'USD' ? 'USD' : 'TL'}) Hat ve GMP3 birim fiyatı girin.`,
+      `Seçilen ${periodLabel} ${currencyLabel} fiyatını Hat, GMP3 veya iResto için girin.`,
     );
     error.statusCode = 400;
     throw error;
   }
-  const lineName = parseTitle(
-    prices?.linePaymentTitle ?? settings.linePaymentTitle,
-    LINE_PAYMENT_TITLE,
+  const lineName = titleForPeriod(
+    parseTitle(
+      prices?.linePaymentTitle ?? settings.linePaymentTitle,
+      LINE_PAYMENT_TITLE,
+    ),
+    period,
   );
-  const gmp3Name = parseTitle(
-    prices?.gmp3PaymentTitle ?? settings.gmp3PaymentTitle,
-    GMP3_PAYMENT_TITLE,
+  const gmp3Name = titleForPeriod(
+    parseTitle(
+      prices?.gmp3PaymentTitle ?? settings.gmp3PaymentTitle,
+      GMP3_PAYMENT_TITLE,
+    ),
+    period,
   );
-  const irestoName = parseTitle(
-    prices?.irestoPaymentTitle ?? settings.irestoPaymentTitle,
-    IRESTO_PAYMENT_TITLE,
+  const irestoName = titleForPeriod(
+    parseTitle(
+      prices?.irestoPaymentTitle ?? settings.irestoPaymentTitle,
+      IRESTO_PAYMENT_TITLE,
+    ),
+    period,
   );
 
   const created = [];
@@ -522,13 +711,12 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
     }
 
     const items = [];
-    const currencyLabel = currency === 'USD' ? 'USD' : 'TL';
     if (linesTotal > 0) {
       if (linePrice <= 0) {
         skipped.push({
           customerId: row.customer_id,
           customerName: row.customer_name,
-          reason: `Hat birim fiyatı (${currencyLabel}) girilmedi`,
+          reason: `Hat ${periodLabel} birim fiyatı (${currencyLabel}) girilmedi`,
         });
         continue;
       }
@@ -539,7 +727,7 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
         ...lineParts({
           quantity: linesTotal,
           unitPrice: linePrice,
-          taxRate,
+          taxRate: lineTaxRate,
           includeVat,
         }),
       });
@@ -549,7 +737,7 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
         skipped.push({
           customerId: row.customer_id,
           customerName: row.customer_name,
-          reason: `GMP3 birim fiyatı (${currencyLabel}) girilmedi`,
+          reason: `GMP3 ${periodLabel} birim fiyatı (${currencyLabel}) girilmedi`,
         });
         continue;
       }
@@ -560,7 +748,7 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
         ...lineParts({
           quantity: gmp3Total,
           unitPrice: gmp3Price,
-          taxRate,
+          taxRate: gmp3TaxRate,
           includeVat,
         }),
       });
@@ -570,7 +758,7 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
         skipped.push({
           customerId: row.customer_id,
           customerName: row.customer_name,
-          reason: `iResto birim fiyatı (${currencyLabel}) girilmedi`,
+          reason: `iResto ${periodLabel} birim fiyatı (${currencyLabel}) girilmedi`,
         });
         continue;
       }
@@ -581,7 +769,7 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
         ...lineParts({
           quantity: irestoTotal,
           unitPrice: irestoPrice,
-          taxRate,
+          taxRate: irestoTaxRate,
           includeVat,
         }),
       });

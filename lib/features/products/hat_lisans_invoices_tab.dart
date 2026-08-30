@@ -109,6 +109,27 @@ String _titleText(Object? value, String fallback) {
   return text.isEmpty ? fallback : text;
 }
 
+String _taxText(Object? value) {
+  final n = value is num
+      ? value.toDouble()
+      : double.tryParse(value?.toString().replaceAll(',', '.') ?? '') ?? 20;
+  if (!n.isFinite || n < 0 || n > 100) return '20';
+  if (n == n.roundToDouble()) return n.round().toString();
+  return n.toString();
+}
+
+String _periodFrom(Object? value) {
+  final raw = (value ?? 'yearly').toString().trim().toLowerCase();
+  if (raw == 'monthly' ||
+      raw == 'month' ||
+      raw == 'aylik' ||
+      raw == 'aylık' ||
+      raw == 'ay') {
+    return 'monthly';
+  }
+  return 'yearly';
+}
+
 const _kLinePaymentTitle = 'Yazar kasa İnternet hattı Yıllık kullanım';
 const _kGmp3PaymentTitle = 'Yazar Kasa Entegrasyon ödemesi';
 const _kIrestoPaymentTitle = 'iResto Yazarkasa Entegrasyon ödemesi';
@@ -175,10 +196,20 @@ class _CreateHatLisansInvoiceDialogState
   final _gmp3Usd = TextEditingController();
   final _irestoTry = TextEditingController();
   final _irestoUsd = TextEditingController();
+  final _lineMonthTry = TextEditingController();
+  final _lineMonthUsd = TextEditingController();
+  final _gmp3MonthTry = TextEditingController();
+  final _gmp3MonthUsd = TextEditingController();
+  final _irestoMonthTry = TextEditingController();
+  final _irestoMonthUsd = TextEditingController();
+  final _lineTax = TextEditingController(text: '20');
+  final _gmp3Tax = TextEditingController(text: '20');
+  final _irestoTax = TextEditingController(text: '20');
   final _lineTitle = TextEditingController(text: _kLinePaymentTitle);
   final _gmp3Title = TextEditingController(text: _kGmp3PaymentTitle);
   final _irestoTitle = TextEditingController(text: _kIrestoPaymentTitle);
   String _currency = 'TRY';
+  String _period = 'yearly';
   String? _lineProductId;
   String? _gmp3ProductId;
   String? _irestoProductId;
@@ -194,6 +225,15 @@ class _CreateHatLisansInvoiceDialogState
     _gmp3Usd.dispose();
     _irestoTry.dispose();
     _irestoUsd.dispose();
+    _lineMonthTry.dispose();
+    _lineMonthUsd.dispose();
+    _gmp3MonthTry.dispose();
+    _gmp3MonthUsd.dispose();
+    _irestoMonthTry.dispose();
+    _irestoMonthUsd.dispose();
+    _lineTax.dispose();
+    _gmp3Tax.dispose();
+    _irestoTax.dispose();
     _lineTitle.dispose();
     _gmp3Title.dispose();
     _irestoTitle.dispose();
@@ -209,6 +249,15 @@ class _CreateHatLisansInvoiceDialogState
     _gmp3Usd.text = _priceText(settings['gmp3PriceUsd']);
     _irestoTry.text = _priceText(settings['irestoPriceTry']);
     _irestoUsd.text = _priceText(settings['irestoPriceUsd']);
+    _lineMonthTry.text = _priceText(settings['linePriceMonthTry']);
+    _lineMonthUsd.text = _priceText(settings['linePriceMonthUsd']);
+    _gmp3MonthTry.text = _priceText(settings['gmp3PriceMonthTry']);
+    _gmp3MonthUsd.text = _priceText(settings['gmp3PriceMonthUsd']);
+    _irestoMonthTry.text = _priceText(settings['irestoPriceMonthTry']);
+    _irestoMonthUsd.text = _priceText(settings['irestoPriceMonthUsd']);
+    _lineTax.text = _taxText(settings['lineTaxRate']);
+    _gmp3Tax.text = _taxText(settings['gmp3TaxRate']);
+    _irestoTax.text = _taxText(settings['irestoTaxRate']);
     _lineTitle.text = _titleText(
       settings['linePaymentTitle'],
       _kLinePaymentTitle,
@@ -225,6 +274,7 @@ class _CreateHatLisansInvoiceDialogState
             'USD'
         ? 'USD'
         : 'TRY';
+    _period = _periodFrom(settings['defaultPeriod']);
     _lineProductId = settings['lineProductId']?.toString();
     _gmp3ProductId = settings['gmp3ProductId']?.toString();
     _irestoProductId = settings['irestoProductId']?.toString();
@@ -233,12 +283,14 @@ class _CreateHatLisansInvoiceDialogState
 
   void _applyProductPrice(Product product, {required String kind}) {
     final price = _priceText(product.salePrice);
-    if (price.isEmpty) return;
+    final tax = _taxText(product.taxRate);
     final isUsd = product.currency.toUpperCase() == 'USD';
     setState(() {
       switch (kind) {
         case 'line':
           _lineProductId = product.id;
+          if (_lineTax.text.trim().isEmpty) _lineTax.text = tax;
+          if (price.isEmpty) return;
           if (isUsd) {
             if (_lineUsd.text.trim().isEmpty) _lineUsd.text = price;
           } else if (_lineTry.text.trim().isEmpty) {
@@ -246,6 +298,8 @@ class _CreateHatLisansInvoiceDialogState
           }
         case 'gmp3':
           _gmp3ProductId = product.id;
+          if (_gmp3Tax.text.trim().isEmpty) _gmp3Tax.text = tax;
+          if (price.isEmpty) return;
           if (isUsd) {
             if (_gmp3Usd.text.trim().isEmpty) _gmp3Usd.text = price;
           } else if (_gmp3Try.text.trim().isEmpty) {
@@ -253,6 +307,8 @@ class _CreateHatLisansInvoiceDialogState
           }
         case 'iresto':
           _irestoProductId = product.id;
+          if (_irestoTax.text.trim().isEmpty) _irestoTax.text = tax;
+          if (price.isEmpty) return;
           if (isUsd) {
             if (_irestoUsd.text.trim().isEmpty) _irestoUsd.text = price;
           } else if (_irestoTry.text.trim().isEmpty) {
@@ -262,23 +318,40 @@ class _CreateHatLisansInvoiceDialogState
     });
   }
 
+  bool _hasSelectedPeriodPrice(TextEditingController tryC, TextEditingController usdC) {
+    return _currency == 'USD'
+        ? usdC.text.trim().isNotEmpty
+        : tryC.text.trim().isNotEmpty;
+  }
+
   Future<void> _submit() async {
     final apiClient = ref.read(apiClientProvider);
     if (apiClient == null || _saving) return;
-    final selectedPrice = _currency == 'USD'
-        ? (_lineUsd.text.trim().isNotEmpty ||
-              _gmp3Usd.text.trim().isNotEmpty ||
-              _irestoUsd.text.trim().isNotEmpty)
-        : (_lineTry.text.trim().isNotEmpty ||
-              _gmp3Try.text.trim().isNotEmpty ||
-              _irestoTry.text.trim().isNotEmpty);
+    final monthly = _period == 'monthly';
+    final selectedPrice =
+        _hasSelectedPeriodPrice(
+          monthly ? _lineMonthTry : _lineTry,
+          monthly ? _lineMonthUsd : _lineUsd,
+        ) ||
+        _hasSelectedPeriodPrice(
+          monthly ? _gmp3MonthTry : _gmp3Try,
+          monthly ? _gmp3MonthUsd : _gmp3Usd,
+        ) ||
+        _hasSelectedPeriodPrice(
+          monthly ? _irestoMonthTry : _irestoTry,
+          monthly ? _irestoMonthUsd : _irestoUsd,
+        );
     if (!selectedPrice) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _currency == 'USD'
-                ? 'USD fatura için Hat ve GMP3 dolar fiyatı girin.'
-                : 'TL fatura için Hat ve GMP3 TL fiyatı girin.',
+            monthly
+                ? (_currency == 'USD'
+                      ? 'Aylık USD fatura için Hat, GMP3 veya iResto dolar fiyatı girin.'
+                      : 'Aylık TL fatura için Hat, GMP3 veya iResto TL fiyatı girin.')
+                : (_currency == 'USD'
+                      ? 'Yıllık USD fatura için Hat, GMP3 veya iResto dolar fiyatı girin.'
+                      : 'Yıllık TL fatura için Hat, GMP3 veya iResto TL fiyatı girin.'),
           ),
         ),
       );
@@ -293,15 +366,34 @@ class _CreateHatLisansInvoiceDialogState
           'customerIds': widget.targets.map((e) => e.customerId).toList(),
           'prices': {
             'currency': _currency,
+            'period': _period,
+            'defaultPeriod': _period,
             'lineProductId': _lineProductId,
             'gmp3ProductId': _gmp3ProductId,
             'irestoProductId': _irestoProductId,
-            'lineUnitPriceTry': _lineTry.text.trim(),
-            'lineUnitPriceUsd': _lineUsd.text.trim(),
-            'gmp3UnitPriceTry': _gmp3Try.text.trim(),
-            'gmp3UnitPriceUsd': _gmp3Usd.text.trim(),
-            'irestoUnitPriceTry': _irestoTry.text.trim(),
-            'irestoUnitPriceUsd': _irestoUsd.text.trim(),
+            'linePriceTry': _lineTry.text.trim(),
+            'linePriceUsd': _lineUsd.text.trim(),
+            'gmp3PriceTry': _gmp3Try.text.trim(),
+            'gmp3PriceUsd': _gmp3Usd.text.trim(),
+            'irestoPriceTry': _irestoTry.text.trim(),
+            'irestoPriceUsd': _irestoUsd.text.trim(),
+            'linePriceMonthTry': _lineMonthTry.text.trim(),
+            'linePriceMonthUsd': _lineMonthUsd.text.trim(),
+            'gmp3PriceMonthTry': _gmp3MonthTry.text.trim(),
+            'gmp3PriceMonthUsd': _gmp3MonthUsd.text.trim(),
+            'irestoPriceMonthTry': _irestoMonthTry.text.trim(),
+            'irestoPriceMonthUsd': _irestoMonthUsd.text.trim(),
+            'lineUnitPriceTry': (monthly ? _lineMonthTry : _lineTry).text.trim(),
+            'lineUnitPriceUsd': (monthly ? _lineMonthUsd : _lineUsd).text.trim(),
+            'gmp3UnitPriceTry': (monthly ? _gmp3MonthTry : _gmp3Try).text.trim(),
+            'gmp3UnitPriceUsd': (monthly ? _gmp3MonthUsd : _gmp3Usd).text.trim(),
+            'irestoUnitPriceTry': (monthly ? _irestoMonthTry : _irestoTry).text
+                .trim(),
+            'irestoUnitPriceUsd': (monthly ? _irestoMonthUsd : _irestoUsd).text
+                .trim(),
+            'lineTaxRate': _lineTax.text.trim(),
+            'gmp3TaxRate': _gmp3Tax.text.trim(),
+            'irestoTaxRate': _irestoTax.text.trim(),
             'linePaymentTitle': _lineTitle.text.trim(),
             'gmp3PaymentTitle': _gmp3Title.text.trim(),
             'irestoPaymentTitle': _irestoTitle.text.trim(),
@@ -370,7 +462,7 @@ class _CreateHatLisansInvoiceDialogState
     return AlertDialog(
       title: const Text('Hat & Lisans faturası'),
       content: SizedBox(
-        width: 560,
+        width: 620,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -385,22 +477,39 @@ class _CreateHatLisansInvoiceDialogState
               ),
               const Gap(8),
               Text(
-                'Kalem ürünü kataloğdan seçilir. Ödeme açıklaması mail ve WhatsApp’ta '
-                'görünür; fatura kalem adı da bu metindir. Fiyatları TL/USD girin.',
+                'Kalem ürünü kataloğdan seçilir. Her kalem için KDV, aylık ve yıllık '
+                'fiyat tanımlanır; fatura Aylık veya Yıllık olarak kesilir. '
+                'Ödeme açıklaması mail ve WhatsApp’ta görünür.',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
               ),
               const Gap(12),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'TRY', label: Text('Fatura: TL')),
-                  ButtonSegment(value: 'USD', label: Text('Fatura: USD')),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'yearly', label: Text('Yıllık')),
+                      ButtonSegment(value: 'monthly', label: Text('Aylık')),
+                    ],
+                    selected: {_period},
+                    onSelectionChanged: _saving
+                        ? null
+                        : (value) => setState(() => _period = value.first),
+                  ),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'TRY', label: Text('Fatura: TL')),
+                      ButtonSegment(value: 'USD', label: Text('Fatura: USD')),
+                    ],
+                    selected: {_currency},
+                    onSelectionChanged: _saving
+                        ? null
+                        : (value) => setState(() => _currency = value.first),
+                  ),
                 ],
-                selected: {_currency},
-                onSelectionChanged: _saving
-                    ? null
-                    : (value) => setState(() => _currency = value.first),
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -424,12 +533,23 @@ class _CreateHatLisansInvoiceDialogState
                     _applyProductPrice(product, kind: 'line'),
               ),
               const Gap(8),
+              _TaxRateField(controller: _lineTax, enabled: !_saving),
+              const Gap(8),
+              _DualPriceRow(
+                tryController: _lineMonthTry,
+                usdController: _lineMonthUsd,
+                tryLabel: 'Hat aylık TL',
+                usdLabel: 'Hat aylık USD',
+                highlightUsd: _currency == 'USD' && _period == 'monthly',
+                enabled: !_saving,
+              ),
+              const Gap(8),
               _DualPriceRow(
                 tryController: _lineTry,
                 usdController: _lineUsd,
-                tryLabel: 'Hat TL',
-                usdLabel: 'Hat USD',
-                highlightUsd: _currency == 'USD',
+                tryLabel: 'Hat yıllık TL',
+                usdLabel: 'Hat yıllık USD',
+                highlightUsd: _currency == 'USD' && _period == 'yearly',
                 enabled: !_saving,
               ),
               const Gap(8),
@@ -448,12 +568,23 @@ class _CreateHatLisansInvoiceDialogState
                     _applyProductPrice(product, kind: 'gmp3'),
               ),
               const Gap(8),
+              _TaxRateField(controller: _gmp3Tax, enabled: !_saving),
+              const Gap(8),
+              _DualPriceRow(
+                tryController: _gmp3MonthTry,
+                usdController: _gmp3MonthUsd,
+                tryLabel: 'GMP3 aylık TL',
+                usdLabel: 'GMP3 aylık USD',
+                highlightUsd: _currency == 'USD' && _period == 'monthly',
+                enabled: !_saving,
+              ),
+              const Gap(8),
               _DualPriceRow(
                 tryController: _gmp3Try,
                 usdController: _gmp3Usd,
-                tryLabel: 'GMP3 TL',
-                usdLabel: 'GMP3 USD',
-                highlightUsd: _currency == 'USD',
+                tryLabel: 'GMP3 yıllık TL',
+                usdLabel: 'GMP3 yıllık USD',
+                highlightUsd: _currency == 'USD' && _period == 'yearly',
                 enabled: !_saving,
               ),
               const Gap(8),
@@ -472,12 +603,23 @@ class _CreateHatLisansInvoiceDialogState
                     _applyProductPrice(product, kind: 'iresto'),
               ),
               const Gap(8),
+              _TaxRateField(controller: _irestoTax, enabled: !_saving),
+              const Gap(8),
+              _DualPriceRow(
+                tryController: _irestoMonthTry,
+                usdController: _irestoMonthUsd,
+                tryLabel: 'iResto aylık TL',
+                usdLabel: 'iResto aylık USD',
+                highlightUsd: _currency == 'USD' && _period == 'monthly',
+                enabled: !_saving,
+              ),
+              const Gap(8),
               _DualPriceRow(
                 tryController: _irestoTry,
                 usdController: _irestoUsd,
-                tryLabel: 'iResto TL',
-                usdLabel: 'iResto USD',
-                highlightUsd: _currency == 'USD',
+                tryLabel: 'iResto yıllık TL',
+                usdLabel: 'iResto yıllık USD',
+                highlightUsd: _currency == 'USD' && _period == 'yearly',
                 enabled: !_saving,
               ),
               const Gap(8),
@@ -529,6 +671,27 @@ class _PaymentTitleField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         hintText: 'Mail ve WhatsApp’ta görünen ödeme açıklaması',
+        isDense: true,
+      ),
+    );
+  }
+}
+
+class _TaxRateField extends StatelessWidget {
+  const _TaxRateField({required this.controller, required this.enabled});
+
+  final TextEditingController controller;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      enabled: enabled,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: const InputDecoration(
+        labelText: 'KDV %',
+        hintText: '20',
         isDense: true,
       ),
     );
@@ -656,10 +819,20 @@ class _HatLisansBillingPriceCardState
   final _gmp3Usd = TextEditingController();
   final _irestoTry = TextEditingController();
   final _irestoUsd = TextEditingController();
+  final _lineMonthTry = TextEditingController();
+  final _lineMonthUsd = TextEditingController();
+  final _gmp3MonthTry = TextEditingController();
+  final _gmp3MonthUsd = TextEditingController();
+  final _irestoMonthTry = TextEditingController();
+  final _irestoMonthUsd = TextEditingController();
+  final _lineTax = TextEditingController(text: '20');
+  final _gmp3Tax = TextEditingController(text: '20');
+  final _irestoTax = TextEditingController(text: '20');
   final _lineTitle = TextEditingController(text: _kLinePaymentTitle);
   final _gmp3Title = TextEditingController(text: _kGmp3PaymentTitle);
   final _irestoTitle = TextEditingController(text: _kIrestoPaymentTitle);
   String _currency = 'TRY';
+  String _period = 'yearly';
   String? _lineProductId;
   String? _gmp3ProductId;
   String? _irestoProductId;
@@ -675,6 +848,15 @@ class _HatLisansBillingPriceCardState
     _gmp3Usd.dispose();
     _irestoTry.dispose();
     _irestoUsd.dispose();
+    _lineMonthTry.dispose();
+    _lineMonthUsd.dispose();
+    _gmp3MonthTry.dispose();
+    _gmp3MonthUsd.dispose();
+    _irestoMonthTry.dispose();
+    _irestoMonthUsd.dispose();
+    _lineTax.dispose();
+    _gmp3Tax.dispose();
+    _irestoTax.dispose();
     _lineTitle.dispose();
     _gmp3Title.dispose();
     _irestoTitle.dispose();
@@ -690,6 +872,15 @@ class _HatLisansBillingPriceCardState
     _gmp3Usd.text = _priceText(settings['gmp3PriceUsd']);
     _irestoTry.text = _priceText(settings['irestoPriceTry']);
     _irestoUsd.text = _priceText(settings['irestoPriceUsd']);
+    _lineMonthTry.text = _priceText(settings['linePriceMonthTry']);
+    _lineMonthUsd.text = _priceText(settings['linePriceMonthUsd']);
+    _gmp3MonthTry.text = _priceText(settings['gmp3PriceMonthTry']);
+    _gmp3MonthUsd.text = _priceText(settings['gmp3PriceMonthUsd']);
+    _irestoMonthTry.text = _priceText(settings['irestoPriceMonthTry']);
+    _irestoMonthUsd.text = _priceText(settings['irestoPriceMonthUsd']);
+    _lineTax.text = _taxText(settings['lineTaxRate']);
+    _gmp3Tax.text = _taxText(settings['gmp3TaxRate']);
+    _irestoTax.text = _taxText(settings['irestoTaxRate']);
     _lineTitle.text = _titleText(
       settings['linePaymentTitle'],
       _kLinePaymentTitle,
@@ -707,10 +898,18 @@ class _HatLisansBillingPriceCardState
             'USD'
         ? 'USD'
         : 'TRY';
+    _period = _periodFrom(settings['defaultPeriod']);
     _lineProductId = settings['lineProductId']?.toString();
     _gmp3ProductId = settings['gmp3ProductId']?.toString();
     _irestoProductId = settings['irestoProductId']?.toString();
     _hydrated = true;
+  }
+
+  String _fmtAmount(TextEditingController tryC, TextEditingController usdC) {
+    if (_currency == 'USD') {
+      return usdC.text.trim().isEmpty ? '—' : '\$${usdC.text.trim()}';
+    }
+    return tryC.text.trim().isEmpty ? '—' : '₺${tryC.text.trim()}';
   }
 
   Future<void> _save() async {
@@ -724,6 +923,8 @@ class _HatLisansBillingPriceCardState
           'op': 'saveHatLisansBillingSettings',
           'settings': {
             'currency': _currency,
+            'period': _period,
+            'defaultPeriod': _period,
             'lineProductId': _lineProductId,
             'gmp3ProductId': _gmp3ProductId,
             'irestoProductId': _irestoProductId,
@@ -733,6 +934,15 @@ class _HatLisansBillingPriceCardState
             'gmp3PriceUsd': _gmp3Usd.text.trim(),
             'irestoPriceTry': _irestoTry.text.trim(),
             'irestoPriceUsd': _irestoUsd.text.trim(),
+            'linePriceMonthTry': _lineMonthTry.text.trim(),
+            'linePriceMonthUsd': _lineMonthUsd.text.trim(),
+            'gmp3PriceMonthTry': _gmp3MonthTry.text.trim(),
+            'gmp3PriceMonthUsd': _gmp3MonthUsd.text.trim(),
+            'irestoPriceMonthTry': _irestoMonthTry.text.trim(),
+            'irestoPriceMonthUsd': _irestoMonthUsd.text.trim(),
+            'lineTaxRate': _lineTax.text.trim(),
+            'gmp3TaxRate': _gmp3Tax.text.trim(),
+            'irestoTaxRate': _irestoTax.text.trim(),
             'linePaymentTitle': _lineTitle.text.trim(),
             'gmp3PaymentTitle': _gmp3Title.text.trim(),
             'irestoPaymentTitle': _irestoTitle.text.trim(),
@@ -743,7 +953,9 @@ class _HatLisansBillingPriceCardState
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Hat / GMP3 fiyatları ve ödeme açıklamaları kaydedildi.'),
+          content: Text(
+            'Hat / GMP3 / iResto KDV, aylık ve yıllık fiyatlar kaydedildi.',
+          ),
         ),
       );
     } catch (e) {
@@ -768,6 +980,16 @@ class _HatLisansBillingPriceCardState
         setState(() => _hydrate(catalog));
       });
     });
+    final monthly = _period == 'monthly';
+    final hatAmt = monthly
+        ? _fmtAmount(_lineMonthTry, _lineMonthUsd)
+        : _fmtAmount(_lineTry, _lineUsd);
+    final gmp3Amt = monthly
+        ? _fmtAmount(_gmp3MonthTry, _gmp3MonthUsd)
+        : _fmtAmount(_gmp3Try, _gmp3Usd);
+    final irestoAmt = monthly
+        ? _fmtAmount(_irestoMonthTry, _irestoMonthUsd)
+        : _fmtAmount(_irestoTry, _irestoUsd);
 
     return AppCard(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -783,15 +1005,13 @@ class _HatLisansBillingPriceCardState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Hat / GMP3 fiyatları',
+                        'Hat / GMP3 / iResto fiyatları',
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                       Text(
-                        _currency == 'USD'
-                            ? 'Hat \$${_lineUsd.text.trim().isEmpty ? '—' : _lineUsd.text} · GMP3 \$${_gmp3Usd.text.trim().isEmpty ? '—' : _gmp3Usd.text} · Fatura USD'
-                            : 'Hat ₺${_lineTry.text.trim().isEmpty ? '—' : _lineTry.text} · GMP3 ₺${_gmp3Try.text.trim().isEmpty ? '—' : _gmp3Try.text} · Fatura TL',
+                        '${monthly ? 'Aylık' : 'Yıllık'} · Hat $hatAmt · GMP3 $gmp3Amt · iResto $irestoAmt · KDV %${_lineTax.text.trim().isEmpty ? '20' : _lineTax.text}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -824,6 +1044,16 @@ class _HatLisansBillingPriceCardState
             children: [
               SegmentedButton<String>(
                 segments: const [
+                  ButtonSegment(value: 'yearly', label: Text('Varsayılan: Yıllık')),
+                  ButtonSegment(value: 'monthly', label: Text('Varsayılan: Aylık')),
+                ],
+                selected: {_period},
+                onSelectionChanged: _saving
+                    ? null
+                    : (value) => setState(() => _period = value.first),
+              ),
+              SegmentedButton<String>(
+                segments: const [
                   ButtonSegment(value: 'TRY', label: Text('Fatura TL')),
                   ButtonSegment(value: 'USD', label: Text('Fatura USD')),
                 ],
@@ -852,6 +1082,9 @@ class _HatLisansBillingPriceCardState
                     enabled: !_saving,
                     onSelected: (product) {
                       setState(() => _lineProductId = product.id);
+                      if (_lineTax.text.trim().isEmpty) {
+                        _lineTax.text = _taxText(product.taxRate);
+                      }
                       final price = _priceText(product.salePrice);
                       if (price.isEmpty) return;
                       if (product.currency.toUpperCase() == 'USD') {
@@ -862,12 +1095,23 @@ class _HatLisansBillingPriceCardState
                     },
                   ),
                   const Gap(8),
+                  _TaxRateField(controller: _lineTax, enabled: !_saving),
+                  const Gap(8),
+                  _DualPriceRow(
+                    tryController: _lineMonthTry,
+                    usdController: _lineMonthUsd,
+                    tryLabel: 'Hat aylık TL',
+                    usdLabel: 'Hat aylık USD',
+                    highlightUsd: _currency == 'USD' && _period == 'monthly',
+                    enabled: !_saving,
+                  ),
+                  const Gap(8),
                   _DualPriceRow(
                     tryController: _lineTry,
                     usdController: _lineUsd,
-                    tryLabel: 'Hat TL',
-                    usdLabel: 'Hat USD',
-                    highlightUsd: _currency == 'USD',
+                    tryLabel: 'Hat yıllık TL',
+                    usdLabel: 'Hat yıllık USD',
+                    highlightUsd: _currency == 'USD' && _period == 'yearly',
                     enabled: !_saving,
                   ),
                   const Gap(8),
@@ -888,6 +1132,9 @@ class _HatLisansBillingPriceCardState
                     enabled: !_saving,
                     onSelected: (product) {
                       setState(() => _gmp3ProductId = product.id);
+                      if (_gmp3Tax.text.trim().isEmpty) {
+                        _gmp3Tax.text = _taxText(product.taxRate);
+                      }
                       final price = _priceText(product.salePrice);
                       if (price.isEmpty) return;
                       if (product.currency.toUpperCase() == 'USD') {
@@ -898,12 +1145,23 @@ class _HatLisansBillingPriceCardState
                     },
                   ),
                   const Gap(8),
+                  _TaxRateField(controller: _gmp3Tax, enabled: !_saving),
+                  const Gap(8),
+                  _DualPriceRow(
+                    tryController: _gmp3MonthTry,
+                    usdController: _gmp3MonthUsd,
+                    tryLabel: 'GMP3 aylık TL',
+                    usdLabel: 'GMP3 aylık USD',
+                    highlightUsd: _currency == 'USD' && _period == 'monthly',
+                    enabled: !_saving,
+                  ),
+                  const Gap(8),
                   _DualPriceRow(
                     tryController: _gmp3Try,
                     usdController: _gmp3Usd,
-                    tryLabel: 'GMP3 TL',
-                    usdLabel: 'GMP3 USD',
-                    highlightUsd: _currency == 'USD',
+                    tryLabel: 'GMP3 yıllık TL',
+                    usdLabel: 'GMP3 yıllık USD',
+                    highlightUsd: _currency == 'USD' && _period == 'yearly',
                     enabled: !_saving,
                   ),
                   const Gap(8),
@@ -924,6 +1182,9 @@ class _HatLisansBillingPriceCardState
                     enabled: !_saving,
                     onSelected: (product) {
                       setState(() => _irestoProductId = product.id);
+                      if (_irestoTax.text.trim().isEmpty) {
+                        _irestoTax.text = _taxText(product.taxRate);
+                      }
                       final price = _priceText(product.salePrice);
                       if (price.isEmpty) return;
                       if (product.currency.toUpperCase() == 'USD') {
@@ -936,12 +1197,23 @@ class _HatLisansBillingPriceCardState
                     },
                   ),
                   const Gap(8),
+                  _TaxRateField(controller: _irestoTax, enabled: !_saving),
+                  const Gap(8),
+                  _DualPriceRow(
+                    tryController: _irestoMonthTry,
+                    usdController: _irestoMonthUsd,
+                    tryLabel: 'iResto aylık TL',
+                    usdLabel: 'iResto aylık USD',
+                    highlightUsd: _currency == 'USD' && _period == 'monthly',
+                    enabled: !_saving,
+                  ),
+                  const Gap(8),
                   _DualPriceRow(
                     tryController: _irestoTry,
                     usdController: _irestoUsd,
-                    tryLabel: 'iResto TL',
-                    usdLabel: 'iResto USD',
-                    highlightUsd: _currency == 'USD',
+                    tryLabel: 'iResto yıllık TL',
+                    usdLabel: 'iResto yıllık USD',
+                    highlightUsd: _currency == 'USD' && _period == 'yearly',
                     enabled: !_saving,
                   ),
                   const Gap(8),
