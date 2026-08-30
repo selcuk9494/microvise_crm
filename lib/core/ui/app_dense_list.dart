@@ -208,7 +208,9 @@ class AppDenseListCard extends StatelessWidget {
             border: Border.all(
               color: selected
                   ? AppTheme.primary.withValues(alpha: 0.45)
-                  : AppTheme.border.withValues(alpha: 0.88),
+                  : AppTheme.border.withValues(
+                      alpha: AppTheme.isDark ? 1.0 : 0.88,
+                    ),
             ),
             boxShadow: AppTheme.cardShadow,
           ),

@@ -117,40 +117,39 @@ class AppTheme {
     loginC: Color(0xFF1D2436),
   );
 
-  /// Dark v3 — deeper, richer charcoal shell (Linear-style near-black), same
-  /// blue chrome, softer semantic accents so long lists don't glare.
+  /// Dark v4 — lifted charcoal so cards, borders, and type stay readable.
   static const _AppPalette _dark = _AppPalette(
-    primary: Color(0xFF2563EB),
-    primaryDark: Color(0xFF3B82F6),
-    primaryDeep: Color(0xFF60A5FA),
-    primarySoft: Color(0xFF242D4D),
-    accent: Color(0xFF3B82F6),
-    background: Color(0xFF11151B),
-    backgroundAlt: Color(0xFF141920),
-    sidebar: Color(0xFF151A22),
-    sidebarText: Color(0xFFE2E7EE),
-    sidebarTextMuted: Color(0xFF98A3B3),
-    surface: Color(0xFF181D25),
-    surfaceMuted: Color(0xFF1C222C),
-    surfaceSoft: Color(0xFF202731),
-    border: Color(0xFF2B333E),
-    borderStrong: Color(0xFF4A5564),
-    text: Color(0xFFE2E7EE),
-    textSoft: Color(0xFFC5CDD8),
-    textMuted: Color(0xFF98A3B3),
-    success: Color(0xFF63C99C),
-    warning: Color(0xFFE8B45C),
-    error: Color(0xFFFF8990),
-    hint: Color(0xFF788596),
-    secondaryContainer: Color(0xFF1D3252),
-    onSecondaryContainer: Color(0xFF93C5FD),
-    tertiaryContainer: Color(0xFF212227),
-    canvasTop: Color(0xFF15161A),
-    canvasMid: Color(0xFF101114),
-    canvasBottom: Color(0xFF0B0C0F),
-    loginA: Color(0xFF0B0C0F),
-    loginB: Color(0xFF101114),
-    loginC: Color(0xFF1A1B1F),
+    primary: Color(0xFF3B82F6),
+    primaryDark: Color(0xFF60A5FA),
+    primaryDeep: Color(0xFF93C5FD),
+    primarySoft: Color(0xFF2A3A62),
+    accent: Color(0xFF60A5FA),
+    background: Color(0xFF1B212B),
+    backgroundAlt: Color(0xFF1F2630),
+    sidebar: Color(0xFF1A2029),
+    sidebarText: Color(0xFFF3F6FA),
+    sidebarTextMuted: Color(0xFFB4BECB),
+    surface: Color(0xFF232A35),
+    surfaceMuted: Color(0xFF272F3B),
+    surfaceSoft: Color(0xFF2E3644),
+    border: Color(0xFF4A5566),
+    borderStrong: Color(0xFF6B7789),
+    text: Color(0xFFF3F6FA),
+    textSoft: Color(0xFFD5DCE6),
+    textMuted: Color(0xFFB0BAC8),
+    success: Color(0xFF6FDBA8),
+    warning: Color(0xFFF0C16B),
+    error: Color(0xFFFF9AA0),
+    hint: Color(0xFF8E99A8),
+    secondaryContainer: Color(0xFF243B63),
+    onSecondaryContainer: Color(0xFFBFDBFE),
+    tertiaryContainer: Color(0xFF2A313C),
+    canvasTop: Color(0xFF1B212B),
+    canvasMid: Color(0xFF181E27),
+    canvasBottom: Color(0xFF151A22),
+    loginA: Color(0xFF0F141C),
+    loginB: Color(0xFF151B24),
+    loginC: Color(0xFF1C2430),
   );
 
   static _AppPalette get _p => isDark ? _dark : _light;
@@ -191,7 +190,8 @@ class AppTheme {
   static const Color yellow = Color(0xFFEAB308);
 
   /// Soft ink lift used for Option A active nav pill.
-  static const Color sidebarActiveFill = Color(0xFFEEF1FF);
+  static Color get sidebarActiveFill =>
+      isDark ? primary.withValues(alpha: 0.20) : const Color(0xFFEEF1FF);
 
   /// Aliases used by dashboard / charts.
   static const Color metricOrange = orange;
@@ -228,15 +228,15 @@ class AppTheme {
       return const BoxDecoration(color: Colors.transparent);
     }
     return BoxDecoration(
-      color: primary.withValues(alpha: isDark ? 0.08 : 0.055),
+      color: primary.withValues(alpha: isDark ? 0.20 : 0.055),
       borderRadius: BorderRadius.circular(6),
       border: Border(left: BorderSide(color: primary, width: 3)),
     );
   }
 
   static Color sidebarNavFg({required bool active}) {
-    if (!active) return sidebarTextMuted;
-    return isDark ? const Color(0xFF8BA5FF) : const Color(0xFF3157D5);
+    if (!active) return isDark ? sidebarText : sidebarTextMuted;
+    return isDark ? const Color(0xFFC4D4FF) : const Color(0xFF3157D5);
   }
 
   static const double radiusXs = 7;
@@ -297,7 +297,7 @@ class AppTheme {
   /// visually noisy with a more saturated blend; this keeps hue recognizable
   /// while calming it down.
   static Color softFg(Color color) => isDark
-      ? Color.alphaBlend(color.withValues(alpha: 0.52), text)
+      ? Color.alphaBlend(color.withValues(alpha: 0.68), text)
       : Color.alphaBlend(color.withValues(alpha: 0.76), textSoft);
 
   /// Compact filter/select chrome — muted surface, blue-family accents only.
@@ -434,7 +434,9 @@ class AppTheme {
         },
       ),
       dividerTheme: DividerThemeData(
-        color: p.border.withValues(alpha: 0.85),
+        color: brightness == Brightness.dark
+            ? p.borderStrong.withValues(alpha: 0.75)
+            : p.border.withValues(alpha: 0.85),
         space: 1,
       ),
       cardTheme: CardThemeData(
@@ -452,7 +454,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: p.surface,
+        fillColor: brightness == Brightness.dark ? p.surfaceSoft : p.surface,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 14,
@@ -460,11 +462,19 @@ class AppTheme {
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radiusXs),
-          borderSide: BorderSide(color: p.border.withValues(alpha: 0.8)),
+          borderSide: BorderSide(
+            color: brightness == Brightness.dark
+                ? p.borderStrong
+                : p.border.withValues(alpha: 0.8),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radiusXs),
-          borderSide: BorderSide(color: p.border.withValues(alpha: 0.8)),
+          borderSide: BorderSide(
+            color: brightness == Brightness.dark
+                ? p.borderStrong
+                : p.border.withValues(alpha: 0.8),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radiusXs),
@@ -503,12 +513,18 @@ class AppTheme {
           iconColor: p.text,
           iconSize: 16,
           iconAlignment: IconAlignment.start,
-          side: BorderSide(color: p.border.withValues(alpha: 0.9)),
+          side: BorderSide(
+            color: brightness == Brightness.dark
+                ? p.borderStrong
+                : p.border.withValues(alpha: 0.9),
+          ),
           minimumSize: const Size(0, 40),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(radiusXs),
           ),
-          backgroundColor: p.surface.withValues(alpha: 0.7),
+          backgroundColor: brightness == Brightness.dark
+              ? p.surfaceSoft
+              : p.surface.withValues(alpha: 0.7),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           textStyle: textTheme.labelLarge,
         ),
@@ -604,13 +620,21 @@ class AppTheme {
         ),
       ),
       dataTableTheme: DataTableThemeData(
-        headingRowColor: WidgetStatePropertyAll(p.surfaceMuted),
-        dataRowColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected)
-              ? p.primary.withValues(alpha: 0.08)
-              : Colors.transparent,
+        headingRowColor: WidgetStatePropertyAll(p.surfaceSoft),
+        dataRowColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return p.primary.withValues(
+              alpha: brightness == Brightness.dark ? 0.16 : 0.08,
+            );
+          }
+          if (states.contains(WidgetState.hovered)) {
+            return p.surfaceSoft;
+          }
+          return Colors.transparent;
+        }),
+        headingTextStyle: textTheme.labelMedium?.copyWith(
+          color: brightness == Brightness.dark ? p.textSoft : p.textMuted,
         ),
-        headingTextStyle: textTheme.labelMedium?.copyWith(color: p.textMuted),
         dataTextStyle: textTheme.bodyMedium?.copyWith(color: p.text),
         dividerThickness: 1,
         decoration: BoxDecoration(

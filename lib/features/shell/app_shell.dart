@@ -102,14 +102,13 @@ class AppShell extends ConsumerWidget {
                 Text(
                   message,
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
                 ),
                 const Gap(16),
                 FilledButton(
-                  onPressed: () =>
-                      ref.invalidate(currentUserProfileProvider),
+                  onPressed: () => ref.invalidate(currentUserProfileProvider),
                   child: const Text('Tekrar dene'),
                 ),
                 TextButton(
@@ -163,8 +162,10 @@ class _DesktopShell extends ConsumerWidget {
     final favoritePathSet = favorites.map((item) => item.path).toSet();
     final mainItems = items
         .where((item) {
-          final hasChildren = _mobileNavSubItems(item, allowedPages)
-              .any((sub) => sub.path != item.path);
+          final hasChildren = _mobileNavSubItems(
+            item,
+            allowedPages,
+          ).any((sub) => sub.path != item.path);
           if (hasChildren) return true;
           return !favoritePathSet.contains(item.path);
         })
@@ -187,32 +188,33 @@ class _DesktopShell extends ConsumerWidget {
                 color: AppTheme.sidebar,
                 border: Border(
                   right: BorderSide(
-                    color: AppTheme.border.withValues(alpha: 0.85),
+                    color: AppTheme.isDark
+                        ? AppTheme.borderStrong.withValues(alpha: 0.55)
+                        : AppTheme.border.withValues(alpha: 0.85),
                   ),
                 ),
               ),
               child: SafeArea(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _BrandHeader(
                         subtitle: isBankUser ? 'WebCR' : 'CRM',
-                        onTap: () => context.go(
-                          isBankUser ? '/banka-panel' : '/panel',
-                        ),
+                        onTap: () =>
+                            context.go(isBankUser ? '/banka-panel' : '/panel'),
                       ),
-                      const Gap(10),
+                      const Gap(6),
                       const _ExecutiveSearchField(),
-                      const Gap(12),
+                      const Gap(6),
                       Expanded(
                         child: CustomScrollView(
                           slivers: [
                             const SliverToBoxAdapter(
                               child: _ExecutiveSectionLabel(title: 'Favoriler'),
                             ),
-                            const SliverToBoxAdapter(child: Gap(6)),
+                            const SliverToBoxAdapter(child: Gap(2)),
                             if (favorites.isEmpty)
                               SliverToBoxAdapter(
                                 child: Padding(
@@ -266,10 +268,7 @@ class _DesktopShell extends ConsumerWidget {
                                   return _ExecutiveFavoriteItem(
                                     key: ValueKey(favorite.path),
                                     favorite: favorite,
-                                    active: _isActive(
-                                      location,
-                                      favorite.path,
-                                    ),
+                                    active: _isActive(location, favorite.path),
                                     dragIndex: index,
                                     onTap: () => context.go(favorite.path),
                                     onUnpin: () => ref
@@ -281,14 +280,12 @@ class _DesktopShell extends ConsumerWidget {
                             SliverToBoxAdapter(
                               child: Padding(
                                 padding: const EdgeInsets.only(
-                                  top: 8,
-                                  bottom: 8,
+                                  top: 4,
+                                  bottom: 4,
                                 ),
                                 child: Divider(
                                   height: 1,
-                                  color: AppTheme.border.withValues(
-                                    alpha: 0.7,
-                                  ),
+                                  color: AppTheme.border.withValues(alpha: 0.7),
                                 ),
                               ),
                             ),
@@ -453,14 +450,14 @@ class _DesktopShell extends ConsumerWidget {
                                           .read(navFavoritesProvider.notifier)
                                           .toggle(item.path),
                                     ),
-                                  const Gap(4),
+                                  const Gap(1),
                                 ],
                               ]),
                             ),
                           ],
                         ),
                       ),
-                      const Gap(10),
+                      const Gap(6),
                       _AccountCard(
                         profile: ref.watch(currentUserProfileProvider).value,
                         onSignOut: () async {
@@ -517,43 +514,35 @@ class _ExecutiveFavoriteItem extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        height: 42,
-        decoration: BoxDecoration(
-          color: active ? AppTheme.sidebarActiveFill : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppTheme.radiusXs),
-          border: active
-              ? Border(
-                  left: BorderSide(color: AppTheme.primary, width: 3),
-                )
-              : null,
-        ),
-        padding: const EdgeInsets.fromLTRB(6, 0, 2, 0),
+        height: 32,
+        decoration: AppTheme.sidebarNavDecoration(active: active),
+        padding: const EdgeInsets.fromLTRB(4, 0, 2, 0),
         child: Row(
           children: [
             ReorderableDragStartListener(
               index: dragIndex,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 2),
                 child: Icon(
                   Icons.drag_indicator,
-                  size: 16,
+                  size: 14,
                   color: AppTheme.sidebarTextMuted,
                 ),
               ),
             ),
             AppPhosphorIcon(
               favorite.icon,
-              size: 18,
+              size: 15,
               color: active ? AppTheme.primary : AppTheme.sidebarTextMuted,
             ),
-            const Gap(8),
+            const Gap(6),
             Expanded(
               child: Text(
                 favorite.label,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                  color: active ? AppTheme.primary : AppTheme.sidebarText,
-                  fontSize: 13.5,
+                  color: AppTheme.sidebarNavFg(active: active),
+                  fontSize: 12.5,
                 ),
               ),
             ),
@@ -578,10 +567,10 @@ class _NavPinButton extends StatelessWidget {
       onPressed: onPressed,
       visualDensity: VisualDensity.compact,
       padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
       icon: Icon(
         pinned ? Icons.push_pin : Icons.push_pin_outlined,
-        size: 15,
+        size: 13,
         color: pinned ? AppTheme.primary : AppTheme.sidebarTextMuted,
       ),
     );
@@ -618,7 +607,12 @@ class _ExecutiveSearchField extends StatelessWidget {
       decoration: InputDecoration(
         isDense: true,
         hintText: 'Ara…',
-        prefixIcon: const Icon(AppPhosphorIcons.magnifyingGlass, size: 18),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 32,
+          minHeight: 28,
+        ),
+        prefixIcon: const Icon(AppPhosphorIcons.magnifyingGlass, size: 16),
         suffixIcon: Padding(
           padding: const EdgeInsets.only(right: 8),
           child: Container(
@@ -665,10 +659,7 @@ class _MobileShell extends ConsumerWidget {
         isBankUser: isBankUser,
       ),
     );
-    final pinnedItems = _mobilePinnedItems(
-      allowedItems,
-      favorites: favorites,
-    );
+    final pinnedItems = _mobilePinnedItems(allowedItems, favorites: favorites);
     final overflowActive = allowedItems.any(
       (item) =>
           _isActive(location, item.path) &&
@@ -924,9 +915,7 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
               final active = _isActive(widget.matchedLocation, item.path);
               return Consumer(
                 builder: (context, ref, _) {
-                  final favoritePaths = ref
-                      .watch(navFavoritesProvider)
-                      .toSet();
+                  final favoritePaths = ref.watch(navFavoritesProvider).toSet();
                   return _MobileModuleTile(
                     item: item,
                     subItems: subItems,
@@ -941,9 +930,8 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
                     onToggleFavorite: () => ref
                         .read(navFavoritesProvider.notifier)
                         .toggle(item.path),
-                    onToggleSubFavorite: (path) => ref
-                        .read(navFavoritesProvider.notifier)
-                        .toggle(path),
+                    onToggleSubFavorite: (path) =>
+                        ref.read(navFavoritesProvider.notifier).toggle(path),
                   );
                 },
               );
@@ -958,9 +946,15 @@ class _MobileModulesSheetState extends State<_MobileModulesSheet> {
 List<_FormsNavSubItem> _eInvoiceNavSubItems(Set<String> allowedPages) {
   final items = <_FormsNavSubItem>[];
   if (allowedPages.contains(kPageEInvoice)) {
-    items.add(const _FormsNavSubItem(label: 'Alış Faturası', path: '/e-fatura/alis'));
-    items.add(const _FormsNavSubItem(label: 'Satış Faturası', path: '/e-fatura/satis'));
-    items.add(const _FormsNavSubItem(label: 'Teklif', path: '/e-fatura/teklif'));
+    items.add(
+      const _FormsNavSubItem(label: 'Alış Faturası', path: '/e-fatura/alis'),
+    );
+    items.add(
+      const _FormsNavSubItem(label: 'Satış Faturası', path: '/e-fatura/satis'),
+    );
+    items.add(
+      const _FormsNavSubItem(label: 'Teklif', path: '/e-fatura/teklif'),
+    );
     items.addAll(const [
       _FormsNavSubItem(label: 'Stok/Hizmet', path: '/e-fatura/stok'),
       _FormsNavSubItem(label: 'Cari', path: '/e-fatura/cari'),
@@ -975,7 +969,9 @@ List<_FormsNavSubItem> _eInvoiceNavSubItems(Set<String> allowedPages) {
       _FormsNavSubItem(label: 'E-Fatura Ayarları', path: '/e-fatura/ayarlar'),
     ]);
   } else if (allowedPages.contains(kPageQuotes)) {
-    items.add(const _FormsNavSubItem(label: 'Teklif', path: '/e-fatura/teklif'));
+    items.add(
+      const _FormsNavSubItem(label: 'Teklif', path: '/e-fatura/teklif'),
+    );
   }
   if (allowedPages.contains(kPageEInvoice) ||
       allowedPages.contains(kPageQuotes)) {
@@ -1071,12 +1067,7 @@ List<NavFavoriteTarget> _navFavoriteCatalog({
   }) {
     if (!seen.add(path)) return;
     catalog.add(
-      NavFavoriteTarget(
-        path: path,
-        label: label,
-        icon: icon,
-        pageKey: pageKey,
-      ),
+      NavFavoriteTarget(path: path, label: label, icon: icon, pageKey: pageKey),
     );
   }
 
@@ -1183,10 +1174,7 @@ class _MobileModuleTile extends StatelessWidget {
                     size: active ? 20 : 22,
                     color: active ? accentColor : AppTheme.textMuted,
                   ),
-                  _NavPinButton(
-                    pinned: pinned,
-                    onPressed: onToggleFavorite,
-                  ),
+                  _NavPinButton(pinned: pinned, onPressed: onToggleFavorite),
                 ],
               ),
               if (subItems.isNotEmpty) ...[
@@ -1207,8 +1195,7 @@ class _MobileModuleTile extends StatelessWidget {
                             Navigator.of(context).pop();
                             context.go(subItem.path);
                           },
-                          onLongPress: () =>
-                              onToggleSubFavorite(subItem.path),
+                          onLongPress: () => onToggleSubFavorite(subItem.path),
                         ),
                     ],
                   ),
@@ -1254,9 +1241,7 @@ class _MobileSubModuleChip extends StatelessWidget {
         backgroundColor: active
             ? color.withValues(alpha: 0.11)
             : AppTheme.surface,
-        avatar: pinned
-            ? Icon(Icons.push_pin, size: 14, color: color)
-            : null,
+        avatar: pinned ? Icon(Icons.push_pin, size: 14, color: color) : null,
         label: Text(
           label,
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
@@ -1332,9 +1317,9 @@ Future<void> _showMobileAccountSheet(
               const Gap(16),
               Text(
                 'Tema',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
               const Gap(8),
               const _MobileThemeModePicker(),
@@ -1389,12 +1374,12 @@ class _BrandHeader extends StatelessWidget {
       borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 4, 10, 2),
+        padding: const EdgeInsets.fromLTRB(8, 2, 8, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _brandLogoImage(height: 32),
-            const Gap(4),
+            _brandLogoImage(height: 26),
+            const Gap(2),
             Text(
               subtitle,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -1659,9 +1644,7 @@ class _CompactAccountButton extends ConsumerWidget {
           decoration: BoxDecoration(
             color: AppTheme.primary.withValues(alpha: 0.18),
             shape: BoxShape.circle,
-            border: Border.all(
-              color: AppTheme.primary.withValues(alpha: 0.35),
-            ),
+            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
           ),
           alignment: Alignment.center,
           child: Text(
@@ -1984,32 +1967,29 @@ class _SidebarItem extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         curve: Curves.easeOut,
-        height: 42,
+        height: 32,
         decoration: AppTheme.sidebarNavDecoration(active: active),
-        padding: const EdgeInsets.only(left: 10, right: 2),
+        padding: const EdgeInsets.only(left: 8, right: 2),
         child: Row(
           children: [
             Container(
-              width: 30,
-              height: 30,
-              decoration: AppTheme.categoryIconWell(
-                accentColor,
-                radius: AppTheme.radiusXs,
-              ),
+              width: 22,
+              height: 22,
+              decoration: AppTheme.categoryIconWell(accentColor, radius: 6),
               child: AppPhosphorIcon(
                 icon,
-                size: 17,
+                size: 14,
                 color: AppTheme.categoryIconFg(accentColor),
               ),
             ),
-            const Gap(10),
+            const Gap(8),
             Expanded(
               child: Text(
                 label,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontWeight: active ? FontWeight.w600 : FontWeight.w500,
                   color: fg,
-                  fontSize: 13.5,
+                  fontSize: 12.5,
                 ),
               ),
             ),
@@ -2072,32 +2052,29 @@ class _FormsNavGroup extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
             curve: Curves.easeOut,
-            height: 42,
+            height: 32,
             decoration: AppTheme.sidebarNavDecoration(active: isActive),
-            padding: const EdgeInsets.only(left: 10, right: 2),
+            padding: const EdgeInsets.only(left: 8, right: 2),
             child: Row(
               children: [
                 Container(
-                  width: 30,
-                  height: 30,
-                  decoration: AppTheme.categoryIconWell(
-                    accentColor,
-                    radius: AppTheme.radiusXs,
-                  ),
+                  width: 22,
+                  height: 22,
+                  decoration: AppTheme.categoryIconWell(accentColor, radius: 6),
                   child: AppPhosphorIcon(
                     icon,
-                    size: 17,
+                    size: 14,
                     color: AppTheme.categoryIconFg(accentColor),
                   ),
                 ),
-                const Gap(10),
+                const Gap(8),
                 Expanded(
                   child: Text(
                     label,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
                       color: fg,
-                      fontSize: 13.5,
+                      fontSize: 12.5,
                     ),
                   ),
                 ),
@@ -2109,10 +2086,10 @@ class _FormsNavGroup extends StatelessWidget {
                   expanded
                       ? AppPhosphorIcons.caretUp
                       : AppPhosphorIcons.caretDown,
-                  size: 18,
+                  size: 14,
                   color: fg,
                 ),
-                const Gap(6),
+                const Gap(4),
               ],
             ),
           ),
@@ -2120,10 +2097,10 @@ class _FormsNavGroup extends StatelessWidget {
         AnimatedCrossFade(
           firstChild: const SizedBox.shrink(),
           secondChild: Padding(
-            padding: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.only(top: 2),
             child: Container(
               margin: const EdgeInsets.only(left: 8),
-              padding: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(vertical: 2),
               decoration: BoxDecoration(
                 color: AppTheme.sidebarText.withValues(alpha: 0.04),
                 borderRadius: BorderRadius.circular(AppTheme.radiusXs),
@@ -2183,9 +2160,9 @@ class _SidebarSubItem extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         curve: Curves.easeOut,
-        height: 36,
+        height: 28,
         margin: const EdgeInsets.only(left: 18),
-        padding: const EdgeInsets.only(left: 10, right: 2),
+        padding: const EdgeInsets.only(left: 8, right: 2),
         decoration: AppTheme.sidebarNavDecoration(active: active),
         child: Row(
           children: [
@@ -2297,34 +2274,34 @@ class _AccountCard extends StatelessWidget {
         ? 'Banka Personeli'
         : 'Personel';
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: AppTheme.isDark
-            ? AppTheme.surfaceMuted.withValues(alpha: 0.55)
+            ? AppTheme.surfaceSoft
             : AppTheme.sidebarText.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(AppTheme.radiusSm),
         border: Border.all(
           color: AppTheme.isDark
-              ? AppTheme.border.withValues(alpha: 0.65)
+              ? AppTheme.borderStrong.withValues(alpha: 0.7)
               : AppTheme.sidebarText.withValues(alpha: 0.08),
         ),
       ),
       child: Row(
         children: [
           CircleAvatar(
-            radius: 15,
+            radius: 13,
             backgroundColor: AppTheme.isDark
-                ? AppTheme.primary.withValues(alpha: 0.18)
+                ? AppTheme.primary.withValues(alpha: 0.22)
                 : AppTheme.primary.withValues(alpha: 0.18),
             child: Icon(
               AppPhosphorIcons.userCircle,
-              size: 17,
+              size: 15,
               color: AppTheme.isDark
                   ? AppTheme.primaryDark
                   : AppTheme.sidebarText,
             ),
           ),
-          const Gap(10),
+          const Gap(8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2335,7 +2312,7 @@ class _AccountCard extends StatelessWidget {
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: AppTheme.sidebarText,
-                    fontSize: 13,
+                    fontSize: 12.5,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
