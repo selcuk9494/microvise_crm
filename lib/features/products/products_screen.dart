@@ -558,6 +558,21 @@ class ProductsScreen extends ConsumerWidget {
     downloadExcelFile(bytes, 'hat_lisanslar.xlsx');
   }
 
+  Future<void> _importExcel({
+    required BuildContext context,
+    required WidgetRef ref,
+  }) async {
+    await importLinesAndGmp3Excel(
+      context: context,
+      ref: ref,
+      onImported: () {
+        ref.invalidate(issuedLinesProvider);
+        ref.invalidate(issuedLicensesProvider);
+        ref.invalidate(issuedLicensesStatsProvider);
+      },
+    );
+  }
+
   Future<void> _clearIssuedLists({
     required BuildContext context,
     required WidgetRef ref,
@@ -818,15 +833,7 @@ class ProductsScreen extends ConsumerWidget {
                         await downloadLinesGmp3Template(context);
                         break;
                       case 'import':
-                        await importLinesAndGmp3Excel(
-                          context: context,
-                          ref: ref,
-                          onImported: () {
-                            ref.invalidate(issuedLinesProvider);
-                            ref.invalidate(issuedLicensesProvider);
-                            ref.invalidate(issuedLicensesStatsProvider);
-                          },
-                        );
+                        await _importExcel(context: context, ref: ref);
                         break;
                       case 'clear':
                         await _clearIssuedLists(context: context, ref: ref);
@@ -983,15 +990,8 @@ class ProductsScreen extends ConsumerWidget {
                               lines: lines,
                               licenses: licenses,
                             ),
-                            importAll: () => importLinesAndGmp3Excel(
-                              context: context,
-                              ref: ref,
-                              onImported: () {
-                                ref.invalidate(issuedLinesProvider);
-                                ref.invalidate(issuedLicensesProvider);
-                                ref.invalidate(issuedLicensesStatsProvider);
-                              },
-                            ),
+                            importAll: () =>
+                                _importExcel(context: context, ref: ref),
                           ),
                           _LicensesTab(
                             isAdmin: isAdmin,
@@ -1000,15 +1000,8 @@ class ProductsScreen extends ConsumerWidget {
                               lines: lines,
                               licenses: licenses,
                             ),
-                            importAll: () => importLinesAndGmp3Excel(
-                              context: context,
-                              ref: ref,
-                              onImported: () {
-                                ref.invalidate(issuedLinesProvider);
-                                ref.invalidate(issuedLicensesProvider);
-                                ref.invalidate(issuedLicensesStatsProvider);
-                              },
-                            ),
+                            importAll: () =>
+                                _importExcel(context: context, ref: ref),
                           ),
                           const _TotalsTab(),
                           const LineStockTab(),

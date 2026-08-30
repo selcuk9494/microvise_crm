@@ -1,5 +1,4 @@
 import 'package:excel/excel.dart' as excel;
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +7,7 @@ import 'package:gap/gap.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
+import '../../core/platform/pick_xlsx.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../customers/customers_providers.dart';
 import '../customers/web_download_helper.dart'
@@ -173,17 +173,31 @@ Future<void> importLinesAndGmp3Excel({
   required WidgetRef ref,
   VoidCallback? onImported,
 }) async {
+  try {
+    await _importLinesAndGmp3Excel(
+      context: context,
+      ref: ref,
+      onImported: onImported,
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('İçe aktarma başarısız: $e')),
+    );
+  }
+}
+
+Future<void> _importLinesAndGmp3Excel({
+  required BuildContext context,
+  required WidgetRef ref,
+  VoidCallback? onImported,
+}) async {
   final apiClient = ref.read(apiClientProvider);
   final client = ref.read(supabaseClientProvider);
   if (apiClient == null && client == null) return;
 
-  final result = await FilePicker.platform.pickFiles(
-    type: FileType.custom,
-    allowedExtensions: const ['xlsx'],
-    withData: true,
-  );
-  final file = result?.files.firstOrNull;
-  final bytes = file?.bytes;
+  final picked = await pickXlsxFile();
+  final bytes = picked?.bytes;
   if (bytes == null || bytes.isEmpty) return;
 
   List<Map<String, dynamic>> lookupItems;
@@ -247,7 +261,18 @@ Future<void> importLinesAndGmp3Excel({
     companyIdByName[name] = id;
   }
 
-  final book = excel.Excel.decodeBytes(bytes);
+  late final excel.Excel book;
+  try {
+    book = excel.Excel.decodeBytes(bytes);
+  } catch (_) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Excel okunamadı. Lütfen .xlsx dosyası seçin.'),
+      ),
+    );
+    return;
+  }
   excel.Sheet? findSheet(Set<String> keys) {
     for (final name in book.tables.keys) {
       final lower = name.trim().toLowerCase();
