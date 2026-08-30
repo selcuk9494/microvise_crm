@@ -54,6 +54,11 @@ String _coerceNumberLike(String raw) {
 
 String _digitsOnly(String raw) => raw.replaceAll(RegExp(r'[^0-9]'), '');
 
+String _normalizeVkn(String raw) {
+  final coerced = _coerceNumberLike(raw);
+  return _digitsOnly(coerced);
+}
+
 bool _isPlaceholderCompany(String raw) {
   final t = raw.trim();
   if (t.isEmpty) return true;
