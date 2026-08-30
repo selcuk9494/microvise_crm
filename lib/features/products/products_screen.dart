@@ -983,6 +983,15 @@ class ProductsScreen extends ConsumerWidget {
                               lines: lines,
                               licenses: licenses,
                             ),
+                            importAll: () => importLinesAndGmp3Excel(
+                              context: context,
+                              ref: ref,
+                              onImported: () {
+                                ref.invalidate(issuedLinesProvider);
+                                ref.invalidate(issuedLicensesProvider);
+                                ref.invalidate(issuedLicensesStatsProvider);
+                              },
+                            ),
                           ),
                           _LicensesTab(
                             isAdmin: isAdmin,
@@ -990,6 +999,15 @@ class ProductsScreen extends ConsumerWidget {
                               context: context,
                               lines: lines,
                               licenses: licenses,
+                            ),
+                            importAll: () => importLinesAndGmp3Excel(
+                              context: context,
+                              ref: ref,
+                              onImported: () {
+                                ref.invalidate(issuedLinesProvider);
+                                ref.invalidate(issuedLicensesProvider);
+                                ref.invalidate(issuedLicensesStatsProvider);
+                              },
                             ),
                           ),
                           const _TotalsTab(),
@@ -1046,10 +1064,15 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _LinesTab extends ConsumerStatefulWidget {
-  const _LinesTab({required this.isAdmin, required this.exportAll});
+  const _LinesTab({
+    required this.isAdmin,
+    required this.exportAll,
+    required this.importAll,
+  });
 
   final bool isAdmin;
   final VoidCallback exportAll;
+  final VoidCallback importAll;
 
   @override
   ConsumerState<_LinesTab> createState() => _LinesTabState();
@@ -1212,19 +1235,28 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                   ),
                 );
 
+                final compactBtnStyle = OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 32),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                );
+
                 final exportBtn = OutlinedButton.icon(
                   onPressed: widget.exportAll,
                   icon: const Icon(LucideIcons.download, size: 18),
                   label: const Text('Dışarı Aktar'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 32),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
+                  style: compactBtnStyle,
+                );
+
+                final importBtn = OutlinedButton.icon(
+                  onPressed: widget.importAll,
+                  icon: const Icon(LucideIcons.upload, size: 18),
+                  label: const Text('İçe Aktar'),
+                  style: compactBtnStyle,
                 );
 
                 if (narrow) {
@@ -1242,9 +1274,11 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                         children: [
                           Expanded(child: clearBtn),
                           const Gap(8),
-                          Expanded(child: exportBtn),
+                          Expanded(child: importBtn),
                         ],
                       ),
+                      const Gap(8),
+                      SizedBox(width: double.infinity, child: exportBtn),
                     ],
                   );
                 }
@@ -1262,6 +1296,8 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                       toBtn,
                       const Gap(8),
                       clearBtn,
+                      const Gap(8),
+                      importBtn,
                       const Gap(8),
                       exportBtn,
                     ],
@@ -1363,10 +1399,15 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
 }
 
 class _LicensesTab extends ConsumerStatefulWidget {
-  const _LicensesTab({required this.isAdmin, required this.exportAll});
+  const _LicensesTab({
+    required this.isAdmin,
+    required this.exportAll,
+    required this.importAll,
+  });
 
   final bool isAdmin;
   final VoidCallback exportAll;
+  final VoidCallback importAll;
 
   @override
   ConsumerState<_LicensesTab> createState() => _LicensesTabState();
@@ -1533,19 +1574,28 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                   ),
                 );
 
+                final compactBtnStyle = OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 32),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                );
+
                 final exportBtn = OutlinedButton.icon(
                   onPressed: widget.exportAll,
                   icon: const Icon(LucideIcons.download, size: 18),
                   label: const Text('Dışarı Aktar'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 32),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
+                  style: compactBtnStyle,
+                );
+
+                final importBtn = OutlinedButton.icon(
+                  onPressed: widget.importAll,
+                  icon: const Icon(LucideIcons.upload, size: 18),
+                  label: const Text('İçe Aktar'),
+                  style: compactBtnStyle,
                 );
 
                 if (narrow) {
@@ -1563,9 +1613,11 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                         children: [
                           Expanded(child: clearBtn),
                           const Gap(8),
-                          Expanded(child: exportBtn),
+                          Expanded(child: importBtn),
                         ],
                       ),
+                      const Gap(8),
+                      SizedBox(width: double.infinity, child: exportBtn),
                     ],
                   );
                 }
@@ -1583,6 +1635,8 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                       toBtn,
                       const Gap(8),
                       clearBtn,
+                      const Gap(8),
+                      importBtn,
                       const Gap(8),
                       exportBtn,
                     ],
