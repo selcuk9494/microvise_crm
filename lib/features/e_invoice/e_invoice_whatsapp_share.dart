@@ -244,13 +244,21 @@ String buildInvoicePaymentWhatsAppMessage({
   final pdfNote = includePdfNote
       ? 'Fatura PDF’si bu mesajla birlikte gönderilir.\n'
       : '';
+  const bankBlock =
+      'İsterseniz Türkiye İş Bankası hesabımıza havale veya EFT ile de ödeyebilirsiniz.\n'
+      'Türkiye İş Bankası\n'
+      'Microvise Innovation Ltd\n'
+      'TL IBAN: TR57 0006 4000 0016 8010 3409 94\n'
+      'USD IBAN: TR41 0006 4000 0026 8010 4107 29\n'
+      'Havale açıklamasına fatura numaranızı yazın.\n';
   return '$greeting\n\n'
       '$invoicePart için ödeme:$purposeBlock\n'
-      'Tutar: $amountLabel\n\n'
-      'Güvenli ödeme linki:\n'
+      '*Tutar: $amountLabel*\n\n'
+      'Güvenli ödeme butonu (kartın üzerine dokunun):\n'
       '$paymentUrl\n\n'
+      '$bankBlock\n'
       '$pdfNote'
-      'Microvise Innovation';
+      '_Microvise Innovation_';
 }
 
 /// Cari numaralarından birini seçtirir veya elle numara ister. İptalde null.
@@ -415,7 +423,7 @@ Future<void> shareInvoicePaymentLinkWithWhatsApp({
       content: Text(
         sharedPdf
             ? 'WhatsApp açıldı. Fatura PDF’sini sohbete ekleyin.'
-            : 'WhatsApp açıldı. Ödeme linki sohbete yazıldı.',
+            : 'WhatsApp açıldı. Ödeme kartı ve buton sohbette görünecek.',
       ),
     ),
   );
