@@ -662,24 +662,6 @@ Future<void> _importLinesAndGmp3Excel({
     typeLabel: 'iResto',
   );
 
-  final seenLicenseKeys = <String>{};
-  final uniqueLicenseRows = <Map<String, dynamic>>[];
-  for (final row in licenseRows) {
-    final cid = (row['customer_id'] ?? '').toString().trim();
-    final type = (row['license_type'] ?? '').toString().trim();
-    final sicil = (row['registry_number'] ?? '').toString().trim();
-    final company = (row['software_company_id'] ?? row['_companyName'] ?? '')
-        .toString()
-        .trim();
-    final key = '$cid::$type::$sicil::$company';
-    if (cid.isEmpty || seenLicenseKeys.contains(key)) continue;
-    seenLicenseKeys.add(key);
-    uniqueLicenseRows.add(row);
-  }
-  licenseRows
-    ..clear()
-    ..addAll(uniqueLicenseRows);
-
   final gmp3Count = licenseRows
       .where((e) => IssuedLicenseType.isGmp3(e['license_type']?.toString()))
       .length;
