@@ -19,6 +19,18 @@ final hatLisansInvoicePaymentFilterProvider =
       HatLisansInvoicePaymentFilterNotifier.new,
     );
 
+class HatLisansTotalsTickNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void bump() => state++;
+}
+
+final hatLisansTotalsTickProvider =
+    NotifierProvider<HatLisansTotalsTickNotifier, int>(
+      HatLisansTotalsTickNotifier.new,
+    );
+
 class HatLisansInvoicePaymentFilterNotifier extends Notifier<String> {
   @override
   String build() => 'pending';
@@ -133,6 +145,7 @@ Future<void> showCreateHatLisansInvoiceDialog({
   );
   if (!context.mounted || created == null) return;
   if (created > 0) {
+    ref.read(hatLisansTotalsTickProvider.notifier).bump();
     final tab = DefaultTabController.maybeOf(context);
     if (tab != null && tab.length > 4) {
       tab.animateTo(4);
@@ -171,6 +184,7 @@ class _CreateHatLisansInvoiceDialogState
   String? _irestoProductId;
   bool _hydrated = false;
   bool _saving = false;
+  bool _pricesIncludeVat = false;
 
   @override
   void dispose() {
@@ -291,6 +305,7 @@ class _CreateHatLisansInvoiceDialogState
             'linePaymentTitle': _lineTitle.text.trim(),
             'gmp3PaymentTitle': _gmp3Title.text.trim(),
             'irestoPaymentTitle': _irestoTitle.text.trim(),
+            'pricesIncludeVat': _pricesIncludeVat,
           },
         },
         timeout: const Duration(seconds: 120),
@@ -387,7 +402,19 @@ class _CreateHatLisansInvoiceDialogState
                     ? null
                     : (value) => setState(() => _currency = value.first),
               ),
-              const Gap(14),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('KDV dahil'),
+                subtitle: const Text(
+                  'Açıksa girilen birim fiyat KDV dahildir.',
+                ),
+                value: _pricesIncludeVat,
+                onChanged: _saving
+                    ? null
+                    : (value) => setState(() => _pricesIncludeVat = value),
+              ),
+              const Gap(8),
               _ProductPickField(
                 label: 'Hat kalemi',
                 products: products,
@@ -638,6 +665,7 @@ class _HatLisansBillingPriceCardState
   String? _irestoProductId;
   bool _hydrated = false;
   bool _saving = false;
+  bool _expanded = false;
 
   @override
   void dispose() {
@@ -742,21 +770,58 @@ class _HatLisansBillingPriceCardState
     });
 
     return AppCard(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hat / GMP3 fiyatları',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        _currency == 'USD'
+                            ? 'Hat \$${_lineUsd.text.trim().isEmpty ? '—' : _lineUsd.text} · GMP3 \$${_gmp3Usd.text.trim().isEmpty ? '—' : _gmp3Usd.text} · Fatura USD'
+                            : 'Hat ₺${_lineTry.text.trim().isEmpty ? '—' : _lineTry.text} · GMP3 ₺${_gmp3Try.text.trim().isEmpty ? '—' : _gmp3Try.text} · Fatura TL',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  child: Text(_expanded ? 'Gizle' : 'Düzenle'),
+                ),
+                Icon(
+                  _expanded
+                      ? LucideIcons.chevronUp
+                      : LucideIcons.chevronDown,
+                  size: 18,
+                  color: AppTheme.textMuted,
+                ),
+              ],
+            ),
+          ),
+          if (_expanded) ...[
+          const Gap(8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Text(
-                'Hat / GMP3 fiyatları',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-              ),
               SegmentedButton<String>(
                 segments: const [
                   ButtonSegment(value: 'TRY', label: Text('Fatura TL')),
@@ -773,15 +838,7 @@ class _HatLisansBillingPriceCardState
               ),
             ],
           ),
-          const Gap(6),
-          Text(
-            'Ödeme açıklaması mail ve WhatsApp’ta görünür; fatura kalem adı da bu '
-            'metindir. Kaydet’ten sonra yeni kesilen faturalarda kullanılır.',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
-          ),
-          const Gap(10),
+          const Gap(8),
           LayoutBuilder(
             builder: (context, constraints) {
               final narrow = constraints.maxWidth < 900;
@@ -912,6 +969,7 @@ class _HatLisansBillingPriceCardState
               );
             },
           ),
+          ],
         ],
       ),
     );
@@ -1015,6 +1073,216 @@ class HatLisansInvoicesTab extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _EditHatLisansLine {
+  _EditHatLisansLine({
+    required this.productId,
+    required this.unit,
+    required this.taxRate,
+    required String description,
+    required String quantity,
+    required String unitPrice,
+  }) : description = TextEditingController(text: description),
+       quantity = TextEditingController(text: quantity),
+       unitPrice = TextEditingController(text: unitPrice);
+
+  final String? productId;
+  final String unit;
+  final double taxRate;
+  final TextEditingController description;
+  final TextEditingController quantity;
+  final TextEditingController unitPrice;
+
+  void dispose() {
+    description.dispose();
+    quantity.dispose();
+    unitPrice.dispose();
+  }
+}
+
+class _EditHatLisansInvoiceDialog extends ConsumerStatefulWidget {
+  const _EditHatLisansInvoiceDialog({required this.invoice});
+
+  final Invoice invoice;
+
+  @override
+  ConsumerState<_EditHatLisansInvoiceDialog> createState() =>
+      _EditHatLisansInvoiceDialogState();
+}
+
+class _EditHatLisansInvoiceDialogState
+    extends ConsumerState<_EditHatLisansInvoiceDialog> {
+  late final List<_EditHatLisansLine> _lines;
+  late bool _pricesIncludeVat;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final invoice = widget.invoice;
+    _pricesIncludeVat = invoice.pricesIncludeVat;
+    _lines = [
+      for (final item in invoice.items)
+        _EditHatLisansLine(
+          productId: item.productId,
+          unit: item.unit,
+          taxRate: item.taxRate,
+          description: item.description,
+          quantity: _priceText(item.quantity),
+          unitPrice: _priceText(
+            _pricesIncludeVat
+                ? item.unitPrice * (1 + item.taxRate / 100)
+                : item.unitPrice,
+          ),
+        ),
+    ];
+  }
+
+  @override
+  void dispose() {
+    for (final line in _lines) {
+      line.dispose();
+    }
+    super.dispose();
+  }
+
+  void _toggleVat(bool value) {
+    if (value == _pricesIncludeVat) return;
+    setState(() {
+      for (final line in _lines) {
+        final entered = double.tryParse(line.unitPrice.text.replaceAll(',', '.'));
+        if (entered == null || line.taxRate <= 0) continue;
+        if (value) {
+          line.unitPrice.text = _priceText(entered * (1 + line.taxRate / 100));
+        } else {
+          line.unitPrice.text = _priceText(entered / (1 + line.taxRate / 100));
+        }
+      }
+      _pricesIncludeVat = value;
+    });
+  }
+
+  Future<void> _save() async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null || _saving) return;
+    setState(() => _saving = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateHatLisansInvoice',
+          'invoiceId': widget.invoice.id,
+          'pricesIncludeVat': _pricesIncludeVat,
+          'items': [
+            for (final line in _lines)
+              {
+                'productId': line.productId,
+                'description': line.description.text.trim(),
+                'quantity': line.quantity.text.trim(),
+                'unit': line.unit,
+                'unitPrice': line.unitPrice.text.trim(),
+                'taxRate': line.taxRate,
+              },
+          ],
+        },
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Kaydedilemedi: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Faturayı düzenle'),
+      content: SizedBox(
+        width: 520,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('KDV dahil'),
+                value: _pricesIncludeVat,
+                onChanged: _saving ? null : _toggleVat,
+              ),
+              const Gap(8),
+              for (final line in _lines) ...[
+                TextField(
+                  controller: line.description,
+                  enabled: !_saving,
+                  decoration: const InputDecoration(
+                    labelText: 'Ödeme açıklaması',
+                    isDense: true,
+                  ),
+                ),
+                const Gap(8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: line.quantity,
+                        enabled: !_saving,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Adet',
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                    const Gap(8),
+                    Expanded(
+                      child: TextField(
+                        controller: line.unitPrice,
+                        enabled: !_saving,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: _pricesIncludeVat
+                              ? 'Birim fiyat (KDV dahil)'
+                              : 'Birim fiyat',
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const Gap(14),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Vazgeç'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          child: _saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Kaydet'),
+        ),
+      ],
     );
   }
 }
@@ -1173,6 +1441,63 @@ class _HatLisansInvoiceRowState extends ConsumerState<_HatLisansInvoiceRow> {
     ).showSnackBar(const SnackBar(content: Text('Ödeme linki kopyalandı.')));
   }
 
+  Future<void> _edit() async {
+    final invoice = widget.invoice;
+    if (!invoice.isHatLisansMutable) return;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => _EditHatLisansInvoiceDialog(invoice: invoice),
+    );
+    if (saved != true || !mounted) return;
+    ref.invalidate(hatLisansInvoicesProvider);
+    ref.invalidate(invoicesProvider);
+    ref.read(hatLisansTotalsTickProvider.notifier).bump();
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Fatura güncellendi.')));
+  }
+
+  Future<void> _delete() async {
+    final invoice = widget.invoice;
+    if (!invoice.isHatLisansMutable) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Faturayı sil'),
+        content: Text(
+          '${formatInvoiceNumberForDisplay(invoice.invoiceNumber)} taslak faturası silinsin mi?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    await apiClient.postJson(
+      '/mutate',
+      body: {
+        'op': 'deleteHatLisansInvoice',
+        'invoiceId': invoice.id,
+      },
+    );
+    ref.invalidate(hatLisansInvoicesProvider);
+    ref.invalidate(invoicesProvider);
+    ref.read(hatLisansTotalsTickProvider.notifier).bump();
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Fatura silindi.')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final invoice = widget.invoice;
@@ -1241,12 +1566,25 @@ class _HatLisansInvoiceRowState extends ConsumerState<_HatLisansInvoiceRow> {
                 ),
             ],
           ),
-          if (invoice.isHatLisansPayable) ...[
+          if (invoice.isHatLisansPayable || invoice.isHatLisansMutable) ...[
             const Gap(8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
+                if (invoice.isHatLisansMutable) ...[
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : () => _withBusy(_edit),
+                    icon: const Icon(LucideIcons.pencil, size: 16),
+                    label: const Text('Düzenle'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : () => _withBusy(_delete),
+                    icon: const Icon(LucideIcons.trash2, size: 16),
+                    label: const Text('Sil'),
+                  ),
+                ],
+                if (invoice.isHatLisansPayable) ...[
                 OutlinedButton.icon(
                   onPressed: _busy ? null : () => _withBusy(_copyLink),
                   icon: const Icon(LucideIcons.link, size: 16),
@@ -1262,6 +1600,7 @@ class _HatLisansInvoiceRowState extends ConsumerState<_HatLisansInvoiceRow> {
                   icon: const Icon(LucideIcons.messageCircle, size: 16),
                   label: const Text('WhatsApp'),
                 ),
+                ],
               ],
             ),
           ],

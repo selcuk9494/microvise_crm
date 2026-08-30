@@ -36,6 +36,7 @@ const {
   ensureApplicationFormsCreatedByRepair,
   ensureApplicationFormActivityLogsTable,
   ensureCustomerCountryColumns,
+  ensureCustomerEmailColumns,
   ensureAkinsoftInvoiceSyncColumns,
   ensureMutakabatPriceSettingsTable,
   ensureMutakabatRecordsTable,
@@ -311,6 +312,7 @@ module.exports = async (req, res) => {
 
       case 'customer_detail': {
         await ensureCustomerCountryColumns();
+        await ensureCustomerEmailColumns();
         const id = String(req.query.customerId || '').trim();
         if (!id) return badRequest(req, res, 'customerId zorunludur.');
         const result = await query(
@@ -325,6 +327,8 @@ module.exports = async (req, res) => {
               country,
               director_name,
               email,
+              email_2,
+              email_3,
               vkn,
               tckn_ms,
               notes,
@@ -3107,6 +3111,7 @@ module.exports = async (req, res) => {
         await ensureLinesOperatorColumn();
         await ensureLicensesSoftwareCompanyColumn();
         await ensureLicensesRegistryNumberColumn();
+        await ensureInvoicesBillingSourceColumn();
 
         const lineWhere = showPassive ? '' : 'where l.is_active = true';
         const gmp3Where = showPassive
@@ -3143,6 +3148,19 @@ module.exports = async (req, res) => {
               from public.licenses lic
               ${irestoWhere}
               group by lic.customer_id
+            ),
+            hat_inv as (
+              select distinct on (i.customer_id)
+                i.customer_id,
+                i.invoice_number,
+                i.status,
+                coalesce(i.grand_total, 0) as grand_total,
+                coalesce(i.paid_amount, 0) as paid_amount
+              from public.invoices i
+              where coalesce(i.billing_source, '') = 'hat_lisans'
+                and coalesce(i.is_active, true) = true
+                and coalesce(i.status, '') <> 'cancelled'
+              order by i.customer_id, i.created_at desc
             )
             select
               c.id as customer_id,
@@ -3151,11 +3169,20 @@ module.exports = async (req, res) => {
               coalesce(lc.lines_turkcell, 0)::int as lines_turkcell,
               coalesce(lc.lines_telsim, 0)::int as lines_telsim,
               coalesce(gc.gmp3_total, 0)::int as gmp3_total,
-              coalesce(ic.iresto_total, 0)::int as iresto_total
+              coalesce(ic.iresto_total, 0)::int as iresto_total,
+              case
+                when hi.customer_id is null then 'none'
+                when hi.status = 'paid'
+                  or (hi.grand_total - hi.paid_amount) <= 0.009
+                  then 'paid'
+                else 'pending'
+              end as invoice_status,
+              hi.invoice_number
             from public.customers c
             left join line_counts lc on lc.customer_id = c.id
             left join gmp3_counts gc on gc.customer_id = c.id
             left join iresto_counts ic on ic.customer_id = c.id
+            left join hat_inv hi on hi.customer_id = c.id
             ${whereCustomerSql}
               and (
                 coalesce(lc.lines_total, 0) > 0

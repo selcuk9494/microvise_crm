@@ -65,6 +65,8 @@ const { parseTsmLogRequestBody } = require('./_lib/tsm_log');
 const {
   createHatLisansInvoices,
   saveHatLisansBillingSettings,
+  updateHatLisansInvoice,
+  deleteHatLisansInvoice,
 } = require('./_lib/hat_lisans_invoices');
 const {
   handleCors,
@@ -3568,6 +3570,44 @@ module.exports = async (req, res) => {
         return ok(req, res, result);
       } catch (error) {
         if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+
+    if (op === 'updateHatLisansInvoice') {
+      if (!hasPageAccess(user, 'urunler')) {
+        return forbidden(req, res);
+      }
+      try {
+        const result = await updateHatLisansInvoice({
+          invoiceId: body.invoiceId || body.id,
+          items: body.items,
+          pricesIncludeVat: body.pricesIncludeVat,
+          user,
+        });
+        return ok(req, res, result);
+      } catch (error) {
+        if (error?.statusCode === 400 || error?.statusCode === 404) {
+          return badRequest(req, res, error.message);
+        }
+        throw error;
+      }
+    }
+
+    if (op === 'deleteHatLisansInvoice') {
+      if (!hasPageAccess(user, 'urunler')) {
+        return forbidden(req, res);
+      }
+      try {
+        const result = await deleteHatLisansInvoice({
+          invoiceId: body.invoiceId || body.id,
+          user,
+        });
+        return ok(req, res, result);
+      } catch (error) {
+        if (error?.statusCode === 400 || error?.statusCode === 404) {
+          return badRequest(req, res, error.message);
+        }
         throw error;
       }
     }

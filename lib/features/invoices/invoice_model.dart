@@ -158,6 +158,10 @@ class Invoice {
       invoiceType == 'sales' &&
       remainingAmount > 0.009 &&
       (status == 'draft' || status == 'open' || status == 'partial');
+  bool get isHatLisansMutable =>
+      isHatLisansPayable &&
+      !isEInvoiceClosed &&
+      eInvoiceStatus != 'prepared';
   bool get isPaidViaPos {
     final method = (lastPaymentMethod ?? '').trim().toLowerCase();
     if (method == 'pos') return true;

@@ -331,10 +331,11 @@ async function nextSalesInvoiceNumber() {
   return `STŞ-${Date.now()}`;
 }
 
-function lineParts({ quantity, unitPrice, taxRate }) {
+function lineParts({ quantity, unitPrice, taxRate, includeVat = false }) {
   const qty = Math.max(0, Number(quantity) || 0);
-  const price = round4(unitPrice);
+  const entered = round4(unitPrice);
   const rate = Number.isFinite(Number(taxRate)) ? Number(taxRate) : 20;
+  const price = includeVat && rate > 0 ? round4(entered / (1 + rate / 100)) : entered;
   const subtotal = round2(qty * price);
   const taxAmount = round2(subtotal * (rate / 100));
   const lineTotal = round2(subtotal + taxAmount);
@@ -418,6 +419,10 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
   }
   const catalog = await loadBillingCatalog();
   const settings = catalog.settings || {};
+  const includeVat = Boolean(
+    prices?.pricesIncludeVat === true ||
+      String(prices?.pricesIncludeVat || '').toLowerCase() === 'true',
+  );
   const gprs = catalog.gprs;
   const gmp3 = catalog.gmp3;
   const irestoProduct = catalog.iresto || gmp3;
@@ -507,6 +512,7 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
           quantity: linesTotal,
           unitPrice: linePrice,
           taxRate,
+          includeVat,
         }),
       });
     }
@@ -527,6 +533,7 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
           quantity: gmp3Total,
           unitPrice: gmp3Price,
           taxRate,
+          includeVat,
         }),
       });
     }
@@ -547,6 +554,7 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
           quantity: irestoTotal,
           unitPrice: irestoPrice,
           taxRate,
+          includeVat,
         }),
       });
     }
@@ -589,8 +597,8 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
           created_by
         )
         values (
-          $1, 'sales', $2::uuid, $3::date, $4, 1, false,
-          $5, $6, 0, $7, 0, 'draft', $8, $9, true, $10
+          $1, 'sales', $2::uuid, $3::date, $4, 1, $5,
+          $6, $7, 0, $8, 0, 'draft', $9, $10, true, $11
         )
         returning id, invoice_number, status, grand_total
       `,
@@ -599,6 +607,7 @@ async function createHatLisansInvoices({ customerIds, prices, user }) {
         row.customer_id,
         invoiceDate,
         currency,
+        includeVat,
         subtotal,
         taxTotal,
         grandTotal,
@@ -718,10 +727,177 @@ async function listHatLisansInvoices({ payment = '' } = {}) {
   return result.rows;
 }
 
+function remainingOf(row) {
+  return (Number(row?.grand_total) || 0) - (Number(row?.paid_amount) || 0);
+}
+
+function assertMutableHatLisansInvoice(row) {
+  if (!row) {
+    const error = new Error('Fatura bulunamadı.');
+    error.statusCode = 404;
+    throw error;
+  }
+  if (String(row.billing_source || '') !== BILLING_SOURCE) {
+    const error = new Error('Bu kayıt Hat & Lisans faturası değil.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (row.is_active === false) {
+    const error = new Error('Pasif fatura düzenlenemez.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const eStatus = String(row.e_invoice_status || '').trim().toLowerCase();
+  if (['sent', 'manual', 'manual_sent', 'received', 'prepared'].includes(eStatus)) {
+    const error = new Error('Maliye’ye giden fatura düzenlenemez veya silinemez.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const status = String(row.status || '').trim();
+  if (!['draft', 'open', 'partial'].includes(status) || remainingOf(row) <= 0.009) {
+    const error = new Error('Ödenmiş fatura düzenlenemez veya silinemez.');
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
+async function loadHatLisansInvoiceRow(invoiceId) {
+  const id = String(invoiceId || '').trim();
+  if (!id) return null;
+  const result = await query(
+    `
+      select
+        id, billing_source, is_active, status, e_invoice_status,
+        grand_total, paid_amount, currency, customer_id, prices_include_vat
+      from public.invoices
+      where id = $1::uuid
+      limit 1
+    `,
+    [id],
+  );
+  return result.rows[0] || null;
+}
+
+async function cancelPendingPaymentLinks(invoiceId) {
+  try {
+    await query(
+      `
+        update public.invoice_payment_links
+        set status = 'cancelled'
+        where $1::uuid = any(invoice_ids)
+          and coalesce(status, '') not in ('paid', 'settled', 'cancelled')
+      `,
+      [invoiceId],
+    );
+  } catch (_) {}
+}
+
+async function updateHatLisansInvoice({ invoiceId, items, pricesIncludeVat, user }) {
+  await ensureHatLisansInvoiceSchema();
+  const current = await loadHatLisansInvoiceRow(invoiceId);
+  assertMutableHatLisansInvoice(current);
+  const includeVat = pricesIncludeVat == null
+    ? Boolean(current.prices_include_vat)
+    : Boolean(
+        pricesIncludeVat === true ||
+          String(pricesIncludeVat).toLowerCase() === 'true',
+      );
+  const nextItems = [];
+  for (const raw of Array.isArray(items) ? items : []) {
+    const description = String(raw?.description || '').trim();
+    const qty = parsePrice(raw?.quantity, 0);
+    const unitPrice = parsePrice(raw?.unitPrice ?? raw?.unit_price, 0);
+    const taxRate = parsePrice(raw?.taxRate ?? raw?.tax_rate, 20);
+    if (!description || qty <= 0 || unitPrice < 0) continue;
+    nextItems.push({
+      productId: raw?.productId || raw?.product_id || null,
+      description,
+      unit: String(raw?.unit || 'Adet').trim() || 'Adet',
+      ...lineParts({
+        quantity: qty,
+        unitPrice,
+        taxRate,
+        includeVat,
+      }),
+    });
+  }
+  if (!nextItems.length) {
+    const error = new Error('En az bir fatura kalemi girin.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const subtotal = round2(nextItems.reduce((sum, item) => sum + item.subtotal, 0));
+  const taxTotal = round2(nextItems.reduce((sum, item) => sum + item.taxAmount, 0));
+  const grandTotal = round2(nextItems.reduce((sum, item) => sum + item.lineTotal, 0));
+  const paid = Number(current.paid_amount) || 0;
+  if (grandTotal + 0.009 < paid) {
+    const error = new Error('Yeni tutar tahsilattan küçük olamaz.');
+    error.statusCode = 400;
+    throw error;
+  }
+  await query(
+    `
+      update public.invoices
+      set
+        prices_include_vat = $2,
+        subtotal = $3,
+        tax_total = $4,
+        grand_total = $5,
+        notes = $6
+      where id = $1::uuid
+    `,
+    [
+      current.id,
+      includeVat,
+      subtotal,
+      taxTotal,
+      grandTotal,
+      `Hat & Lisans tahsilatı · ${nextItems.map((item) => item.description).join(' · ')}`,
+    ],
+  );
+  await query(`delete from public.invoice_items where invoice_id = $1::uuid`, [current.id]);
+  for (let i = 0; i < nextItems.length; i += 1) {
+    const item = nextItems[i];
+    await insertInvoiceItem({
+      invoiceId: current.id,
+      customerId: current.customer_id,
+      productId: item.productId,
+      description: item.description,
+      quantity: item.qty,
+      unit: item.unit,
+      unitPrice: item.price,
+      taxRate: item.rate,
+      taxAmount: item.taxAmount,
+      lineTotal: item.lineTotal,
+      sortOrder: i,
+    });
+  }
+  await cancelPendingPaymentLinks(current.id);
+  return { ok: true, id: current.id, grandTotal };
+}
+
+async function deleteHatLisansInvoice({ invoiceId, user }) {
+  await ensureHatLisansInvoiceSchema();
+  const current = await loadHatLisansInvoiceRow(invoiceId);
+  assertMutableHatLisansInvoice(current);
+  await query(
+    `
+      update public.invoices
+      set is_active = false
+      where id = $1::uuid
+    `,
+    [current.id],
+  );
+  await cancelPendingPaymentLinks(current.id);
+  return { ok: true, id: current.id };
+}
+
 module.exports = {
   BILLING_SOURCE,
   loadBillingCatalog,
   saveHatLisansBillingSettings,
   createHatLisansInvoices,
+  updateHatLisansInvoice,
+  deleteHatLisansInvoice,
   listHatLisansInvoices,
 };

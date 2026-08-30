@@ -62,6 +62,10 @@ final totalsCustomerSearchProvider =
     NotifierProvider<TotalsCustomerSearchNotifier, String>(
       TotalsCustomerSearchNotifier.new,
     );
+final totalsInvoiceFilterProvider =
+    NotifierProvider<TotalsInvoiceFilterNotifier, String>(
+      TotalsInvoiceFilterNotifier.new,
+    );
 
 class ProductSearchNotifier extends Notifier<String> {
   @override
@@ -138,6 +142,13 @@ class LicenseEndsToNotifier extends Notifier<DateTime?> {
 class TotalsCustomerSearchNotifier extends Notifier<String> {
   @override
   String build() => '';
+
+  void set(String value) => state = value;
+}
+
+class TotalsInvoiceFilterNotifier extends Notifier<String> {
+  @override
+  String build() => 'all';
 
   void set(String value) => state = value;
 }
@@ -330,6 +341,8 @@ class CustomerTotalsRow {
     required this.linesTelsim,
     required this.gmp3Total,
     required this.irestoTotal,
+    this.invoiceStatus = 'none',
+    this.invoiceNumber,
   });
 
   final String customerId;
@@ -339,6 +352,20 @@ class CustomerTotalsRow {
   final int linesTelsim;
   final int gmp3Total;
   final int irestoTotal;
+  final String invoiceStatus;
+  final String? invoiceNumber;
+
+  String get invoiceStatusLabel => switch (invoiceStatus) {
+    'paid' => 'Ödendi',
+    'pending' => 'Ödeme bekliyor',
+    _ => 'Fatura yok',
+  };
+
+  AppBadgeTone get invoiceStatusTone => switch (invoiceStatus) {
+    'paid' => AppBadgeTone.success,
+    'pending' => AppBadgeTone.warning,
+    _ => AppBadgeTone.neutral,
+  };
 
   factory CustomerTotalsRow.fromJson(Map<String, dynamic> json) {
     return CustomerTotalsRow(
@@ -349,6 +376,8 @@ class CustomerTotalsRow {
       linesTelsim: (json['lines_telsim'] as int?) ?? 0,
       gmp3Total: (json['gmp3_total'] as int?) ?? 0,
       irestoTotal: (json['iresto_total'] as int?) ?? 0,
+      invoiceStatus: json['invoice_status']?.toString() ?? 'none',
+      invoiceNumber: json['invoice_number']?.toString(),
     );
   }
 }
@@ -361,6 +390,7 @@ final issuedCustomerTotalsProvider =
       final search = ref.watch(totalsCustomerSearchProvider).trim();
       final showPassive = ref.watch(showPassiveProvider);
       final isAdmin = ref.watch(isAdminProvider);
+      ref.watch(hatLisansTotalsTickProvider);
 
       final response = await apiClient.getJson(
         '/data',
@@ -1738,6 +1768,7 @@ class _TotalsTab extends ConsumerStatefulWidget {
 
 class _TotalsTabState extends ConsumerState<_TotalsTab> {
   late final TextEditingController _customerController;
+  final _selected = <String>{};
 
   excel.CellValue _cell(Object? v) {
     final text = (v ?? '').toString();
@@ -1758,6 +1789,38 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
     super.dispose();
   }
 
+  List<CustomerTotalsRow> _filtered(
+    List<CustomerTotalsRow> rows,
+    String filter,
+  ) {
+    if (filter == 'all') return rows;
+    return rows.where((row) => row.invoiceStatus == filter).toList();
+  }
+
+  Future<void> _createInvoices(List<CustomerTotalsRow> rows) async {
+    if (rows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fatura için müşteri seçin.')),
+      );
+      return;
+    }
+    await showCreateHatLisansInvoiceDialog(
+      context: context,
+      ref: ref,
+      customers: [
+        for (final r in rows)
+          HatLisansInvoiceCustomer(
+            customerId: r.customerId,
+            customerName: r.customerName,
+            linesTotal: r.linesTotal,
+            gmp3Total: r.gmp3Total,
+            irestoTotal: r.irestoTotal,
+          ),
+      ],
+    );
+    if (mounted) setState(_selected.clear);
+  }
+
   Future<void> _export(
     BuildContext context,
     List<CustomerTotalsRow> items,
@@ -1775,6 +1838,7 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
     final sheet = book['Müşteri Toplamları'];
     sheet.appendRow([
       _cell('customer_name'),
+      _cell('invoice_status'),
       _cell('lines_total'),
       _cell('lines_turkcell'),
       _cell('lines_telsim'),
@@ -1784,6 +1848,7 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
     for (final r in items) {
       sheet.appendRow([
         _cell(r.customerName),
+        _cell(r.invoiceStatusLabel),
         _cell(r.linesTotal),
         _cell(r.linesTurkcell),
         _cell(r.linesTelsim),
@@ -1801,154 +1866,215 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
   Widget build(BuildContext context) {
     final totalsAsync = ref.watch(issuedCustomerTotalsProvider);
     final search = ref.watch(totalsCustomerSearchProvider);
+    final filter = ref.watch(totalsInvoiceFilterProvider);
+    final allItems = totalsAsync.asData?.value ?? const <CustomerTotalsRow>[];
+    final items = _filtered(allItems, filter);
+    final selectedRows = items
+        .where((row) => _selected.contains(row.customerId))
+        .toList();
+    final allVisibleSelected =
+        items.isNotEmpty &&
+        items.every((row) => _selected.contains(row.customerId));
+    final noneCount = allItems.where((e) => e.invoiceStatus == 'none').length;
+    final pendingCount = allItems
+        .where((e) => e.invoiceStatus == 'pending')
+        .length;
+    final paidCount = allItems.where((e) => e.invoiceStatus == 'paid').length;
 
-    final items = totalsAsync.asData?.value ?? const <CustomerTotalsRow>[];
+    ButtonStyle compactBtn() => OutlinedButton.styleFrom(
+      minimumSize: const Size(0, 32),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      visualDensity: VisualDensity.compact,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
 
     return Padding(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(8),
       child: Column(
         children: [
           AppCard(
-            padding: const EdgeInsets.all(12),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final narrow = constraints.maxWidth < 980;
-                final searchField = SizedBox(
-                  width: narrow ? double.infinity : 360,
-                  child: TextField(
-                    controller: _customerController,
-                    onChanged: ref
-                        .read(totalsCustomerSearchProvider.notifier)
-                        .set,
-                    decoration: const InputDecoration(
-                      labelText: 'Müşteri Ara',
-                      hintText: 'Müşteri adına göre',
-                      prefixIcon: Icon(LucideIcons.search),
-                    ),
-                  ),
-                );
-
-                final clearBtn = OutlinedButton.icon(
-                  onPressed: () {
-                    _customerController.text = '';
-                    ref.read(totalsCustomerSearchProvider.notifier).set('');
-                  },
-                  icon: const Icon(LucideIcons.eraser, size: 18),
-                  label: const Text('Temizle'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 32),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                );
-
-                final exportBtn = OutlinedButton.icon(
-                  onPressed: items.isEmpty
-                      ? null
-                      : () => _export(context, items),
-                  icon: const Icon(LucideIcons.download, size: 18),
-                  label: const Text('Dışarı Aktar'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 32),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                );
-
-                final invoiceBtn = FilledButton.icon(
-                  onPressed: items.isEmpty
-                      ? null
-                      : () => showCreateHatLisansInvoiceDialog(
-                          context: context,
-                          ref: ref,
-                          customers: [
-                            for (final r in items)
-                              HatLisansInvoiceCustomer(
-                                customerId: r.customerId,
-                                customerName: r.customerName,
-                                linesTotal: r.linesTotal,
-                                gmp3Total: r.gmp3Total,
-                                irestoTotal: r.irestoTotal,
-                              ),
-                          ],
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final narrow = constraints.maxWidth < 980;
+                    final searchField = SizedBox(
+                      width: narrow ? double.infinity : 280,
+                      child: TextField(
+                        controller: _customerController,
+                        onChanged: ref
+                            .read(totalsCustomerSearchProvider.notifier)
+                            .set,
+                        decoration: const InputDecoration(
+                          labelText: 'Müşteri Ara',
+                          hintText: 'Müşteri adına göre',
+                          prefixIcon: Icon(LucideIcons.search, size: 18),
+                          isDense: true,
                         ),
-                  icon: const Icon(LucideIcons.fileText, size: 18),
-                  label: const Text('Fatura Oluştur'),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(0, 32),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                );
-
-                if (narrow) {
-                  return Column(
-                    children: [
-                      searchField,
-                      const Gap(8),
-                      Row(
+                      ),
+                    );
+                    final clearBtn = OutlinedButton.icon(
+                      onPressed: () {
+                        _customerController.text = '';
+                        ref.read(totalsCustomerSearchProvider.notifier).set('');
+                      },
+                      icon: const Icon(LucideIcons.eraser, size: 16),
+                      label: const Text('Temizle'),
+                      style: compactBtn(),
+                    );
+                    final exportBtn = OutlinedButton.icon(
+                      onPressed: items.isEmpty
+                          ? null
+                          : () => _export(context, items),
+                      icon: const Icon(LucideIcons.download, size: 16),
+                      label: const Text('Dışarı Aktar'),
+                      style: compactBtn(),
+                    );
+                    final invoiceBtn = FilledButton.icon(
+                      onPressed: selectedRows.isEmpty
+                          ? null
+                          : () => _createInvoices(selectedRows),
+                      icon: const Icon(LucideIcons.fileText, size: 16),
+                      label: Text(
+                        selectedRows.isEmpty
+                            ? 'Fatura Oluştur'
+                            : 'Fatura Oluştur (${selectedRows.length})',
+                      ),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(0, 32),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    );
+                    if (narrow) {
+                      return Column(
                         children: [
-                          Expanded(child: clearBtn),
-                          const Gap(8),
-                          Expanded(child: exportBtn),
-                          const Gap(8),
-                          Expanded(child: invoiceBtn),
+                          searchField,
+                          const Gap(6),
+                          Row(
+                            children: [
+                              Expanded(child: clearBtn),
+                              const Gap(8),
+                              Expanded(child: exportBtn),
+                              const Gap(8),
+                              Expanded(child: invoiceBtn),
+                            ],
+                          ),
                         ],
-                      ),
-                    ],
-                  );
-                }
-
-                return Row(
+                      );
+                    }
+                    return Row(
+                      children: [
+                        searchField,
+                        const Gap(8),
+                        clearBtn,
+                        const Gap(8),
+                        exportBtn,
+                        const Gap(8),
+                        invoiceBtn,
+                        if (search.trim().isNotEmpty) const Gap(8),
+                        if (search.trim().isNotEmpty)
+                          AppBadge(
+                            label: 'Sonuç: ${items.length}',
+                            tone: AppBadgeTone.neutral,
+                            dense: true,
+                          ),
+                      ],
+                    );
+                  },
+                ),
+                const Gap(8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    searchField,
-                    const Gap(8),
-                    clearBtn,
-                    const Gap(8),
-                    exportBtn,
-                    const Gap(8),
-                    invoiceBtn,
-                    if (search.trim().isNotEmpty) const Gap(8),
-                    if (search.trim().isNotEmpty)
-                      AppBadge(
-                        label: 'Sonuç: ${items.length}',
-                        tone: AppBadgeTone.neutral,
-                        dense: true,
+                    FilterChip(
+                      label: Text('Tümü (${allItems.length})'),
+                      selected: filter == 'all',
+                      onSelected: (_) => ref
+                          .read(totalsInvoiceFilterProvider.notifier)
+                          .set('all'),
+                    ),
+                    FilterChip(
+                      label: Text('Fatura yok ($noneCount)'),
+                      selected: filter == 'none',
+                      onSelected: (_) => ref
+                          .read(totalsInvoiceFilterProvider.notifier)
+                          .set('none'),
+                    ),
+                    FilterChip(
+                      label: Text('Ödeme bekliyor ($pendingCount)'),
+                      selected: filter == 'pending',
+                      onSelected: (_) => ref
+                          .read(totalsInvoiceFilterProvider.notifier)
+                          .set('pending'),
+                    ),
+                    FilterChip(
+                      label: Text('Ödendi ($paidCount)'),
+                      selected: filter == 'paid',
+                      onSelected: (_) => ref
+                          .read(totalsInvoiceFilterProvider.notifier)
+                          .set('paid'),
+                    ),
+                    FilterChip(
+                      label: Text(
+                        allVisibleSelected
+                            ? 'Seçimi kaldır'
+                            : 'Tümünü seç (${items.length})',
                       ),
+                      selected: allVisibleSelected,
+                      onSelected: items.isEmpty
+                          ? null
+                          : (value) {
+                              setState(() {
+                                if (value) {
+                                  _selected.addAll(
+                                    items.map((e) => e.customerId),
+                                  );
+                                } else {
+                                  for (final row in items) {
+                                    _selected.remove(row.customerId);
+                                  }
+                                }
+                              });
+                            },
+                    ),
                   ],
-                );
-              },
+                ),
+              ],
             ),
           ),
-          const Gap(8),
+          const Gap(6),
           const HatLisansBillingPriceCard(),
-          const Gap(8),
+          const Gap(6),
           Expanded(
             child: totalsAsync.when(
               data: (rows) {
-                if (rows.isEmpty) return const _Empty(text: 'Kayıt yok.');
+                final visible = _filtered(rows, filter);
+                if (visible.isEmpty) {
+                  return const _Empty(text: 'Kayıt yok.');
+                }
                 return Scrollbar(
                   thumbVisibility: true,
                   child: ListView.separated(
                     padding: const EdgeInsets.only(bottom: 120),
-                    itemCount: rows.length,
-                    separatorBuilder: (_, _) => const Gap(8),
+                    itemCount: visible.length,
+                    separatorBuilder: (_, _) => const Gap(6),
                     itemBuilder: (context, index) {
-                      final r = rows[index];
+                      final r = visible[index];
+                      final checked = _selected.contains(r.customerId);
                       return Container(
-                        padding: const EdgeInsets.all(10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: AppTheme.surfaceMuted,
                           borderRadius: BorderRadius.circular(12),
@@ -1956,6 +2082,21 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                         ),
                         child: Row(
                           children: [
+                            Checkbox(
+                              value: checked,
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              onChanged: (value) {
+                                setState(() {
+                                  if (value == true) {
+                                    _selected.add(r.customerId);
+                                  } else {
+                                    _selected.remove(r.customerId);
+                                  }
+                                });
+                              },
+                            ),
                             Expanded(
                               child: Text(
                                 r.customerName.trim().isEmpty
@@ -1971,6 +2112,12 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                               ),
                             ),
                             const Gap(8),
+                            AppBadge(
+                              label: r.invoiceStatusLabel,
+                              tone: r.invoiceStatusTone,
+                              dense: true,
+                            ),
+                            const Gap(6),
                             AppBadge(
                               label: 'Hat: ${r.linesTotal}',
                               tone: AppBadgeTone.primary,
@@ -2002,20 +2149,7 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                             ),
                             const Gap(8),
                             FilledButton.tonal(
-                              onPressed: () => showCreateHatLisansInvoiceDialog(
-                                context: context,
-                                ref: ref,
-                                customers: [
-                                  HatLisansInvoiceCustomer(
-                                    customerId: r.customerId,
-                                    customerName: r.customerName,
-                                    linesTotal: r.linesTotal,
-                                    gmp3Total: r.gmp3Total,
-                                    irestoTotal: r.irestoTotal,
-                                  ),
-                                ],
-                                singleCustomerId: r.customerId,
-                              ),
+                              onPressed: () => _createInvoices([r]),
                               style: FilledButton.styleFrom(
                                 visualDensity: VisualDensity.compact,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
