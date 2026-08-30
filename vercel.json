@@ -22,7 +22,7 @@
       "maxDuration": 60
     },
     "api/akinsoft/*.js": {
-      "includeFiles": "{assets/**,api/_lib/**}",
+      "includeFiles": "{assets/**,api/_lib/**,scripts/**}",
       "maxDuration": 60
     }
   },
@@ -31,6 +31,7 @@
     { "source": "/api/tsm-log", "destination": "/api/mutate?op=parseTsmLog" },
     { "source": "/p/:token", "destination": "/api/invoice-pay?token=:token" },
     { "source": "/pay/:token", "destination": "/api/invoice-pay?token=:token" },
+    { "source": "/api/akinsoft/finance/:action", "destination": "/api/akinsoft/finance-:action" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [

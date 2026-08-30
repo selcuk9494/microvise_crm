@@ -13,7 +13,12 @@ import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
 
 Uri _akinsoftFinanceUri(String path) {
-  final normalizedPath = path.startsWith('/') ? path.substring(1) : path;
+  var normalizedPath = path.startsWith('/') ? path.substring(1) : path;
+  // Vercel catch-all only matches a single segment after /api/akinsoft/.
+  // Nested /finance/pull returns HTML 404; hyphenated finance-pull works.
+  if (normalizedPath.startsWith('finance/')) {
+    normalizedPath = 'finance-${normalizedPath.substring('finance/'.length)}';
+  }
   final base = Uri.base;
   final isLocalWeb =
       base.host == '127.0.0.1' ||
@@ -87,9 +92,25 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
           body: jsonEncode(body ?? const <String, dynamic>{}),
         )
         .timeout(const Duration(seconds: 120));
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('Geçersiz SAP yanıtı.');
+    Map<String, dynamic> decoded;
+    try {
+      final parsed = jsonDecode(response.body);
+      if (parsed is! Map<String, dynamic>) {
+        throw Exception('Geçersiz SAP yanıtı.');
+      }
+      decoded = parsed;
+    } on FormatException {
+      final preview = response.body.trim();
+      if (response.statusCode == 404 ||
+          preview.startsWith('The page') ||
+          preview.contains('NOT_FOUND')) {
+        throw Exception(
+          'SAP finans API bulunamadı (${response.statusCode}). '
+          'Sunucu henüz finance uçlarını yayınlamıyor.',
+        );
+      }
+      final snippet = preview.length > 80 ? '${preview.substring(0, 80)}…' : preview;
+      throw Exception('SAP yanıtı JSON değil: $snippet');
     }
     if (response.statusCode >= 400 || decoded['ok'] != true) {
       throw Exception(

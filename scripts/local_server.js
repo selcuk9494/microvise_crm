@@ -8032,6 +8032,12 @@ async function handleAkinsoftRequest(req, res) {
     '/api/akinsoft/push-invoices': handleAkinsoftPushInvoices,
     ...financeRoutes,
   };
+  for (const [key, handler] of Object.entries(financeRoutes)) {
+    if (key.startsWith('/api/akinsoft/finance/')) {
+      routes[`/api/akinsoft/finance-${key.slice('/api/akinsoft/finance/'.length)}`] =
+        handler;
+    }
+  }
   const handler = routes[pathname];
   if (!handler) {
     return send(
