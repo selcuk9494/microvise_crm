@@ -67,6 +67,10 @@ final totalsInvoiceFilterProvider =
     NotifierProvider<TotalsInvoiceFilterNotifier, String>(
       TotalsInvoiceFilterNotifier.new,
     );
+final totalsHatOnlyFilterProvider =
+    NotifierProvider<TotalsHatOnlyFilterNotifier, bool>(
+      TotalsHatOnlyFilterNotifier.new,
+    );
 
 class ProductSearchNotifier extends Notifier<String> {
   @override
@@ -152,6 +156,15 @@ class TotalsInvoiceFilterNotifier extends Notifier<String> {
   String build() => 'all';
 
   void set(String value) => state = value;
+}
+
+class TotalsHatOnlyFilterNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void set(bool value) => state = value;
+
+  void toggle() => state = !state;
 }
 
 final issuedLinesProvider = FutureProvider<List<IssuedLine>>((ref) async {
@@ -1774,10 +1787,12 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
   }
 
   List<CustomerTotalsRow> _filtered(
-    List<CustomerTotalsRow> rows,
-    String filter,
-  ) {
+    List<CustomerTotalsRow> rows, {
+    required String filter,
+    required bool hatOnly,
+  }) {
     return rows.where((row) {
+      if (hatOnly && !row.isHatOnly) return false;
       switch (filter) {
         case 'none':
           return row.invoiceStatus == 'none';
@@ -1786,12 +1801,30 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
         case 'paid':
           return row.invoiceStatus == 'paid' ||
               row.invoiceStatus == 'collected';
+        case 'any':
         case 'hat_only':
-          return row.isHatOnly;
+          return true;
         default:
           return row.invoiceStatus == 'none' || row.invoiceStatus == 'pending';
       }
     }).toList();
+  }
+
+  void _setInvoiceFilter(String value) {
+    if (ref.read(totalsInvoiceFilterProvider) == 'hat_only') {
+      ref.read(totalsHatOnlyFilterProvider.notifier).set(true);
+    }
+    ref.read(totalsInvoiceFilterProvider.notifier).set(value);
+  }
+
+  void _setHatOnly(bool value) {
+    final current = ref.read(totalsInvoiceFilterProvider);
+    if (current == 'hat_only' || current == 'any') {
+      ref
+          .read(totalsInvoiceFilterProvider.notifier)
+          .set(value ? 'any' : 'all');
+    }
+    ref.read(totalsHatOnlyFilterProvider.notifier).set(value);
   }
 
   Future<void> _markCollected(
@@ -1931,20 +1964,28 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
   Widget build(BuildContext context) {
     final totalsAsync = ref.watch(issuedCustomerTotalsProvider);
     final search = ref.watch(totalsCustomerSearchProvider);
-    final filter = ref.watch(totalsInvoiceFilterProvider);
+    final rawFilter = ref.watch(totalsInvoiceFilterProvider);
+    final hatOnly =
+        ref.watch(totalsHatOnlyFilterProvider) || rawFilter == 'hat_only';
+    final filter = rawFilter == 'hat_only' ? 'any' : rawFilter;
     final allItems = totalsAsync.asData?.value ?? const <CustomerTotalsRow>[];
-    final items = _filtered(allItems, filter);
+    final items = _filtered(allItems, filter: filter, hatOnly: hatOnly);
     final selectedRows = items
         .where((row) => _selected.contains(row.customerId))
         .toList();
     final allVisibleSelected =
         items.isNotEmpty &&
         items.every((row) => _selected.contains(row.customerId));
-    final noneCount = allItems.where((e) => e.invoiceStatus == 'none').length;
-    final pendingCount = allItems
+    final scopedItems = hatOnly
+        ? allItems.where((e) => e.isHatOnly)
+        : allItems;
+    final noneCount = scopedItems
+        .where((e) => e.invoiceStatus == 'none')
+        .length;
+    final pendingCount = scopedItems
         .where((e) => e.invoiceStatus == 'pending')
         .length;
-    final paidCount = allItems
+    final paidCount = scopedItems
         .where(
           (e) => e.invoiceStatus == 'paid' || e.invoiceStatus == 'collected',
         )
@@ -2096,39 +2137,33 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   FilterChip(
-                    label: Text('Tümü ($workCount)'),
+                    label: Text(
+                      hatOnly
+                          ? 'Tahsil edilmeyen ($workCount)'
+                          : 'Tümü ($workCount)',
+                    ),
                     selected: filter == 'all',
-                    onSelected: (_) => ref
-                        .read(totalsInvoiceFilterProvider.notifier)
-                        .set('all'),
+                    onSelected: (_) => _setInvoiceFilter('all'),
                   ),
                   FilterChip(
                     label: Text('Fatura yok ($noneCount)'),
                     selected: filter == 'none',
-                    onSelected: (_) => ref
-                        .read(totalsInvoiceFilterProvider.notifier)
-                        .set('none'),
+                    onSelected: (_) => _setInvoiceFilter('none'),
                   ),
                   FilterChip(
                     label: Text('Ödeme bekliyor ($pendingCount)'),
                     selected: filter == 'pending',
-                    onSelected: (_) => ref
-                        .read(totalsInvoiceFilterProvider.notifier)
-                        .set('pending'),
+                    onSelected: (_) => _setInvoiceFilter('pending'),
                   ),
                   FilterChip(
                     label: Text('Tahsil edildi ($paidCount)'),
                     selected: filter == 'paid',
-                    onSelected: (_) => ref
-                        .read(totalsInvoiceFilterProvider.notifier)
-                        .set('paid'),
+                    onSelected: (_) => _setInvoiceFilter('paid'),
                   ),
                   FilterChip(
                     label: Text('Sadece hat ($hatOnlyCount)'),
-                    selected: filter == 'hat_only',
-                    onSelected: (_) => ref
-                        .read(totalsInvoiceFilterProvider.notifier)
-                        .set('hat_only'),
+                    selected: hatOnly,
+                    onSelected: (value) => _setHatOnly(value),
                   ),
                   FilterChip(
                     label: Text(
@@ -2164,7 +2199,7 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
       ],
       body: ({required nested}) => totalsAsync.when(
         data: (rows) {
-          final visible = _filtered(rows, filter);
+          final visible = _filtered(rows, filter: filter, hatOnly: hatOnly);
           if (visible.isEmpty) {
             return const _Empty(text: 'Kayıt yok.');
           }
