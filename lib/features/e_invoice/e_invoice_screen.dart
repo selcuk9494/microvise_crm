@@ -869,6 +869,56 @@ String _akinsoftBridgeError(Object error) {
   return 'SAP’a gönderilemedi: $error';
 }
 
+Future<Map<String, dynamic>> _postAkinsoftFinance(
+  String path, [
+  Map<String, dynamic>? body,
+]) async {
+  var normalized = path.startsWith('/') ? path.substring(1) : path;
+  if (normalized.startsWith('finance/')) {
+    normalized = 'finance-${normalized.substring('finance/'.length)}';
+  }
+  final response = await http
+      .post(
+        _akinsoftUri(normalized),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode(body ?? const <String, dynamic>{}),
+      )
+      .timeout(const Duration(seconds: 120));
+  final parsed = jsonDecode(response.body);
+  if (parsed is! Map) {
+    throw Exception('Geçersiz SAP yanıtı.');
+  }
+  final decoded = Map<String, dynamic>.from(parsed);
+  if (response.statusCode >= 400 || decoded['ok'] != true) {
+    throw Exception(
+      (decoded['error']?.toString().trim().isNotEmpty == true)
+          ? decoded['error'].toString()
+          : 'SAP işlem hatası (${response.statusCode})',
+    );
+  }
+  return decoded;
+}
+
+class _CollectionDetails {
+  const _CollectionDetails({
+    required this.method,
+    required this.description,
+    required this.postToSap,
+    this.kasaAdi,
+    this.bankAccountId,
+    this.checkNo,
+    this.checkDate,
+  });
+
+  final String method;
+  final String description;
+  final bool postToSap;
+  final String? kasaAdi;
+  final String? bankAccountId;
+  final String? checkNo;
+  final DateTime? checkDate;
+}
+
 const _defaultSettings = <String, dynamic>{
   'environment': 'test',
   'api_base_url': 'https://test-efatura.maliye.gov.ct.tr/api',
@@ -1249,6 +1299,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
           index: i,
           invoice: visibleItems[i],
           selected: _selectedInvoiceIds.contains(visibleItems[i].id),
+          onCollect: visibleItems[i].isOpen && visibleItems[i].remainingAmount > 0
+              ? () => _collectInvoices([visibleItems[i]])
+              : null,
           onSelectedChanged: _bulkDeleting
               ? null
               : (selected) {
@@ -2144,6 +2197,15 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                           invoice: visibleItems[i],
                                           selected: _selectedInvoiceIds
                                               .contains(visibleItems[i].id),
+                                          onCollect:
+                                              visibleItems[i].isOpen &&
+                                                  visibleItems[i]
+                                                          .remainingAmount >
+                                                      0
+                                              ? () => _collectInvoices([
+                                                  visibleItems[i],
+                                                ])
+                                              : null,
                                           onSelectedChanged: _bulkDeleting
                                               ? null
                                               : (selected) {
@@ -3004,38 +3066,35 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       );
       return;
     }
+    await _collectInvoices(selected);
+  }
+
+  Future<void> _collectInvoices(List<Invoice> selected) async {
     final total = selected.fold<double>(
       0,
       (sum, invoice) => sum + invoice.remainingAmount,
     );
     final currencies = selected.map((invoice) => invoice.currency).toSet();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Toplu tahsilat'),
-        content: Text(
-          '${selected.length} açık fatura için kalan tutarlar tahsilat/ödeme hareketi olarak işlensin mi?\n'
-          'Toplam: ${currencies.length == 1 ? '${currencies.first} ${total.toStringAsFixed(2)}' : 'karışık para birimi'}',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Vazgeç'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('İşle'),
-          ),
-        ],
-      ),
+    final linked = selected.where((invoice) => invoice.isLinkedToAkinsoft).length;
+    final details = await _askCollectionDetails(
+      invoices: selected,
+      total: total,
+      currencies: currencies,
+      linkedCount: linked,
     );
-    if (confirmed != true) return;
+    if (details == null) return;
 
     final apiClient = ref.read(apiClientProvider);
     if (apiClient == null) return;
     setState(() => _bulkProcessing = true);
+    var crmOk = 0;
+    var sapOk = 0;
+    var sapFail = 0;
+    String? lastSapError;
     try {
       for (final invoice in selected) {
+        final amount = invoice.remainingAmount;
+        if (amount <= 0) continue;
         await apiClient.postJson(
           '/mutate',
           body: {
@@ -3048,35 +3107,290 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               'transaction_type': invoice.invoiceType == 'purchase'
                   ? 'payment'
                   : 'collection',
-              'amount': invoice.remainingAmount,
+              'amount': amount,
               'currency': invoice.currency,
               'exchange_rate': invoice.exchangeRate,
-              'payment_method': 'bank',
+              'payment_method': details.method,
               'transaction_date': DateTime.now().toIso8601String().substring(
                 0,
                 10,
               ),
-              'description':
-                  'Toplu e-fatura tahsilatı: ${invoice.invoiceNumber}',
+              'description': details.description.isEmpty
+                  ? 'E-Fatura tahsilatı: ${invoice.invoiceNumber}'
+                  : details.description,
             },
           },
         );
+        crmOk += 1;
+        if (!details.postToSap) continue;
+        try {
+          await _postAkinsoftFinance('finance/collection', {
+            'invoiceSourceId': invoice.akinsoftSourceId,
+            'invoiceNumber': invoice.invoiceNumber,
+            'amount': amount,
+            'currency': invoice.currency,
+            'exchangeRate': invoice.exchangeRate,
+            'method': details.method,
+            'kasaAdi': details.kasaAdi,
+            'bankAccountId': details.bankAccountId,
+            'checkNo': details.checkNo,
+            'checkDate': details.checkDate?.toIso8601String(),
+            'description': details.description.isEmpty
+                ? 'CRM tahsilat ${invoice.invoiceNumber}'
+                : details.description,
+            'invoiceType': invoice.invoiceType,
+            'closeInvoice': amount >= invoice.remainingAmount - 0.02,
+          });
+          sapOk += 1;
+        } catch (error) {
+          sapFail += 1;
+          lastSapError = _akinsoftBridgeError(error);
+        }
       }
       _selectedInvoiceIds.clear();
       ref.invalidate(invoicesProvider);
       ref.invalidate(accountBalancesProvider);
       if (!mounted) return;
+      final sapPart = details.postToSap
+          ? (sapFail == 0
+                ? ' SAP: $sapOk kapandı.'
+                : ' SAP: $sapOk kapandı, $sapFail hata${lastSapError == null ? '.' : ': $lastSapError'}')
+          : '';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${selected.length} fatura kapatıldı/işlendi.')),
+        SnackBar(content: Text('$crmOk fatura CRM’de işlendi.$sapPart')),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Toplu tahsilat başarısız: $error')),
+        SnackBar(content: Text('Tahsilat başarısız: $error')),
       );
     } finally {
       if (mounted) setState(() => _bulkProcessing = false);
     }
+  }
+
+  Future<_CollectionDetails?> _askCollectionDetails({
+    required List<Invoice> invoices,
+    required double total,
+    required Set<String> currencies,
+    required int linkedCount,
+  }) async {
+    var method = 'cash';
+    var postToSap = linkedCount > 0;
+    String? kasaAdi;
+    String? bankAccountId;
+    final checkNo = TextEditingController();
+    final desc = TextEditingController();
+    DateTime checkDate = DateTime.now().add(const Duration(days: 7));
+    var loadingAccounts = true;
+    var loadError = '';
+    var kasas = <Map<String, dynamic>>[];
+    var accounts = <Map<String, dynamic>>[];
+
+    return showDialog<_CollectionDetails>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) {
+          if (loadingAccounts) {
+            loadingAccounts = false;
+            _postAkinsoftFinance('finance/pull').then((data) {
+              if (!context.mounted) return;
+              setLocal(() {
+                kasas = ((data['kasas'] as List?) ?? const [])
+                    .whereType<Map>()
+                    .map((e) => Map<String, dynamic>.from(e))
+                    .where((e) => e['isActive'] != false)
+                    .toList();
+                accounts = ((data['accounts'] as List?) ?? const [])
+                    .whereType<Map>()
+                    .map((e) => Map<String, dynamic>.from(e))
+                    .where((e) => e['isActive'] != false)
+                    .toList();
+                kasaAdi ??= kasas.isEmpty
+                    ? null
+                    : kasas.first['kasaAdi']?.toString();
+                bankAccountId ??= accounts.isEmpty
+                    ? null
+                    : accounts.first['sourceId']?.toString();
+                loadError = '';
+              });
+            }).catchError((error) {
+              if (!context.mounted) return;
+              setLocal(() {
+                loadError = _akinsoftBridgeError(error);
+              });
+            });
+          }
+          final totalLabel = currencies.length == 1
+              ? '${currencies.first} ${total.toStringAsFixed(2)}'
+              : 'karışık para birimi';
+          return AlertDialog(
+            title: const Text('Tahsilat'),
+            content: SizedBox(
+              width: 520,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${invoices.length} fatura · $totalLabel'
+                      '${linkedCount > 0 ? ' · $linkedCount SAP bağlı' : ''}',
+                    ),
+                    const Gap(12),
+                    DropdownButtonFormField<String>(
+                      initialValue: method,
+                      decoration: const InputDecoration(labelText: 'Ödeme şekli'),
+                      items: const [
+                        DropdownMenuItem(value: 'cash', child: Text('Nakit (kasa)')),
+                        DropdownMenuItem(value: 'bank', child: Text('Banka')),
+                        DropdownMenuItem(value: 'pos', child: Text('POS')),
+                        DropdownMenuItem(
+                          value: 'credit_card',
+                          child: Text('Kredi kartı'),
+                        ),
+                        DropdownMenuItem(value: 'check', child: Text('Çek')),
+                        DropdownMenuItem(value: 'other', child: Text('Diğer')),
+                      ],
+                      onChanged: (v) => setLocal(() => method = v ?? 'cash'),
+                    ),
+                    if (method == 'cash') ...[
+                      const Gap(10),
+                      DropdownButtonFormField<String>(
+                        initialValue: kasaAdi,
+                        decoration: const InputDecoration(labelText: 'Kasa'),
+                        items: [
+                          for (final kasa in kasas)
+                            DropdownMenuItem(
+                              value: kasa['kasaAdi']?.toString(),
+                              child: Text(kasa['kasaAdi']?.toString() ?? 'Kasa'),
+                            ),
+                        ],
+                        onChanged: (v) => setLocal(() => kasaAdi = v),
+                      ),
+                    ],
+                    if (method == 'bank' ||
+                        method == 'pos' ||
+                        method == 'credit_card') ...[
+                      const Gap(10),
+                      DropdownButtonFormField<String>(
+                        initialValue: bankAccountId,
+                        decoration: const InputDecoration(
+                          labelText: 'Banka hesabı',
+                        ),
+                        items: [
+                          for (final account in accounts)
+                            DropdownMenuItem(
+                              value: account['sourceId']?.toString(),
+                              child: Text(
+                                account['label']?.toString() ??
+                                    account['tanimi']?.toString() ??
+                                    'Hesap',
+                              ),
+                            ),
+                        ],
+                        onChanged: (v) => setLocal(() => bankAccountId = v),
+                      ),
+                    ],
+                    if (method == 'check') ...[
+                      const Gap(10),
+                      TextField(
+                        controller: checkNo,
+                        decoration: const InputDecoration(
+                          labelText: 'Çek no',
+                        ),
+                      ),
+                      const Gap(10),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          'Vade: ${DateFormat('d MMM y', 'tr_TR').format(checkDate)}',
+                        ),
+                        trailing: const Icon(LucideIcons.calendarDays, size: 18),
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: checkDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2035),
+                          );
+                          if (picked != null) {
+                            setLocal(() => checkDate = picked);
+                          }
+                        },
+                      ),
+                    ],
+                    const Gap(10),
+                    TextField(
+                      controller: desc,
+                      decoration: const InputDecoration(labelText: 'Açıklama'),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Akınsoft’ta da kapat'),
+                      subtitle: Text(
+                        loadError.isEmpty
+                            ? 'Nakit kasaya, banka ilgili hesaba, çek portföye yazılır.'
+                            : loadError,
+                      ),
+                      value: postToSap,
+                      onChanged: (v) => setLocal(() => postToSap = v),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Vazgeç'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  if (postToSap && method == 'cash' && (kasaAdi ?? '').isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Nakit için kasa seçin.')),
+                    );
+                    return;
+                  }
+                  if (postToSap &&
+                      (method == 'bank' ||
+                          method == 'pos' ||
+                          method == 'credit_card') &&
+                      (bankAccountId ?? '').isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Banka hesabı seçin.')),
+                    );
+                    return;
+                  }
+                  if (postToSap &&
+                      method == 'check' &&
+                      checkNo.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Çek numarası girin.')),
+                    );
+                    return;
+                  }
+                  Navigator.pop(
+                    context,
+                    _CollectionDetails(
+                      method: method,
+                      kasaAdi: kasaAdi,
+                      bankAccountId: bankAccountId,
+                      checkNo: checkNo.text.trim(),
+                      checkDate: method == 'check' ? checkDate : null,
+                      description: desc.text.trim(),
+                      postToSap: postToSap,
+                    ),
+                  );
+                },
+                child: const Text('Tahsil et'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _bulkPrepare(
@@ -4271,12 +4585,14 @@ class _EInvoiceRow extends ConsumerStatefulWidget {
     required this.invoice,
     this.selected = false,
     this.onSelectedChanged,
+    this.onCollect,
     this.index = 0,
   });
 
   final Invoice invoice;
   final bool selected;
   final ValueChanged<bool>? onSelectedChanged;
+  final VoidCallback? onCollect;
   final int index;
 
   @override
@@ -4425,11 +4741,18 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 _prepare(send: false);
               case 'active':
                 _toggleActive();
+              case 'collect':
+                widget.onCollect?.call();
               case 'delete':
                 _delete();
             }
           },
           itemBuilder: (context) => [
+            if (widget.onCollect != null)
+              const PopupMenuItem(
+                value: 'collect',
+                child: Text('Tahsilat (CRM + Akınsoft)'),
+              ),
             if (invoice.invoiceType == 'sales' &&
                 invoice.isActive &&
                 invoice.isOpen &&

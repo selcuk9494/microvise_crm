@@ -954,6 +954,248 @@ function createAkinsoftFinanceHandlers(ctx) {
     throw Object.assign(new Error('Desteklenmeyen transfer tipi.'), { statusCode: 400 });
   }
 
+  async function findFaturaForCollection(pool, body) {
+    const sourceId = Number(body.invoiceSourceId);
+    if (Number.isFinite(sourceId) && sourceId > 0) {
+      const byId = await pool
+        .request()
+        .input('id', sql.BigInt, sourceId)
+        .query(`
+          select top 1
+            BLKODU as sourceId,
+            convert(nvarchar(40), FATURA_NO) as invoiceNumber,
+            BLCRKODU as customerSourceId
+          from dbo.FATURA
+          where BLKODU = @id and coalesce(SILINDI, 0) = 0
+        `);
+      if (byId.recordset?.[0]) return byId.recordset[0];
+    }
+    const invoiceNumber = textOrNull(body.invoiceNumber);
+    if (!invoiceNumber) return null;
+    const byNo = await pool
+      .request()
+      .input('no', sql.NVarChar(40), invoiceNumber)
+      .query(`
+        select top 1
+          BLKODU as sourceId,
+          convert(nvarchar(40), FATURA_NO) as invoiceNumber,
+          BLCRKODU as customerSourceId
+        from dbo.FATURA
+        where FATURA_NO = @no and coalesce(SILINDI, 0) = 0
+        order by BLKODU desc
+      `);
+    return byNo.recordset?.[0] || null;
+  }
+
+  async function tryInsertCek(pool, payload) {
+    for (const table of ['CEK', 'CEKLER', 'CEK_GIRIS']) {
+      if (!(await akinsoftTableExists(pool, table))) continue;
+      const columns = await akinsoftTableColumnSet(pool, table);
+      const id = await akinsoftNextBlkoduSafe(pool, table);
+      const row = { BLKODU: id };
+      setFirstColumn(row, columns, ['BLCRKODU'], payload.customerSourceId);
+      setFirstColumn(row, columns, ['CEK_NO', 'CEKNO', 'BELGE_NO', 'EVRAK_NO'], payload.checkNo);
+      setFirstColumn(row, columns, ['TUTARI', 'KPB_TUTARI', 'TUTAR'], payload.kpbAmount);
+      setFirstColumn(row, columns, ['DVZ_TUTARI', 'DOVIZ_TUTARI'], payload.amount);
+      setFirstColumn(
+        row,
+        columns,
+        ['VADESI', 'VADE_TARIHI', 'TARIHI'],
+        payload.checkDate || payload.tarih,
+      );
+      setFirstColumn(row, columns, ['ACIKLAMA'], payload.aciklama);
+      setFirstColumn(row, columns, ['FATURA_NO'], payload.faturaNo);
+      setFirstColumn(row, columns, ['SILINDI'], 0);
+      setFirstColumn(row, columns, ['KAYDEDEN'], 'MICROVISE');
+      setFirstColumn(row, columns, ['KAYIT_TARIHI'], new Date());
+      setFirstColumn(row, columns, ['SOURCE_APP'], 'MICROVISE');
+      await insertAkinsoftRowWithRequest(() => pool.request(), sql, table, columns, row);
+      return { table, sourceId: String(id) };
+    }
+    return null;
+  }
+
+  async function createInvoiceCollection(pool, body) {
+    const method = String(body.method || body.paymentMethod || 'cash')
+      .toLowerCase()
+      .replace('cheque', 'check');
+    const amount = numberOrZero(body.amount);
+    if (!(amount > 0)) {
+      throw Object.assign(new Error('Tutar 0’dan büyük olmalı.'), { statusCode: 400 });
+    }
+    const invoiceType = String(body.invoiceType || 'sales').toLowerCase();
+    const isSales = invoiceType !== 'purchase';
+    const currency = String(body.currency || 'TRY').toUpperCase();
+    const isTry = currency === 'TRY' || currency === 'TL';
+    const exchangeRate = Math.max(Number(body.exchangeRate) || 1, 0.000001);
+    const kpbAmount = Number((isTry ? amount : amount * exchangeRate).toFixed(2));
+    const tarih = toSqlDate(body.date, new Date()) || new Date();
+    const tarihOnly = new Date(tarih);
+    tarihOnly.setHours(0, 0, 0, 0);
+
+    if (!(await akinsoftTableExists(pool, 'CARIHR'))) {
+      throw Object.assign(new Error('CARIHR tablosu bulunamadı.'), { statusCode: 400 });
+    }
+
+    const fatura = await findFaturaForCollection(pool, body);
+    const faturaId = Number(fatura?.sourceId || body.invoiceSourceId);
+    const faturaNo =
+      textOrNull(fatura?.invoiceNumber) || textOrNull(body.invoiceNumber);
+    const customerSourceId = Number(
+      fatura?.customerSourceId || body.customerSourceId,
+    );
+    if (!Number.isFinite(customerSourceId) || customerSourceId <= 0) {
+      throw Object.assign(
+        new Error('Cari SAP kodu bulunamadı. Fatura önce SAP’a gönderilmeli.'),
+        { statusCode: 400 },
+      );
+    }
+
+    const aciklama = (
+      textOrNull(body.description) ||
+      `${isSales ? 'Tahsilat' : 'Ödeme'} ${faturaNo || ''}`.trim()
+    ).slice(0, 50);
+    const evrakNo = (faturaNo || (await nextEvrakNo(pool, 'CARIHR', 'TH'))).slice(0, 20);
+    const cariHrColumns = await akinsoftTableColumnSet(pool, 'CARIHR');
+    const cariHrId = await akinsoftNextBlkoduSafe(pool, 'CARIHR');
+    const cariRow = { BLKODU: cariHrId };
+    setFirstColumn(cariRow, cariHrColumns, ['BLCRKODU'], customerSourceId);
+    setFirstColumn(cariRow, cariHrColumns, ['EVRAK_NO'], evrakNo);
+    setFirstColumn(cariRow, cariHrColumns, ['TARIHI', 'KAYIT_TARIHI'], tarih);
+    setFirstColumn(cariRow, cariHrColumns, ['VADESI'], tarihOnly);
+    setFirstColumn(cariRow, cariHrColumns, ['ACIKLAMA'], aciklama);
+    setFirstColumn(cariRow, cariHrColumns, ['KAYDEDEN'], 'MICROVISE');
+    setFirstColumn(cariRow, cariHrColumns, ['SILINDI'], 0);
+    setFirstColumn(cariRow, cariHrColumns, ['ISLEM_TURU'], 1);
+    setFirstColumn(cariRow, cariHrColumns, ['FATURA_DURUMU'], 1);
+    setFirstColumn(cariRow, cariHrColumns, ['SOURCE_APP'], 'MICROVISE');
+    if (Number.isFinite(faturaId) && faturaId > 0) {
+      setFirstColumn(cariRow, cariHrColumns, ['ENTEGRASYON'], `FTK_${faturaId}`);
+    }
+    setFirstColumn(cariRow, cariHrColumns, ['KUR', 'DOVIZ_KURU'], isTry ? 1 : exchangeRate);
+    setFirstColumn(cariRow, cariHrColumns, ['DOVIZ_KULLAN'], isTry ? 0 : 1);
+    setFirstColumn(cariRow, cariHrColumns, ['KPBDVZ'], 1);
+    if (!isTry) {
+      setFirstColumn(cariRow, cariHrColumns, ['DOVIZ_BIRIMI', 'DOVIZ_BIRIMI2'], currency);
+    }
+    if (isSales) {
+      setFirstColumn(cariRow, cariHrColumns, ['KPB_ATUT', 'ATUT'], kpbAmount);
+      if (!isTry) setAllColumns(cariRow, cariHrColumns, ['DVZ_ATUT', 'DVZ_ATUT2'], amount);
+    } else {
+      setFirstColumn(cariRow, cariHrColumns, ['KPB_BTUT', 'BTUT'], kpbAmount);
+      if (!isTry) setAllColumns(cariRow, cariHrColumns, ['DVZ_BTUT', 'DVZ_BTUT2'], amount);
+    }
+    await insertAkinsoftRowWithRequest(() => pool.request(), sql, 'CARIHR', cariHrColumns, cariRow);
+
+    const result = {
+      type: 'invoice_collection',
+      method,
+      amount,
+      currency,
+      kpbAmount,
+      evrakNo,
+      cariHrId: String(cariHrId),
+      faturaId: Number.isFinite(faturaId) ? String(faturaId) : null,
+      faturaNo,
+      customerSourceId: String(customerSourceId),
+      closedInvoice: false,
+    };
+
+    if (method === 'cash') {
+      const kasaAdi = textOrNull(body.kasaAdi);
+      if (!kasaAdi) {
+        throw Object.assign(new Error('Nakit tahsilat için kasa seçin.'), { statusCode: 400 });
+      }
+      if (!(await akinsoftTableExists(pool, 'KASAHR'))) {
+        throw Object.assign(new Error('KASAHR tablosu bulunamadı.'), { statusCode: 400 });
+      }
+      const kasaHrColumns = await akinsoftTableColumnSet(pool, 'KASAHR');
+      const kasaHrId = await akinsoftNextBlkoduSafe(pool, 'KASAHR');
+      const kasaRow = { BLKODU: kasaHrId };
+      setFirstColumn(kasaRow, kasaHrColumns, ['TARIHI'], tarih);
+      setFirstColumn(kasaRow, kasaHrColumns, ['EVRAK_NO'], evrakNo.slice(0, 10));
+      setFirstColumn(kasaRow, kasaHrColumns, ['KASA_ADI'], kasaAdi.slice(0, 10));
+      setFirstColumn(kasaRow, kasaHrColumns, ['ACIKLAMA'], aciklama);
+      setFirstColumn(kasaRow, kasaHrColumns, ['OZEL_KODU'], (isSales ? 'Tahsilat' : 'Odeme').slice(0, 10));
+      if (isSales) setFirstColumn(kasaRow, kasaHrColumns, ['KPB_GLTUT'], kpbAmount);
+      else setFirstColumn(kasaRow, kasaHrColumns, ['KPB_GDTUT'], kpbAmount);
+      setFirstColumn(kasaRow, kasaHrColumns, ['DOVIZ_KULLAN'], isTry ? 0 : 1);
+      setFirstColumn(kasaRow, kasaHrColumns, ['KPBDVZ'], 1);
+      setFirstColumn(kasaRow, kasaHrColumns, ['SILINDI'], 0);
+      setFirstColumn(kasaRow, kasaHrColumns, ['KAYDEDEN'], 'MICROVISE');
+      setFirstColumn(kasaRow, kasaHrColumns, ['KAYIT_TARIHI'], new Date());
+      setFirstColumn(kasaRow, kasaHrColumns, ['SOURCE_APP'], 'MICROVISE');
+      await insertAkinsoftRowWithRequest(() => pool.request(), sql, 'KASAHR', kasaHrColumns, kasaRow);
+      result.kasaHrId = String(kasaHrId);
+      result.kasaAdi = kasaAdi;
+    } else if (['bank', 'pos', 'credit_card', 'transfer'].includes(method)) {
+      const accountId = Number(body.bankAccountId);
+      if (!Number.isFinite(accountId) || accountId <= 0) {
+        throw Object.assign(new Error('Banka hesabı seçin.'), { statusCode: 400 });
+      }
+      if (!(await akinsoftTableExists(pool, 'BANKAHR'))) {
+        throw Object.assign(new Error('BANKAHR tablosu bulunamadı.'), { statusCode: 400 });
+      }
+      await resolveAccountMeta(pool, accountId);
+      const bankHrColumns = await akinsoftTableColumnSet(pool, 'BANKAHR');
+      const bankHrId = await akinsoftNextBlkoduSafe(pool, 'BANKAHR');
+      const bankRow = { BLKODU: bankHrId };
+      setFirstColumn(bankRow, bankHrColumns, ['EVRAK_NO'], evrakNo.slice(0, 10));
+      setFirstColumn(bankRow, bankHrColumns, ['TARIHI'], tarih);
+      setFirstColumn(bankRow, bankHrColumns, ['VADESI'], tarihOnly);
+      setFirstColumn(bankRow, bankHrColumns, ['ISLEM_TURU'], 1);
+      setFirstColumn(bankRow, bankHrColumns, ['ACIKLAMA'], aciklama);
+      setFirstColumn(bankRow, bankHrColumns, ['BLHSKODU'], accountId);
+      setFirstColumn(bankRow, bankHrColumns, ['KPB_TUTARI'], kpbAmount);
+      if (isSales) setFirstColumn(bankRow, bankHrColumns, ['TUTAR_BORC'], kpbAmount);
+      else setFirstColumn(bankRow, bankHrColumns, ['TUTAR_ALACAK'], kpbAmount);
+      setFirstColumn(bankRow, bankHrColumns, ['SILINDI'], 0);
+      setFirstColumn(bankRow, bankHrColumns, ['KAYDEDEN'], 'MICROVISE');
+      setFirstColumn(bankRow, bankHrColumns, ['KAYIT_TARIHI'], new Date());
+      setFirstColumn(bankRow, bankHrColumns, ['SOURCE_APP'], 'MICROVISE');
+      setFirstColumn(bankRow, bankHrColumns, ['POS_TANIMI'], method === 'pos' ? 'POS' : '');
+      await insertAkinsoftRowWithRequest(() => pool.request(), sql, 'BANKAHR', bankHrColumns, bankRow);
+      result.bankHrId = String(bankHrId);
+      result.bankAccountId = String(accountId);
+    } else if (method === 'check') {
+      const checkNo = textOrNull(body.checkNo || body.cekNo);
+      if (!checkNo) {
+        throw Object.assign(new Error('Çek numarası girin.'), { statusCode: 400 });
+      }
+      const checkDate = toSqlDate(body.checkDate || body.vade, tarih) || tarih;
+      const cek = await tryInsertCek(pool, {
+        customerSourceId,
+        amount,
+        kpbAmount,
+        checkNo,
+        checkDate,
+        aciklama,
+        tarih,
+        faturaNo,
+      });
+      result.checkNo = checkNo;
+      result.cek = cek;
+    }
+
+    const shouldClose = body.closeInvoice !== false && Number.isFinite(faturaId) && faturaId > 0;
+    if (shouldClose && (await akinsoftTableExists(pool, 'FATURA'))) {
+      const faturaColumns = await akinsoftTableColumnSet(pool, 'FATURA');
+      if (faturaColumns.has('KAPALI') || faturaColumns.has('KAPANDI')) {
+        const col = faturaColumns.has('KAPALI') ? 'KAPALI' : 'KAPANDI';
+        await pool
+          .request()
+          .input('id', sql.BigInt, faturaId)
+          .query(`
+            update dbo.FATURA
+            set ${col}=1, DEGISTIREN=N'MICROVISE', DEGISTIRME_TARIHI=getdate()
+            where BLKODU=@id
+          `);
+        result.closedInvoice = true;
+      }
+    }
+    return result;
+  }
+
   async function softDeleteMasraf(pool, body) {
     const sourceId = Number(body.sourceId);
     if (!Number.isFinite(sourceId)) {
@@ -1027,6 +1269,9 @@ function createAkinsoftFinanceHandlers(ctx) {
       const action = String(body.action || 'create').toLowerCase();
       if (action === 'delete') return softDeleteMasraf(pool, body);
       return createMasraf(pool, body);
+    }),
+    '/api/akinsoft/finance/collection': wrapMutator(async (pool, body) => {
+      return createInvoiceCollection(pool, body);
     }),
   };
 }

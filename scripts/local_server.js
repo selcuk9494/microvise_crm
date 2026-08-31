@@ -7,6 +7,7 @@ const { URL } = require('url');
 const rootDir = path.resolve(__dirname, '..');
 const webDir = path.join(rootDir, 'build', 'web');
 const {
+  akinsoftCariHrEntegrasyonKeys,
   akinsoftCariHrEvrakVariants,
   mapCariHrRowToInvoiceNumber,
   resolveAkinsoftInvoicePayment,
@@ -363,7 +364,7 @@ const AKINSOFT_LOCK_TIMEOUT_MS = Math.max(
 );
 
 // Yanıttaki build etiketi — istemci/log'da hangi sunucu kodunun yanıt verdiğini gösterir.
-const AKINSOFT_SERVER_BUILD = 'cari-vkn-currency-kpb-v17';
+const AKINSOFT_SERVER_BUILD = 'cari-vkn-currency-kpb-v18-ftk';
 
 // Geçici 1222 için kısa üstel retry (yalnızca gerçek kilit hatasında ödenir).
 // Happy path: ilk deneme başarılıysa backoff / retry maliyeti yok.
@@ -2916,9 +2917,13 @@ async function pullAkinsoftDataset(body) {
             extraSelect.length ? `, ${extraSelect.join(', ')}` : ''
           }
               from dbo.CARIHR`;
-          const lookupNumbers = [
-            ...new Set(invoiceNumbers.flatMap(akinsoftCariHrEvrakVariants)),
-          ];
+          const lookupNumberSet = new Set(
+            invoiceNumbers.flatMap(akinsoftCariHrEvrakVariants),
+          );
+          for (const row of headers) {
+            const erpNo = textOrNull(row.FATURA_NO_ERP);
+            if (erpNo) lookupNumberSet.add(erpNo);
+          }
           const rows = [];
           const seen = new Set();
           const pushRows = (recordset) => {
@@ -2937,22 +2942,27 @@ async function pullAkinsoftDataset(body) {
               rows.push(row);
             }
           };
-          const chunkSize = 400;
-          for (let offset = 0; offset < lookupNumbers.length; offset += chunkSize) {
-            const chunk = lookupNumbers.slice(offset, offset + chunkSize);
-            const request = pool.request();
-            request.timeout = 25000;
-            chunk.forEach((no, index) =>
-              request.input(`no${index}`, sql.NVarChar, no),
-            );
-            const numberParams = chunk.map((_, index) => `@no${index}`).join(',');
-            const result = await request.query(`
+          const fetchByEvrakNos = async (numbers) => {
+            const list = [...new Set((numbers || []).map(textOrNull).filter(Boolean))];
+            const chunkSize = 400;
+            for (let offset = 0; offset < list.length; offset += chunkSize) {
+              const chunk = list.slice(offset, offset + chunkSize);
+              const request = pool.request();
+              request.timeout = 25000;
+              chunk.forEach((no, index) =>
+                request.input(`no${index}`, sql.NVarChar, no),
+              );
+              const numberParams = chunk.map((_, index) => `@no${index}`).join(',');
+              const result = await request.query(`
               ${selectSql}
               where EVRAK_NO in (${numberParams})
                 and coalesce(SILINDI, 0) = 0
             `);
-            pushRows(result.recordset);
-          }
+              pushRows(result.recordset);
+            }
+          };
+          await fetchByEvrakNos([...lookupNumberSet]);
+          const chunkSize = 400;
           if (ids.length && (cariHrColumns.has('ENTEGRASYON') || cariHrColumns.has('BLFTKODU'))) {
             for (let offset = 0; offset < ids.length; offset += chunkSize) {
               const idChunk = ids.slice(offset, offset + chunkSize);
@@ -2960,19 +2970,24 @@ async function pullAkinsoftDataset(body) {
               request.timeout = 25000;
               const conditions = [];
               if (cariHrColumns.has('ENTEGRASYON')) {
-                idChunk.forEach((id, index) =>
-                  request.input(`fto${index}`, sql.NVarChar, `FTO_${id}`),
-                );
-                conditions.push(
-                  `ENTEGRASYON in (${idChunk.map((_, index) => `@fto${index}`).join(',')})`,
-                );
+                const entegrasyonParams = [];
+                idChunk.forEach((id, index) => {
+                  akinsoftCariHrEntegrasyonKeys(id).forEach((key, keyIndex) => {
+                    const param = `ft${index}_${keyIndex}`;
+                    request.input(param, sql.NVarChar, key);
+                    entegrasyonParams.push(`@${param}`);
+                  });
+                });
+                if (entegrasyonParams.length) {
+                  conditions.push(`ENTEGRASYON in (${entegrasyonParams.join(',')})`);
+                }
               }
               if (cariHrColumns.has('BLFTKODU')) {
                 idChunk.forEach((id, index) =>
-                  request.input(`ft${index}`, sql.Int, id),
+                  request.input(`ftid${index}`, sql.Int, id),
                 );
                 conditions.push(
-                  `BLFTKODU in (${idChunk.map((_, index) => `@ft${index}`).join(',')})`,
+                  `BLFTKODU in (${idChunk.map((_, index) => `@ftid${index}`).join(',')})`,
                 );
               }
               const result = await request.query(`
@@ -2982,6 +2997,16 @@ async function pullAkinsoftDataset(body) {
             `);
               pushRows(result.recordset);
             }
+          }
+          const extraEvrak = [
+            ...new Set(
+              rows
+                .map((row) => textOrNull(row.EVRAK_NO))
+                .filter((no) => no && !lookupNumberSet.has(no)),
+            ),
+          ];
+          if (extraEvrak.length) {
+            await fetchByEvrakNos(extraEvrak);
           }
           return { rows, reliable: true };
         } catch (error) {

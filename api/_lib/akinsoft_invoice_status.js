@@ -74,6 +74,19 @@ function akinsoftCariHrEvrakVariants(invoiceNumber) {
   return variants;
 }
 
+function akinsoftCariHrLinkedSourceId(entegrasyon) {
+  const text = textOrNull(entegrasyon);
+  if (!text) return null;
+  const match = /^(FT[OK])_(\d+)$/i.exec(text);
+  return match ? match[2] : null;
+}
+
+function akinsoftCariHrEntegrasyonKeys(sourceId) {
+  const id = String(sourceId ?? '').trim();
+  if (!id || !/^\d+$/.test(id)) return [];
+  return [`FTO_${id}`, `FTK_${id}`];
+}
+
 function resolveAkinsoftCariHrInvoiceNumber(evrakNo, invoiceNumbers) {
   const key = textOrNull(evrakNo);
   if (!key) return null;
@@ -95,9 +108,9 @@ function resolveAkinsoftCariHrInvoiceNumber(evrakNo, invoiceNumbers) {
 
 function mapCariHrRowToInvoiceNumber(row, invoiceNumbers, invoiceNoBySourceId) {
   const entegrasyon = textOrNull(row?.ENTEGRASYON ?? row?.entegrasyon);
-  const fto = entegrasyon ? /^FTO_(\d+)$/i.exec(entegrasyon) : null;
-  if (fto && invoiceNoBySourceId instanceof Map) {
-    const mapped = invoiceNoBySourceId.get(fto[1]);
+  const linkedId = akinsoftCariHrLinkedSourceId(entegrasyon);
+  if (linkedId && invoiceNoBySourceId instanceof Map) {
+    const mapped = invoiceNoBySourceId.get(linkedId);
     if (mapped) return mapped;
   }
   const blft = row?.BLFTKODU ?? row?.blftkodu;
@@ -240,7 +253,9 @@ function resolveAkinsoftInvoicePayment(
 module.exports = {
   AKINSOFT_CARIHR_EVRAK_NO_MAX_LEN,
   AKINSOFT_CLOSED_FLAG_FIELDS,
+  akinsoftCariHrEntegrasyonKeys,
   akinsoftCariHrEvrakVariants,
+  akinsoftCariHrLinkedSourceId,
   akinsoftInvoiceSerialCore,
   mapCariHrRowToInvoiceNumber,
   readAkinsoftClosedFlag,

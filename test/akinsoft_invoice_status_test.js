@@ -97,3 +97,20 @@ test('FTO entegrasyonu tahsilatı faturaya bağlar', () => {
     '2026-1-69',
   );
 });
+
+test('Wolvox FTK kapama tahsilatı faturaya bağlanır', () => {
+  const invoiceNoBySourceId = new Map([['7770', '2026-1-00000000069']]);
+  assert.equal(
+    mapCariHrRowToInvoiceNumber(
+      {
+        EVRAK_NO: 'STŞ-2026-000113',
+        ENTEGRASYON: 'FTK_7770',
+        KPB_ATUT: 17046.58,
+        DVZ_ATUT: 350,
+      },
+      ['2026-1-00000000069'],
+      invoiceNoBySourceId,
+    ),
+    '2026-1-00000000069',
+  );
+});
